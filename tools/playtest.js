@@ -83,6 +83,13 @@ const MONTHS = +(process.argv[2] || 40);
     }
   }
 
+  // 乱数プレイが終局していたら、以降のUI検証のために新しい会社で仕切り直す
+  if (gameOver) {
+    await page.evaluate(() => { UI.closeModal(); ENGINE.newGame('検証商事'); UI.render(); });
+    await page.waitForTimeout(60);
+    console.log('note: 乱数プレイが終局したため、UI検証用に再生成しました');
+  }
+
   // M&A のUIを直接検証（乱数プレイでは段階に届かないため状態を作る）
   await page.evaluate(() => {
     ENGINE.S.stage = 2; ENGINE.S.cash = 4000; ENGINE.S.ma = [ENGINE.genTarget(), ENGINE.genTarget()];
