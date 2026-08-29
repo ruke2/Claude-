@@ -2717,13 +2717,14 @@ window.UI = (function () {
     const plotH = H - PAD_B - PAD_T;
     const zeroY = PAD_T + (mx / span) * plotH;
     const gap = 2;
-    const bw = Math.max(3, (W - gap * (rows.length - 1)) / rows.length - gap);
-    const step = (W - bw) / Math.max(1, rows.length - 1);
+    const bw = Math.min(36, Math.max(3, (W - gap * (rows.length - 1)) / rows.length - gap));
+    const step = rows.length > 1 ? Math.min((W - bw) / (rows.length - 1), bw + gap * 3) : 0;
     const hid = 'h' + key;
     let bars = '', labels = '';
     rows.forEach(function (r, i) {
       const v = r[key] || 0;
-      const x = rows.length === 1 ? (W - bw) / 2 : i * step;
+      const x0 = (W - (step * (rows.length - 1) + bw)) / 2;
+      const x = x0 + i * step;
       const hgt = Math.max(1.5, Math.abs(v) / span * plotH);
       const y = v >= 0 ? zeroY - hgt : zeroY;
       const rr = Math.min(4, bw / 2, hgt);
@@ -3244,10 +3245,12 @@ window.UI = (function () {
 
     if (S.fyHistory.length) {
       const rows = S.fyHistory.slice(-10);
-      h += '<div class="card"><div class="sect">年次推移</div>' +
-        fyBars(rows, 'revenue', '#2f86e0', '収益（売上高）', false) +
-        fyBars(rows, 'profit', '#ab8129', '当期純利益', true) +
-        '<p class="tiny muted" style="margin:6px 0 0">純利益の棒は上向きが黒字、下向きの斜線が赤字。棒に触れると年度と金額が出る。</p></div>';
+      if (rows.length >= 3) {
+        h += '<div class="card"><div class="sect">年次推移</div>' +
+          fyBars(rows, 'revenue', '#2f86e0', '収益（売上高）', false) +
+          fyBars(rows, 'profit', '#ab8129', '当期純利益', true) +
+          '<p class="tiny muted" style="margin:6px 0 0">純利益の棒は上向きが黒字、下向きの斜線が赤字。棒に触れると年度と金額が出る。</p></div>';
+      }
       h += '<div class="card"><div class="sect">決算履歴</div>' +
         '<table class="paytbl"><thead><tr><th>期</th><th>収益</th><th>純利益</th><th>ROE</th></tr></thead><tbody>' +
         S.fyHistory.slice().reverse().slice(0, 12).map(function (f) {
