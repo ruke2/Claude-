@@ -237,6 +237,33 @@ input{font-family:inherit}
 .quote{border-left:2px solid var(--gold);padding:7px 0 7px 11px;margin:10px 0;font-size:12px;color:var(--dim);line-height:1.75}
 .quote b{display:block;color:var(--fg);font-size:11.5px;margin-bottom:3px;font-weight:600}
 
+/* ---------- 年次チャート ---------- */
+.chart{margin:6px 0 2px}
+.chart svg{display:block;width:100%;height:auto}
+.chart .ct{font-size:10.5px;color:var(--dim);margin-bottom:2px;display:flex;justify-content:space-between;align-items:baseline}
+.chart .ct b{font-size:12.5px;color:var(--fg);font-variant-numeric:tabular-nums}
+.chart .cx{font-size:9px;fill:var(--dim2)}
+.chart .cl{font-size:9.5px;fill:var(--fg);font-variant-numeric:tabular-nums}
+.chart .cz{stroke:var(--line2);stroke-width:1}
+
+/* ---------- 給与・採用 ---------- */
+.band{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:8px 0 6px}
+.band button{padding:8px 1px;border-radius:8px;border:1px solid var(--line2);background:var(--card);
+  font-size:9px;line-height:1.45;color:var(--dim)}
+.band button.on{border-color:var(--gold);background:rgba(217,178,95,.14);color:var(--gold2);font-weight:600}
+.band button b{display:block;font-size:11px}
+.paytbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.paytbl th,.paytbl td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.paytbl th{font-size:9.5px;color:var(--dim2);font-weight:500}
+.paytbl th:first-child,.paytbl td:first-child{text-align:left}
+.paytbl tr.none td{color:var(--dim2)}
+.pol{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:8px 0}
+.pol button{padding:9px 8px;border-radius:9px;border:1px solid var(--line2);background:var(--card);text-align:left}
+.pol button.on{border-color:var(--gold);background:rgba(217,178,95,.12)}
+.pol button b{display:block;font-size:12px;margin-bottom:3px}
+.pol button .g{display:block;font-size:9.5px;color:var(--up);line-height:1.5}
+.pol button .x{display:block;font-size:9.5px;color:var(--down);line-height:1.5;margin-top:2px}
+
 /* ---------- modal ---------- */
 #modal-root{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
 #modal-root .backdrop{position:absolute;inset:0;background:rgba(3,5,9,.72);backdrop-filter:blur(3px)}
@@ -519,6 +546,42 @@ window.GAME = (function () {
   D.FACES_F = ['👩‍💼','👩‍🦱','👱‍♀️','👩‍🦳','👵','🧕','👩‍🏭','💁‍♀️'];
 
   D.ROLES = ['担当', '課長', '部長', '本部長', '役員'];
+  /* 階級別の基準年収（万円・給与水準「標準」かつ創業規模のとき） */
+  D.ROLE_SALARY = [1050, 1650, 2400, 3600, 6000];
+  /* 一般社員（総合職）の基準平均年収（万円） */
+  D.BASE_SALARY = 900;
+
+  /* 給与水準。全社の人件費・士気・定着・採用力を一括で動かす */
+  D.PAY_BANDS = [
+    { n: '業界最低水準', k: 0.74, morale: -14, retain: -0.35, hire: -0.22,
+      desc: '人件費は最も軽い。ただし優秀な人間から順に辞めていく' },
+    { n: '低め',        k: 0.87, morale: -6,  retain: -0.16, hire: -0.10, desc: 'コストを抑えるが、採用でも競り負けやすい' },
+    { n: '標準',        k: 1.00, morale: 0,   retain: 0,     hire: 0,     desc: '同業他社と横並び' },
+    { n: '高め',        k: 1.22, morale: +7,  retain: +0.18, hire: +0.10, desc: '定着と採用に効く。人件費は2割増' },
+    { n: '業界最高水準', k: 1.58, morale: +15, retain: +0.36, hire: +0.22,
+      desc: '人が集まり、辞めない。ただし固定費が重くのしかかる' },
+  ];
+
+  /* 新卒採用の方針 */
+  D.GRAD_POLICIES = [
+    { id: 'mass', name: '量重視', icon: '👥', size: 2.1, cost: 0.70, q: 0.86, ratio: 0.42,
+      good: '頭数が揃い、現場の処理能力が上がる', bad: '幹部候補は出にくく、能力も平均的' },
+    { id: 'balanced', name: 'バランス', icon: '⚖️', size: 1.0, cost: 1.0, q: 1.0, ratio: 1.0,
+      good: '量と質のどちらにも寄せない', bad: '尖った人材は出にくい' },
+    { id: 'elite', name: '質重視', icon: '🎓', size: 0.5, cost: 2.1, q: 1.22, ratio: 3.4,
+      good: '少数精鋭。幹部候補が育ちやすく、能力も高い', bad: '一人あたりのコストが2倍、頭数は増えない' },
+    { id: 'global', name: 'グローバル採用', icon: '🌏', size: 0.8, cost: 1.5, q: 1.12, ratio: 1.7,
+      global: true, good: '海外拠点で現地採用。駐在適性が高く、地域特性を持つ幹部が育つ',
+      bad: '拠点がなければ意味がなく、コストも高い' },
+  ];
+
+  /* 決算で見せる年次サマリーの並び */
+  D.PL_ROWS = [
+    { k: 'gtv', name: '取扱高', hint: 'トレードの取扱総額・請負金額・傘下事業会社の年商' },
+    { k: 'revenue', name: '収益（売上高）', hint: '口銭・請負・配当・評価益の合計' },
+    { k: 'cost', name: '費用', hint: '工事原価・人件費・販管費・支払利息・減損' },
+    { k: 'profit', name: '当期純利益', hint: '' },
+  ];
   D.ROLE_W = [0.45, 0.75, 1.15, 1.75, 2.10];
 
   /* 性格。入社・昇進・退社・大型案件での発言が変わる */
@@ -796,6 +859,7 @@ window.ENGINE = (function () {
   function stage() { return D.STAGES[S.stage]; }
   function scale() { return stage().scale; }
   function fiscalYear() { return S.m >= 4 ? S.y + 1 : S.y; }
+  function monthsInFY() { return S.m >= 4 ? S.m - 3 : S.m + 9; }
   function dateLabel(y, m) { return y + '年' + m + '月'; }
   function now() { return dateLabel(S.y, S.m); }
 
@@ -816,13 +880,14 @@ window.ENGINE = (function () {
   function newSeg() {
     const o = {};
     D.DIVISIONS.forEach(function (d) {
-      o[d.id] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0 };
+      o[d.id] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0, rev: 0, gtv: 0 };
     });
     return o;
   }
   function seg(divId) {
     if (!S.seg) S.seg = newSeg();
-    if (!S.seg[divId]) S.seg[divId] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0 };
+    if (!S.seg[divId]) S.seg[divId] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0, rev: 0, gtv: 0 };
+    if (S.seg[divId].rev == null) { S.seg[divId].rev = 0; S.seg[divId].gtv = 0; }
     return S.seg[divId];
   }
   function segTotal(x) { return x.gross + x.dividend + x.reval + x.impair; }
@@ -952,7 +1017,7 @@ window.ENGINE = (function () {
       y: 2026, m: 4, turn: 0,
       stage: 0,
       cash: 75, debt: 0,
-      staff: 14, wageRate: 0.012,
+      staff: 14, wageInfl: 0, payBand: 2, gradPolicy: 1,
       credit: 42,
       offices: ['jp'],
       div: {}, mk: {}, mkPrev: {},
@@ -960,7 +1025,9 @@ window.ENGINE = (function () {
       market: [], active: [], assets: [],
       slots: 3,
       log: [], monthly: [],
-      fy: { profit: 0, startEquity: 75, deals: 0, wage: 0, sga: 0, interest: 0, gain: 0 },
+      fy: { profit: 0, startEquity: 75, deals: 0, wage: 0, sga: 0, interest: 0, gain: 0,
+            revenue: 0, cost: 0, gtv: 0 },
+      mRev: 0, mCost: 0, mGTV: 0,
       fyHistory: [],
       rivals: D.RIVALS.map(function (r) { return { name: r.name, eq: r.base, g: r.g }; }),
       mod: { impair: 1, creditRisk: 1, delay: 1 },
@@ -1021,7 +1088,29 @@ window.ENGINE = (function () {
   function traitOf(p) { return D.TRAIT_BY_ID[p.trait] || D.TRAIT_BY_ID.none; }
   function roleW(p) { return D.ROLE_W[p.role] || 0.45; }
   function personPower(p) { return (p.sales + p.eye + p.lead) / 3; }
-  function personCost(p) { return (0.014 + p.role * 0.011) * Math.pow(scale(), 0.45); }
+  /* ---- 給与体系（万円/年で定義し、億円/月に換算して計上する） ---- */
+  function payBand() { return D.PAY_BANDS[S.payBand] || D.PAY_BANDS[2]; }
+  function sizeFactor() { return 1 + Math.log10(Math.max(1, scale())) * 0.32; }
+  function salaryOf(p) {
+    return Math.round(D.ROLE_SALARY[p.role] * payBand().k * sizeFactor()
+      * (0.85 + personPower(p) / 330) / 10) * 10;
+  }
+  function avgStaffSalary() {
+    return Math.round(D.BASE_SALARY * payBand().k * sizeFactor() * (1 + (S.wageInfl || 0)) / 10) * 10;
+  }
+  function setPayBand(i) {
+    i = clamp(Math.round(i), 0, D.PAY_BANDS.length - 1);
+    if (i === S.payBand) return { ok: false, msg: '同じ水準だ' };
+    const up = i > S.payBand;
+    S.payBand = i;
+    S.morale = clamp(S.morale + (up ? 4 : -6), 0, 100);
+    log('給与水準を「' + payBand().n + '」に改定した（一般社員の平均年収 ' + avgStaffSalary().toLocaleString('ja-JP') + '万円）。',
+      up ? 'gold' : 'down');
+    save();
+    return { ok: true };
+  }
+  function personCost(p) { return salaryOf(p) / 10000 / 12; }
+  function staffCost() { return S.staff * avgStaffSalary() / 10000 / 12; }
   function rosterCost() { let c = 0; S.people.forEach(function (p) { c += personCost(p); }); return c; }
   function rosterMax() { return 24; }
   function divPeople(divId) { return S.people.filter(function (p) { return p.div === divId; }); }
@@ -1095,6 +1184,14 @@ window.ENGINE = (function () {
     return v;
   }
 
+  /* ---- 収益・費用・取扱高 ---- */
+  function addRev(amount, gtv, divId) {
+    if (amount) { S.fy.revenue += amount; S.mRev += amount; if (divId) seg(divId).rev += amount; }
+    if (gtv) { S.fy.gtv += gtv; S.mGTV += gtv; if (divId) seg(divId).gtv += gtv; }
+  }
+  function addCost(amount) { if (amount > 0) { S.fy.cost += amount; S.mCost += amount; } }
+  function signRev(v, divId) { if (v >= 0) addRev(v, 0, divId); else addCost(-v); }
+
   function pnews(text, kind, face) {
     S.peopleNews.unshift({ t: S.y + '/' + ('0' + S.m).slice(-2), b: text, k: kind || '', f: face || '' });
     if (S.peopleNews.length > 60) S.peopleNews.length = 60;
@@ -1136,20 +1233,38 @@ window.ENGINE = (function () {
   function promoteSlots() { return 1 + Math.floor(S.staff / 220); }
 
   /* ---- 採用 ---- */
-  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42); }
+  function gradPolicy() { return D.GRAD_POLICIES[S.gradPolicy] || D.GRAD_POLICIES[1]; }
+  function setGradPolicy(i) { S.gradPolicy = clamp(Math.round(i), 0, D.GRAD_POLICIES.length - 1); }
+  /* 採用計画人数（step 0〜3） */
+  function gradPlan(step) { return Math.round(hireBlock() * step * gradPolicy().size); }
+  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42) * gradPolicy().cost; }
+  /* 内定承諾率: 給与水準・士気・信用で決まる */
+  function gradAccept() {
+    return clamp(0.70 + payBand().hire * 1.3 + S.morale / 500 + S.credit / 500, 0.42, 1.0);
+  }
+  function gradYield(n, pol) {
+    const per = Math.max(4, hireBlock()) / (pol || gradPolicy()).ratio;
+    return Math.min(5, Math.floor(n / per));
+  }
   function hireGrads(n) {
+    if (n <= 0) { pnews('今年度の新卒採用は見送った。', 'down', '🌱'); save(); return { ok: true, n: 0 }; }
     const c = gradCost(n);
-    if (n <= 0) return { ok: true, n: 0 };
     if (S.cash < c) return { ok: false, msg: '採用費が足りない' };
+    const acc = gradAccept();
+    const actual = Math.max(1, Math.round(n * acc));
     S.cash -= c; capex(c);
-    S.staff += n;
-    S.gradQueue.push({ fy: fiscalYear() + 4, n: n });
-    pnews(n + '名の新卒を採用した。幹部として立つのは4年後になる。', '', '🌱');
-    save(); return { ok: true, n: n, cost: c };
+    S.staff += actual;
+    S.gradQueue.push({ fy: fiscalYear() + 4, n: actual, pol: S.gradPolicy });
+    const pol = gradPolicy();
+    pnews('新卒 ' + actual.toLocaleString('ja-JP') + '名を採用（' + pol.name + '・内定承諾率 ' + pct(acc, 0) + '）。'
+      + '幹部候補として立つのは4年後、およそ ' + gradYield(actual, pol) + '名。', '', pol.icon);
+    save();
+    return { ok: true, n: actual, planned: n, cost: c, accept: acc };
   }
   function careerCost() { return 1.2 * Math.pow(scale(), 0.5) + 0.6; }
   function careerCandidates() {
-    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) }); });
+    const bq = 1 + payBand().hire * 0.6;
+    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) * bq }); });
   }
   function hireCareer(p) {
     const c = careerCost();
@@ -1167,7 +1282,7 @@ window.ENGINE = (function () {
     if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
     S.cash -= c; capex(c);
-    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002, 0.2, 0.9);
+    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002 + payBand().hire, 0.15, 0.94);
     if (Math.random() > prob) {
       S.credit = clamp(S.credit - 2, 0, 100);
       pnews('ヘッドハントは不調に終わった。業界に話が漏れ、体裁が悪い。', 'down', '🎯');
@@ -1183,10 +1298,10 @@ window.ENGINE = (function () {
   /* ---- 月次：士気と離職 ---- */
   function stepPeople() {
     const tgt = 45 + clamp((S.roeTTM || 0) * 100, -22, 22) + (S.trust - 50) * 0.2
-      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0);
+      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0) + payBand().morale;
     S.morale = clamp(S.morale + (clamp(tgt, 5, 95) - S.morale) * 0.12, 0, 100);
 
-    const retain = 1 - Math.min(0.5, traitBest('retain'));
+    const retain = clamp(1 - Math.min(0.5, traitBest('retain')) - payBand().retain, 0.32, 1.85);
     for (let i = S.people.length - 1; i >= 0; i--) {
       const p = S.people[i];
       const stale = Math.max(0, fiscalYear() - p.promoFY);
@@ -1220,13 +1335,21 @@ window.ENGINE = (function () {
       out.grown++;
     }
     const fy = fiscalYear();
-    const per = Math.max(4, hireBlock());
     for (let i = S.gradQueue.length - 1; i >= 0; i--) {
       const q = S.gradQueue[i];
       if (q.fy > fy) continue;
-      const n = Math.min(4, Math.floor(q.n / per));
+      const pol = D.GRAD_POLICIES[q.pol == null ? 1 : q.pol] || D.GRAD_POLICIES[1];
+      const n = gradYield(q.n, pol);
       for (let k = 0; k < n && S.people.length < rosterMax(); k++) {
-        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) });
+        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) * pol.q });
+        if (pol.global) {
+          const ov = S.offices.filter(function (r) { return r !== 'jp'; });
+          if (ov.length) {
+            p.region = pick(ov);
+            const rt = D.TRAITS.filter(function (t) { return t.region === p.region; })[0];
+            if (rt && Math.random() < 0.5) p.trait = rt.id;
+          }
+        }
         p.joinFY = fy; p.promoFY = fy;
         S.people.push(p);
         out.graduated.push(p);
@@ -1320,6 +1443,7 @@ window.ENGINE = (function () {
       id: t.id, type: 'company', name: t.name, div: t.div, region: t.region,
       comms: dvm.comms.slice(),
       basis: price, value: price - surprise,
+      sales: t.netAssets * rnd(1.4, 3.2),
       goodwill: goodwill, netAssets: t.netAssets,
       profitBase: t.trueProfit / 12, growth: rnd(0.0040, 0.0110),
       yieldRate: t.trueProfit / 12 / Math.max(1, price),
@@ -1330,6 +1454,7 @@ window.ENGINE = (function () {
     S.credit = clamp(S.credit + 1.5, 0, 100);
     log('「' + t.name + '」を ' + money(price) + ' で買収（のれん ' + money(goodwill) + '）。', 'gold');
     if (surprise > 0) {
+      S.pend.gain -= surprise;
       log('DDを省いたツケで、' + money(surprise) + ' の簿外債務が発覚した。', 'down');
       S.credit = clamp(S.credit - 4, 0, 100);
     }
@@ -1765,7 +1890,7 @@ window.ENGINE = (function () {
     if (e.impairRisk) S.mod.impair = e.impairRisk;
     if (e.creditRisk) S.mod.creditRisk = e.creditRisk;
     if (e.delayRisk) S.mod.delay = e.delayRisk;
-    if (e.wageUp) S.wageRate *= (1 + e.wageUp);
+    if (e.wageUp) S.wageInfl = (S.wageInfl || 0) + e.wageUp;
     if (e.bigDeal) { S.market.push(genDeal(true)); }
     log('【' + e.title + '】', 'info');
     return e;
@@ -1774,6 +1899,7 @@ window.ENGINE = (function () {
   function newLedger() {
     const g = S.pend ? S.pend.gain : 0;
     if (S.pend) S.pend.gain = 0;
+    signRev(g);
     return { trade: 0, project: 0, dividend: 0, reval: 0, impair: 0, gain: g,
              wage: 0, sga: 0, interest: 0, defaults: 0 };
   }
@@ -1790,7 +1916,7 @@ window.ENGINE = (function () {
           if (Math.random() < a.risk * S.mod.creditRisk) {
             const loss = a.capital * rnd(0.35, 0.85);
             S.cash += a.capital - loss;
-            L.defaults -= loss; seg(a.div).gross -= loss;
+            L.defaults -= loss; seg(a.div).gross -= loss; addCost(loss);
             S.stats.defaults++;
             S.credit = clamp(S.credit - 4, 0, 100);
             log('「' + a.name + '」で相手方がデフォルト。' + money(loss) + ' の貸倒損失。', 'down');
@@ -1802,6 +1928,7 @@ window.ENGINE = (function () {
             profit *= rnd(0.85, 1.15) * divExec(a.div);
             S.cash += a.capital + profit;
             L.trade += profit; seg(a.div).gross += profit; seg(a.div).deals++;
+            addRev(profit, a.volume, a.div);
             S.fy.deals++;
             S.stats.done++;
             divOf(a.div).exp += 0.6; checkLevel(a.div);
@@ -1825,6 +1952,7 @@ window.ENGINE = (function () {
           S.cash += remain;
           const profit = (a.contract - a.wip) * (a.contract > a.wip ? divExec(a.div) : 1);
           L.project += profit; seg(a.div).gross += profit; seg(a.div).deals++;
+          addRev(a.wip + profit, a.contract, a.div); addCost(a.wip);
           S.active.splice(i, 1);
           S.fy.deals++; S.stats.done++;
           divOf(a.div).exp += 1.5; checkLevel(a.div);
@@ -1844,6 +1972,7 @@ window.ENGINE = (function () {
       a.pmiLeft--;
       const d0 = a.profitBase * 0.30 * clamp(mAdj, 0.3, 1.6);
       S.cash += d0; L.dividend += d0; a.cum += d0; seg(a.div).dividend += d0;
+      addRev(d0, (a.sales || 0) / 12 * 0.5, a.div);
       if (a.pmiLeft <= 0) {
         a.pmiDone = true;
         if (Math.random() < pmiChance(a)) {
@@ -1857,7 +1986,7 @@ window.ENGINE = (function () {
           const w = a.goodwill * rnd(0.55, 1.0);
           a.value = Math.max(0, a.value - w);
           a.impaired = clamp(a.impaired + 0.30, 0, 0.9);
-          L.impair -= w; seg(a.div).impair -= w;
+          L.impair -= w; seg(a.div).impair -= w; addCost(w);
           S.maStats.pmiNg++; S.stats.impair++;
           S.credit = clamp(S.credit - 6, 0, 100);
           S.trust = clamp(S.trust - 8, 0, 100);
@@ -1868,16 +1997,17 @@ window.ENGINE = (function () {
     }
     const d = a.profitBase * (1 + a.synergy * 0.55) * clamp(mAdj, 0.25, 2.0) * fxFac();
     S.cash += d; L.dividend += d; a.cum += d; seg(a.div).dividend += d;
+    addRev(d, (a.sales || 0) / 12, a.div);
     const target = a.basis * Math.pow(1 + a.growth * (1 + a.synergy * 0.5), a.age)
       * clamp(mAdj, 0.5, 1.9) * (1 - a.impaired);
     const nv = a.value + (target - a.value) * 0.18;
-    L.reval += nv - a.value; seg(a.div).reval += nv - a.value;
+    L.reval += nv - a.value; seg(a.div).reval += nv - a.value; signRev(nv - a.value, a.div);
     a.value = Math.max(0, nv);
     if (a.goodwill > 0 && a.value < a.basis * 0.70 &&
         Math.random() < 0.05 * S.mod.impair * traitMin('impair', 1)) {
       const w = Math.min(a.goodwill, a.value * rnd(0.15, 0.35));
       a.value -= w; a.impaired = clamp(a.impaired + 0.10, 0, 0.9);
-      L.impair -= w; seg(a.div).impair -= w;
+      L.impair -= w; seg(a.div).impair -= w; addCost(w);
       S.stats.impair++;
       S.credit = clamp(S.credit - 3, 0, 100);
       log('「' + a.name + '」ののれんを ' + money(w) + ' 減損した。', 'down');
@@ -1896,6 +2026,7 @@ window.ENGINE = (function () {
       // 配当・持分利益
       const div = a.value * a.yieldRate * clamp(mAdj, 0.15, 2.2) * fxFac() * (a.region === 'jp' ? 1 : 1.05);
       S.cash += div; L.dividend += div; a.cum += div; seg(a.div).dividend += div;
+      addRev(div, 0, a.div);
 
       // 評価
       let target;
@@ -1906,7 +2037,7 @@ window.ENGINE = (function () {
         target = a.basis * Math.pow(1 + a.growth, a.age) * clamp(mAdj, 0.4, 2.0) * (1 - a.impaired);
       }
       const nv = a.value + (target - a.value) * 0.22;
-      L.reval += nv - a.value; seg(a.div).reval += nv - a.value;
+      L.reval += nv - a.value; seg(a.div).reval += nv - a.value; signRev(nv - a.value, a.div);
       a.value = Math.max(0, nv);
 
       // 減損
@@ -1915,7 +2046,7 @@ window.ENGINE = (function () {
             * (1 - Math.min(0.60, corpOf('esg') * 0.16)) * (1 - Math.min(0.40, eyePt() * 0.05))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
-        L.impair -= w; seg(a.div).impair -= w;
+        L.impair -= w; seg(a.div).impair -= w; addCost(w);
         S.stats.impair++;
         S.credit = clamp(S.credit - 3, 0, 100);
         log('「' + a.name + '」で減損損失 ' + money(w) + ' を計上。', 'down');
@@ -1930,13 +2061,14 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * fx('wage', S.wageRate) + fx('wage', rosterCost());
+    const wage = fx('wage', staffCost()) + fx('wage', rosterCost());
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
     const sgaF = ofx('sga', fx('sga', sga));
     const int = S.debt * interestRate() / 12;
     S.cash -= (wage + sgaF + int);
     L.wage -= wage; L.sga -= sgaF; L.interest -= int;
+    addCost(wage + sgaF + int);
   }
 
   function rescue(L) {
@@ -1949,7 +2081,7 @@ window.ENGINE = (function () {
       S.assets.sort(function (x, y) { return x.value - y.value; });
       const a = S.assets[0];
       const proceeds = a.value * (rnd(0.62, 0.82) + traitBest('rescue'));
-      S.cash += proceeds; L.gain += proceeds - a.value;
+      S.cash += proceeds; L.gain += proceeds - a.value; signRev(proceeds - a.value, a.div);
       S.assets.shift();
       S.credit = clamp(S.credit - 2, 0, 100);
       log('資金確保のため「' + a.name + '」を投売り（' + money(proceeds) + '）。', 'down');
@@ -1997,8 +2129,8 @@ window.ENGINE = (function () {
   function bps() { return Math.max(0, equity()) / Math.max(0.0001, S.shares); }
 
   function ranking() {
-    const list = S.rivals.map(function (r) { return { name: r.name, eq: r.eq, me: false }; });
-    list.push({ name: S.company, eq: equity(), me: true });
+    const list = S.rivals.map(function (r) { return { name: r.name, eq: r.eq, rev: r.eq * 0.42, me: false }; });
+    list.push({ name: S.company, eq: equity(), rev: S.fy.revenue * 12 / Math.max(1, monthsInFY()), me: true });
     list.sort(function (a, b) { return b.eq - a.eq; });
     return list;
   }
@@ -2019,7 +2151,7 @@ window.ENGINE = (function () {
     if (Math.random() > (100 - S.gov) / 100 * 0.030) return null;
     const sc = pick(D.SCANDALS);
     const fine = Math.max(0.4, Math.max(0, equity()) * rnd(0.008, 0.038));
-    S.cash -= fine; L.defaults -= fine;
+    S.cash -= fine; L.defaults -= fine; addCost(fine);
     S.credit = clamp(S.credit - 9, 0, 100);
     S.trust = clamp(S.trust - 9, 0, 100);
     S.morale = clamp(S.morale - 6, 0, 100);
@@ -2132,6 +2264,7 @@ window.ENGINE = (function () {
     S.mod.creditRisk += (1 - S.mod.creditRisk) * 0.5;
     S.mod.delay += (1 - S.mod.delay) * 0.5;
 
+    S.mRev = 0; S.mCost = 0; S.mGTV = 0;
     stepMarket();
     out.event = rollEvent();
 
@@ -2141,7 +2274,7 @@ window.ENGINE = (function () {
     processAssets(L);
     financeCosts(L);
     const auto = autonomyIncome();
-    if (auto > 0) { S.cash += auto; L.dividend += auto; }
+    if (auto > 0) { S.cash += auto; L.dividend += auto; addRev(auto, 0); }
     stepGov();
     const scd = checkScandal(L);
     if (scd && !out.event) out.event = scd;
@@ -2209,6 +2342,8 @@ window.ENGINE = (function () {
         wage: S.fy.wage || 0, sga: S.fy.sga || 0, interest: S.fy.interest || 0, gain: S.fy.gain || 0,
         debt: S.debt, cash: S.cash, shares: S.shares,
       };
+      rec.revenue = S.fy.revenue; rec.cost = S.fy.cost; rec.gtv = S.fy.gtv;
+      rec.avgSalary = avgStaffSalary(); rec.payBand = payBand().n;
       if (S.plan) {
         S.corp.dx = Math.min(6, S.corp.dx + fxAdd('dxYear'));
         S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
@@ -2279,7 +2414,8 @@ window.ENGINE = (function () {
     else if (bb > 0) log('自社株買い ' + money(bb) + ' を実施。', 'gold');
     else log('無配・還元なしを決定。株主の目は厳しい。', 'down');
 
-    S.fy = { profit: 0, startEquity: equity(), deals: 0, wage: 0, sga: 0, interest: 0, gain: 0 };
+    S.fy = { profit: 0, startEquity: equity(), deals: 0, wage: 0, sga: 0, interest: 0, gain: 0,
+             revenue: 0, cost: 0, gtv: 0 };
     save();
     return { div: div, buyback: bb };
   }
@@ -2323,6 +2459,11 @@ window.ENGINE = (function () {
     if (!S.people) S.people = [];
     if (!S.gradQueue) S.gradQueue = [];
     if (S.morale == null) S.morale = 62;
+    if (S.payBand == null) S.payBand = 2;
+    if (S.gradPolicy == null) S.gradPolicy = 1;
+    if (S.wageInfl == null) S.wageInfl = S.wageRate ? (S.wageRate / 0.012 - 1) : 0;
+    if (S.fy.revenue == null) { S.fy.revenue = 0; S.fy.cost = 0; S.fy.gtv = 0; }
+    if (S.mRev == null) { S.mRev = 0; S.mCost = 0; S.mGTV = 0; }
     if (!S.peopleNews) S.peopleNews = [];
     if (!S.ma) S.ma = [];
     if (!S.maStats) S.maStats = { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 };
@@ -2361,6 +2502,10 @@ window.ENGINE = (function () {
     assignDiv: assignDiv, appointHead: appointHead, dispatchTo: dispatchTo,
     promotePerson: promotePerson, promoteSlots: promoteSlots,
     gradCost: gradCost, hireGrads: hireGrads, careerCost: careerCost, careerCandidates: careerCandidates,
+    payBand: payBand, setPayBand: setPayBand, salaryOf: salaryOf, avgStaffSalary: avgStaffSalary,
+    staffCost: staffCost, sizeFactor: sizeFactor,
+    gradPolicy: gradPolicy, setGradPolicy: setGradPolicy, gradPlan: gradPlan,
+    gradAccept: gradAccept, gradYield: gradYield, monthsInFY: monthsInFY,
     hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
     genTarget: genTarget, findTarget: findTarget, ddCost: ddCost, runDD: runDD,
     maPrice: maPrice, maWin: maWin, maCheck: maCheck, acquire: acquire,
@@ -2476,7 +2621,11 @@ window.UI = (function () {
       ['減損損失', L.impair], ['売却損益', L.gain], ['貸倒損失', L.defaults],
       ['人件費', L.wage], ['販管費', L.sga], ['支払利息', L.interest],
     ].filter(function (r) { return Math.abs(r[1]) > 0.005; });
-    let h = '<div class="card"><div class="sect">前月の損益内訳</div><div class="kv">';
+    let h = '<div class="card"><div class="sect">前月の損益内訳</div>' +
+      '<div class="kv" style="margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid var(--line)">' +
+      '<span class="k">取扱高</span><span class="v gold">' + money(S.mGTV || 0) + '</span>' +
+      '<span class="k">収益 − 費用</span><span class="v">' + money(S.mRev || 0) + ' − ' + money(S.mCost || 0) + '</span>' +
+      '</div><div class="kv">';
     rows.forEach(function (r) {
       h += '<span class="k">' + r[0] + '</span><span class="v ' + (r[1] >= 0 ? 'up' : 'down') + '">' + signed(r[1]) + '</span>';
     });
@@ -2496,7 +2645,7 @@ window.UI = (function () {
     const S = E.S;
     let monthlyDiv = 0;
     S.assets.forEach(function (a) { monthlyDiv += a.value * a.yieldRate * E.clamp(1 + (E.mfac(a.comms) - 1) * (a.type === 'concession' ? 1 : .35), .15, 2.2); });
-    const fixed = S.staff * S.wageRate + S.offices.length * 0.5 * Math.sqrt(E.scale()) + Math.max(0, E.equity()) * 0.0006 + 0.25 + S.debt * E.interestRate() / 12;
+    const fixed = E.staffCost() + E.rosterCost() + S.offices.length * 0.5 * Math.sqrt(E.scale()) + Math.max(0, E.equity()) * 0.0006 + 0.25 + S.debt * E.interestRate() / 12;
 
     let h = '';
     h += planCard();
@@ -2508,6 +2657,11 @@ window.UI = (function () {
       '<span class="k">月次ストック収益（配当）</span><span class="v up">' + money(monthlyDiv) + '</span>' +
       '<span class="k">月次固定費</span><span class="v down">-' + money(fixed) + '</span>' +
       '<span class="k">世界順位</span><span class="v">' + E.myRank() + '位 / ' + (S.rivals.length + 1) + '社</span>' +
+      '</div><div class="kv" style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)">' +
+      '<span class="k">当期の取扱高（' + E.monthsInFY() + 'ヶ月累計）</span><span class="v gold">' + money(S.fy.gtv || 0) + '</span>' +
+      '<span class="k">当期の収益</span><span class="v">' + money(S.fy.revenue || 0) + '</span>' +
+      '<span class="k">当期の費用</span><span class="v down">-' + money(S.fy.cost || 0) + '</span>' +
+      '<span class="k">当期純利益</span><span class="v ' + (S.fy.profit >= 0 ? 'up' : 'down') + '">' + signed(S.fy.profit || 0) + '</span>' +
       '</div></div>';
 
     h += ledgerCard();
@@ -2548,6 +2702,54 @@ window.UI = (function () {
     });
     h += '</div>';
     return h;
+  }
+
+  /* ---------- 年次チャート（1系列・棒） ----------
+     収益は単色、純利益は同一色相で「上向き＝黒字／下向き（ハッチ）＝赤字」と
+     符号付きラベルで示す。色だけに意味を持たせない。 */
+  function fyBars(rows, key, color, title, hatchNeg) {
+    if (!rows.length) return '';
+    const W = 320, H = 96, PAD_B = 15, PAD_T = 8;
+    const vals = rows.map(function (r) { return r[key] || 0; });
+    const mx = Math.max(0, Math.max.apply(null, vals));
+    const mn = Math.min(0, Math.min.apply(null, vals));
+    const span = (mx - mn) || 1;
+    const plotH = H - PAD_B - PAD_T;
+    const zeroY = PAD_T + (mx / span) * plotH;
+    const gap = 2;
+    const bw = Math.max(3, (W - gap * (rows.length - 1)) / rows.length - gap);
+    const step = (W - bw) / Math.max(1, rows.length - 1);
+    const hid = 'h' + key;
+    let bars = '', labels = '';
+    rows.forEach(function (r, i) {
+      const v = r[key] || 0;
+      const x = rows.length === 1 ? (W - bw) / 2 : i * step;
+      const hgt = Math.max(1.5, Math.abs(v) / span * plotH);
+      const y = v >= 0 ? zeroY - hgt : zeroY;
+      const rr = Math.min(4, bw / 2, hgt);
+      // 底辺は角を立て、データ端だけ丸める
+      const p = v >= 0
+        ? 'M' + x + ',' + (y + hgt) + 'V' + (y + rr) + 'q0,-' + rr + ' ' + rr + ',-' + rr +
+          'h' + (bw - rr * 2) + 'q' + rr + ',0 ' + rr + ',' + rr + 'V' + (y + hgt) + 'Z'
+        : 'M' + x + ',' + y + 'V' + (y + hgt - rr) + 'q0,' + rr + ' ' + rr + ',' + rr +
+          'h' + (bw - rr * 2) + 'q' + rr + ',0 ' + rr + ',-' + rr + 'V' + y + 'Z';
+      const fill = (hatchNeg && v < 0) ? 'url(#' + hid + ')' : color;
+      bars += '<path d="' + p + '" fill="' + fill + '"' + (v < 0 && hatchNeg ? ' stroke="' + color + '" stroke-width="1"' : '') + '>' +
+        '<title>' + r.fy + '年3月期  ' + signed(v) + '</title></path>';
+      if (rows.length <= 8 || i % 2 === 0 || i === rows.length - 1) {
+        labels += '<text class="cx" x="' + (x + bw / 2) + '" y="' + (H - 3) + '" text-anchor="middle">' +
+          ("'" + String(r.fy).slice(2)) + '</text>';
+      }
+    });
+    const last = rows[rows.length - 1][key] || 0;
+    return '<div class="chart"><div class="ct"><span>' + title + '</span>' +
+      '<b class="' + (last >= 0 ? '' : 'down') + '">' + rows[rows.length - 1].fy + '/3期 ' + signed(last) + '</b></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + title + 'の年次推移">' +
+      (hatchNeg ? '<defs><pattern id="' + hid + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+        '<rect width="5" height="5" fill="' + color + '" opacity="0.28"/>' +
+        '<line x1="0" y1="0" x2="0" y2="5" stroke="' + color + '" stroke-width="2.2"/></pattern></defs>' : '') +
+      '<line class="cz" x1="0" y1="' + zeroY + '" x2="' + W + '" y2="' + zeroY + '"/>' +
+      bars + labels + '</svg></div>';
   }
 
   /* ---------- 人材 ---------- */
@@ -2804,6 +3006,35 @@ window.UI = (function () {
     return h + (adminSub === 'hr' ? viewHR() : viewFin());
   }
 
+  function payBandPicker() {
+    const S = E.S;
+    let h = '<div class="band">';
+    D.PAY_BANDS.forEach(function (b, i) {
+      h += '<button data-band="' + i + '" class="' + (i === S.payBand ? 'on' : '') + '">' +
+        '<b>' + b.n.replace('業界', '') + '</b>×' + b.k.toFixed(2) + '</button>';
+    });
+    h += '</div><p class="tiny muted">' + E.payBand().desc + '</p>';
+    return h;
+  }
+  function payTable() {
+    const S = E.S;
+    let h = '<table class="paytbl"><thead><tr><th>階級</th><th>人数</th><th>年収</th></tr></thead><tbody>';
+    D.ROLES.forEach(function (rn, i) {
+      const ps = S.people.filter(function (p) { return p.role === i; });
+      const sal = ps.length
+        ? (ps.length === 1 ? E.salaryOf(ps[0]).toLocaleString('ja-JP')
+           : Math.min.apply(null, ps.map(E.salaryOf)).toLocaleString('ja-JP') + '〜' +
+             Math.max.apply(null, ps.map(E.salaryOf)).toLocaleString('ja-JP'))
+        : Math.round(D.ROLE_SALARY[i] * E.payBand().k * E.sizeFactor() / 10) * 10;
+      h += '<tr class="' + (ps.length ? '' : 'none') + '"><td>' + rn + '</td><td>' + (ps.length || '—') + '</td>' +
+        '<td>' + (typeof sal === 'number' ? sal.toLocaleString('ja-JP') : sal) + '<span class="tiny muted"> 万</span></td></tr>';
+    });
+    h += '<tr><td>一般社員（平均）</td><td>' + S.staff.toLocaleString('ja-JP') + '</td><td>' +
+      E.avgStaffSalary().toLocaleString('ja-JP') + '<span class="tiny muted"> 万</span></td></tr>' +
+      '</tbody></table>';
+    return h;
+  }
+
   function viewHR() {
     const S = E.S;
     let h = '<div class="card"><div class="sect">組織の状態</div><div class="kv">' +
@@ -2815,11 +3046,22 @@ window.UI = (function () {
       '</div>' +
       '<div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
         (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
-      '<p class="tiny muted" style="margin:8px 0 0">士気が低いと幹部が引き抜かれ、落札力も落ちる。業績・株主信任・人材投資で上がる。</p>' +
+      '<p class="tiny muted" style="margin:8px 0 0">士気が低いと幹部が引き抜かれ、落札力も落ちる。業績・株主信任・人材投資・給与水準で上がる。</p>' +
       '<div style="display:flex;gap:8px;margin-top:11px">' +
       '<button class="act" style="flex:1" data-act="career">📄 キャリア採用（' + money(E.careerCost()) + '）</button>' +
       '<button class="act" style="flex:1" data-act="hunt">🎯 ヘッドハント（' + money(E.huntCost()) + '）</button>' +
       '</div></div>';
+
+    h += '<div class="card"><div class="sect">給与体系</div>' +
+      '<div class="kv">' +
+      '<span class="k">月次の総人件費</span><span class="v down">-' + money(E.staffCost() + E.rosterCost()) + '</span>' +
+      '<span class="k">　うち一般社員</span><span class="v">-' + money(E.staffCost()) + '</span>' +
+      '<span class="k">　うち幹部</span><span class="v">-' + money(E.rosterCost()) + '</span>' +
+      '<span class="k">新卒の内定承諾率</span><span class="v ' + (E.gradAccept() > 0.85 ? 'up' : E.gradAccept() < 0.6 ? 'down' : '') + '">' + pct(E.gradAccept(), 0) + '</span>' +
+      '</div>' +
+      '<h3 style="margin:14px 0 0">給与水準</h3>' + payBandPicker() + payTable() +
+      '<p class="tiny muted" style="margin:9px 0 0">年収は階級・給与水準・会社規模（現在 ×' + E.sizeFactor().toFixed(2) + '）・本人の能力で決まる。' +
+      '水準を上げると士気・定着・採用力が上がり、下げると優秀な人間から順に辞めていく。</p></div>';
 
     h += '<div class="sect">本部別の陣容</div>';
     D.DIVISIONS.forEach(function (d) {
@@ -2862,7 +3104,8 @@ window.UI = (function () {
 
     h += '<div class="card"><div class="sect">人員</div><div class="kv">' +
       '<span class="k">社員数</span><span class="v">' + S.staff.toLocaleString('ja-JP') + '名</span>' +
-      '<span class="k">月次人件費</span><span class="v down">-' + money(S.staff * S.wageRate) + '</span>' +
+      '<span class="k">一般社員の平均年収</span><span class="v">' + E.avgStaffSalary().toLocaleString('ja-JP') + '万円</span>' +
+      '<span class="k">月次人件費（総額）</span><span class="v down">-' + money(E.staffCost() + E.rosterCost()) + '</span>' +
       '<span class="k">月間商談枠</span><span class="v">' + E.slotsMax() + '</span>' +
       '<span class="k">同時進行できる案件</span><span class="v">' + E.capacity() + '件</span>' +
       '</div><div style="margin-top:10px">' +
@@ -2971,7 +3214,8 @@ window.UI = (function () {
     let h = '<div class="card"><div class="sect">世界ランキング（純資産）</div>';
     E.ranking().forEach(function (r, i) {
       h += '<div class="rank' + (r.me ? ' me' : '') + '"><div class="no">' + (i + 1) + '</div>' +
-        '<div class="nm">' + esc(r.name) + (r.me ? ' <span class="pill">自社</span>' : '') + '</div>' +
+        '<div class="nm">' + esc(r.name) + (r.me ? ' <span class="pill">自社</span>' : '') +
+        '<div class="tiny muted">収益 ' + money(r.rev || 0) + '</div></div>' +
         '<div class="vl">' + money(r.eq) + '</div></div>';
     });
     h += '</div>';
@@ -2999,12 +3243,19 @@ window.UI = (function () {
     }
 
     if (S.fyHistory.length) {
-      h += '<div class="card"><div class="sect">決算履歴</div><div class="kv">';
-      S.fyHistory.slice().reverse().slice(0, 12).forEach(function (f) {
-        h += '<span class="k">' + f.fy + '年3月期（' + f.rating + '・' + f.rank + '位）</span>' +
-          '<span class="v ' + (f.profit >= 0 ? 'up' : 'down') + '">' + signed(f.profit) + '</span>';
-      });
-      h += '</div></div>';
+      const rows = S.fyHistory.slice(-10);
+      h += '<div class="card"><div class="sect">年次推移</div>' +
+        fyBars(rows, 'revenue', '#2f86e0', '収益（売上高）', false) +
+        fyBars(rows, 'profit', '#ab8129', '当期純利益', true) +
+        '<p class="tiny muted" style="margin:6px 0 0">純利益の棒は上向きが黒字、下向きの斜線が赤字。棒に触れると年度と金額が出る。</p></div>';
+      h += '<div class="card"><div class="sect">決算履歴</div>' +
+        '<table class="paytbl"><thead><tr><th>期</th><th>収益</th><th>純利益</th><th>ROE</th></tr></thead><tbody>' +
+        S.fyHistory.slice().reverse().slice(0, 12).map(function (f) {
+          return '<tr><td>' + f.fy + '/3</td><td>' + money(f.revenue || 0) + '</td>' +
+            '<td class="' + (f.profit >= 0 ? 'up' : 'down') + '">' + signed(f.profit) + '</td>' +
+            '<td>' + pct(f.roe || 0, 0) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+
     }
     return h;
   }
@@ -3304,7 +3555,27 @@ window.UI = (function () {
         '<td class="down">' + signed(corp) + '</td></tr>' +
         '<tr class="tot"><td>当期純利益</td><td colspan="3"></td><td class="' + (r.profit >= 0 ? 'up' : 'down') + '">' + signed(r.profit) + '</td></tr>' +
         '</tbody></table>';
-      body = '<h3>セグメント別損益</h3>' + tbl +
+      const margin = r.revenue > 0 ? r.profit / r.revenue : 0;
+      body = '<h3>年次業績</h3>' +
+        '<table class="paytbl"><tbody>' +
+        '<tr><td>取扱高</td><td colspan="2"><b>' + money(r.gtv || 0) + '</b></td></tr>' +
+        '<tr><td>収益（売上高）</td><td colspan="2">' + money(r.revenue || 0) + '</td></tr>' +
+        '<tr><td>費用</td><td colspan="2" class="down">-' + money(r.cost || 0) + '</td></tr>' +
+        '<tr class="' + (r.profit >= 0 ? '' : 'none') + '"><td><b>当期純利益</b></td>' +
+        '<td colspan="2" class="' + (r.profit >= 0 ? 'up' : 'down') + '"><b>' + signed(r.profit) + '</b></td></tr>' +
+        '<tr><td>売上高純利益率</td><td colspan="2">' + pct(margin) + '</td></tr>' +
+        '</tbody></table>' +
+        '<p class="tiny muted">取扱高はトレードの取扱総額・請負金額・傘下事業会社の年商の合計。' +
+        '収益は口銭・請負・配当・評価益の合計で、費用を引いたものが当期純利益になる。</p>' +
+        '<h3>セグメント別損益</h3>' + tbl +
+        '<h3>本部別 収益・取扱高</h3><table class="paytbl"><thead><tr><th>本部</th><th>収益</th><th>取扱高</th></tr></thead><tbody>' +
+        D.DIVISIONS.map(function (d) {
+          const x = (r.seg && r.seg[d.id]) || { rev: 0, gtv: 0 };
+          const nil = !(x.rev > 0.005 || x.gtv > 0.005);
+          return '<tr class="' + (nil ? 'none' : '') + '"><td>' + d.icon + ' ' + d.short + '</td>' +
+            '<td>' + (nil ? '—' : money(x.rev || 0)) + '</td>' +
+            '<td>' + (nil ? '—' : money(x.gtv || 0)) + '</td></tr>';
+        }).join('') + '</tbody></table>' +
         '<h3>要約</h3><div class="fy-grid">' +
         '<div class="b"><label>ROE</label><b class="' + (r.roe >= 0.08 ? 'up' : r.roe < 0 ? 'down' : '') + '">' + pct(r.roe) + '</b></div>' +
         '<div class="b"><label>純資産</label><b class="gold">' + money(r.eqEnd) + '</b></div>' +
@@ -3312,6 +3583,8 @@ window.UI = (function () {
         '<div class="b"><label>株価 / PBR</label><b>' + Math.round(r.price).toLocaleString('ja-JP') + '円 / ' + r.pbr.toFixed(2) + '</b></div>' +
         '<div class="b"><label>完了案件</label><b>' + r.deals + '件</b></div>' +
         '<div class="b"><label>世界順位</label><b>' + r.rank + '位</b></div>' +
+        '<div class="b"><label>社員数</label><b>' + (r.staff || 0).toLocaleString('ja-JP') + '</b></div>' +
+        '<div class="b"><label>平均年収（' + (r.payBand || '標準') + '）</label><b>' + (r.avgSalary || 0).toLocaleString('ja-JP') + '万</b></div>' +
         '</div>';
       btns = '<div class="mbtns">' + NEXT + '</div>';
 
@@ -3341,7 +3614,7 @@ window.UI = (function () {
     } else if (id === 'hr') {
       const pe = r.people || { retired: [], graduated: [] };
       const block = E.hireBlock();
-      const opts = [0, block, block * 2, block * 3];
+      const opts = [0, 1, 2, 3].map(function (k) { return E.gradPlan(k); });
       const n = opts[w.gradIdx];
       body = '';
       if (pe.retired.length || pe.graduated.length) {
@@ -3355,23 +3628,35 @@ window.UI = (function () {
             esc(p.name) + '（' + p.age + '）が幹部候補として頭角を現した。</span></div>';
         });
       }
-      body += '<h3>士気</h3><div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
+      body += '<h3>士気と給与</h3><div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
         (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
         '<div class="row tiny"><span class="muted">幹部 ' + S.people.length + '名 ／ 平均年齢 ' +
         (S.people.length ? Math.round(S.people.reduce(function (a, p) { return a + p.age; }, 0) / S.people.length) : '—') + '歳</span>' +
-        '<b class="' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : 'warn') + '">' + Math.round(S.morale) + '</b></div>';
+        '<b class="' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : 'warn') + '">' + Math.round(S.morale) + '</b></div>' +
+        payBandPicker() + payTable();
 
-      body += '<h3>新卒採用</h3>' +
-        '<p class="tiny">安く大量に採れるが、幹部として立つのは<strong>4年後</strong>。採らなければ、いま気づかないまま将来の陣容が枯れる。</p>' +
-        '<div class="aggr" style="grid-template-columns:repeat(4,1fr)">';
+      body += '<h3>新卒採用の方針</h3><div class="pol">';
+      D.GRAD_POLICIES.forEach(function (pl, i) {
+        body += '<button data-gpol="' + i + '" class="' + (i === S.gradPolicy ? 'on' : '') + '"' +
+          (w.gradDone ? ' disabled' : '') + '>' +
+          '<b>' + pl.icon + ' ' + pl.name + '</b>' +
+          '<span class="g">＋' + pl.good + '</span><span class="x">−' + pl.bad + '</span></button>';
+      });
+      body += '</div>';
+
+      body += '<h3>採用人数</h3><div class="aggr" style="grid-template-columns:repeat(4,1fr)">';
       opts.forEach(function (v, i) {
         body += '<button data-grad="' + i + '" class="' + (i === w.gradIdx ? 'on' : '') + '"' +
           (w.gradDone ? ' disabled' : '') + '><b>' + (v ? v.toLocaleString('ja-JP') : '見送る') + '</b>' +
           (v ? money(E.gradCost(v)) : '—') + '</button>';
       });
       body += '</div>' + (w.gradDone
-        ? '<p class="tiny up">✓ ' + (n ? n.toLocaleString('ja-JP') + '名を採用した' : '今年度は見送った') + '</p>'
-        : '<p class="tiny muted">4年後、およそ ' + Math.floor(n / Math.max(4, block)) + ' 名が幹部候補になる見込み。</p>');
+        ? '<p class="tiny up">✓ ' + (n ? '採用を実行した' : '今年度は見送った') + '</p>'
+        : '<div class="kv" style="margin-top:8px">' +
+          '<span class="k">内定承諾率（給与水準・士気・信用）</span><span class="v ' + (E.gradAccept() > 0.85 ? 'up' : '') + '">' + pct(E.gradAccept(), 0) + '</span>' +
+          '<span class="k">実際の入社見込み</span><span class="v">' + Math.round(n * E.gradAccept()).toLocaleString('ja-JP') + '名</span>' +
+          '<span class="k">4年後に立つ幹部候補</span><span class="v gold">' + E.gradYield(Math.round(n * E.gradAccept())) + '名</span>' +
+          '</div>');
 
       const slots = E.promoteSlots() - w.promos.length;
       body += '<h3>昇進（残り ' + slots + '枠）</h3>';
@@ -3542,6 +3827,8 @@ window.UI = (function () {
   }
 
   function fyGrad(i) { if (!fyW.gradDone) { fyW.gradIdx = i; fyDraw(); } }
+  function fyGradPol(i) { if (!fyW.gradDone) { E.setGradPolicy(i); fyDraw(); } }
+  function setBand(i) { E.setPayBand(i); if (fyW) fyDraw(); render(); }
   function fyPromo(id) {
     if (fyW.promos.length >= E.promoteSlots()) return;
     if (fyW.promos.indexOf(id) >= 0) return;
@@ -3558,8 +3845,7 @@ window.UI = (function () {
   function fyCommitStep() {
     const w = fyW, id = w.steps[w.step];
     if (id === 'hr' && !w.gradDone) {
-      const block = E.hireBlock();
-      E.hireGrads([0, block, block * 2, block * 3][w.gradIdx]);
+      E.hireGrads(E.gradPlan(w.gradIdx));
       w.gradDone = true;
     }
     if (id === 'budget' && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
@@ -3635,7 +3921,7 @@ window.UI = (function () {
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
     amountModal: amountModal, eventModal: eventModal,
     fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
-    fyGrad: fyGrad, fyPromo: fyPromo,
+    fyGrad: fyGrad, fyPromo: fyPromo, fyGradPol: fyGradPol, setBand: setBand,
     personCard: personCard, personModal: personModal, setAdminSub: setAdminSub,
     maOpen: maOpen, maDraw: maDraw, tobModal: tobModal,
     setOffer: function (i) { curOffer = i; maDraw(); },
@@ -3702,7 +3988,7 @@ window.UI = (function () {
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-gpol],[data-band],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -3727,6 +4013,8 @@ window.UI = (function () {
     if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
     if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
     if (t.hasAttribute('data-grad')) { U.fyGrad(+t.dataset.grad); return; }
+    if (t.hasAttribute('data-gpol')) { U.fyGradPol(+t.dataset.gpol); return; }
+    if (t.hasAttribute('data-band')) { U.setBand(+t.dataset.band); return; }
     if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
     if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
     if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }

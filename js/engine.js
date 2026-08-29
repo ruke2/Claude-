@@ -56,6 +56,7 @@ window.ENGINE = (function () {
   function stage() { return D.STAGES[S.stage]; }
   function scale() { return stage().scale; }
   function fiscalYear() { return S.m >= 4 ? S.y + 1 : S.y; }
+  function monthsInFY() { return S.m >= 4 ? S.m - 3 : S.m + 9; }
   function dateLabel(y, m) { return y + '年' + m + '月'; }
   function now() { return dateLabel(S.y, S.m); }
 
@@ -76,13 +77,14 @@ window.ENGINE = (function () {
   function newSeg() {
     const o = {};
     D.DIVISIONS.forEach(function (d) {
-      o[d.id] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0 };
+      o[d.id] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0, rev: 0, gtv: 0 };
     });
     return o;
   }
   function seg(divId) {
     if (!S.seg) S.seg = newSeg();
-    if (!S.seg[divId]) S.seg[divId] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0 };
+    if (!S.seg[divId]) S.seg[divId] = { gross: 0, dividend: 0, reval: 0, impair: 0, deals: 0, rev: 0, gtv: 0 };
+    if (S.seg[divId].rev == null) { S.seg[divId].rev = 0; S.seg[divId].gtv = 0; }
     return S.seg[divId];
   }
   function segTotal(x) { return x.gross + x.dividend + x.reval + x.impair; }
@@ -212,7 +214,7 @@ window.ENGINE = (function () {
       y: 2026, m: 4, turn: 0,
       stage: 0,
       cash: 75, debt: 0,
-      staff: 14, wageRate: 0.012,
+      staff: 14, wageInfl: 0, payBand: 2, gradPolicy: 1,
       credit: 42,
       offices: ['jp'],
       div: {}, mk: {}, mkPrev: {},
@@ -220,7 +222,9 @@ window.ENGINE = (function () {
       market: [], active: [], assets: [],
       slots: 3,
       log: [], monthly: [],
-      fy: { profit: 0, startEquity: 75, deals: 0, wage: 0, sga: 0, interest: 0, gain: 0 },
+      fy: { profit: 0, startEquity: 75, deals: 0, wage: 0, sga: 0, interest: 0, gain: 0,
+            revenue: 0, cost: 0, gtv: 0 },
+      mRev: 0, mCost: 0, mGTV: 0,
       fyHistory: [],
       rivals: D.RIVALS.map(function (r) { return { name: r.name, eq: r.base, g: r.g }; }),
       mod: { impair: 1, creditRisk: 1, delay: 1 },
@@ -281,7 +285,29 @@ window.ENGINE = (function () {
   function traitOf(p) { return D.TRAIT_BY_ID[p.trait] || D.TRAIT_BY_ID.none; }
   function roleW(p) { return D.ROLE_W[p.role] || 0.45; }
   function personPower(p) { return (p.sales + p.eye + p.lead) / 3; }
-  function personCost(p) { return (0.014 + p.role * 0.011) * Math.pow(scale(), 0.45); }
+  /* ---- 給与体系（万円/年で定義し、億円/月に換算して計上する） ---- */
+  function payBand() { return D.PAY_BANDS[S.payBand] || D.PAY_BANDS[2]; }
+  function sizeFactor() { return 1 + Math.log10(Math.max(1, scale())) * 0.32; }
+  function salaryOf(p) {
+    return Math.round(D.ROLE_SALARY[p.role] * payBand().k * sizeFactor()
+      * (0.85 + personPower(p) / 330) / 10) * 10;
+  }
+  function avgStaffSalary() {
+    return Math.round(D.BASE_SALARY * payBand().k * sizeFactor() * (1 + (S.wageInfl || 0)) / 10) * 10;
+  }
+  function setPayBand(i) {
+    i = clamp(Math.round(i), 0, D.PAY_BANDS.length - 1);
+    if (i === S.payBand) return { ok: false, msg: '同じ水準だ' };
+    const up = i > S.payBand;
+    S.payBand = i;
+    S.morale = clamp(S.morale + (up ? 4 : -6), 0, 100);
+    log('給与水準を「' + payBand().n + '」に改定した（一般社員の平均年収 ' + avgStaffSalary().toLocaleString('ja-JP') + '万円）。',
+      up ? 'gold' : 'down');
+    save();
+    return { ok: true };
+  }
+  function personCost(p) { return salaryOf(p) / 10000 / 12; }
+  function staffCost() { return S.staff * avgStaffSalary() / 10000 / 12; }
   function rosterCost() { let c = 0; S.people.forEach(function (p) { c += personCost(p); }); return c; }
   function rosterMax() { return 24; }
   function divPeople(divId) { return S.people.filter(function (p) { return p.div === divId; }); }
@@ -355,6 +381,14 @@ window.ENGINE = (function () {
     return v;
   }
 
+  /* ---- 収益・費用・取扱高 ---- */
+  function addRev(amount, gtv, divId) {
+    if (amount) { S.fy.revenue += amount; S.mRev += amount; if (divId) seg(divId).rev += amount; }
+    if (gtv) { S.fy.gtv += gtv; S.mGTV += gtv; if (divId) seg(divId).gtv += gtv; }
+  }
+  function addCost(amount) { if (amount > 0) { S.fy.cost += amount; S.mCost += amount; } }
+  function signRev(v, divId) { if (v >= 0) addRev(v, 0, divId); else addCost(-v); }
+
   function pnews(text, kind, face) {
     S.peopleNews.unshift({ t: S.y + '/' + ('0' + S.m).slice(-2), b: text, k: kind || '', f: face || '' });
     if (S.peopleNews.length > 60) S.peopleNews.length = 60;
@@ -396,20 +430,38 @@ window.ENGINE = (function () {
   function promoteSlots() { return 1 + Math.floor(S.staff / 220); }
 
   /* ---- 採用 ---- */
-  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42); }
+  function gradPolicy() { return D.GRAD_POLICIES[S.gradPolicy] || D.GRAD_POLICIES[1]; }
+  function setGradPolicy(i) { S.gradPolicy = clamp(Math.round(i), 0, D.GRAD_POLICIES.length - 1); }
+  /* 採用計画人数（step 0〜3） */
+  function gradPlan(step) { return Math.round(hireBlock() * step * gradPolicy().size); }
+  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42) * gradPolicy().cost; }
+  /* 内定承諾率: 給与水準・士気・信用で決まる */
+  function gradAccept() {
+    return clamp(0.70 + payBand().hire * 1.3 + S.morale / 500 + S.credit / 500, 0.42, 1.0);
+  }
+  function gradYield(n, pol) {
+    const per = Math.max(4, hireBlock()) / (pol || gradPolicy()).ratio;
+    return Math.min(5, Math.floor(n / per));
+  }
   function hireGrads(n) {
+    if (n <= 0) { pnews('今年度の新卒採用は見送った。', 'down', '🌱'); save(); return { ok: true, n: 0 }; }
     const c = gradCost(n);
-    if (n <= 0) return { ok: true, n: 0 };
     if (S.cash < c) return { ok: false, msg: '採用費が足りない' };
+    const acc = gradAccept();
+    const actual = Math.max(1, Math.round(n * acc));
     S.cash -= c; capex(c);
-    S.staff += n;
-    S.gradQueue.push({ fy: fiscalYear() + 4, n: n });
-    pnews(n + '名の新卒を採用した。幹部として立つのは4年後になる。', '', '🌱');
-    save(); return { ok: true, n: n, cost: c };
+    S.staff += actual;
+    S.gradQueue.push({ fy: fiscalYear() + 4, n: actual, pol: S.gradPolicy });
+    const pol = gradPolicy();
+    pnews('新卒 ' + actual.toLocaleString('ja-JP') + '名を採用（' + pol.name + '・内定承諾率 ' + pct(acc, 0) + '）。'
+      + '幹部候補として立つのは4年後、およそ ' + gradYield(actual, pol) + '名。', '', pol.icon);
+    save();
+    return { ok: true, n: actual, planned: n, cost: c, accept: acc };
   }
   function careerCost() { return 1.2 * Math.pow(scale(), 0.5) + 0.6; }
   function careerCandidates() {
-    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) }); });
+    const bq = 1 + payBand().hire * 0.6;
+    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) * bq }); });
   }
   function hireCareer(p) {
     const c = careerCost();
@@ -427,7 +479,7 @@ window.ENGINE = (function () {
     if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
     S.cash -= c; capex(c);
-    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002, 0.2, 0.9);
+    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002 + payBand().hire, 0.15, 0.94);
     if (Math.random() > prob) {
       S.credit = clamp(S.credit - 2, 0, 100);
       pnews('ヘッドハントは不調に終わった。業界に話が漏れ、体裁が悪い。', 'down', '🎯');
@@ -443,10 +495,10 @@ window.ENGINE = (function () {
   /* ---- 月次：士気と離職 ---- */
   function stepPeople() {
     const tgt = 45 + clamp((S.roeTTM || 0) * 100, -22, 22) + (S.trust - 50) * 0.2
-      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0);
+      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0) + payBand().morale;
     S.morale = clamp(S.morale + (clamp(tgt, 5, 95) - S.morale) * 0.12, 0, 100);
 
-    const retain = 1 - Math.min(0.5, traitBest('retain'));
+    const retain = clamp(1 - Math.min(0.5, traitBest('retain')) - payBand().retain, 0.32, 1.85);
     for (let i = S.people.length - 1; i >= 0; i--) {
       const p = S.people[i];
       const stale = Math.max(0, fiscalYear() - p.promoFY);
@@ -480,13 +532,21 @@ window.ENGINE = (function () {
       out.grown++;
     }
     const fy = fiscalYear();
-    const per = Math.max(4, hireBlock());
     for (let i = S.gradQueue.length - 1; i >= 0; i--) {
       const q = S.gradQueue[i];
       if (q.fy > fy) continue;
-      const n = Math.min(4, Math.floor(q.n / per));
+      const pol = D.GRAD_POLICIES[q.pol == null ? 1 : q.pol] || D.GRAD_POLICIES[1];
+      const n = gradYield(q.n, pol);
       for (let k = 0; k < n && S.people.length < rosterMax(); k++) {
-        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) });
+        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) * pol.q });
+        if (pol.global) {
+          const ov = S.offices.filter(function (r) { return r !== 'jp'; });
+          if (ov.length) {
+            p.region = pick(ov);
+            const rt = D.TRAITS.filter(function (t) { return t.region === p.region; })[0];
+            if (rt && Math.random() < 0.5) p.trait = rt.id;
+          }
+        }
         p.joinFY = fy; p.promoFY = fy;
         S.people.push(p);
         out.graduated.push(p);
@@ -580,6 +640,7 @@ window.ENGINE = (function () {
       id: t.id, type: 'company', name: t.name, div: t.div, region: t.region,
       comms: dvm.comms.slice(),
       basis: price, value: price - surprise,
+      sales: t.netAssets * rnd(1.4, 3.2),
       goodwill: goodwill, netAssets: t.netAssets,
       profitBase: t.trueProfit / 12, growth: rnd(0.0040, 0.0110),
       yieldRate: t.trueProfit / 12 / Math.max(1, price),
@@ -590,6 +651,7 @@ window.ENGINE = (function () {
     S.credit = clamp(S.credit + 1.5, 0, 100);
     log('「' + t.name + '」を ' + money(price) + ' で買収（のれん ' + money(goodwill) + '）。', 'gold');
     if (surprise > 0) {
+      S.pend.gain -= surprise;
       log('DDを省いたツケで、' + money(surprise) + ' の簿外債務が発覚した。', 'down');
       S.credit = clamp(S.credit - 4, 0, 100);
     }
@@ -1025,7 +1087,7 @@ window.ENGINE = (function () {
     if (e.impairRisk) S.mod.impair = e.impairRisk;
     if (e.creditRisk) S.mod.creditRisk = e.creditRisk;
     if (e.delayRisk) S.mod.delay = e.delayRisk;
-    if (e.wageUp) S.wageRate *= (1 + e.wageUp);
+    if (e.wageUp) S.wageInfl = (S.wageInfl || 0) + e.wageUp;
     if (e.bigDeal) { S.market.push(genDeal(true)); }
     log('【' + e.title + '】', 'info');
     return e;
@@ -1034,6 +1096,7 @@ window.ENGINE = (function () {
   function newLedger() {
     const g = S.pend ? S.pend.gain : 0;
     if (S.pend) S.pend.gain = 0;
+    signRev(g);
     return { trade: 0, project: 0, dividend: 0, reval: 0, impair: 0, gain: g,
              wage: 0, sga: 0, interest: 0, defaults: 0 };
   }
@@ -1050,7 +1113,7 @@ window.ENGINE = (function () {
           if (Math.random() < a.risk * S.mod.creditRisk) {
             const loss = a.capital * rnd(0.35, 0.85);
             S.cash += a.capital - loss;
-            L.defaults -= loss; seg(a.div).gross -= loss;
+            L.defaults -= loss; seg(a.div).gross -= loss; addCost(loss);
             S.stats.defaults++;
             S.credit = clamp(S.credit - 4, 0, 100);
             log('「' + a.name + '」で相手方がデフォルト。' + money(loss) + ' の貸倒損失。', 'down');
@@ -1062,6 +1125,7 @@ window.ENGINE = (function () {
             profit *= rnd(0.85, 1.15) * divExec(a.div);
             S.cash += a.capital + profit;
             L.trade += profit; seg(a.div).gross += profit; seg(a.div).deals++;
+            addRev(profit, a.volume, a.div);
             S.fy.deals++;
             S.stats.done++;
             divOf(a.div).exp += 0.6; checkLevel(a.div);
@@ -1085,6 +1149,7 @@ window.ENGINE = (function () {
           S.cash += remain;
           const profit = (a.contract - a.wip) * (a.contract > a.wip ? divExec(a.div) : 1);
           L.project += profit; seg(a.div).gross += profit; seg(a.div).deals++;
+          addRev(a.wip + profit, a.contract, a.div); addCost(a.wip);
           S.active.splice(i, 1);
           S.fy.deals++; S.stats.done++;
           divOf(a.div).exp += 1.5; checkLevel(a.div);
@@ -1104,6 +1169,7 @@ window.ENGINE = (function () {
       a.pmiLeft--;
       const d0 = a.profitBase * 0.30 * clamp(mAdj, 0.3, 1.6);
       S.cash += d0; L.dividend += d0; a.cum += d0; seg(a.div).dividend += d0;
+      addRev(d0, (a.sales || 0) / 12 * 0.5, a.div);
       if (a.pmiLeft <= 0) {
         a.pmiDone = true;
         if (Math.random() < pmiChance(a)) {
@@ -1117,7 +1183,7 @@ window.ENGINE = (function () {
           const w = a.goodwill * rnd(0.55, 1.0);
           a.value = Math.max(0, a.value - w);
           a.impaired = clamp(a.impaired + 0.30, 0, 0.9);
-          L.impair -= w; seg(a.div).impair -= w;
+          L.impair -= w; seg(a.div).impair -= w; addCost(w);
           S.maStats.pmiNg++; S.stats.impair++;
           S.credit = clamp(S.credit - 6, 0, 100);
           S.trust = clamp(S.trust - 8, 0, 100);
@@ -1128,16 +1194,17 @@ window.ENGINE = (function () {
     }
     const d = a.profitBase * (1 + a.synergy * 0.55) * clamp(mAdj, 0.25, 2.0) * fxFac();
     S.cash += d; L.dividend += d; a.cum += d; seg(a.div).dividend += d;
+    addRev(d, (a.sales || 0) / 12, a.div);
     const target = a.basis * Math.pow(1 + a.growth * (1 + a.synergy * 0.5), a.age)
       * clamp(mAdj, 0.5, 1.9) * (1 - a.impaired);
     const nv = a.value + (target - a.value) * 0.18;
-    L.reval += nv - a.value; seg(a.div).reval += nv - a.value;
+    L.reval += nv - a.value; seg(a.div).reval += nv - a.value; signRev(nv - a.value, a.div);
     a.value = Math.max(0, nv);
     if (a.goodwill > 0 && a.value < a.basis * 0.70 &&
         Math.random() < 0.05 * S.mod.impair * traitMin('impair', 1)) {
       const w = Math.min(a.goodwill, a.value * rnd(0.15, 0.35));
       a.value -= w; a.impaired = clamp(a.impaired + 0.10, 0, 0.9);
-      L.impair -= w; seg(a.div).impair -= w;
+      L.impair -= w; seg(a.div).impair -= w; addCost(w);
       S.stats.impair++;
       S.credit = clamp(S.credit - 3, 0, 100);
       log('「' + a.name + '」ののれんを ' + money(w) + ' 減損した。', 'down');
@@ -1156,6 +1223,7 @@ window.ENGINE = (function () {
       // 配当・持分利益
       const div = a.value * a.yieldRate * clamp(mAdj, 0.15, 2.2) * fxFac() * (a.region === 'jp' ? 1 : 1.05);
       S.cash += div; L.dividend += div; a.cum += div; seg(a.div).dividend += div;
+      addRev(div, 0, a.div);
 
       // 評価
       let target;
@@ -1166,7 +1234,7 @@ window.ENGINE = (function () {
         target = a.basis * Math.pow(1 + a.growth, a.age) * clamp(mAdj, 0.4, 2.0) * (1 - a.impaired);
       }
       const nv = a.value + (target - a.value) * 0.22;
-      L.reval += nv - a.value; seg(a.div).reval += nv - a.value;
+      L.reval += nv - a.value; seg(a.div).reval += nv - a.value; signRev(nv - a.value, a.div);
       a.value = Math.max(0, nv);
 
       // 減損
@@ -1175,7 +1243,7 @@ window.ENGINE = (function () {
             * (1 - Math.min(0.60, corpOf('esg') * 0.16)) * (1 - Math.min(0.40, eyePt() * 0.05))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
-        L.impair -= w; seg(a.div).impair -= w;
+        L.impair -= w; seg(a.div).impair -= w; addCost(w);
         S.stats.impair++;
         S.credit = clamp(S.credit - 3, 0, 100);
         log('「' + a.name + '」で減損損失 ' + money(w) + ' を計上。', 'down');
@@ -1190,13 +1258,14 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * fx('wage', S.wageRate) + fx('wage', rosterCost());
+    const wage = fx('wage', staffCost()) + fx('wage', rosterCost());
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
     const sgaF = ofx('sga', fx('sga', sga));
     const int = S.debt * interestRate() / 12;
     S.cash -= (wage + sgaF + int);
     L.wage -= wage; L.sga -= sgaF; L.interest -= int;
+    addCost(wage + sgaF + int);
   }
 
   function rescue(L) {
@@ -1209,7 +1278,7 @@ window.ENGINE = (function () {
       S.assets.sort(function (x, y) { return x.value - y.value; });
       const a = S.assets[0];
       const proceeds = a.value * (rnd(0.62, 0.82) + traitBest('rescue'));
-      S.cash += proceeds; L.gain += proceeds - a.value;
+      S.cash += proceeds; L.gain += proceeds - a.value; signRev(proceeds - a.value, a.div);
       S.assets.shift();
       S.credit = clamp(S.credit - 2, 0, 100);
       log('資金確保のため「' + a.name + '」を投売り（' + money(proceeds) + '）。', 'down');
@@ -1257,8 +1326,8 @@ window.ENGINE = (function () {
   function bps() { return Math.max(0, equity()) / Math.max(0.0001, S.shares); }
 
   function ranking() {
-    const list = S.rivals.map(function (r) { return { name: r.name, eq: r.eq, me: false }; });
-    list.push({ name: S.company, eq: equity(), me: true });
+    const list = S.rivals.map(function (r) { return { name: r.name, eq: r.eq, rev: r.eq * 0.42, me: false }; });
+    list.push({ name: S.company, eq: equity(), rev: S.fy.revenue * 12 / Math.max(1, monthsInFY()), me: true });
     list.sort(function (a, b) { return b.eq - a.eq; });
     return list;
   }
@@ -1279,7 +1348,7 @@ window.ENGINE = (function () {
     if (Math.random() > (100 - S.gov) / 100 * 0.030) return null;
     const sc = pick(D.SCANDALS);
     const fine = Math.max(0.4, Math.max(0, equity()) * rnd(0.008, 0.038));
-    S.cash -= fine; L.defaults -= fine;
+    S.cash -= fine; L.defaults -= fine; addCost(fine);
     S.credit = clamp(S.credit - 9, 0, 100);
     S.trust = clamp(S.trust - 9, 0, 100);
     S.morale = clamp(S.morale - 6, 0, 100);
@@ -1392,6 +1461,7 @@ window.ENGINE = (function () {
     S.mod.creditRisk += (1 - S.mod.creditRisk) * 0.5;
     S.mod.delay += (1 - S.mod.delay) * 0.5;
 
+    S.mRev = 0; S.mCost = 0; S.mGTV = 0;
     stepMarket();
     out.event = rollEvent();
 
@@ -1401,7 +1471,7 @@ window.ENGINE = (function () {
     processAssets(L);
     financeCosts(L);
     const auto = autonomyIncome();
-    if (auto > 0) { S.cash += auto; L.dividend += auto; }
+    if (auto > 0) { S.cash += auto; L.dividend += auto; addRev(auto, 0); }
     stepGov();
     const scd = checkScandal(L);
     if (scd && !out.event) out.event = scd;
@@ -1469,6 +1539,8 @@ window.ENGINE = (function () {
         wage: S.fy.wage || 0, sga: S.fy.sga || 0, interest: S.fy.interest || 0, gain: S.fy.gain || 0,
         debt: S.debt, cash: S.cash, shares: S.shares,
       };
+      rec.revenue = S.fy.revenue; rec.cost = S.fy.cost; rec.gtv = S.fy.gtv;
+      rec.avgSalary = avgStaffSalary(); rec.payBand = payBand().n;
       if (S.plan) {
         S.corp.dx = Math.min(6, S.corp.dx + fxAdd('dxYear'));
         S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
@@ -1539,7 +1611,8 @@ window.ENGINE = (function () {
     else if (bb > 0) log('自社株買い ' + money(bb) + ' を実施。', 'gold');
     else log('無配・還元なしを決定。株主の目は厳しい。', 'down');
 
-    S.fy = { profit: 0, startEquity: equity(), deals: 0, wage: 0, sga: 0, interest: 0, gain: 0 };
+    S.fy = { profit: 0, startEquity: equity(), deals: 0, wage: 0, sga: 0, interest: 0, gain: 0,
+             revenue: 0, cost: 0, gtv: 0 };
     save();
     return { div: div, buyback: bb };
   }
@@ -1583,6 +1656,11 @@ window.ENGINE = (function () {
     if (!S.people) S.people = [];
     if (!S.gradQueue) S.gradQueue = [];
     if (S.morale == null) S.morale = 62;
+    if (S.payBand == null) S.payBand = 2;
+    if (S.gradPolicy == null) S.gradPolicy = 1;
+    if (S.wageInfl == null) S.wageInfl = S.wageRate ? (S.wageRate / 0.012 - 1) : 0;
+    if (S.fy.revenue == null) { S.fy.revenue = 0; S.fy.cost = 0; S.fy.gtv = 0; }
+    if (S.mRev == null) { S.mRev = 0; S.mCost = 0; S.mGTV = 0; }
     if (!S.peopleNews) S.peopleNews = [];
     if (!S.ma) S.ma = [];
     if (!S.maStats) S.maStats = { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 };
@@ -1621,6 +1699,10 @@ window.ENGINE = (function () {
     assignDiv: assignDiv, appointHead: appointHead, dispatchTo: dispatchTo,
     promotePerson: promotePerson, promoteSlots: promoteSlots,
     gradCost: gradCost, hireGrads: hireGrads, careerCost: careerCost, careerCandidates: careerCandidates,
+    payBand: payBand, setPayBand: setPayBand, salaryOf: salaryOf, avgStaffSalary: avgStaffSalary,
+    staffCost: staffCost, sizeFactor: sizeFactor,
+    gradPolicy: gradPolicy, setGradPolicy: setGradPolicy, gradPlan: gradPlan,
+    gradAccept: gradAccept, gradYield: gradYield, monthsInFY: monthsInFY,
     hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
     genTarget: genTarget, findTarget: findTarget, ddCost: ddCost, runDD: runDD,
     maPrice: maPrice, maWin: maWin, maCheck: maCheck, acquire: acquire,

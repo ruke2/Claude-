@@ -53,7 +53,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-gpol],[data-band],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -78,6 +78,8 @@
     if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
     if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
     if (t.hasAttribute('data-grad')) { U.fyGrad(+t.dataset.grad); return; }
+    if (t.hasAttribute('data-gpol')) { U.fyGradPol(+t.dataset.gpol); return; }
+    if (t.hasAttribute('data-band')) { U.setBand(+t.dataset.band); return; }
     if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
     if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
     if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }

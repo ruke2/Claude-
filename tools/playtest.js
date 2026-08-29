@@ -13,7 +13,7 @@ const MONTHS = +(process.argv[2] || 40);
   await page.click('#btn-start');
   await page.click('[data-close]');
 
-  let shotFY = false;
+  let shotFY = false, gameOver = false;
   for (let i = 0; i < MONTHS; i++) {
     await page.click('#btn-next');
     let guard = 0;
@@ -63,9 +63,15 @@ const MONTHS = +(process.argv[2] || 40);
         await page.waitForTimeout(20);
         continue;
       }
+      // 敵対的買収の防衛モーダルは閉じるボタンを持たない（必ず選ばせる）
+      const def = await page.$('[data-def]');
+      if (def) { await def.click(); await page.waitForTimeout(20); continue; }
+      // 終局モーダル
+      if (await page.$('[data-act="reset"]')) { gameOver = true; break; }
       const c = await page.$('[data-close]'); if (c) await c.click(); else break;
       await page.waitForTimeout(20);
     }
+    if (gameOver) break;
     // 毎月ランダムに応札
     await page.click('#tabs button[data-tab="market"]');
     const deals = await page.$$('.deal');
@@ -117,6 +123,10 @@ const MONTHS = +(process.argv[2] || 40);
   if (pc) { await pc.click(); await page.waitForTimeout(60);
     await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'person.png') });
     await page.click('[data-close]'); }
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'hr-pay.png'), fullPage: false });
+  await page.evaluate(() => { document.querySelector('#view').scrollTop = 380; });
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'pay.png') });
   await page.click('[data-sub="fin"]');
 
   for (const t of ['dash', 'market', 'active', 'assets', 'admin', 'rank']) {
@@ -124,6 +134,10 @@ const MONTHS = +(process.argv[2] || 40);
     await page.waitForTimeout(60);
     await page.screenshot({ path: path.join(__dirname, '..', '.shots', t + '.png') });
   }
+  await page.click('#tabs button[data-tab="rank"]');
+  await page.evaluate(() => { document.querySelector('#view').scrollTop = 99999; });
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'chart.png') });
   const st = await page.evaluate(() => ({
     turn: ENGINE.S.turn, eq: Math.round(ENGINE.equity()), cash: Math.round(ENGINE.S.cash),
     stage: ENGINE.stage().name, pbr: +ENGINE.S.pbr.toFixed(2), price: Math.round(ENGINE.sharePrice()),

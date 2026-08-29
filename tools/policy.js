@@ -8,12 +8,19 @@ module.exports = function makePolicy(E, D) {
     safe: ['discipline', 'green'],
   };
   /* 人事: 新卒採用・昇進・本部長任命 */
-  function people(S) {
+  function people(S, rec) {
     if (process.env.NOHIRE) return;
     // 新卒（幹部が薄いほど多く採る）
     const want = S.people.length < 10 ? 3 : S.people.length < 16 ? 2 : 1;
-    const n = want * Math.max(4, [10, 25, 100, 400, 1500, 6000][S.stage]);
+    // 幹部が薄いときは質重視、足りているときはバランス
+    E.setGradPolicy(process.env.GPOL != null ? +process.env.GPOL : (S.people.length < 10 ? 2 : 1));
+    const n = E.gradPlan(want);
     if (S.cash > E.gradCost(n) * 8) E.hireGrads(n);
+    // 給与水準: 士気が落ちてきたら引き上げ、余裕がなければ下げる
+    const payroll = (E.staffCost() + E.rosterCost()) * 12;
+    if (process.env.BAND != null) { E.setPayBand(+process.env.BAND); }
+    else if (S.morale < 55 && payroll < Math.max(1, rec.revenue) * 0.30 && S.payBand < 3) E.setPayBand(S.payBand + 1);
+    else if (payroll > Math.max(1, rec.revenue) * 0.45 && S.payBand > 1) E.setPayBand(S.payBand - 1);
     // 本部長不在の本部に、その本部で最も統率の高い者を据える
     D.DIVISIONS.forEach(function (d) {
       if (E.divHead(d.id)) return;
@@ -32,7 +39,7 @@ module.exports = function makePolicy(E, D) {
 
   function annual(S, rec) {
     if (rec.needEval) E.evaluatePlan(rec);
-    people(S);
+    people(S, rec);
     // 組織形態: 事業会社が育ったらグループ経営、そうでなければカンパニー制
     if (!process.env.NOORG) {
       const companies = S.assets.filter(function (a) { return a.type === 'company' && a.pmiDone; }).length;
