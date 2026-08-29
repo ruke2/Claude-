@@ -1,6 +1,7 @@
-/* 実ブラウザでのスモークテスト: node tools/playtest.js */
+/* 実ブラウザでのスモークテスト: node tools/playtest.js [months] */
 const { chromium } = require('playwright');
 const path = require('path');
+const MONTHS = +(process.argv[2] || 40);
 (async () => {
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
@@ -12,27 +13,39 @@ const path = require('path');
   await page.click('#btn-start');
   await page.click('[data-close]');
 
-  // 商談 → 応札
-  await page.click('#tabs button[data-tab="market"]');
-  await page.waitForSelector('.deal');
-  await page.click('.deal');
-  await page.waitForSelector('[data-bid]');
-  await page.click('[data-stance="1"]');
-  const disabled = await page.$eval('[data-bid]', el => el.disabled);
-  if (!disabled) { await page.click('[data-bid]'); await page.click('[data-close]'); }
-  else { await page.click('[data-close]'); }
-
-  // 24ヶ月まわす
-  for (let i = 0; i < 24; i++) {
+  let shotFY = false;
+  for (let i = 0; i < MONTHS; i++) {
     await page.click('#btn-next');
     let guard = 0;
-    while (await page.$('#modal-root:not([hidden])') && guard++ < 6) {
-      const pay = await page.$('[data-payout="normal"]');
-      if (pay) await pay.click();
-      else { const c = await page.$('[data-close]'); if (c) await c.click(); else break; }
-      await page.waitForTimeout(30);
+    while (await page.$('#modal-root:not([hidden])') && guard++ < 20) {
+      // 決算ウィザード
+      if (await page.$('[data-fy]')) {
+        if (!shotFY && await page.$('.seg-t')) {
+          await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy0.png') });
+        }
+        if (await page.$('[data-alloc]')) {
+          // 適当に配分してから進む
+          const plus = await page.$$('[data-alloc][data-d="1"]:not([disabled])');
+          for (let k = 0; k < Math.min(6, plus.length); k++) {
+            const b = await page.$('[data-alloc][data-d="1"]:not([disabled])');
+            if (b) await b.click();
+          }
+          if (!shotFY) { await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy2.png') }); }
+        }
+        const fin = await page.$('[data-fy="finish"]');
+        if (fin) {
+          if (!shotFY) { await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy3.png') }); shotFY = true; }
+          await fin.click();
+        } else {
+          await page.click('[data-fy="next"]');
+        }
+        await page.waitForTimeout(20);
+        continue;
+      }
+      const c = await page.$('[data-close]'); if (c) await c.click(); else break;
+      await page.waitForTimeout(20);
     }
-    // 毎月ランダムに1件応札
+    // 毎月ランダムに応札
     await page.click('#tabs button[data-tab="market"]');
     const deals = await page.$$('.deal');
     if (deals.length) {
@@ -43,17 +56,16 @@ const path = require('path');
     }
   }
 
-  // 全タブを描画
   for (const t of ['dash', 'market', 'active', 'assets', 'admin', 'rank']) {
     await page.click('#tabs button[data-tab="' + t + '"]');
     await page.waitForTimeout(60);
     await page.screenshot({ path: path.join(__dirname, '..', '.shots', t + '.png') });
   }
-
   const st = await page.evaluate(() => ({
-    turn: ENGINE.S.turn, eq: ENGINE.equity(), cash: ENGINE.S.cash,
-    stage: ENGINE.stage().name, active: ENGINE.S.active.length, assets: ENGINE.S.assets.length,
-    profit: ENGINE.S.lastProfit, log: ENGINE.S.log.length,
+    turn: ENGINE.S.turn, eq: Math.round(ENGINE.equity()), cash: Math.round(ENGINE.S.cash),
+    stage: ENGINE.stage().name, pbr: +ENGINE.S.pbr.toFixed(2), price: Math.round(ENGINE.sharePrice()),
+    roe: +(ENGINE.S.roeTTM * 100).toFixed(1), trust: Math.round(ENGINE.S.trust),
+    rating: ENGINE.rating().label, fyCount: ENGINE.S.fyHistory.length,
   }));
   console.log('state:', JSON.stringify(st));
   console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no console/page errors');

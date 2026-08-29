@@ -21,7 +21,7 @@ for(let r=0;r<RUNS;r++){
     if(S.cash>dv[0].c)E.upgrade(dv[0].id);
     const no=D.REGIONS.filter(x=>!E.hasOffice(x.id));
     if(no.length&&S.cash>E.officeCost())E.openOffice(no[0].id);
-    const o=E.advance();if(o.fy)E.payout('high');
+    const o=E.advance();if(o.fy){const mp={};D.DIVISIONS.forEach(x=>mp[x.id]=S.cash*0.09);E.allocateBudget(mp);E.payout({ratio:0.9,buyback:0});}
   }
   if(S.over)over++;
   const n=D.STAGES[S.stage].name;stages[n]=(stages[n]||0)+1;

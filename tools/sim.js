@@ -23,7 +23,8 @@ function playOne(verbose) {
   for (let m = 0; m < MONTHS && !S.over && !S.cleared; m++) {
     policy(S);
     const out = E.advance();
-    if (out.fy) E.payout(S.debt > E.equity() ? 'none' : 'normal');
+    if (out.fy && !process.env.NOBUDGET) policy.annual(S, out.fy);
+    else if (out.fy) E.payout({ ratio: 0.3, buyback: 0 });
     if (out.promote) promo.push(S.turn);
     if (verbose && (m % 12 === 0 || out.promote)) {
       console.log('  m' + String(m).padStart(3) + ' ' + E.stage().name.padEnd(9) +

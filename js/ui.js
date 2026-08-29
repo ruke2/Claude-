@@ -29,6 +29,15 @@ window.UI = (function () {
     $('#hud-profit').className = S.turn ? (p >= 0 ? 'up' : 'down') : '';
     $('#hud-rating').textContent = E.rating().label;
 
+    const price = E.sharePrice(), dp = S.pbrPrev ? (S.pbr / S.pbrPrev - 1) : 0;
+    $('#hud-mkt').innerHTML =
+      '株価 <b>' + (price >= 10000 ? Math.round(price).toLocaleString('ja-JP') : price.toFixed(price < 100 ? 1 : 0)) + '円</b>' +
+      '<em class="' + (dp >= 0 ? 'up' : 'down') + '" style="font-style:normal">' +
+        (dp >= 0 ? '▲' : '▼') + Math.abs(dp * 100).toFixed(1) + '%</em>' +
+      '<span class="sep">|</span>PBR <b class="' + (S.pbr < 1 ? 'down' : '') + '">' + S.pbr.toFixed(2) + '</b>' +
+      '<span class="sep">|</span>ROE <b class="' + (S.roeTTM >= 0 ? 'up' : 'down') + '">' + pct(S.roeTTM, 1) + '</b>' +
+      '<span class="sep">|</span>信任 <b>' + Math.round(S.trust) + '</b>';
+
     const goal = st.goal;
     const prev = S.stage ? D.STAGES[S.stage - 1].goal : 0;
     const r = goal === Infinity ? 1 : E.clamp((eq - prev) / (goal - prev), 0, 1);
@@ -121,6 +130,22 @@ window.UI = (function () {
       '</div></div>';
 
     h += ledgerCard();
+
+    // 株式市場
+    h += '<div class="card"><div class="sect">株式市場</div><div class="kv">' +
+      '<span class="k">株価</span><span class="v">' + Math.round(E.sharePrice()).toLocaleString('ja-JP') + ' 円</span>' +
+      '<span class="k">時価総額</span><span class="v">' + money(E.mcap()) + '</span>' +
+      '<span class="k">PBR</span><span class="v ' + (S.pbr < 1 ? 'down' : 'up') + '">' + S.pbr.toFixed(2) + ' 倍</span>' +
+      '<span class="k">1株当たり純資産</span><span class="v">' + Math.round(E.bps()).toLocaleString('ja-JP') + ' 円</span>' +
+      '<span class="k">ROE（直近12ヶ月）</span><span class="v ' + (S.roeTTM >= 0.08 ? 'up' : S.roeTTM < 0 ? 'down' : '') + '">' + pct(S.roeTTM) + '</span>' +
+      '<span class="k">株主信任</span><span class="v">' + Math.round(S.trust) + ' / 100</span>' +
+      '</div>' +
+      (S.pbr < 1 ? '<p class="tiny down" style="margin:9px 0 0">⚠ PBR 1倍割れ。市場は当社の純資産を額面以下に評価している。資本効率の改善が求められる。</p>' : '') +
+      '</div>';
+
+    // セグメント別損益（当期累計）
+    h += segCard();
+    h += budgetCard();
     h += marketCard();
 
     h += '<div class="card"><div class="sect">営業本部</div>';
@@ -141,6 +166,60 @@ window.UI = (function () {
       h += '<div class="logline"><span class="t">' + l.t + '</span><span class="b ' + (l.k || '') + '">' + esc(l.b) + '</span></div>';
     });
     h += '</div>';
+    return h;
+  }
+
+  /* 当期のセグメント別損益 */
+  function segCard() {
+    const S = E.S;
+    if (!S.seg) return '';
+    let any = false;
+    D.DIVISIONS.forEach(function (d) { if (Math.abs(E.segTotal(S.seg[d.id] || {gross:0,dividend:0,reval:0,impair:0})) > 0.005) any = true; });
+    if (!any) return '';
+    let h = '<div class="card"><div class="sect">セグメント別損益（当期累計）</div>' +
+      '<table class="seg-t"><thead><tr><th>本部</th><th>商い</th><th>配当</th><th>評価・減損</th><th>計</th></tr></thead><tbody>';
+    let tot = 0;
+    D.DIVISIONS.forEach(function (d) {
+      const x = S.seg[d.id] || { gross: 0, dividend: 0, reval: 0, impair: 0 };
+      const t = E.segTotal(x); tot += t;
+      h += '<tr><td>' + d.icon + ' ' + d.short + '</td>' +
+        '<td>' + (Math.abs(x.gross) > .005 ? signed(x.gross) : '—') + '</td>' +
+        '<td>' + (Math.abs(x.dividend) > .005 ? signed(x.dividend) : '—') + '</td>' +
+        '<td class="' + (x.reval + x.impair < 0 ? 'down' : '') + '">' + (Math.abs(x.reval + x.impair) > .005 ? signed(x.reval + x.impair) : '—') + '</td>' +
+        '<td class="' + (Math.abs(t) < .005 ? 'muted' : t >= 0 ? 'up' : 'down') + '"><b>' +
+          (Math.abs(t) < .005 ? '—' : signed(t)) + '</b></td></tr>';
+    });
+    const corp = (S.fy.wage || 0) + (S.fy.sga || 0) + (S.fy.interest || 0) + (S.fy.gain || 0);
+    h += '<tr class="corp"><td>全社費用</td><td colspan="3" style="text-align:left;font-size:10px" class="muted">人件費・販管費・支払利息ほか</td>' +
+      '<td class="down">' + signed(corp) + '</td></tr>' +
+      '<tr class="tot"><td>当期純利益</td><td colspan="3"></td><td class="' + (tot + corp >= 0 ? 'up' : 'down') + '">' + signed(tot + corp) + '</td></tr>' +
+      '</tbody></table></div>';
+    return h;
+  }
+
+  /* 予算配分の効き */
+  function budgetCard() {
+    const S = E.S;
+    const anyB = D.DIVISIONS.some(function (d) { return E.boostOf(d.id) > 0.01; });
+    const anyC = D.BUDGET_CORP.some(function (c) { return E.corpOf(c.id) > 0.01; });
+    if (!anyB && !anyC) return '';
+    let h = '<div class="card"><div class="sect">今年度予算の効き</div>';
+    D.DIVISIONS.forEach(function (d) {
+      const b = E.boostOf(d.id);
+      if (b <= 0.01) return;
+      h += '<div class="divrow"><div class="ic">' + d.icon + '</div>' +
+        '<div class="nm"><b>' + d.short + '</b><div class="tiny muted">落札力 +' + (b * 8).toFixed(0) + 'pt ／ 案件規模 +' + pct(b * 0.20, 0) + ' ／ 採算 +' + pct(b * 0.10, 0) + '</div>' +
+        '<div class="bar g"><i style="width:' + Math.min(100, b / 3 * 100).toFixed(0) + '%"></i></div></div>' +
+        '<div class="lv"><b>×' + b.toFixed(1) + '</b></div></div>';
+    });
+    D.BUDGET_CORP.forEach(function (c) {
+      const v = E.corpOf(c.id);
+      if (v <= 0.01) return;
+      h += '<div class="divrow"><div class="ic">' + c.icon + '</div>' +
+        '<div class="nm"><b>' + c.name + '</b><div class="tiny muted">' + c.desc + '</div></div>' +
+        '<div class="lv"><b>' + v.toFixed(1) + '</b></div></div>';
+    });
+    h += '<p class="tiny muted" style="margin:9px 0 0">本部予算は1年で切れる。コーポレート投資は蓄積するが毎年14%ずつ目減りする。</p></div>';
     return h;
   }
 
@@ -473,34 +552,188 @@ window.UI = (function () {
       '<div class="mbtns"><button class="pri" data-close>受け止める</button></div>', true);
   }
 
-  function fyModal(f, after) {
-    const S = E.S;
-    const grow = f.eqStart > 0 ? (f.eqEnd / f.eqStart - 1) : 0;
-    onClose = null;
-    modal('<h2>' + f.fy + '年3月期 決算</h2>' +
-      '<p class="tiny">通期の成績が確定した。株主還元の方針を決めよ。</p>' +
-      '<div class="fy-grid">' +
-      '<div class="b"><label>通期純利益</label><b class="' + (f.profit >= 0 ? 'up' : 'down') + '">' + signed(f.profit) + '</b></div>' +
-      '<div class="b"><label>純資産</label><b class="gold">' + money(f.eqEnd) + '</b></div>' +
-      '<div class="b"><label>純資産成長率</label><b class="' + (grow >= 0 ? 'up' : 'down') + '">' + pct(grow) + '</b></div>' +
-      '<div class="b"><label>格付 / 世界順位</label><b>' + f.rating + ' ／ ' + f.rank + '位</b></div>' +
-      '<div class="b"><label>完了案件</label><b>' + f.deals + '件</b></div>' +
-      '<div class="b"><label>社員数</label><b>' + S.staff.toLocaleString('ja-JP') + '</b></div>' +
-      '</div>' +
-      '<h3>株主還元</h3>' +
-      '<div class="mbtns" style="flex-direction:column;gap:8px">' +
-      '<button data-payout="high">増配（純資産の3.5%を配当・信用+9）</button>' +
-      '<button class="pri" data-payout="normal">標準配当（1.5%・信用+5）</button>' +
-      '<button data-payout="none">無配（内部留保優先・信用-3）</button>' +
-      '</div>', true);
+  /* ---------- 決算ウィザード（4ステップ） ---------- */
+  let fyW = null;
+  const STEP_NAMES = ['決算発表', '格付レビュー', '資源配分', '株主還元'];
+
+  function fyOpen(rec, done) {
+    fyW = {
+      rec: rec, step: 0, done: done,
+      alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
+      ratio: 0.3, buyback: 0, allocated: false,
+    };
+    fyDraw();
+  }
+  function allocSum() { let t = 0; for (const k in fyW.alloc) t += fyW.alloc[k]; return t; }
+  function allocGet(id) { return fyW.alloc[id] || 0; }
+
+  function fyDraw() {
+    const w = fyW, r = w.rec, S = E.S;
+    let dots = '<div class="wiz-step">';
+    for (let i = 0; i < 4; i++) dots += '<i class="' + (i <= w.step ? 'on' : '') + '"></i>';
+    dots += '</div>';
+    const head = '<p class="tiny" style="margin-bottom:2px;letter-spacing:.14em;color:var(--dim2)">' +
+      r.fy + '年3月期 決算 ／ STEP ' + (w.step + 1) + ' of 4</p>' +
+      '<h2>' + STEP_NAMES[w.step] + '</h2>';
+    let body = '', btns = '';
+
+    if (w.step === 0) {
+      const grow = r.eqStart > 0 ? (r.eqEnd / r.eqStart - 1) : 0;
+      let tbl = '<table class="seg-t"><thead><tr><th>本部</th><th>商い</th><th>配当</th><th>評価・減損</th><th>計</th></tr></thead><tbody>';
+      let tot = 0;
+      D.DIVISIONS.forEach(function (d) {
+        const x = (r.seg && r.seg[d.id]) || { gross: 0, dividend: 0, reval: 0, impair: 0 };
+        const t = E.segTotal(x); tot += t;
+        tbl += '<tr><td>' + d.icon + ' ' + d.short + '</td>' +
+          '<td>' + (Math.abs(x.gross) > .005 ? signed(x.gross) : '—') + '</td>' +
+          '<td>' + (Math.abs(x.dividend) > .005 ? signed(x.dividend) : '—') + '</td>' +
+          '<td class="' + (x.reval + x.impair < 0 ? 'down' : '') + '">' + (Math.abs(x.reval + x.impair) > .005 ? signed(x.reval + x.impair) : '—') + '</td>' +
+          '<td class="' + (Math.abs(t) < .005 ? 'muted' : t >= 0 ? 'up' : 'down') + '"><b>' +
+          (Math.abs(t) < .005 ? '—' : signed(t)) + '</b></td></tr>';
+      });
+      const corp = (r.wage || 0) + (r.sga || 0) + (r.interest || 0) + (r.gain || 0);
+      tbl += '<tr class="corp"><td>全社費用</td><td colspan="3" style="text-align:left;font-size:10px" class="muted">人件費・販管費・支払利息ほか</td>' +
+        '<td class="down">' + signed(corp) + '</td></tr>' +
+        '<tr class="tot"><td>当期純利益</td><td colspan="3"></td><td class="' + (r.profit >= 0 ? 'up' : 'down') + '">' + signed(r.profit) + '</td></tr>' +
+        '</tbody></table>';
+      body = '<h3>セグメント別損益</h3>' + tbl +
+        '<h3>要約</h3><div class="fy-grid">' +
+        '<div class="b"><label>ROE</label><b class="' + (r.roe >= 0.08 ? 'up' : r.roe < 0 ? 'down' : '') + '">' + pct(r.roe) + '</b></div>' +
+        '<div class="b"><label>純資産</label><b class="gold">' + money(r.eqEnd) + '</b></div>' +
+        '<div class="b"><label>純資産成長率</label><b class="' + (grow >= 0 ? 'up' : 'down') + '">' + pct(grow) + '</b></div>' +
+        '<div class="b"><label>株価 / PBR</label><b>' + Math.round(r.price).toLocaleString('ja-JP') + '円 / ' + r.pbr.toFixed(2) + '</b></div>' +
+        '<div class="b"><label>完了案件</label><b>' + r.deals + '件</b></div>' +
+        '<div class="b"><label>世界順位</label><b>' + r.rank + '位</b></div>' +
+        '</div>';
+      btns = '<div class="mbtns"><button class="pri" data-fy="next">格付レビューへ</button></div>';
+
+    } else if (w.step === 1) {
+      const rt = E.rating(), sc = E.ratingScore();
+      const eq = Math.max(1, E.equity()), de = S.debt / eq;
+      const roeS = E.clamp((S.roeTTM || 0) * 100 - 6, -12, 16);
+      const deS = E.clamp((1.15 - de) * 13, -20, 10);
+      body = '<p>格付機関との対話。<strong>ROEと財務レバレッジ</strong>が、当社の借入枠・調達金利・入札での信認をまとめて決める。</p>' +
+        '<div class="row" style="align-items:center;margin-bottom:10px">' +
+        '<span class="muted small">格付</span>' +
+        '<b class="gold" style="font-size:30px;letter-spacing:.05em">' + rt.label + '</b></div>' +
+        '<div class="gauge"><i style="width:' + sc.toFixed(0) + '%;background:linear-gradient(90deg,#8a6d2c,var(--gold))"></i></div>' +
+        '<div class="kv" style="margin-top:12px">' +
+        '<span class="k">信用力（取引実績・不祥事）</span><span class="v">' + (S.credit * 0.62).toFixed(1) + '</span>' +
+        '<span class="k">ROE評価</span><span class="v ' + (roeS >= 0 ? 'up' : 'down') + '">' + (roeS >= 0 ? '+' : '') + roeS.toFixed(1) + '</span>' +
+        '<span class="k">財務レバレッジ（D/E ' + de.toFixed(2) + '倍）</span><span class="v ' + (deS >= 0 ? 'up' : 'down') + '">' + (deS >= 0 ? '+' : '') + deS.toFixed(1) + '</span>' +
+        '<span class="k">サステナ・内部統制</span><span class="v up">+' + (E.corpOf('esg') * 2.2).toFixed(1) + '</span>' +
+        '</div>' +
+        '<h3>格付がもたらすもの</h3><div class="kv">' +
+        '<span class="k">借入枠（純資産倍率）</span><span class="v">' + rt.lev.toFixed(1) + '倍 ＝ ' + money(E.borrowLimit()) + '</span>' +
+        '<span class="k">調達金利（年）</span><span class="v">' + pct(E.interestRate(), 2) + '</span>' +
+        '<span class="k">入札での信認</span><span class="v ' + (rt.win >= 0 ? 'up' : 'down') + '">' + (rt.win >= 0 ? '+' : '') + rt.win + 'pt</span>' +
+        '</div>';
+      btns = '<div class="mbtns"><button data-fy="back">戻る</button><button class="pri" data-fy="next">資源配分へ</button></div>';
+
+    } else if (w.step === 2) {
+      const used = allocSum(), left = w.pool - used;
+      body = '<p>翌1年の投資予算を配る。<strong>本部予算は1年で切れ、配らなかった本部は地力を失う。</strong>コーポレート投資は蓄積するが毎年目減りする。</p>' +
+        '<div class="pool"><span class="muted">残り配分枠<br><span class="tiny">当初 ' + money(w.pool) + '（現金の65%）</span></span>' +
+        '<b class="' + (left < w.unit ? 'gold' : '') + '">' + money(left) + '</b></div>' +
+        '<h3>営業本部</h3>';
+      D.DIVISIONS.forEach(function (d) {
+        const a = allocGet(d.id), b = a / (E.scale() * 5);
+        body += '<div class="alloc"><div class="ic">' + d.icon + '</div>' +
+          '<div class="nm"><b>' + d.short + '</b><span>Lv.' + S.div[d.id].lv +
+            (a > 0 ? ' ／ 強化 ×' + Math.min(3, b).toFixed(1) : ' ／ 無投資（地力が落ちる）') + '</span></div>' +
+          '<div class="amt ' + (a > 0 ? 'gold' : 'muted') + '">' + (a > 0 ? money(a) : '—') + '</div>' +
+          '<div class="pm"><button data-alloc="' + d.id + '" data-d="-1"' + (a <= 0 ? ' disabled' : '') + '>−</button>' +
+          '<button data-alloc="' + d.id + '" data-d="1"' + (left < w.unit ? ' disabled' : '') + '>＋</button></div></div>';
+      });
+      body += '<h3>コーポレート</h3>';
+      D.BUDGET_CORP.forEach(function (c) {
+        const a = allocGet(c.id);
+        body += '<div class="alloc"><div class="ic">' + c.icon + '</div>' +
+          '<div class="nm"><b>' + c.name + '</b><span>' + c.desc + '（現水準 ' + E.corpOf(c.id).toFixed(1) + '）</span></div>' +
+          '<div class="amt ' + (a > 0 ? 'gold' : 'muted') + '">' + (a > 0 ? money(a) : '—') + '</div>' +
+          '<div class="pm"><button data-alloc="' + c.id + '" data-d="-1"' + (a <= 0 ? ' disabled' : '') + '>−</button>' +
+          '<button data-alloc="' + c.id + '" data-d="1"' + (left < w.unit ? ' disabled' : '') + '>＋</button></div></div>';
+      });
+      const none = D.DIVISIONS.filter(function (d) { return !allocGet(d.id); }).length;
+      if (none) body += '<p class="tiny warn" style="margin-top:10px">⚠ ' + none + '本部が無投資。放置した本部は毎月わずかに地力を失い、やがてレベルが下がる。</p>';
+      btns = '<div class="mbtns"><button data-fy="back">戻る</button>' +
+        '<button class="pri" data-fy="next">この予算で確定（' + money(used) + '）</button></div>';
+
+    } else {
+      const profit = Math.max(0, r.profit);
+      const div = profit * w.ratio;
+      const maxBB = Math.max(0, S.cash * 0.35);
+      const price = E.sharePrice();
+      const cut = price > 0.01 ? (w.buyback / price) / Math.max(0.0001, S.shares) : 0;
+      body = '<p>当期純利益 <b class="' + (r.profit >= 0 ? 'up' : 'down') + '">' + signed(r.profit) + '</b> の使い道を決める。' +
+        '還元は株主信任と株価を押し上げるが、現金は減る。</p>' +
+        '<h3>配当性向</h3>' +
+        '<div class="row"><span class="muted small">' + Math.round(w.ratio * 100) + '% を配当</span>' +
+        '<b class="gold num" style="font-size:19px">' + money(div) + '</b></div>' +
+        '<input class="range" type="range" min="0" max="100" step="5" value="' + Math.round(w.ratio * 100) + '" id="rg-div">' +
+        '<h3>自社株買い</h3>' +
+        '<div class="row"><span class="muted small">株式数 −' + pct(cut, 1) + '</span>' +
+        '<b class="gold num" style="font-size:19px">' + money(w.buyback) + '</b></div>' +
+        '<input class="range" type="range" min="0" max="1000" value="' + (maxBB > 0 ? Math.round(w.buyback / maxBB * 1000) : 0) + '" id="rg-bb">' +
+        '<div class="row tiny muted"><span>0</span><span>上限 ' + money(maxBB) + '（現金の35%）</span></div>' +
+        '<h3>見込まれる反応</h3><div class="kv">' +
+        '<span class="k">株主信任</span><span class="v ' + (w.ratio > 0 || w.buyback > 0 ? 'up' : 'down') + '">' +
+          (w.ratio >= 0.5 ? '+9' : w.ratio >= 0.3 ? '+6' : w.ratio > 0 ? '+2' : '−7') + (w.buyback > 0 ? ' +4' : '') + '</span>' +
+        '<span class="k">支出合計</span><span class="v down">-' + money(div + w.buyback) + '</span>' +
+        '<span class="k">残る現金</span><span class="v">' + money(Math.max(0, S.cash - div - w.buyback)) + '</span>' +
+        '</div>';
+      btns = '<div class="mbtns"><button class="pri" data-fy="finish">決議して次年度へ</button></div>';
+    }
+
+    modal(dots + head + body + btns, true);
+
+    if (w.step === 3) {
+      const S2 = E.S, maxBB = Math.max(0, S2.cash * 0.35);
+      const rd = $('#rg-div'), rb = $('#rg-bb');
+      if (rd) rd.addEventListener('input', function (e) { w.ratio = +e.target.value / 100; fyDraw(); });
+      if (rb) rb.addEventListener('input', function (e) { w.buyback = maxBB * (+e.target.value / 1000); fyDraw(); });
+    }
   }
 
-  function promoteModal(st, after) {
+  function fyAlloc(id, d) {
+    const w = fyW, u = w.unit;
+    const cur = allocGet(id);
+    if (d > 0) {
+      if (w.pool - allocSum() < u) return;
+      w.alloc[id] = cur + u;
+    } else {
+      w.alloc[id] = Math.max(0, cur - u);
+      if (w.alloc[id] <= 0) delete w.alloc[id];
+    }
+    fyDraw();
+  }
+
+  function fyNav(dir) {
+    const w = fyW;
+    if (dir === 'back') { w.step = Math.max(0, w.step - 1); fyDraw(); return; }
+    if (dir === 'next') {
+      if (w.step === 2 && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
+      w.step = Math.min(3, w.step + 1);
+      fyDraw();
+      return;
+    }
+    // finish
+    if (!w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
+    E.payout({ ratio: w.ratio, buyback: w.buyback });
+    const done = w.done; fyW = null;
+    closeModal(); render();
+    if (done) done();
+  }
+
+  function promoteModal(st, after, raise) {
     onClose = after;
     modal('<div class="evt-ic">🎖️</div>' +
       '<h2 style="text-align:center" class="gold">' + st.name + ' へ昇格</h2>' +
       '<p style="text-align:center;margin-top:10px">' + st.title + '<br><br>' +
       '取り扱える案件の規模が跳ね上がった。<br>より大きな資金と、より大きなリスクの世界へ。</p>' +
+      (raise ? '<div class="card" style="margin:14px 0 0"><div class="row"><span class="small muted">公募増資による調達</span>' +
+        '<b class="gold num">' + money(raise) + '</b></div>' +
+        '<p class="tiny muted" style="margin:7px 0 0">PBRが1倍を超えていたため、市場から資金を調達できた。1株当たり純資産は薄まるが、成長の原資になる。</p></div>' : '') +
       '<div class="mbtns"><button class="pri" data-close>次の段階へ</button></div>', true);
   }
 
@@ -525,7 +758,8 @@ window.UI = (function () {
     render: render, setTab: setTab, get tab() { return tab; },
     modal: modal, closeModal: closeModal, alertBox: alertBox,
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
-    amountModal: amountModal, eventModal: eventModal, fyModal: fyModal,
+    amountModal: amountModal, eventModal: eventModal,
+    fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav,
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,

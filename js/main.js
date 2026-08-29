@@ -21,14 +21,13 @@
     const out = E.advance();
     const q = [];
     if (out.event) q.push(function (n) { U.eventModal(out.event, n); });
-    if (out.fy) q.push(function (n) { fyPending = n; U.fyModal(out.fy); });
-    if (out.promote) q.push(function (n) { U.promoteModal(out.promote, n); });
+    if (out.fy) q.push(function (n) { U.fyOpen(out.fy, n); });
+    if (out.promote) q.push(function (n) { U.promoteModal(out.promote, n, out.raise); });
     if (out.over) q.push(function () { U.endModal(false); });
     if (out.cleared) q.push(function () { U.endModal(true); });
     U.render();
     runQueue(q);
   }
-  let fyPending = null;
 
   /* ---- 起動 ---- */
   function boot(state) {
@@ -51,7 +50,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-payout],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -71,14 +70,8 @@
       U.bidResult(res);
       return;
     }
-    if (t.hasAttribute('data-payout')) {
-      E.payout(t.dataset.payout);
-      U.closeModal();
-      const n = fyPending; fyPending = null;
-      U.render();
-      if (n) n();
-      return;
-    }
+    if (t.hasAttribute('data-fy')) { U.fyNav(t.dataset.fy); return; }
+    if (t.hasAttribute('data-alloc')) { U.fyAlloc(t.dataset.alloc, +t.dataset.d); return; }
 
     /* --- タブ --- */
     if (t.closest('#tabs')) { U.setTab(t.dataset.tab); return; }
@@ -150,7 +143,7 @@
   document.addEventListener('click', function (ev) {
     if (ev.target.classList.contains('backdrop')) {
       const box = $('#modal-box');
-      if (box.querySelector('[data-payout]') || box.querySelector('[data-act="reset"]')) return;
+      if (box.querySelector('[data-fy]') || box.querySelector('[data-act="reset"]')) return;
       U.closeModal(); U.render();
     }
   });
