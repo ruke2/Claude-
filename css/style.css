@@ -1,4 +1,5 @@
 :root{
+  color-scheme:dark;
   --bg:#0b0e14; --bg2:#121722; --card:#161c28; --card2:#1d2432;
   --line:#28303f; --line2:#374056;
   --fg:#e8edf6; --dim:#9aa5b8; --dim2:#6b7688;
