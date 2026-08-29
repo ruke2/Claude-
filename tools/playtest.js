@@ -23,7 +23,17 @@ const MONTHS = +(process.argv[2] || 40);
         if (!shotFY && await page.$('.seg-t')) {
           await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy0.png') });
         }
-        if (await page.$('[data-alloc]')) {
+        if (await page.$('[data-grad]') && !shotFY) {
+        const g = await page.$$('[data-grad]:not([disabled])');
+        if (g.length > 1) await g[1].click();
+        const pr = await page.$$('[data-promo]:not([disabled])');
+        if (pr.length) await pr[0].click();
+        await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy-hr.png') });
+      } else if (await page.$('[data-grad]')) {
+        const g = await page.$$('[data-grad]:not([disabled])');
+        if (g.length > 1) await g[1].click();
+      }
+      if (await page.$('[data-alloc]')) {
           // 適当に配分してから進む
           const plus = await page.$$('[data-alloc][data-d="1"]:not([disabled])');
           for (let k = 0; k < Math.min(6, plus.length); k++) {
@@ -66,6 +76,17 @@ const MONTHS = +(process.argv[2] || 40);
       const c = await page.$('[data-close]'); if (c) await c.click();
     }
   }
+
+  // 人事タブ
+  await page.click('#tabs button[data-tab="admin"]');
+  await page.click('[data-sub="hr"]');
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'hr.png') });
+  const pc = await page.$('[data-person]');
+  if (pc) { await pc.click(); await page.waitForTimeout(60);
+    await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'person.png') });
+    await page.click('[data-close]'); }
+  await page.click('[data-sub="fin"]');
 
   for (const t of ['dash', 'market', 'active', 'assets', 'admin', 'rank']) {
     await page.click('#tabs button[data-tab="' + t + '"]');

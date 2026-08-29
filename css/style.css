@@ -196,6 +196,39 @@ input{font-family:inherit}
 .rank .nm{flex:1 1 auto;font-size:13px}
 .rank .vl{font-size:13px;font-variant-numeric:tabular-nums}
 
+/* ---------- 人材 ---------- */
+.subtabs{display:flex;gap:6px;margin-bottom:12px}
+.subtabs button{flex:1;padding:8px 4px;border-radius:9px;border:1px solid var(--line2);
+  background:var(--card);font-size:12px;color:var(--dim)}
+.subtabs button.on{border-color:var(--gold);background:rgba(217,178,95,.12);color:var(--gold2);font-weight:600}
+
+.pcard{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:11px 12px;margin-bottom:9px}
+.pcard:active{background:var(--card2)}
+.pcard.head{border-color:var(--gold-line,#7d6229);background:rgba(217,178,95,.06)}
+.ph{display:flex;gap:10px;align-items:flex-start}
+.ph .fc{font-size:27px;line-height:1.1;flex:0 0 auto;width:34px;text-align:center}
+.ph .id{flex:1 1 auto;min-width:0}
+.ph .id b{font-size:13.5px;display:block}
+.ph .id .sub{font-size:10.5px;color:var(--dim2);margin-top:2px}
+.ph .rl{flex:0 0 auto;text-align:right}
+.ph .rl .r{font-size:11px;padding:2px 7px;border-radius:5px;border:1px solid var(--line2);color:var(--dim)}
+.ph .rl .r.h{border-color:var(--gold);color:var(--gold2);background:rgba(217,178,95,.12)}
+.abs{display:grid;grid-template-columns:auto 1fr auto;gap:3px 7px;align-items:center;margin-top:9px}
+.abs .l{font-size:9.5px;color:var(--dim2)}
+.abs .v{font-size:10px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right;min-width:18px}
+.abs .g{height:4px;background:#0a0d13;border-radius:2px;overflow:hidden}
+.abs .g i{display:block;height:100%}
+.abs .g.s i{background:#5aa9ff} .abs .g.e i{background:#c9a0ff} .abs .g.d i{background:var(--gold)}
+.trait{margin-top:8px;font-size:10.5px;color:var(--gold2);display:flex;gap:5px;align-items:baseline}
+.trait span{color:var(--dim);font-size:10px}
+.pnews{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;align-items:flex-start}
+.pnews:last-child{border-bottom:0}
+.pnews .f{flex:0 0 auto;font-size:15px;width:20px;text-align:center}
+.pnews .t{flex:0 0 46px;color:var(--dim2);font-size:10px;font-variant-numeric:tabular-nums;padding-top:1px}
+.quote{border-left:2px solid var(--gold);padding:7px 0 7px 11px;margin:10px 0;font-size:12px;color:var(--dim);line-height:1.75}
+.quote b{display:block;color:var(--fg);font-size:11.5px;margin-bottom:3px;font-weight:600}
+
 /* ---------- modal ---------- */
 #modal-root{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
 #modal-root .backdrop{position:absolute;inset:0;background:rgba(3,5,9,.72);backdrop-filter:blur(3px)}

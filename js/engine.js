@@ -144,13 +144,16 @@ window.ENGINE = (function () {
   function divOf(id) { return S.div[id]; }
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
-  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')); }
+  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')
+      + Math.floor(S.people.reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1)); }
   function slotsMax() {
-    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3)
-      + Math.floor(corpOf('dx')) + fxAdd('slots'), 3, 12);
+    let ppl = 0;
+    S.people.forEach(function (p) { ppl += roleW(p); });
+    return clamp(2 + Math.floor(Math.sqrt(S.staff) / 6) + Math.floor(S.offices.length / 3)
+      + Math.floor(corpOf('dx')) + fxAdd('slots') + Math.floor(ppl / 1.9), 3, 14);
   }
   function borrowLimit() { return Math.max(0, equity() * fx('lev', rating().lev) - S.debt); }
-  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread')); }
+  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread') - traitBest('spread')); }
 
   function bookAssets() {
     let v = 0;
@@ -191,16 +194,268 @@ window.ENGINE = (function () {
       budget: {}, boost: {}, corp: { dx: 0, hr: 0, esg: 0 },
       shares: 0.30, pbr: 0.85, trust: 52, roeTTM: 0, pbrPrev: 0.85,
       plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
+      people: [], gradQueue: [], morale: 62, peopleNews: [], hunted: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
     D.DIVISIONS.forEach(function (d, i) { S.div[d.id] = { lv: i < 2 ? 2 : 1, exp: 0 }; S.boost[d.id] = 0; });
     S.seg = newSeg();
     D.COMM_KEYS.forEach(function (k) { S.mk[k] = 100 + randn() * 6; S.mkPrev[k] = S.mk[k]; });
+    // 創業メンバー3名
+    ['energy', 'metals', 'food'].forEach(function (dv, i) {
+      const p = genPerson({ tier: 'founder', div: dv });
+      p.role = i === 0 ? 3 : 1;
+      S.people.push(p);
+    });
     S.slots = slotsMax();
     for (let i = 0; i < 6; i++) S.market.push(genDeal());
     log('創業。東京に本社を構えた。', 'gold');
     return S;
+  }
+
+  /* ---------------- 人材 ---------------- */
+  function genPerson(o) {
+    o = o || {};
+    const female = Math.random() < 0.32;
+    const name = pick(D.SURNAMES) + ' ' + pick(female ? D.GIVEN_F : D.GIVEN_M);
+    const tier = o.tier || 'career';
+    let age, lo, hi;
+    if (tier === 'grad') { age = ri(27, 31); lo = 18; hi = 42; }
+    else if (tier === 'hunt') { age = ri(38, 52); lo = 58; hi = 92; }
+    else if (tier === 'founder') { age = ri(33, 44); lo = 34; hi = 58; }
+    else { age = ri(31, 46); lo = 34; hi = 70; }
+    const q = o.q || 1;
+    function ab() { return Math.round(clamp(rnd(lo, hi) * q, 5, 99)); }
+    const traitPool = tier === 'grad'
+      ? D.TRAITS.map(function (t) { return { t: t, w: t.id === 'none' ? 70 : t.w * 0.5 }; })
+      : D.TRAITS.map(function (t) { return { t: t, w: t.id === 'none' ? (tier === 'hunt' ? 6 : 24) : t.w }; });
+    return {
+      id: uid(), name: name, face: pick(female ? D.FACES_F : D.FACES_M), female: female,
+      age: age, tone: pick(D.TONES).id,
+      div: o.div || pick(D.DIVISIONS).id, region: null, role: 0,
+      sales: ab(), eye: ab(), lead: ab(),
+      trait: wpick(traitPool, 'w').t.id,
+      joinFY: S ? fiscalYear() : 2026, promoFY: S ? fiscalYear() : 2026,
+    };
+  }
+  function toneOf(p) { return D.TONES.filter(function (t) { return t.id === p.tone; })[0] || D.TONES[0]; }
+  function traitOf(p) { return D.TRAIT_BY_ID[p.trait] || D.TRAIT_BY_ID.none; }
+  function roleW(p) { return D.ROLE_W[p.role] || 0.45; }
+  function personPower(p) { return (p.sales + p.eye + p.lead) / 3; }
+  function personCost(p) { return (0.014 + p.role * 0.011) * Math.pow(scale(), 0.45); }
+  function rosterCost() { let c = 0; S.people.forEach(function (p) { c += personCost(p); }); return c; }
+  function rosterMax() { return 24; }
+  function divPeople(divId) { return S.people.filter(function (p) { return p.div === divId; }); }
+  function divHead(divId) {
+    return S.people.filter(function (p) { return p.div === divId && p.role >= 3; })
+      .sort(function (a, b) { return b.lead - a.lead; })[0] || null;
+  }
+  /* 特性の最大値（同じ特性が複数いても効果は重ねない） */
+  function traitBest(key) {
+    let v = 0;
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t[key] != null && t[key] > v) v = t[key];
+    });
+    return v;
+  }
+  function traitMin(key, base) {
+    let v = base;
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t[key] != null && t[key] < v) v = t[key];
+    });
+    return v;
+  }
+  function hasTrait(id) { return S.people.some(function (p) { return p.trait === id; }); }
+
+  /* 本部の営業力（落札力に効く） */
+  function divSalesPt(divId) {
+    const ps = divPeople(divId);
+    if (!ps.length) return -9;           // 人がいない本部はまともに戦えない
+    let v = 0;
+    ps.forEach(function (p) { v += p.sales / 100 * roleW(p); });
+    return Math.min(34, v * 9) + (divHead(divId) ? 0 : -5);
+  }
+  function divLeadPt(divId) {
+    let v = 0;
+    divPeople(divId).forEach(function (p) { v += p.lead / 100 * roleW(p); });
+    return v;
+  }
+  function eyePt() {
+    let v = 0;
+    S.people.forEach(function (p) { v += p.eye / 100 * roleW(p); });
+    return v;
+  }
+  /* 案件ごとの人材ボーナス */
+  function peopleWin(d) {
+    let v = divSalesPt(d.div);
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t.region && t.region === d.region && p.div === d.div) v += t.win;
+      if (t.bigWin && d.big && p.div === d.div) v += t.bigWin;
+      if (p.region && p.region === d.region) v += 6;
+    });
+    return v;
+  }
+  function divTraitMargin(divId) {
+    let v = 0;
+    divPeople(divId).forEach(function (p) {
+      const t = traitOf(p);
+      if (t.div === divId && t.margin) v = Math.max(v, t.margin);
+    });
+    return v;
+  }
+  /* 幹部の厚みは実現利益そのものを動かす（−25%〜+35%） */
+  function divExec(divId) {
+    return 1 + clamp(divSalesPt(divId) / 100, -0.25, 0.35);
+  }
+  function divSniff(divId) {
+    let v = 1;
+    divPeople(divId).forEach(function (p) { if (traitOf(p).sniff) v = Math.max(v, traitOf(p).sniff); });
+    return v;
+  }
+
+  function pnews(text, kind, face) {
+    S.peopleNews.unshift({ t: S.y + '/' + ('0' + S.m).slice(-2), b: text, k: kind || '', f: face || '' });
+    if (S.peopleNews.length > 60) S.peopleNews.length = 60;
+    log(text, kind);
+  }
+
+  /* ---- 配属・任命・駐在・昇進 ---- */
+  function findPerson(id) { return S.people.filter(function (p) { return p.id === id; })[0]; }
+  function assignDiv(id, divId) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    p.div = divId; p.region = null;
+    log(p.name + ' を ' + D.DIV_BY_ID[divId].name + ' に配属した。', '');
+    save(); return { ok: true };
+  }
+  function appointHead(id) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (p.role >= 3) return { ok: false, msg: '既に本部長級' };
+    S.people.forEach(function (q) { if (q.div === p.div && q.role === 3) q.role = 2; });
+    p.role = 3; p.promoFY = fiscalYear();
+    pnews(p.name + ' を ' + D.DIV_BY_ID[p.div].name + ' の本部長に任命した。「' + toneOf(p).promo + '」', 'gold', p.face);
+    save(); return { ok: true };
+  }
+  function dispatchTo(id, regId) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (regId && !hasOffice(regId)) return { ok: false, msg: 'その地域に拠点がない' };
+    p.region = regId || null;
+    if (regId) log(p.name + ' を ' + D.REGION_BY_ID[regId].name + ' に駐在させた。', '');
+    else log(p.name + ' を本社に呼び戻した。', '');
+    save(); return { ok: true };
+  }
+  function promotePerson(id) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (p.role >= 4) return { ok: false, msg: 'これ以上の役職はない' };
+    p.role++; p.promoFY = fiscalYear();
+    S.morale = clamp(S.morale + 1.5, 0, 100);
+    pnews(p.name + ' が ' + D.ROLES[p.role] + ' に昇進。「' + toneOf(p).promo + '」', 'gold', p.face);
+    save(); return { ok: true };
+  }
+  function promoteSlots() { return 1 + Math.floor(S.staff / 220); }
+
+  /* ---- 採用 ---- */
+  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42); }
+  function hireGrads(n) {
+    const c = gradCost(n);
+    if (n <= 0) return { ok: true, n: 0 };
+    if (S.cash < c) return { ok: false, msg: '採用費が足りない' };
+    S.cash -= c; capex(c);
+    S.staff += n;
+    S.gradQueue.push({ fy: fiscalYear() + 4, n: n });
+    pnews(n + '名の新卒を採用した。幹部として立つのは4年後になる。', '', '🌱');
+    save(); return { ok: true, n: n, cost: c };
+  }
+  function careerCost() { return 1.2 * Math.pow(scale(), 0.5) + 0.6; }
+  function careerCandidates() {
+    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) }); });
+  }
+  function hireCareer(p) {
+    const c = careerCost();
+    if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
+    if (S.cash < c) return { ok: false, msg: '採用コストが足りない（必要 ' + money(c) + '）' };
+    S.cash -= c; capex(c);
+    p.joinFY = fiscalYear(); p.promoFY = fiscalYear();
+    S.people.push(p);
+    pnews(p.name + '（' + p.age + '）がキャリア採用で入社。「' + toneOf(p).join + '」', 'up', p.face);
+    save(); return { ok: true };
+  }
+  function huntCost() { return 5.5 * Math.pow(scale(), 0.5) + 2; }
+  function headhunt() {
+    const c = huntCost();
+    if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
+    if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
+    S.cash -= c; capex(c);
+    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002, 0.2, 0.9);
+    if (Math.random() > prob) {
+      S.credit = clamp(S.credit - 2, 0, 100);
+      pnews('ヘッドハントは不調に終わった。業界に話が漏れ、体裁が悪い。', 'down', '🎯');
+      save(); return { ok: true, won: false, prob: prob };
+    }
+    const p = genPerson({ tier: 'hunt', q: rnd(1.0, 1.15) });
+    p.joinFY = fiscalYear(); p.promoFY = fiscalYear(); p.role = 2;
+    S.people.push(p);
+    pnews(pick(S.rivals).name + ' の ' + p.name + '（' + p.age + '）を引き抜いた。「' + toneOf(p).join + '」', 'gold', p.face);
+    save(); return { ok: true, won: true, person: p, prob: prob };
+  }
+
+  /* ---- 月次：士気と離職 ---- */
+  function stepPeople() {
+    const tgt = 45 + clamp((S.roeTTM || 0) * 100, -22, 22) + (S.trust - 50) * 0.2
+      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0);
+    S.morale = clamp(S.morale + (clamp(tgt, 5, 95) - S.morale) * 0.12, 0, 100);
+
+    const retain = 1 - Math.min(0.5, traitBest('retain'));
+    for (let i = S.people.length - 1; i >= 0; i--) {
+      const p = S.people[i];
+      const stale = Math.max(0, fiscalYear() - p.promoFY);
+      let f = 0.004 * (1 + (65 - S.morale) / 45) * (1 + stale * 0.07)
+        * (1 + personPower(p) / 260) * retain;
+      if (p.role >= 3) f *= 0.7;
+      if (Math.random() < clamp(f, 0, 0.06)) {
+        S.people.splice(i, 1);
+        pnews(p.name + '（' + D.ROLES[p.role] + '）が退職。「' + toneOf(p).leave + '」', 'down', p.face);
+        S.morale = clamp(S.morale - 2.5, 0, 100);
+      }
+    }
+  }
+
+  /* ---- 年次：成長・定年・新卒パイプライン ---- */
+  function annualPeople() {
+    const out = { retired: [], graduated: [], grown: 0 };
+    const g = 1 + corpOf('hr') * 0.16 + fxAdd('hrYear');
+    for (let i = S.people.length - 1; i >= 0; i--) {
+      const p = S.people[i];
+      p.age++;
+      if (p.age >= 63) {
+        S.people.splice(i, 1);
+        out.retired.push(p);
+        pnews(p.name + '（' + p.age + '・' + D.ROLES[p.role] + '）が退任。長い勤めだった。', 'info', p.face);
+        continue;
+      }
+      const af = p.age < 32 ? 1.7 : p.age < 40 ? 1.2 : p.age < 50 ? 0.7 : 0.28;
+      const inc = function (v) { return Math.round(clamp(v + g * af * rnd(1.2, 3.4) * (p.region ? 1.35 : 1), 1, 99)); };
+      p.sales = inc(p.sales); p.eye = inc(p.eye); p.lead = inc(p.lead);
+      out.grown++;
+    }
+    const fy = fiscalYear();
+    const per = Math.max(4, hireBlock());
+    for (let i = S.gradQueue.length - 1; i >= 0; i--) {
+      const q = S.gradQueue[i];
+      if (q.fy > fy) continue;
+      const n = Math.min(4, Math.floor(q.n / per));
+      for (let k = 0; k < n && S.people.length < rosterMax(); k++) {
+        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) });
+        p.joinFY = fy; p.promoFY = fy;
+        S.people.push(p);
+        out.graduated.push(p);
+        pnews(p.name + '（' + p.age + '）が幹部候補として頭角を現した。「' + toneOf(p).join + '」', 'up', p.face);
+      }
+      S.gradQueue.splice(i, 1);
+    }
+    return out;
   }
 
   /* ---------------- deal generation ---------------- */
@@ -223,7 +478,7 @@ window.ENGINE = (function () {
     const sc = scale();
     const type = wpick(typeWeights(), 'w').t;
     const dv = wpick(D.DIVISIONS.map(function (x) {
-      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) };
+      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) * divSniff(x.id) };
     }), 'w').d;
     // 拠点のある地域が出やすい
     let reg;
@@ -245,7 +500,7 @@ window.ENGINE = (function () {
 
     if (type === 'trade') {
       d.volume = sc * rnd(30, 110) * sm;
-      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1);
+      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1) * (1 + divTraitMargin(dv.id));
       d.months = ri(1, 4);
       d.capital = d.volume * rnd(0.16, 0.30);
       d.risk = rnd(0.006, 0.042);
@@ -253,7 +508,7 @@ window.ENGINE = (function () {
       d.exposure = d.capital;
     } else if (type === 'project') {
       d.contract = sc * rnd(48, 200) * sm;
-      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10);
+      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10) * (1 + divTraitMargin(dv.id));
       d.months = ri(6, 20);
       d.adv = d.contract * rnd(0.12, 0.25);
       d.cost = d.contract * (1 - d.marginRate);
@@ -296,12 +551,14 @@ window.ENGINE = (function () {
     s += divOf(d.div).lv * 4.2;
     s += boostOf(d.div) * 8;
     s += regionWin(d.region);
+    s += peopleWin(d);
+    s += (S.morale - 60) * 0.16;
     s += rating().win;
     s += S.credit * 0.13;
     s += hasOffice(d.region) ? 10 : 0;
     s -= d.rivals * 4.6;
     s -= d.diff * 12;
-    s += st.win;
+    s += st.win < 0 ? st.win * (1 - traitBest('stance')) : st.win;
     // 与信・規模の余裕
     const room = (equity() + borrowLimit());
     const need = d.exposure;
@@ -622,7 +879,7 @@ window.ENGINE = (function () {
             const swing = mkNow / a.mkAtBid;
             const fxs = 1 + (S.fx / a.fxAtBid - 1) * (a.region === 'jp' ? 0.2 : 0.7);
             let profit = a.volume * a.marginRate * (0.35 + 0.65 * swing) * fxs;
-            profit *= rnd(0.85, 1.15);
+            profit *= rnd(0.85, 1.15) * divExec(a.div);
             S.cash += a.capital + profit;
             L.trade += profit; seg(a.div).gross += profit; seg(a.div).deals++;
             S.fy.deals++;
@@ -646,7 +903,7 @@ window.ENGINE = (function () {
         if (a.prog >= a.months) {
           const remain = a.contract - a.adv;
           S.cash += remain;
-          const profit = a.contract - a.wip;
+          const profit = (a.contract - a.wip) * (a.contract > a.wip ? divExec(a.div) : 1);
           L.project += profit; seg(a.div).gross += profit; seg(a.div).deals++;
           S.active.splice(i, 1);
           S.fy.deals++; S.stats.done++;
@@ -685,7 +942,8 @@ window.ENGINE = (function () {
 
       // 減損
       if (a.value < a.basis * 0.68 &&
-          Math.random() < fx('impair', 0.09) * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
+          Math.random() < fx('impair', 0.09) * traitMin('impair', 1) * S.mod.impair
+            * (1 - Math.min(0.60, corpOf('esg') * 0.16)) * (1 - Math.min(0.40, eyePt() * 0.05))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
         L.impair -= w; seg(a.div).impair -= w;
@@ -703,7 +961,7 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * fx('wage', S.wageRate);
+    const wage = S.staff * fx('wage', S.wageRate) + fx('wage', rosterCost());
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
     const sgaF = fx('sga', sga);
@@ -721,7 +979,7 @@ window.ENGINE = (function () {
     while (S.cash < 0 && S.assets.length) {
       S.assets.sort(function (x, y) { return x.value - y.value; });
       const a = S.assets[0];
-      const proceeds = a.value * rnd(0.62, 0.82);
+      const proceeds = a.value * (rnd(0.62, 0.82) + traitBest('rescue'));
       S.cash += proceeds; L.gain += proceeds - a.value;
       S.assets.shift();
       S.credit = clamp(S.credit - 2, 0, 100);
@@ -814,6 +1072,7 @@ window.ENGINE = (function () {
     // 予算をつけなかった本部は地力を失う
     D.DIVISIONS.forEach(function (d) {
       const dd = S.div[d.id], b = boostOf(d.id);
+      dd.exp += divLeadPt(d.id) * 0.05;
       if (b > 0) dd.exp += b * 0.35;
       else {
         dd.exp -= 0.3;
@@ -824,8 +1083,9 @@ window.ENGINE = (function () {
       }
       checkLevel(d.id);
     });
-    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit'), 0, 100);
+    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit') + traitBest('credit'), 0, 100);
 
+    stepPeople();
     stepRivals();
     refreshMarket();
     S.slots = slotsMax();
@@ -868,6 +1128,8 @@ window.ENGINE = (function () {
         S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
         S.corp.esg = Math.min(6, S.corp.esg + fxAdd('esgYear'));
       }
+      rec.people = annualPeople();
+      rec.morale = S.morale;
       rec.needEval = !!(S.plan && S.plan.endFY <= S.y);
       rec.needPlan = !S.plan || rec.needEval;
       rec.plan = S.plan;
@@ -970,6 +1232,10 @@ window.ENGINE = (function () {
     if (S.plan === undefined) S.plan = null;
     if (S.cumInvest == null) S.cumInvest = 0;
     if (S.planBonus == null) S.planBonus = 0;
+    if (!S.people) S.people = [];
+    if (!S.gradQueue) S.gradQueue = [];
+    if (S.morale == null) S.morale = 62;
+    if (!S.peopleNews) S.peopleNews = [];
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -991,6 +1257,14 @@ window.ENGINE = (function () {
     planTargetOptions: planTargetOptions, formulatePlan: formulatePlan,
     evaluatePlan: evaluatePlan, planProgress: planProgress, hasCard: hasCard,
     fiscalYear: fiscalYear,
+    genPerson: genPerson, toneOf: toneOf, traitOf: traitOf, roleW: roleW,
+    personPower: personPower, personCost: personCost, rosterCost: rosterCost, rosterMax: rosterMax,
+    divPeople: divPeople, divExec: divExec, divHead: divHead, divSalesPt: divSalesPt, divLeadPt: divLeadPt, eyePt: eyePt,
+    peopleWin: peopleWin, hasTrait: hasTrait, traitBest: traitBest, findPerson: findPerson,
+    assignDiv: assignDiv, appointHead: appointHead, dispatchTo: dispatchTo,
+    promotePerson: promotePerson, promoteSlots: promoteSlots,
+    gradCost: gradCost, hireGrads: hireGrads, careerCost: careerCost, careerCandidates: careerCandidates,
+    hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,

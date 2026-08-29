@@ -7,8 +7,32 @@ module.exports = function makePolicy(E, D) {
     asia: ['asia', 'talent'],
     safe: ['discipline', 'green'],
   };
+  /* 人事: 新卒採用・昇進・本部長任命 */
+  function people(S) {
+    if (process.env.NOHIRE) return;
+    // 新卒（幹部が薄いほど多く採る）
+    const want = S.people.length < 10 ? 3 : S.people.length < 16 ? 2 : 1;
+    const n = want * Math.max(4, [10, 25, 100, 400, 1500, 6000][S.stage]);
+    if (S.cash > E.gradCost(n) * 8) E.hireGrads(n);
+    // 本部長不在の本部に、その本部で最も統率の高い者を据える
+    D.DIVISIONS.forEach(function (d) {
+      if (E.divHead(d.id)) return;
+      const c = E.divPeople(d.id).sort(function (a, b) { return b.lead - a.lead; })[0];
+      if (c) E.appointHead(c.id);
+    });
+    // 昇進枠を能力順に使う
+    let slots = E.promoteSlots();
+    S.people.slice().sort(function (a, b) { return E.personPower(b) - E.personPower(a); })
+      .forEach(function (p) {
+        if (slots <= 0 || p.role >= 3) return;
+        if (E.personPower(p) < 45) return;
+        E.promotePerson(p.id); slots--;
+      });
+  }
+
   function annual(S, rec) {
     if (rec.needEval) E.evaluatePlan(rec);
+    people(S);
     const pool = E.budgetPool();
     const spend = Math.min(pool * 0.55, Math.max(0, rec.profit) * 0.8);
     const map = {};
@@ -77,6 +101,15 @@ module.exports = function makePolicy(E, D) {
 
     const no = D.REGIONS.filter(function (r) { return !E.hasOffice(r.id); });
     if (no.length && surplus > E.officeCost() && eq > E.officeCost() * 12) E.openOffice(no[0].id);
+
+    // 幹部の補充（枠に余裕があり、資金に余裕があるとき）
+    if (!process.env.NOHIRE && S.people.length < 14 && surplus > E.careerCost() * 6) {
+      const cand = E.careerCandidates().sort(function (a, b) { return E.personPower(b) - E.personPower(a); });
+      E.hireCareer(cand[0]);
+    }
+    if (!process.env.NOHIRE && S.people.length < 18 && surplus > E.huntCost() * 10 && Math.random() < 0.25) {
+      E.headhunt();
+    }
   };
   turn.annual = annual;
   return turn;

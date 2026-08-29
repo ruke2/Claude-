@@ -170,6 +170,26 @@ window.UI = (function () {
     return h;
   }
 
+  /* ---------- 人材 ---------- */
+  function abBar(label, v, cls) {
+    return '<span class="l">' + label + '</span>' +
+      '<span class="g ' + cls + '"><i style="width:' + v + '%"></i></span>' +
+      '<span class="v">' + v + '</span>';
+  }
+  function personCard(p, attr) {
+    const dv = D.DIV_BY_ID[p.div], t = E.traitOf(p), isHead = p.role >= 3;
+    const where = p.region ? D.REGION_BY_ID[p.region].flag + ' ' + D.REGION_BY_ID[p.region].name + '駐在' : '本社';
+    return '<' + (attr ? 'button' : 'div') + ' class="pcard' + (isHead ? ' head' : '') + '"' +
+      (attr ? ' ' + attr : '') + '>' +
+      '<div class="ph"><div class="fc">' + p.face + '</div>' +
+      '<div class="id"><b>' + esc(p.name) + '<span class="muted" style="font-weight:400;font-size:11px"> ' + p.age + '</span></b>' +
+      '<div class="sub">' + dv.icon + ' ' + dv.short + ' ／ ' + where + '</div></div>' +
+      '<div class="rl"><span class="r' + (isHead ? ' h' : '') + '">' + D.ROLES[p.role] + '</span></div></div>' +
+      '<div class="abs">' + abBar('営業', p.sales, 's') + abBar('目利', p.eye, 'e') + abBar('統率', p.lead, 'd') + '</div>' +
+      (t.id !== 'none' ? '<div class="trait">◆ ' + t.name + '<span>' + t.desc + '</span></div>' : '') +
+      '</' + (attr ? 'button' : 'div') + '>';
+  }
+
   /* 中期経営計画の進捗 */
   function planCard() {
     const S = E.S, p = E.planProgress();
@@ -347,7 +367,58 @@ window.UI = (function () {
     return h;
   }
 
+  let adminSub = 'fin';
+  function setAdminSub(v) { adminSub = v; render(); }
+
   function viewAdmin() {
+    let h = '<div class="subtabs">' +
+      '<button data-sub="fin" class="' + (adminSub === 'fin' ? 'on' : '') + '">財務・組織</button>' +
+      '<button data-sub="hr" class="' + (adminSub === 'hr' ? 'on' : '') + '">人事（' + E.S.people.length + '）</button>' +
+      '</div>';
+    return h + (adminSub === 'hr' ? viewHR() : viewFin());
+  }
+
+  function viewHR() {
+    const S = E.S;
+    let h = '<div class="card"><div class="sect">組織の状態</div><div class="kv">' +
+      '<span class="k">幹部社員</span><span class="v">' + S.people.length + ' / ' + E.rosterMax() + '名</span>' +
+      '<span class="k">月次の幹部人件費</span><span class="v down">-' + money(E.rosterCost()) + '</span>' +
+      '<span class="k">士気</span><span class="v ' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : '') + '">' + Math.round(S.morale) + ' / 100</span>' +
+      '<span class="k">4年後に育つ新卒</span><span class="v">' +
+        (S.gradQueue.length ? S.gradQueue.reduce(function (a, q) { return a + q.n; }, 0).toLocaleString('ja-JP') + '名' : '—') + '</span>' +
+      '</div>' +
+      '<div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
+        (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
+      '<p class="tiny muted" style="margin:8px 0 0">士気が低いと幹部が引き抜かれ、落札力も落ちる。業績・株主信任・人材投資で上がる。</p>' +
+      '<div style="display:flex;gap:8px;margin-top:11px">' +
+      '<button class="act" style="flex:1" data-act="career">📄 キャリア採用（' + money(E.careerCost()) + '）</button>' +
+      '<button class="act" style="flex:1" data-act="hunt">🎯 ヘッドハント（' + money(E.huntCost()) + '）</button>' +
+      '</div></div>';
+
+    h += '<div class="sect">本部別の陣容</div>';
+    D.DIVISIONS.forEach(function (d) {
+      const ps = E.divPeople(d.id).sort(function (a, b) { return b.role - a.role || E.personPower(b) - E.personPower(a); });
+      const pt = E.divSalesPt(d.id), ex = E.divExec(d.id);
+      h += '<div class="card" style="padding-bottom:6px"><div class="row" style="margin-bottom:9px">' +
+        '<b>' + d.icon + ' ' + d.name + '</b>' +
+        '<span class="small ' + (pt >= 0 ? 'up' : 'down') + '">落札力 ' + (pt >= 0 ? '+' : '') + pt.toFixed(0) + 'pt ／ 実現利益 ×' + ex.toFixed(2) + '</span></div>';
+      if (!ps.length) h += '<p class="tiny down" style="margin:0 0 10px">⚠ 誰も配属されていない。この本部はまともに戦えない。</p>';
+      ps.forEach(function (p) { h += personCard(p, 'data-person="' + p.id + '"'); });
+      h += '</div>';
+    });
+
+    if (S.peopleNews.length) {
+      h += '<div class="card"><div class="sect">人事の動き</div>';
+      S.peopleNews.slice(0, 18).forEach(function (n) {
+        h += '<div class="pnews"><span class="t">' + n.t + '</span><span class="f">' + (n.f || '·') + '</span>' +
+          '<span class="' + (n.k || '') + '">' + esc(n.b) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+
+  function viewFin() {
     const S = E.S, rt = E.rating();
     let h = '';
 
@@ -402,6 +473,38 @@ window.UI = (function () {
       '<span class="k">経過</span><span class="v">' + S.turn + 'ヶ月</span>' +
       '</div><div style="margin-top:10px"><button class="act" style="width:100%" data-act="reset">最初からやり直す</button></div></div>';
     return h;
+  }
+
+  /* 幹部の操作モーダル */
+  function personModal(id) {
+    const p = E.findPerson(id);
+    if (!p) return;
+    const S = E.S;
+    let h = personCard(p, '') +
+      '<div class="kv" style="margin-top:12px">' +
+      '<span class="k">性格</span><span class="v">' + E.toneOf(p).name + '</span>' +
+      '<span class="k">入社</span><span class="v">' + p.joinFY + '年</span>' +
+      '<span class="k">直近の昇進</span><span class="v">' + p.promoFY + '年</span>' +
+      '<span class="k">月次給与</span><span class="v down">-' + money(E.personCost(p)) + '</span>' +
+      '</div>' +
+      '<div class="quote"><b>' + esc(p.name) + '</b>「' + E.toneOf(p).join + '」</div>' +
+      '<h3>配属</h3><div class="aggr" style="grid-template-columns:repeat(3,1fr)">';
+    D.DIVISIONS.forEach(function (d) {
+      h += '<button data-pdiv="' + p.id + '" data-v="' + d.id + '" class="' + (p.div === d.id ? 'on' : '') + '">' +
+        '<b>' + d.icon + '</b>' + d.short + '</button>';
+    });
+    h += '</div><h3>駐在</h3><div class="aggr" style="grid-template-columns:repeat(4,1fr)">' +
+      '<button data-preg="' + p.id + '" data-v="" class="' + (!p.region ? 'on' : '') + '"><b>🏢</b>本社</button>';
+    S.offices.forEach(function (r) {
+      if (r === 'jp') return;
+      h += '<button data-preg="' + p.id + '" data-v="' + r + '" class="' + (p.region === r ? 'on' : '') + '">' +
+        '<b>' + D.REGION_BY_ID[r].flag + '</b>' + D.REGION_BY_ID[r].name + '</button>';
+    });
+    h += '</div><p class="tiny muted">駐在させると本人の成長が35%速くなり、その地域の案件で落札力 +6pt。</p>' +
+      '<div class="mbtns">' +
+      (p.role < 3 ? '<button class="pri" data-phead="' + p.id + '">本部長に任命</button>' : '<button disabled>本部長</button>') +
+      '<button data-close>閉じる</button></div>';
+    modal(h);
   }
 
   function viewRank() {
@@ -546,11 +649,25 @@ window.UI = (function () {
       '<div class="row small"><span class="muted">' + dv.short + ' Lv.' + E.S.div[d.div].lv +
         ' ／ 格付 ' + E.rating().label + (E.hasOffice(d.region) ? ' ／ 現地拠点あり' : '') + '</span>' +
         '<b style="color:' + col + '">' + Math.round(p * 100) + '%</b></div>' +
-      '<h3>条件</h3>' + terms +
+      '<h3>条件</h3>' + terms + advice(d) +
       (err ? '<p class="down small" style="margin-top:12px">⚠ ' + err + '</p>' : '') +
       '<div class="mbtns"><button data-close>見送る</button>' +
       '<button class="pri" data-bid="' + d.id + '"' + (err ? ' disabled' : '') + '>この条件で応札</button></div>'
     );
+  }
+
+  /* 大型案件では担当本部の幹部が意見を述べる */
+  function advice(d) {
+    const S = E.S;
+    if (d.exposure < Math.max(1, E.equity()) * 0.22) return '';
+    const ps = E.divPeople(d.div).sort(function (a, b) { return b.role - a.role || b.sales - a.sales; });
+    if (!ps.length) {
+      return '<div class="quote"><b>（担当本部に幹部がいない）</b>誰も中身を検証できないまま、判子だけが回っている。</div>';
+    }
+    const p = ps[0], t = E.toneOf(p);
+    const good = E.winScore(d, curStance) > 0.34 && E.mfac(d.comms) > 0.88;
+    return '<div class="quote"><b>' + p.face + ' ' + esc(p.name) + '（' + D.ROLES[p.role] + '）</b>' +
+      '「' + (good ? t.yes : t.no) + '」</div>';
   }
 
   function bidResult(res) {
@@ -598,12 +715,12 @@ window.UI = (function () {
   /* ---------- 決算ウィザード（4ステップ） ---------- */
   let fyW = null;
   const STEP_NAMES = {
-    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括',
+    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括', hr: '人事',
     budget: '資源配分', payout: '株主還元', planNew: '中期経営計画 策定',
   };
 
   function fyOpen(rec, done) {
-    const steps = ['result', 'rating'];
+    const steps = ['result', 'rating', 'hr'];
     if (rec.needEval) steps.push('planEval');
     steps.push('budget', 'payout');
     if (rec.needPlan) steps.push('planNew');
@@ -611,7 +728,7 @@ window.UI = (function () {
       rec: rec, steps: steps, step: 0, done: done,
       alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
       ratio: 0.3, buyback: 0, allocated: false,
-      evalRes: null,
+      evalRes: null, gradIdx: 0, gradDone: false, promos: [],
       tiers: { profit: 1, roe: 1, invest: 1 }, cards: [],
     };
     fyDraw();
@@ -683,6 +800,57 @@ window.UI = (function () {
         '<span class="k">調達金利（年）</span><span class="v">' + pct(E.interestRate(), 2) + '</span>' +
         '<span class="k">入札での信認</span><span class="v ' + (rt.win >= 0 ? 'up' : 'down') + '">' + (rt.win >= 0 ? '+' : '') + rt.win + 'pt</span>' +
         '</div>';
+      btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
+
+    } else if (id === 'hr') {
+      const pe = r.people || { retired: [], graduated: [] };
+      const block = E.hireBlock();
+      const opts = [0, block, block * 2, block * 3];
+      const n = opts[w.gradIdx];
+      body = '';
+      if (pe.retired.length || pe.graduated.length) {
+        body += '<h3>この1年の人事</h3>';
+        pe.retired.forEach(function (p) {
+          body += '<div class="pnews"><span class="f">' + p.face + '</span><span class="muted">' +
+            esc(p.name) + '（' + p.age + '・' + D.ROLES[p.role] + '）が定年退任した。</span></div>';
+        });
+        pe.graduated.forEach(function (p) {
+          body += '<div class="pnews"><span class="f">' + p.face + '</span><span class="up">' +
+            esc(p.name) + '（' + p.age + '）が幹部候補として頭角を現した。</span></div>';
+        });
+      }
+      body += '<h3>士気</h3><div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
+        (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
+        '<div class="row tiny"><span class="muted">幹部 ' + S.people.length + '名 ／ 平均年齢 ' +
+        (S.people.length ? Math.round(S.people.reduce(function (a, p) { return a + p.age; }, 0) / S.people.length) : '—') + '歳</span>' +
+        '<b class="' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : 'warn') + '">' + Math.round(S.morale) + '</b></div>';
+
+      body += '<h3>新卒採用</h3>' +
+        '<p class="tiny">安く大量に採れるが、幹部として立つのは<strong>4年後</strong>。採らなければ、いま気づかないまま将来の陣容が枯れる。</p>' +
+        '<div class="aggr" style="grid-template-columns:repeat(4,1fr)">';
+      opts.forEach(function (v, i) {
+        body += '<button data-grad="' + i + '" class="' + (i === w.gradIdx ? 'on' : '') + '"' +
+          (w.gradDone ? ' disabled' : '') + '><b>' + (v ? v.toLocaleString('ja-JP') : '見送る') + '</b>' +
+          (v ? money(E.gradCost(v)) : '—') + '</button>';
+      });
+      body += '</div>' + (w.gradDone
+        ? '<p class="tiny up">✓ ' + (n ? n.toLocaleString('ja-JP') + '名を採用した' : '今年度は見送った') + '</p>'
+        : '<p class="tiny muted">4年後、およそ ' + Math.floor(n / Math.max(4, block)) + ' 名が幹部候補になる見込み。</p>');
+
+      const slots = E.promoteSlots() - w.promos.length;
+      body += '<h3>昇進（残り ' + slots + '枠）</h3>';
+      const cands = S.people.filter(function (p) { return p.role < 4; })
+        .sort(function (a, b) { return E.personPower(b) - E.personPower(a); });
+      if (!cands.length) body += '<p class="tiny muted">昇進させられる人材がいない。</p>';
+      cands.slice(0, 8).forEach(function (p) {
+        const done = w.promos.indexOf(p.id) >= 0;
+        body += '<div class="alloc"><div class="ic">' + p.face + '</div>' +
+          '<div class="nm"><b>' + esc(p.name) + '</b><span>' + D.DIV_BY_ID[p.div].short + ' ／ ' + D.ROLES[p.role] +
+          ' ／ 総合力 ' + Math.round(E.personPower(p)) + ' ／ 前回昇進 ' + p.promoFY + '年</span></div>' +
+          '<div class="pm"><button data-promo="' + p.id + '"' + (done || slots <= 0 ? ' disabled' : '') + '>' +
+          (done ? '✓' : '⬆') + '</button></div></div>';
+      });
+      body += '<p class="tiny muted" style="margin-top:8px">昇進が止まった幹部は不満を溜め、いずれ他社に引き抜かれる。</p>';
       btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
 
     } else if (id === 'planEval') {
@@ -818,6 +986,12 @@ window.UI = (function () {
     fyDraw();
   }
 
+  function fyGrad(i) { if (!fyW.gradDone) { fyW.gradIdx = i; fyDraw(); } }
+  function fyPromo(id) {
+    if (fyW.promos.length >= E.promoteSlots()) return;
+    if (fyW.promos.indexOf(id) >= 0) return;
+    if (E.promotePerson(id).ok) { fyW.promos.push(id); fyDraw(); }
+  }
   function fyTier(item, i) { fyW.tiers[item] = i; fyDraw(); }
   function fyCard(id) {
     const c = fyW.cards, i = c.indexOf(id);
@@ -828,6 +1002,11 @@ window.UI = (function () {
 
   function fyCommitStep() {
     const w = fyW, id = w.steps[w.step];
+    if (id === 'hr' && !w.gradDone) {
+      const block = E.hireBlock();
+      E.hireGrads([0, block, block * 2, block * 3][w.gradIdx]);
+      w.gradDone = true;
+    }
     if (id === 'budget' && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
     if (id === 'payout' && !w.paid) { E.payout({ ratio: w.ratio, buyback: w.buyback }); w.paid = true; }
     if (id === 'planNew' && !w.planned) { E.formulatePlan(w.tiers, w.cards); w.planned = true; }
@@ -879,6 +1058,8 @@ window.UI = (function () {
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
     amountModal: amountModal, eventModal: eventModal,
     fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
+    fyGrad: fyGrad, fyPromo: fyPromo,
+    personCard: personCard, personModal: personModal, setAdminSub: setAdminSub,
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,

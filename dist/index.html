@@ -204,6 +204,39 @@ input{font-family:inherit}
 .rank .nm{flex:1 1 auto;font-size:13px}
 .rank .vl{font-size:13px;font-variant-numeric:tabular-nums}
 
+/* ---------- 人材 ---------- */
+.subtabs{display:flex;gap:6px;margin-bottom:12px}
+.subtabs button{flex:1;padding:8px 4px;border-radius:9px;border:1px solid var(--line2);
+  background:var(--card);font-size:12px;color:var(--dim)}
+.subtabs button.on{border-color:var(--gold);background:rgba(217,178,95,.12);color:var(--gold2);font-weight:600}
+
+.pcard{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:11px 12px;margin-bottom:9px}
+.pcard:active{background:var(--card2)}
+.pcard.head{border-color:var(--gold-line,#7d6229);background:rgba(217,178,95,.06)}
+.ph{display:flex;gap:10px;align-items:flex-start}
+.ph .fc{font-size:27px;line-height:1.1;flex:0 0 auto;width:34px;text-align:center}
+.ph .id{flex:1 1 auto;min-width:0}
+.ph .id b{font-size:13.5px;display:block}
+.ph .id .sub{font-size:10.5px;color:var(--dim2);margin-top:2px}
+.ph .rl{flex:0 0 auto;text-align:right}
+.ph .rl .r{font-size:11px;padding:2px 7px;border-radius:5px;border:1px solid var(--line2);color:var(--dim)}
+.ph .rl .r.h{border-color:var(--gold);color:var(--gold2);background:rgba(217,178,95,.12)}
+.abs{display:grid;grid-template-columns:auto 1fr auto;gap:3px 7px;align-items:center;margin-top:9px}
+.abs .l{font-size:9.5px;color:var(--dim2)}
+.abs .v{font-size:10px;font-variant-numeric:tabular-nums;color:var(--dim);text-align:right;min-width:18px}
+.abs .g{height:4px;background:#0a0d13;border-radius:2px;overflow:hidden}
+.abs .g i{display:block;height:100%}
+.abs .g.s i{background:#5aa9ff} .abs .g.e i{background:#c9a0ff} .abs .g.d i{background:var(--gold)}
+.trait{margin-top:8px;font-size:10.5px;color:var(--gold2);display:flex;gap:5px;align-items:baseline}
+.trait span{color:var(--dim);font-size:10px}
+.pnews{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;align-items:flex-start}
+.pnews:last-child{border-bottom:0}
+.pnews .f{flex:0 0 auto;font-size:15px;width:20px;text-align:center}
+.pnews .t{flex:0 0 46px;color:var(--dim2);font-size:10px;font-variant-numeric:tabular-nums;padding-top:1px}
+.quote{border-left:2px solid var(--gold);padding:7px 0 7px 11px;margin:10px 0;font-size:12px;color:var(--dim);line-height:1.75}
+.quote b{display:block;color:var(--fg);font-size:11.5px;margin-bottom:3px;font-weight:600}
+
 /* ---------- modal ---------- */
 #modal-root{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
 #modal-root .backdrop{position:absolute;inset:0;background:rgba(3,5,9,.72);backdrop-filter:blur(3px)}
@@ -473,6 +506,78 @@ window.GAME = (function () {
       desc: '予算配分・権益取得・本部投資の累計。守りに入ることを許さない' },
   ];
 
+  /* ---- 人材 ------------------------------------------ */
+  D.SURNAMES = ['佐藤','鈴木','高橋','田中','伊藤','渡辺','山本','中村','小林','加藤',
+    '吉田','山田','佐々木','山口','松本','井上','木村','清水','山崎','池田',
+    '橋本','阿部','石川','前田','藤田','後藤','小川','岡田','長谷川','村上',
+    '近藤','斎藤','坂本','遠藤','藤井','青木','福田','三浦','西村','大久保'];
+  D.GIVEN_M = ['健一','誠','大輔','拓也','翔太','直樹','剛','隆之','浩二','亮',
+    '智也','和也','昭夫','俊介','雄大','敦','孝行','慎吾','裕介','公平'];
+  D.GIVEN_F = ['美咲','由美','陽子','恵理','香織','麻衣','彩','里奈','千夏','真理',
+    '涼子','沙織','佳奈','瞳','明日香','綾','詩織','奈緒','紀子','愛'];
+  D.FACES_M = ['👨‍💼','🧑‍💼','👨‍🦰','🧔','👨‍🦳','👴','🕵️','👨‍🏭'];
+  D.FACES_F = ['👩‍💼','👩‍🦱','👱‍♀️','👩‍🦳','👵','🧕','👩‍🏭','💁‍♀️'];
+
+  D.ROLES = ['担当', '課長', '部長', '本部長', '役員'];
+  D.ROLE_W = [0.45, 0.75, 1.15, 1.75, 2.10];
+
+  /* 性格。入社・昇進・退社・大型案件での発言が変わる */
+  D.TONES = [
+    { id: 'hot', name: '熱血',
+      join: '必ず結果を出します。見ていてください。',
+      promo: '期待には数字で応えます。次はもっと大きな絵を描きます。',
+      leave: 'この会社では、もう腹が膨れません。',
+      yes: 'やりましょう。取らなければ何も始まらない。',
+      no: 'これは筋が悪い。無理に取る案件じゃない。' },
+    { id: 'cool', name: '冷静',
+      join: '与えられた場所で、淡々とやります。',
+      promo: '役職が変わっても、やることは変わりません。',
+      leave: '潮時だと判断しました。それだけです。',
+      yes: '数字は合っています。取りにいく価値はある。',
+      no: '前提が甘い。市況が2割振れたら赤字です。' },
+    { id: 'wry', name: '皮肉屋',
+      join: 'まあ、前の会社よりはマシでしょう。',
+      promo: '肩書きが増えても、判子の数が増えるだけですがね。',
+      leave: 'この会社の意思決定には、もう付き合いきれません。',
+      yes: '悪くない。少なくとも他社に取られるよりは。',
+      no: 'これを通すなら、私の名前は外してください。' },
+    { id: 'warm', name: '温厚',
+      join: '皆さんと良い仕事ができればと思っています。',
+      promo: '周りに恵まれました。恩は返します。',
+      leave: 'お世話になりました。円満に、ということで。',
+      yes: '先方との関係を考えても、受けるべきかと。',
+      no: '少し急ぎすぎではないでしょうか。焦る話ではない。' },
+  ];
+
+  /* 特性（ユニークスキル） */
+  D.TRAITS = [
+    { id: 'me_face',   name: '中東の顔役',         w: 6, desc: '中東案件の落札力 +15pt', region: 'me', win: 15 },
+    { id: 'asia_face', name: '東南アジア通',       w: 6, desc: '東南アジア案件の落札力 +15pt', region: 'asia', win: 15 },
+    { id: 'na_face',   name: '北米人脈',           w: 6, desc: '北米案件の落札力 +15pt', region: 'na', win: 15 },
+    { id: 'oc_face',   name: '豪州の鉱山王',       w: 5, desc: '豪州案件の落札力 +15pt', region: 'oc', win: 15 },
+    { id: 'mr_energy', name: 'ミスター・エネルギー', w: 5, desc: 'エネルギー本部の採算 +8%', div: 'energy', margin: 0.08 },
+    { id: 'mr_metal',  name: '鉱山のプロ',         w: 5, desc: '金属資源本部の採算 +8%', div: 'metals', margin: 0.08 },
+    { id: 'mr_food',   name: '穀物相場の生き字引', w: 5, desc: '食料本部の採算 +8%', div: 'food', margin: 0.08 },
+    { id: 'appraiser', name: '目利き',             w: 7, desc: '投資案件の実力値を開示、減損確率 −25%', reveal: true, impair: 0.75 },
+    { id: 'negotiator',name: 'タフネゴシエーター', w: 7, desc: '「強気」「暴利」条件の落札ペナルティを半減', stance: 0.5 },
+    { id: 'pmi',       name: 'PMIの鬼',            w: 5, desc: '買収後の統合成功率 +25%', pmi: 0.25 },
+    { id: 'finance',   name: '財務のプロ',         w: 6, desc: '調達金利 −0.5%', spread: 0.005 },
+    { id: 'charmer',   name: '人たらし',           w: 6, desc: '信用の回復が速く、幹部の離職が減る', credit: 0.10, retain: 0.5 },
+    { id: 'veteran',   name: '修羅場慣れ',         w: 5, desc: '資金繰り危機での投げ売り価格が改善', rescue: 0.14 },
+    { id: 'closer',    name: '大型案件の鬼',       w: 6, desc: '💎大型案件の落札力 +18pt', bigWin: 18 },
+    { id: 'sniffer',   name: '嗅覚',               w: 6, desc: '所属本部の案件が持ち込まれやすい', sniff: 1.5 },
+    { id: 'none',      name: '—',                  w: 30, desc: '特筆すべき特性はない' },
+  ];
+  D.TRAIT_BY_ID = {};
+  D.TRAITS.forEach(function (t) { D.TRAIT_BY_ID[t.id] = t; });
+
+  /* 採用ルート */
+  D.RECRUIT = {
+    grad:   { name: '新卒採用',     icon: '🌱', desc: '安いが即戦力ではない。4年後に幹部候補が育つ' },
+    career: { name: 'キャリア採用', icon: '📄', desc: '即戦力。3名の候補から1名を選ぶ' },
+    hunt:   { name: 'ヘッドハント', icon: '🎯', desc: '他商社のエース。高額かつ失敗もある' },
+  };
+
   /* ---- ライバル商社 ---------------------------------- */
   D.RIVALS = [
     { name: '蒼海商事',   base: 96000, g: 0.0072 },
@@ -723,13 +828,16 @@ window.ENGINE = (function () {
   function divOf(id) { return S.div[id]; }
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
-  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')); }
+  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')
+      + Math.floor(S.people.reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1)); }
   function slotsMax() {
-    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3)
-      + Math.floor(corpOf('dx')) + fxAdd('slots'), 3, 12);
+    let ppl = 0;
+    S.people.forEach(function (p) { ppl += roleW(p); });
+    return clamp(2 + Math.floor(Math.sqrt(S.staff) / 6) + Math.floor(S.offices.length / 3)
+      + Math.floor(corpOf('dx')) + fxAdd('slots') + Math.floor(ppl / 1.9), 3, 14);
   }
   function borrowLimit() { return Math.max(0, equity() * fx('lev', rating().lev) - S.debt); }
-  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread')); }
+  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread') - traitBest('spread')); }
 
   function bookAssets() {
     let v = 0;
@@ -770,16 +878,268 @@ window.ENGINE = (function () {
       budget: {}, boost: {}, corp: { dx: 0, hr: 0, esg: 0 },
       shares: 0.30, pbr: 0.85, trust: 52, roeTTM: 0, pbrPrev: 0.85,
       plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
+      people: [], gradQueue: [], morale: 62, peopleNews: [], hunted: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
     D.DIVISIONS.forEach(function (d, i) { S.div[d.id] = { lv: i < 2 ? 2 : 1, exp: 0 }; S.boost[d.id] = 0; });
     S.seg = newSeg();
     D.COMM_KEYS.forEach(function (k) { S.mk[k] = 100 + randn() * 6; S.mkPrev[k] = S.mk[k]; });
+    // 創業メンバー3名
+    ['energy', 'metals', 'food'].forEach(function (dv, i) {
+      const p = genPerson({ tier: 'founder', div: dv });
+      p.role = i === 0 ? 3 : 1;
+      S.people.push(p);
+    });
     S.slots = slotsMax();
     for (let i = 0; i < 6; i++) S.market.push(genDeal());
     log('創業。東京に本社を構えた。', 'gold');
     return S;
+  }
+
+  /* ---------------- 人材 ---------------- */
+  function genPerson(o) {
+    o = o || {};
+    const female = Math.random() < 0.32;
+    const name = pick(D.SURNAMES) + ' ' + pick(female ? D.GIVEN_F : D.GIVEN_M);
+    const tier = o.tier || 'career';
+    let age, lo, hi;
+    if (tier === 'grad') { age = ri(27, 31); lo = 18; hi = 42; }
+    else if (tier === 'hunt') { age = ri(38, 52); lo = 58; hi = 92; }
+    else if (tier === 'founder') { age = ri(33, 44); lo = 34; hi = 58; }
+    else { age = ri(31, 46); lo = 34; hi = 70; }
+    const q = o.q || 1;
+    function ab() { return Math.round(clamp(rnd(lo, hi) * q, 5, 99)); }
+    const traitPool = tier === 'grad'
+      ? D.TRAITS.map(function (t) { return { t: t, w: t.id === 'none' ? 70 : t.w * 0.5 }; })
+      : D.TRAITS.map(function (t) { return { t: t, w: t.id === 'none' ? (tier === 'hunt' ? 6 : 24) : t.w }; });
+    return {
+      id: uid(), name: name, face: pick(female ? D.FACES_F : D.FACES_M), female: female,
+      age: age, tone: pick(D.TONES).id,
+      div: o.div || pick(D.DIVISIONS).id, region: null, role: 0,
+      sales: ab(), eye: ab(), lead: ab(),
+      trait: wpick(traitPool, 'w').t.id,
+      joinFY: S ? fiscalYear() : 2026, promoFY: S ? fiscalYear() : 2026,
+    };
+  }
+  function toneOf(p) { return D.TONES.filter(function (t) { return t.id === p.tone; })[0] || D.TONES[0]; }
+  function traitOf(p) { return D.TRAIT_BY_ID[p.trait] || D.TRAIT_BY_ID.none; }
+  function roleW(p) { return D.ROLE_W[p.role] || 0.45; }
+  function personPower(p) { return (p.sales + p.eye + p.lead) / 3; }
+  function personCost(p) { return (0.014 + p.role * 0.011) * Math.pow(scale(), 0.45); }
+  function rosterCost() { let c = 0; S.people.forEach(function (p) { c += personCost(p); }); return c; }
+  function rosterMax() { return 24; }
+  function divPeople(divId) { return S.people.filter(function (p) { return p.div === divId; }); }
+  function divHead(divId) {
+    return S.people.filter(function (p) { return p.div === divId && p.role >= 3; })
+      .sort(function (a, b) { return b.lead - a.lead; })[0] || null;
+  }
+  /* 特性の最大値（同じ特性が複数いても効果は重ねない） */
+  function traitBest(key) {
+    let v = 0;
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t[key] != null && t[key] > v) v = t[key];
+    });
+    return v;
+  }
+  function traitMin(key, base) {
+    let v = base;
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t[key] != null && t[key] < v) v = t[key];
+    });
+    return v;
+  }
+  function hasTrait(id) { return S.people.some(function (p) { return p.trait === id; }); }
+
+  /* 本部の営業力（落札力に効く） */
+  function divSalesPt(divId) {
+    const ps = divPeople(divId);
+    if (!ps.length) return -9;           // 人がいない本部はまともに戦えない
+    let v = 0;
+    ps.forEach(function (p) { v += p.sales / 100 * roleW(p); });
+    return Math.min(34, v * 9) + (divHead(divId) ? 0 : -5);
+  }
+  function divLeadPt(divId) {
+    let v = 0;
+    divPeople(divId).forEach(function (p) { v += p.lead / 100 * roleW(p); });
+    return v;
+  }
+  function eyePt() {
+    let v = 0;
+    S.people.forEach(function (p) { v += p.eye / 100 * roleW(p); });
+    return v;
+  }
+  /* 案件ごとの人材ボーナス */
+  function peopleWin(d) {
+    let v = divSalesPt(d.div);
+    S.people.forEach(function (p) {
+      const t = traitOf(p);
+      if (t.region && t.region === d.region && p.div === d.div) v += t.win;
+      if (t.bigWin && d.big && p.div === d.div) v += t.bigWin;
+      if (p.region && p.region === d.region) v += 6;
+    });
+    return v;
+  }
+  function divTraitMargin(divId) {
+    let v = 0;
+    divPeople(divId).forEach(function (p) {
+      const t = traitOf(p);
+      if (t.div === divId && t.margin) v = Math.max(v, t.margin);
+    });
+    return v;
+  }
+  /* 幹部の厚みは実現利益そのものを動かす（−25%〜+35%） */
+  function divExec(divId) {
+    return 1 + clamp(divSalesPt(divId) / 100, -0.25, 0.35);
+  }
+  function divSniff(divId) {
+    let v = 1;
+    divPeople(divId).forEach(function (p) { if (traitOf(p).sniff) v = Math.max(v, traitOf(p).sniff); });
+    return v;
+  }
+
+  function pnews(text, kind, face) {
+    S.peopleNews.unshift({ t: S.y + '/' + ('0' + S.m).slice(-2), b: text, k: kind || '', f: face || '' });
+    if (S.peopleNews.length > 60) S.peopleNews.length = 60;
+    log(text, kind);
+  }
+
+  /* ---- 配属・任命・駐在・昇進 ---- */
+  function findPerson(id) { return S.people.filter(function (p) { return p.id === id; })[0]; }
+  function assignDiv(id, divId) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    p.div = divId; p.region = null;
+    log(p.name + ' を ' + D.DIV_BY_ID[divId].name + ' に配属した。', '');
+    save(); return { ok: true };
+  }
+  function appointHead(id) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (p.role >= 3) return { ok: false, msg: '既に本部長級' };
+    S.people.forEach(function (q) { if (q.div === p.div && q.role === 3) q.role = 2; });
+    p.role = 3; p.promoFY = fiscalYear();
+    pnews(p.name + ' を ' + D.DIV_BY_ID[p.div].name + ' の本部長に任命した。「' + toneOf(p).promo + '」', 'gold', p.face);
+    save(); return { ok: true };
+  }
+  function dispatchTo(id, regId) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (regId && !hasOffice(regId)) return { ok: false, msg: 'その地域に拠点がない' };
+    p.region = regId || null;
+    if (regId) log(p.name + ' を ' + D.REGION_BY_ID[regId].name + ' に駐在させた。', '');
+    else log(p.name + ' を本社に呼び戻した。', '');
+    save(); return { ok: true };
+  }
+  function promotePerson(id) {
+    const p = findPerson(id); if (!p) return { ok: false, msg: '見つからない' };
+    if (p.role >= 4) return { ok: false, msg: 'これ以上の役職はない' };
+    p.role++; p.promoFY = fiscalYear();
+    S.morale = clamp(S.morale + 1.5, 0, 100);
+    pnews(p.name + ' が ' + D.ROLES[p.role] + ' に昇進。「' + toneOf(p).promo + '」', 'gold', p.face);
+    save(); return { ok: true };
+  }
+  function promoteSlots() { return 1 + Math.floor(S.staff / 220); }
+
+  /* ---- 採用 ---- */
+  function gradCost(n) { return n * 0.014 * Math.pow(scale(), 0.42); }
+  function hireGrads(n) {
+    const c = gradCost(n);
+    if (n <= 0) return { ok: true, n: 0 };
+    if (S.cash < c) return { ok: false, msg: '採用費が足りない' };
+    S.cash -= c; capex(c);
+    S.staff += n;
+    S.gradQueue.push({ fy: fiscalYear() + 4, n: n });
+    pnews(n + '名の新卒を採用した。幹部として立つのは4年後になる。', '', '🌱');
+    save(); return { ok: true, n: n, cost: c };
+  }
+  function careerCost() { return 1.2 * Math.pow(scale(), 0.5) + 0.6; }
+  function careerCandidates() {
+    return [0, 1, 2].map(function () { return genPerson({ tier: 'career', q: rnd(0.85, 1.12) }); });
+  }
+  function hireCareer(p) {
+    const c = careerCost();
+    if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
+    if (S.cash < c) return { ok: false, msg: '採用コストが足りない（必要 ' + money(c) + '）' };
+    S.cash -= c; capex(c);
+    p.joinFY = fiscalYear(); p.promoFY = fiscalYear();
+    S.people.push(p);
+    pnews(p.name + '（' + p.age + '）がキャリア採用で入社。「' + toneOf(p).join + '」', 'up', p.face);
+    save(); return { ok: true };
+  }
+  function huntCost() { return 5.5 * Math.pow(scale(), 0.5) + 2; }
+  function headhunt() {
+    const c = huntCost();
+    if (S.people.length >= rosterMax()) return { ok: false, msg: '幹部の枠がいっぱいだ（' + rosterMax() + '名）' };
+    if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
+    S.cash -= c; capex(c);
+    const prob = clamp(0.42 + S.credit * 0.004 + S.morale * 0.002, 0.2, 0.9);
+    if (Math.random() > prob) {
+      S.credit = clamp(S.credit - 2, 0, 100);
+      pnews('ヘッドハントは不調に終わった。業界に話が漏れ、体裁が悪い。', 'down', '🎯');
+      save(); return { ok: true, won: false, prob: prob };
+    }
+    const p = genPerson({ tier: 'hunt', q: rnd(1.0, 1.15) });
+    p.joinFY = fiscalYear(); p.promoFY = fiscalYear(); p.role = 2;
+    S.people.push(p);
+    pnews(pick(S.rivals).name + ' の ' + p.name + '（' + p.age + '）を引き抜いた。「' + toneOf(p).join + '」', 'gold', p.face);
+    save(); return { ok: true, won: true, person: p, prob: prob };
+  }
+
+  /* ---- 月次：士気と離職 ---- */
+  function stepPeople() {
+    const tgt = 45 + clamp((S.roeTTM || 0) * 100, -22, 22) + (S.trust - 50) * 0.2
+      + corpOf('hr') * 3 + (hasTrait('charmer') ? 4 : 0);
+    S.morale = clamp(S.morale + (clamp(tgt, 5, 95) - S.morale) * 0.12, 0, 100);
+
+    const retain = 1 - Math.min(0.5, traitBest('retain'));
+    for (let i = S.people.length - 1; i >= 0; i--) {
+      const p = S.people[i];
+      const stale = Math.max(0, fiscalYear() - p.promoFY);
+      let f = 0.004 * (1 + (65 - S.morale) / 45) * (1 + stale * 0.07)
+        * (1 + personPower(p) / 260) * retain;
+      if (p.role >= 3) f *= 0.7;
+      if (Math.random() < clamp(f, 0, 0.06)) {
+        S.people.splice(i, 1);
+        pnews(p.name + '（' + D.ROLES[p.role] + '）が退職。「' + toneOf(p).leave + '」', 'down', p.face);
+        S.morale = clamp(S.morale - 2.5, 0, 100);
+      }
+    }
+  }
+
+  /* ---- 年次：成長・定年・新卒パイプライン ---- */
+  function annualPeople() {
+    const out = { retired: [], graduated: [], grown: 0 };
+    const g = 1 + corpOf('hr') * 0.16 + fxAdd('hrYear');
+    for (let i = S.people.length - 1; i >= 0; i--) {
+      const p = S.people[i];
+      p.age++;
+      if (p.age >= 63) {
+        S.people.splice(i, 1);
+        out.retired.push(p);
+        pnews(p.name + '（' + p.age + '・' + D.ROLES[p.role] + '）が退任。長い勤めだった。', 'info', p.face);
+        continue;
+      }
+      const af = p.age < 32 ? 1.7 : p.age < 40 ? 1.2 : p.age < 50 ? 0.7 : 0.28;
+      const inc = function (v) { return Math.round(clamp(v + g * af * rnd(1.2, 3.4) * (p.region ? 1.35 : 1), 1, 99)); };
+      p.sales = inc(p.sales); p.eye = inc(p.eye); p.lead = inc(p.lead);
+      out.grown++;
+    }
+    const fy = fiscalYear();
+    const per = Math.max(4, hireBlock());
+    for (let i = S.gradQueue.length - 1; i >= 0; i--) {
+      const q = S.gradQueue[i];
+      if (q.fy > fy) continue;
+      const n = Math.min(4, Math.floor(q.n / per));
+      for (let k = 0; k < n && S.people.length < rosterMax(); k++) {
+        const p = genPerson({ tier: 'grad', q: rnd(0.9, 1.15) });
+        p.joinFY = fy; p.promoFY = fy;
+        S.people.push(p);
+        out.graduated.push(p);
+        pnews(p.name + '（' + p.age + '）が幹部候補として頭角を現した。「' + toneOf(p).join + '」', 'up', p.face);
+      }
+      S.gradQueue.splice(i, 1);
+    }
+    return out;
   }
 
   /* ---------------- deal generation ---------------- */
@@ -802,7 +1162,7 @@ window.ENGINE = (function () {
     const sc = scale();
     const type = wpick(typeWeights(), 'w').t;
     const dv = wpick(D.DIVISIONS.map(function (x) {
-      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) };
+      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) * divSniff(x.id) };
     }), 'w').d;
     // 拠点のある地域が出やすい
     let reg;
@@ -824,7 +1184,7 @@ window.ENGINE = (function () {
 
     if (type === 'trade') {
       d.volume = sc * rnd(30, 110) * sm;
-      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1);
+      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1) * (1 + divTraitMargin(dv.id));
       d.months = ri(1, 4);
       d.capital = d.volume * rnd(0.16, 0.30);
       d.risk = rnd(0.006, 0.042);
@@ -832,7 +1192,7 @@ window.ENGINE = (function () {
       d.exposure = d.capital;
     } else if (type === 'project') {
       d.contract = sc * rnd(48, 200) * sm;
-      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10);
+      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10) * (1 + divTraitMargin(dv.id));
       d.months = ri(6, 20);
       d.adv = d.contract * rnd(0.12, 0.25);
       d.cost = d.contract * (1 - d.marginRate);
@@ -875,12 +1235,14 @@ window.ENGINE = (function () {
     s += divOf(d.div).lv * 4.2;
     s += boostOf(d.div) * 8;
     s += regionWin(d.region);
+    s += peopleWin(d);
+    s += (S.morale - 60) * 0.16;
     s += rating().win;
     s += S.credit * 0.13;
     s += hasOffice(d.region) ? 10 : 0;
     s -= d.rivals * 4.6;
     s -= d.diff * 12;
-    s += st.win;
+    s += st.win < 0 ? st.win * (1 - traitBest('stance')) : st.win;
     // 与信・規模の余裕
     const room = (equity() + borrowLimit());
     const need = d.exposure;
@@ -1201,7 +1563,7 @@ window.ENGINE = (function () {
             const swing = mkNow / a.mkAtBid;
             const fxs = 1 + (S.fx / a.fxAtBid - 1) * (a.region === 'jp' ? 0.2 : 0.7);
             let profit = a.volume * a.marginRate * (0.35 + 0.65 * swing) * fxs;
-            profit *= rnd(0.85, 1.15);
+            profit *= rnd(0.85, 1.15) * divExec(a.div);
             S.cash += a.capital + profit;
             L.trade += profit; seg(a.div).gross += profit; seg(a.div).deals++;
             S.fy.deals++;
@@ -1225,7 +1587,7 @@ window.ENGINE = (function () {
         if (a.prog >= a.months) {
           const remain = a.contract - a.adv;
           S.cash += remain;
-          const profit = a.contract - a.wip;
+          const profit = (a.contract - a.wip) * (a.contract > a.wip ? divExec(a.div) : 1);
           L.project += profit; seg(a.div).gross += profit; seg(a.div).deals++;
           S.active.splice(i, 1);
           S.fy.deals++; S.stats.done++;
@@ -1264,7 +1626,8 @@ window.ENGINE = (function () {
 
       // 減損
       if (a.value < a.basis * 0.68 &&
-          Math.random() < fx('impair', 0.09) * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
+          Math.random() < fx('impair', 0.09) * traitMin('impair', 1) * S.mod.impair
+            * (1 - Math.min(0.60, corpOf('esg') * 0.16)) * (1 - Math.min(0.40, eyePt() * 0.05))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
         L.impair -= w; seg(a.div).impair -= w;
@@ -1282,7 +1645,7 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * fx('wage', S.wageRate);
+    const wage = S.staff * fx('wage', S.wageRate) + fx('wage', rosterCost());
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
     const sgaF = fx('sga', sga);
@@ -1300,7 +1663,7 @@ window.ENGINE = (function () {
     while (S.cash < 0 && S.assets.length) {
       S.assets.sort(function (x, y) { return x.value - y.value; });
       const a = S.assets[0];
-      const proceeds = a.value * rnd(0.62, 0.82);
+      const proceeds = a.value * (rnd(0.62, 0.82) + traitBest('rescue'));
       S.cash += proceeds; L.gain += proceeds - a.value;
       S.assets.shift();
       S.credit = clamp(S.credit - 2, 0, 100);
@@ -1393,6 +1756,7 @@ window.ENGINE = (function () {
     // 予算をつけなかった本部は地力を失う
     D.DIVISIONS.forEach(function (d) {
       const dd = S.div[d.id], b = boostOf(d.id);
+      dd.exp += divLeadPt(d.id) * 0.05;
       if (b > 0) dd.exp += b * 0.35;
       else {
         dd.exp -= 0.3;
@@ -1403,8 +1767,9 @@ window.ENGINE = (function () {
       }
       checkLevel(d.id);
     });
-    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit'), 0, 100);
+    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit') + traitBest('credit'), 0, 100);
 
+    stepPeople();
     stepRivals();
     refreshMarket();
     S.slots = slotsMax();
@@ -1447,6 +1812,8 @@ window.ENGINE = (function () {
         S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
         S.corp.esg = Math.min(6, S.corp.esg + fxAdd('esgYear'));
       }
+      rec.people = annualPeople();
+      rec.morale = S.morale;
       rec.needEval = !!(S.plan && S.plan.endFY <= S.y);
       rec.needPlan = !S.plan || rec.needEval;
       rec.plan = S.plan;
@@ -1549,6 +1916,10 @@ window.ENGINE = (function () {
     if (S.plan === undefined) S.plan = null;
     if (S.cumInvest == null) S.cumInvest = 0;
     if (S.planBonus == null) S.planBonus = 0;
+    if (!S.people) S.people = [];
+    if (!S.gradQueue) S.gradQueue = [];
+    if (S.morale == null) S.morale = 62;
+    if (!S.peopleNews) S.peopleNews = [];
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -1570,6 +1941,14 @@ window.ENGINE = (function () {
     planTargetOptions: planTargetOptions, formulatePlan: formulatePlan,
     evaluatePlan: evaluatePlan, planProgress: planProgress, hasCard: hasCard,
     fiscalYear: fiscalYear,
+    genPerson: genPerson, toneOf: toneOf, traitOf: traitOf, roleW: roleW,
+    personPower: personPower, personCost: personCost, rosterCost: rosterCost, rosterMax: rosterMax,
+    divPeople: divPeople, divExec: divExec, divHead: divHead, divSalesPt: divSalesPt, divLeadPt: divLeadPt, eyePt: eyePt,
+    peopleWin: peopleWin, hasTrait: hasTrait, traitBest: traitBest, findPerson: findPerson,
+    assignDiv: assignDiv, appointHead: appointHead, dispatchTo: dispatchTo,
+    promotePerson: promotePerson, promoteSlots: promoteSlots,
+    gradCost: gradCost, hireGrads: hireGrads, careerCost: careerCost, careerCandidates: careerCandidates,
+    hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,
@@ -1751,6 +2130,26 @@ window.UI = (function () {
     return h;
   }
 
+  /* ---------- 人材 ---------- */
+  function abBar(label, v, cls) {
+    return '<span class="l">' + label + '</span>' +
+      '<span class="g ' + cls + '"><i style="width:' + v + '%"></i></span>' +
+      '<span class="v">' + v + '</span>';
+  }
+  function personCard(p, attr) {
+    const dv = D.DIV_BY_ID[p.div], t = E.traitOf(p), isHead = p.role >= 3;
+    const where = p.region ? D.REGION_BY_ID[p.region].flag + ' ' + D.REGION_BY_ID[p.region].name + '駐在' : '本社';
+    return '<' + (attr ? 'button' : 'div') + ' class="pcard' + (isHead ? ' head' : '') + '"' +
+      (attr ? ' ' + attr : '') + '>' +
+      '<div class="ph"><div class="fc">' + p.face + '</div>' +
+      '<div class="id"><b>' + esc(p.name) + '<span class="muted" style="font-weight:400;font-size:11px"> ' + p.age + '</span></b>' +
+      '<div class="sub">' + dv.icon + ' ' + dv.short + ' ／ ' + where + '</div></div>' +
+      '<div class="rl"><span class="r' + (isHead ? ' h' : '') + '">' + D.ROLES[p.role] + '</span></div></div>' +
+      '<div class="abs">' + abBar('営業', p.sales, 's') + abBar('目利', p.eye, 'e') + abBar('統率', p.lead, 'd') + '</div>' +
+      (t.id !== 'none' ? '<div class="trait">◆ ' + t.name + '<span>' + t.desc + '</span></div>' : '') +
+      '</' + (attr ? 'button' : 'div') + '>';
+  }
+
   /* 中期経営計画の進捗 */
   function planCard() {
     const S = E.S, p = E.planProgress();
@@ -1928,7 +2327,58 @@ window.UI = (function () {
     return h;
   }
 
+  let adminSub = 'fin';
+  function setAdminSub(v) { adminSub = v; render(); }
+
   function viewAdmin() {
+    let h = '<div class="subtabs">' +
+      '<button data-sub="fin" class="' + (adminSub === 'fin' ? 'on' : '') + '">財務・組織</button>' +
+      '<button data-sub="hr" class="' + (adminSub === 'hr' ? 'on' : '') + '">人事（' + E.S.people.length + '）</button>' +
+      '</div>';
+    return h + (adminSub === 'hr' ? viewHR() : viewFin());
+  }
+
+  function viewHR() {
+    const S = E.S;
+    let h = '<div class="card"><div class="sect">組織の状態</div><div class="kv">' +
+      '<span class="k">幹部社員</span><span class="v">' + S.people.length + ' / ' + E.rosterMax() + '名</span>' +
+      '<span class="k">月次の幹部人件費</span><span class="v down">-' + money(E.rosterCost()) + '</span>' +
+      '<span class="k">士気</span><span class="v ' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : '') + '">' + Math.round(S.morale) + ' / 100</span>' +
+      '<span class="k">4年後に育つ新卒</span><span class="v">' +
+        (S.gradQueue.length ? S.gradQueue.reduce(function (a, q) { return a + q.n; }, 0).toLocaleString('ja-JP') + '名' : '—') + '</span>' +
+      '</div>' +
+      '<div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
+        (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
+      '<p class="tiny muted" style="margin:8px 0 0">士気が低いと幹部が引き抜かれ、落札力も落ちる。業績・株主信任・人材投資で上がる。</p>' +
+      '<div style="display:flex;gap:8px;margin-top:11px">' +
+      '<button class="act" style="flex:1" data-act="career">📄 キャリア採用（' + money(E.careerCost()) + '）</button>' +
+      '<button class="act" style="flex:1" data-act="hunt">🎯 ヘッドハント（' + money(E.huntCost()) + '）</button>' +
+      '</div></div>';
+
+    h += '<div class="sect">本部別の陣容</div>';
+    D.DIVISIONS.forEach(function (d) {
+      const ps = E.divPeople(d.id).sort(function (a, b) { return b.role - a.role || E.personPower(b) - E.personPower(a); });
+      const pt = E.divSalesPt(d.id), ex = E.divExec(d.id);
+      h += '<div class="card" style="padding-bottom:6px"><div class="row" style="margin-bottom:9px">' +
+        '<b>' + d.icon + ' ' + d.name + '</b>' +
+        '<span class="small ' + (pt >= 0 ? 'up' : 'down') + '">落札力 ' + (pt >= 0 ? '+' : '') + pt.toFixed(0) + 'pt ／ 実現利益 ×' + ex.toFixed(2) + '</span></div>';
+      if (!ps.length) h += '<p class="tiny down" style="margin:0 0 10px">⚠ 誰も配属されていない。この本部はまともに戦えない。</p>';
+      ps.forEach(function (p) { h += personCard(p, 'data-person="' + p.id + '"'); });
+      h += '</div>';
+    });
+
+    if (S.peopleNews.length) {
+      h += '<div class="card"><div class="sect">人事の動き</div>';
+      S.peopleNews.slice(0, 18).forEach(function (n) {
+        h += '<div class="pnews"><span class="t">' + n.t + '</span><span class="f">' + (n.f || '·') + '</span>' +
+          '<span class="' + (n.k || '') + '">' + esc(n.b) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    return h;
+  }
+
+  function viewFin() {
     const S = E.S, rt = E.rating();
     let h = '';
 
@@ -1983,6 +2433,38 @@ window.UI = (function () {
       '<span class="k">経過</span><span class="v">' + S.turn + 'ヶ月</span>' +
       '</div><div style="margin-top:10px"><button class="act" style="width:100%" data-act="reset">最初からやり直す</button></div></div>';
     return h;
+  }
+
+  /* 幹部の操作モーダル */
+  function personModal(id) {
+    const p = E.findPerson(id);
+    if (!p) return;
+    const S = E.S;
+    let h = personCard(p, '') +
+      '<div class="kv" style="margin-top:12px">' +
+      '<span class="k">性格</span><span class="v">' + E.toneOf(p).name + '</span>' +
+      '<span class="k">入社</span><span class="v">' + p.joinFY + '年</span>' +
+      '<span class="k">直近の昇進</span><span class="v">' + p.promoFY + '年</span>' +
+      '<span class="k">月次給与</span><span class="v down">-' + money(E.personCost(p)) + '</span>' +
+      '</div>' +
+      '<div class="quote"><b>' + esc(p.name) + '</b>「' + E.toneOf(p).join + '」</div>' +
+      '<h3>配属</h3><div class="aggr" style="grid-template-columns:repeat(3,1fr)">';
+    D.DIVISIONS.forEach(function (d) {
+      h += '<button data-pdiv="' + p.id + '" data-v="' + d.id + '" class="' + (p.div === d.id ? 'on' : '') + '">' +
+        '<b>' + d.icon + '</b>' + d.short + '</button>';
+    });
+    h += '</div><h3>駐在</h3><div class="aggr" style="grid-template-columns:repeat(4,1fr)">' +
+      '<button data-preg="' + p.id + '" data-v="" class="' + (!p.region ? 'on' : '') + '"><b>🏢</b>本社</button>';
+    S.offices.forEach(function (r) {
+      if (r === 'jp') return;
+      h += '<button data-preg="' + p.id + '" data-v="' + r + '" class="' + (p.region === r ? 'on' : '') + '">' +
+        '<b>' + D.REGION_BY_ID[r].flag + '</b>' + D.REGION_BY_ID[r].name + '</button>';
+    });
+    h += '</div><p class="tiny muted">駐在させると本人の成長が35%速くなり、その地域の案件で落札力 +6pt。</p>' +
+      '<div class="mbtns">' +
+      (p.role < 3 ? '<button class="pri" data-phead="' + p.id + '">本部長に任命</button>' : '<button disabled>本部長</button>') +
+      '<button data-close>閉じる</button></div>';
+    modal(h);
   }
 
   function viewRank() {
@@ -2127,11 +2609,25 @@ window.UI = (function () {
       '<div class="row small"><span class="muted">' + dv.short + ' Lv.' + E.S.div[d.div].lv +
         ' ／ 格付 ' + E.rating().label + (E.hasOffice(d.region) ? ' ／ 現地拠点あり' : '') + '</span>' +
         '<b style="color:' + col + '">' + Math.round(p * 100) + '%</b></div>' +
-      '<h3>条件</h3>' + terms +
+      '<h3>条件</h3>' + terms + advice(d) +
       (err ? '<p class="down small" style="margin-top:12px">⚠ ' + err + '</p>' : '') +
       '<div class="mbtns"><button data-close>見送る</button>' +
       '<button class="pri" data-bid="' + d.id + '"' + (err ? ' disabled' : '') + '>この条件で応札</button></div>'
     );
+  }
+
+  /* 大型案件では担当本部の幹部が意見を述べる */
+  function advice(d) {
+    const S = E.S;
+    if (d.exposure < Math.max(1, E.equity()) * 0.22) return '';
+    const ps = E.divPeople(d.div).sort(function (a, b) { return b.role - a.role || b.sales - a.sales; });
+    if (!ps.length) {
+      return '<div class="quote"><b>（担当本部に幹部がいない）</b>誰も中身を検証できないまま、判子だけが回っている。</div>';
+    }
+    const p = ps[0], t = E.toneOf(p);
+    const good = E.winScore(d, curStance) > 0.34 && E.mfac(d.comms) > 0.88;
+    return '<div class="quote"><b>' + p.face + ' ' + esc(p.name) + '（' + D.ROLES[p.role] + '）</b>' +
+      '「' + (good ? t.yes : t.no) + '」</div>';
   }
 
   function bidResult(res) {
@@ -2179,12 +2675,12 @@ window.UI = (function () {
   /* ---------- 決算ウィザード（4ステップ） ---------- */
   let fyW = null;
   const STEP_NAMES = {
-    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括',
+    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括', hr: '人事',
     budget: '資源配分', payout: '株主還元', planNew: '中期経営計画 策定',
   };
 
   function fyOpen(rec, done) {
-    const steps = ['result', 'rating'];
+    const steps = ['result', 'rating', 'hr'];
     if (rec.needEval) steps.push('planEval');
     steps.push('budget', 'payout');
     if (rec.needPlan) steps.push('planNew');
@@ -2192,7 +2688,7 @@ window.UI = (function () {
       rec: rec, steps: steps, step: 0, done: done,
       alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
       ratio: 0.3, buyback: 0, allocated: false,
-      evalRes: null,
+      evalRes: null, gradIdx: 0, gradDone: false, promos: [],
       tiers: { profit: 1, roe: 1, invest: 1 }, cards: [],
     };
     fyDraw();
@@ -2264,6 +2760,57 @@ window.UI = (function () {
         '<span class="k">調達金利（年）</span><span class="v">' + pct(E.interestRate(), 2) + '</span>' +
         '<span class="k">入札での信認</span><span class="v ' + (rt.win >= 0 ? 'up' : 'down') + '">' + (rt.win >= 0 ? '+' : '') + rt.win + 'pt</span>' +
         '</div>';
+      btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
+
+    } else if (id === 'hr') {
+      const pe = r.people || { retired: [], graduated: [] };
+      const block = E.hireBlock();
+      const opts = [0, block, block * 2, block * 3];
+      const n = opts[w.gradIdx];
+      body = '';
+      if (pe.retired.length || pe.graduated.length) {
+        body += '<h3>この1年の人事</h3>';
+        pe.retired.forEach(function (p) {
+          body += '<div class="pnews"><span class="f">' + p.face + '</span><span class="muted">' +
+            esc(p.name) + '（' + p.age + '・' + D.ROLES[p.role] + '）が定年退任した。</span></div>';
+        });
+        pe.graduated.forEach(function (p) {
+          body += '<div class="pnews"><span class="f">' + p.face + '</span><span class="up">' +
+            esc(p.name) + '（' + p.age + '）が幹部候補として頭角を現した。</span></div>';
+        });
+      }
+      body += '<h3>士気</h3><div class="gauge"><i style="width:' + Math.round(S.morale) + '%;background:' +
+        (S.morale >= 65 ? 'var(--up)' : S.morale < 45 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
+        '<div class="row tiny"><span class="muted">幹部 ' + S.people.length + '名 ／ 平均年齢 ' +
+        (S.people.length ? Math.round(S.people.reduce(function (a, p) { return a + p.age; }, 0) / S.people.length) : '—') + '歳</span>' +
+        '<b class="' + (S.morale >= 65 ? 'up' : S.morale < 45 ? 'down' : 'warn') + '">' + Math.round(S.morale) + '</b></div>';
+
+      body += '<h3>新卒採用</h3>' +
+        '<p class="tiny">安く大量に採れるが、幹部として立つのは<strong>4年後</strong>。採らなければ、いま気づかないまま将来の陣容が枯れる。</p>' +
+        '<div class="aggr" style="grid-template-columns:repeat(4,1fr)">';
+      opts.forEach(function (v, i) {
+        body += '<button data-grad="' + i + '" class="' + (i === w.gradIdx ? 'on' : '') + '"' +
+          (w.gradDone ? ' disabled' : '') + '><b>' + (v ? v.toLocaleString('ja-JP') : '見送る') + '</b>' +
+          (v ? money(E.gradCost(v)) : '—') + '</button>';
+      });
+      body += '</div>' + (w.gradDone
+        ? '<p class="tiny up">✓ ' + (n ? n.toLocaleString('ja-JP') + '名を採用した' : '今年度は見送った') + '</p>'
+        : '<p class="tiny muted">4年後、およそ ' + Math.floor(n / Math.max(4, block)) + ' 名が幹部候補になる見込み。</p>');
+
+      const slots = E.promoteSlots() - w.promos.length;
+      body += '<h3>昇進（残り ' + slots + '枠）</h3>';
+      const cands = S.people.filter(function (p) { return p.role < 4; })
+        .sort(function (a, b) { return E.personPower(b) - E.personPower(a); });
+      if (!cands.length) body += '<p class="tiny muted">昇進させられる人材がいない。</p>';
+      cands.slice(0, 8).forEach(function (p) {
+        const done = w.promos.indexOf(p.id) >= 0;
+        body += '<div class="alloc"><div class="ic">' + p.face + '</div>' +
+          '<div class="nm"><b>' + esc(p.name) + '</b><span>' + D.DIV_BY_ID[p.div].short + ' ／ ' + D.ROLES[p.role] +
+          ' ／ 総合力 ' + Math.round(E.personPower(p)) + ' ／ 前回昇進 ' + p.promoFY + '年</span></div>' +
+          '<div class="pm"><button data-promo="' + p.id + '"' + (done || slots <= 0 ? ' disabled' : '') + '>' +
+          (done ? '✓' : '⬆') + '</button></div></div>';
+      });
+      body += '<p class="tiny muted" style="margin-top:8px">昇進が止まった幹部は不満を溜め、いずれ他社に引き抜かれる。</p>';
       btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
 
     } else if (id === 'planEval') {
@@ -2399,6 +2946,12 @@ window.UI = (function () {
     fyDraw();
   }
 
+  function fyGrad(i) { if (!fyW.gradDone) { fyW.gradIdx = i; fyDraw(); } }
+  function fyPromo(id) {
+    if (fyW.promos.length >= E.promoteSlots()) return;
+    if (fyW.promos.indexOf(id) >= 0) return;
+    if (E.promotePerson(id).ok) { fyW.promos.push(id); fyDraw(); }
+  }
   function fyTier(item, i) { fyW.tiers[item] = i; fyDraw(); }
   function fyCard(id) {
     const c = fyW.cards, i = c.indexOf(id);
@@ -2409,6 +2962,11 @@ window.UI = (function () {
 
   function fyCommitStep() {
     const w = fyW, id = w.steps[w.step];
+    if (id === 'hr' && !w.gradDone) {
+      const block = E.hireBlock();
+      E.hireGrads([0, block, block * 2, block * 3][w.gradIdx]);
+      w.gradDone = true;
+    }
     if (id === 'budget' && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
     if (id === 'payout' && !w.paid) { E.payout({ ratio: w.ratio, buyback: w.buyback }); w.paid = true; }
     if (id === 'planNew' && !w.planned) { E.formulatePlan(w.tiers, w.cards); w.planned = true; }
@@ -2460,6 +3018,8 @@ window.UI = (function () {
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
     amountModal: amountModal, eventModal: eventModal,
     fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
+    fyGrad: fyGrad, fyPromo: fyPromo,
+    personCard: personCard, personModal: personModal, setAdminSub: setAdminSub,
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,
@@ -2520,7 +3080,7 @@ window.UI = (function () {
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -2544,6 +3104,17 @@ window.UI = (function () {
     if (t.hasAttribute('data-alloc')) { U.fyAlloc(t.dataset.alloc, +t.dataset.d); return; }
     if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
     if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
+    if (t.hasAttribute('data-grad')) { U.fyGrad(+t.dataset.grad); return; }
+    if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
+    if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
+    if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }
+    if (t.hasAttribute('data-pdiv')) { E.assignDiv(t.dataset.pdiv, t.dataset.v); U.personModal(t.dataset.pdiv); U.render(); return; }
+    if (t.hasAttribute('data-preg')) { E.dispatchTo(t.dataset.preg, t.dataset.v || null); U.personModal(t.dataset.preg); U.render(); return; }
+    if (t.hasAttribute('data-phead')) {
+      const r = E.appointHead(t.dataset.phead);
+      if (!r.ok) U.alertBox('任命できない', r.msg, 'down'); else { U.closeModal(); U.render(); }
+      return;
+    }
 
     /* --- タブ --- */
     if (t.closest('#tabs')) { U.setTab(t.dataset.tab); return; }
@@ -2574,6 +3145,34 @@ window.UI = (function () {
     /* --- 本社アクション --- */
     const act = t.dataset.act;
     if (act === 'sell-ok') { E.sellAsset(t.dataset.id); E.save(); U.closeModal(); U.render(); return; }
+    if (act === 'career') {
+      const cs = E.careerCandidates();
+      window.__cands = cs;
+      let h = '<h2>キャリア採用</h2><p>3名の候補から1名を選ぶ。採用コスト ' + E.money(E.careerCost()) + '。</p>';
+      cs.forEach(function (p, i) {
+        h += U.personCard(p, 'data-hire="' + i + '"');
+      });
+      h += '<div class="mbtns"><button data-close>見送る</button></div>';
+      U.modal(h);
+      return;
+    }
+    if (t.hasAttribute('data-hire')) {
+      const p = (window.__cands || [])[+t.dataset.hire];
+      if (!p) return;
+      const r = E.hireCareer(p);
+      if (!r.ok) U.alertBox('採用できない', r.msg, 'down');
+      else { U.closeModal(); U.alertBox('入社', U.esc(p.name) + ' が入社した。<br>「' + E.toneOf(p).join + '」', 'up'); }
+      U.render();
+      return;
+    }
+    if (act === 'hunt') {
+      const r = E.headhunt();
+      if (!r.ok) { U.alertBox('実行できない', r.msg, 'down'); return; }
+      if (r.won) U.alertBox('引き抜き成功', r.person.face + ' ' + U.esc(r.person.name) + '（' + r.person.age + '）が移籍を決めた。<br>「' + E.toneOf(r.person).join + '」', 'up');
+      else U.alertBox('不調', 'ヘッドハントは実らなかった。<br>業界に話が漏れ、体裁が悪い。（成功率 ' + Math.round(r.prob * 100) + '%）', 'down');
+      U.render();
+      return;
+    }
     if (act === 'hire') {
       const r = E.hire();
       if (!r.ok) U.alertBox('採用できない', r.msg, 'down'); else { E.save(); U.render(); }

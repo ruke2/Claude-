@@ -34,8 +34,12 @@ function playOne(verbose) {
     }
   }
   const ph = S.planHistory || [];
+  const ppl = S.people || [];
   return { plans: ph.length, planOk: ph.reduce((a, x) => a + x.count, 0), planFull: ph.filter(x => x.count === 3).length,
            bonus: S.planBonus || 0,
+           people: ppl.length, avgAge: ppl.length ? ppl.reduce((a, p) => a + p.age, 0) / ppl.length : 0,
+           power: ppl.length ? ppl.reduce((a, p) => a + E.personPower(p), 0) / ppl.length : 0,
+           morale: S.morale || 0,
            stage: S.stage, eq: E.equity(), over: S.over, cleared: S.cleared, turn: S.turn,
            rank: E.myRank(), assets: S.assets.length, won: S.stats.won, lost: S.stats.lost,
            impair: S.stats.impair, def: S.stats.defaults, promo: promo };
@@ -58,6 +62,7 @@ console.log('純資産 中央値:', E.money(med('eq')));
 console.log('平均順位    :', avg('rank').toFixed(1));
 console.log('落札率      :', (avg('won') / (avg('won') + avg('lost')) * 100).toFixed(0) + '%');
 console.log('減損/貸倒   :', avg('impair').toFixed(1), '/', avg('def').toFixed(1));
+console.log('人材        :', avg('people').toFixed(1) + '名, 平均年齢 ' + avg('avgAge').toFixed(0) + ', 平均能力 ' + avg('power').toFixed(0) + ', 士気 ' + avg('morale').toFixed(0));
 const tp = res.reduce((a, r) => a + r.plans, 0), to = res.reduce((a, r) => a + r.planOk, 0), tf = res.reduce((a, r) => a + r.planFull, 0);
 console.log('中計        :', tp + '期, 項目達成率 ' + (tp ? (to / (tp * 3) * 100).toFixed(0) : 0) + '%, 全項目達成 ' + (tp ? (tf / tp * 100).toFixed(0) : 0) + '%, 実績ボーナス平均 ' + avg('bonus').toFixed(2));
 const allPromo = res.map(r => r.promo).filter(p => p.length);

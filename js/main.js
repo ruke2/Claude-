@@ -50,7 +50,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -74,6 +74,17 @@
     if (t.hasAttribute('data-alloc')) { U.fyAlloc(t.dataset.alloc, +t.dataset.d); return; }
     if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
     if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
+    if (t.hasAttribute('data-grad')) { U.fyGrad(+t.dataset.grad); return; }
+    if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
+    if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
+    if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }
+    if (t.hasAttribute('data-pdiv')) { E.assignDiv(t.dataset.pdiv, t.dataset.v); U.personModal(t.dataset.pdiv); U.render(); return; }
+    if (t.hasAttribute('data-preg')) { E.dispatchTo(t.dataset.preg, t.dataset.v || null); U.personModal(t.dataset.preg); U.render(); return; }
+    if (t.hasAttribute('data-phead')) {
+      const r = E.appointHead(t.dataset.phead);
+      if (!r.ok) U.alertBox('任命できない', r.msg, 'down'); else { U.closeModal(); U.render(); }
+      return;
+    }
 
     /* --- タブ --- */
     if (t.closest('#tabs')) { U.setTab(t.dataset.tab); return; }
@@ -104,6 +115,34 @@
     /* --- 本社アクション --- */
     const act = t.dataset.act;
     if (act === 'sell-ok') { E.sellAsset(t.dataset.id); E.save(); U.closeModal(); U.render(); return; }
+    if (act === 'career') {
+      const cs = E.careerCandidates();
+      window.__cands = cs;
+      let h = '<h2>キャリア採用</h2><p>3名の候補から1名を選ぶ。採用コスト ' + E.money(E.careerCost()) + '。</p>';
+      cs.forEach(function (p, i) {
+        h += U.personCard(p, 'data-hire="' + i + '"');
+      });
+      h += '<div class="mbtns"><button data-close>見送る</button></div>';
+      U.modal(h);
+      return;
+    }
+    if (t.hasAttribute('data-hire')) {
+      const p = (window.__cands || [])[+t.dataset.hire];
+      if (!p) return;
+      const r = E.hireCareer(p);
+      if (!r.ok) U.alertBox('採用できない', r.msg, 'down');
+      else { U.closeModal(); U.alertBox('入社', U.esc(p.name) + ' が入社した。<br>「' + E.toneOf(p).join + '」', 'up'); }
+      U.render();
+      return;
+    }
+    if (act === 'hunt') {
+      const r = E.headhunt();
+      if (!r.ok) { U.alertBox('実行できない', r.msg, 'down'); return; }
+      if (r.won) U.alertBox('引き抜き成功', r.person.face + ' ' + U.esc(r.person.name) + '（' + r.person.age + '）が移籍を決めた。<br>「' + E.toneOf(r.person).join + '」', 'up');
+      else U.alertBox('不調', 'ヘッドハントは実らなかった。<br>業界に話が漏れ、体裁が悪い。（成功率 ' + Math.round(r.prob * 100) + '%）', 'down');
+      U.render();
+      return;
+    }
     if (act === 'hire') {
       const r = E.hire();
       if (!r.ok) U.alertBox('採用できない', r.msg, 'down'); else { E.save(); U.render(); }
