@@ -287,8 +287,28 @@ window.UI = (function () {
 
   function viewMarket() {
     const S = E.S;
-    if (!S.market.length) return '<div class="empty">現在、打診されている案件はない。<br>翌月へ進めば新しい商談が持ち込まれる。</div>';
-    let h = '<div class="sect">持ち込まれている案件（' + S.market.length + '件）</div>';
+    let h = '';
+    if (S.ma && S.ma.length) {
+      h += '<div class="sect">M&amp;A 候補（' + S.ma.length + '社）</div>';
+      S.ma.forEach(function (t) {
+        const dv = D.DIV_BY_ID[t.div], rg = D.REGION_BY_ID[t.region];
+        h += '<button class="deal" data-ma="' + t.id + '" style="border-color:#5a3f86">' +
+          '<div class="deal-h"><div class="deal-t">🏢 ' + esc(t.name) + '</div>' +
+          '<span class="pill t-concession">' + (t.listed ? '上場' : '非上場') + '</span></div>' +
+          '<div class="deal-m"><span class="pill">' + dv.icon + ' ' + dv.short + '</span>' +
+          '<span class="pill">' + rg.flag + ' ' + rg.name + '</span>' +
+          '<span class="pill">競合 ' + t.rivals + '社</span>' +
+          (t.dd ? '<span class="pill" style="color:var(--up);border-color:#2f6b4c">DD済</span>'
+                : '<span class="pill" style="color:var(--warn);border-color:#7a5628">DD未実施</span>') + '</div>' +
+          '<div class="tiny muted" style="margin-top:7px">純資産 ' + money(t.netAssets) +
+            ' ／ ' + (t.dd ? '実力純利益 ' + money(t.trueProfit) + '/年' : '表面純利益 ' + money(t.shownProfit) + '/年') + '</div>' +
+          '<div class="deal-f"><span class="muted">残り ' + t.ttl + 'ヶ月</span>' +
+          '<span class="gold">想定 ' + money(E.maPrice(t, 2)) + '</span></div></button>';
+      });
+      h += '<div style="height:6px"></div>';
+    }
+    if (!S.market.length) return h + '<div class="empty">現在、打診されている案件はない。<br>翌月へ進めば新しい商談が持ち込まれる。</div>';
+    h += '<div class="sect">持ち込まれている案件（' + S.market.length + '件）</div>';
     S.market.forEach(function (d) {
       const dv = D.DIV_BY_ID[d.div], rg = D.REGION_BY_ID[d.region];
       const p = E.winScore(d, 2);
@@ -352,6 +372,32 @@ window.UI = (function () {
     S.assets.forEach(function (a) {
       const dv = D.DIV_BY_ID[a.div], rg = D.REGION_BY_ID[a.region];
       const pl = a.value - a.basis;
+      if (a.type === 'company') {
+        const leader = a.pmiLeader ? E.findPerson(a.pmiLeader) : null;
+        h += '<div class="card"><div class="deal-h"><div class="deal-t">🏢 ' + esc(a.name) + '</div>' +
+          '<span class="pill ' + (a.pmiDone ? 't-investment' : 't-project') + '">' +
+          (a.pmiDone ? '稼働' : '統合中') + '</span></div>' +
+          '<div class="tiny muted" style="margin-top:6px">' + dv.icon + ' ' + dv.short + ' ／ ' + rg.flag + ' ' + rg.name + '</div>';
+        if (!a.pmiDone) {
+          const pc = E.pmiChance(a);
+          h += '<div class="bar"><i style="width:' + ((12 - a.pmiLeft) / 12 * 100).toFixed(0) + '%"></i></div>' +
+            '<div class="deal-f"><span class="muted">統合まで残り ' + a.pmiLeft + 'ヶ月</span>' +
+            '<span class="' + (pc > 0.6 ? 'up' : pc > 0.4 ? 'warn' : 'down') + '">成功確度 ' + Math.round(pc * 100) + '%</span></div>' +
+            '<div class="row small" style="margin-top:8px"><span class="muted">統合責任者</span>' +
+            '<span>' + (leader ? leader.face + ' ' + esc(leader.name) + '（統率 ' + leader.lead + '）' : '<span class="down">未指名</span>') + '</span></div>' +
+            '<button class="act" style="width:100%;margin-top:8px" data-pmi="' + a.id + '">統合責任者を指名する</button>';
+        } else {
+          h += '<div class="kv" style="margin-top:9px">' +
+            '<span class="k">取得原価 / うち のれん</span><span class="v">' + money(a.basis) + ' / ' + money(a.goodwill) + '</span>' +
+            '<span class="k">現在価値</span><span class="v ' + (pl >= 0 ? 'up' : 'down') + '">' + money(a.value) + ' (' + signed(pl) + ')</span>' +
+            '<span class="k">シナジー</span><span class="v ' + (a.synergy > 0.5 ? 'up' : 'down') + '">×' + (1 + a.synergy * 0.55).toFixed(2) + '</span>' +
+            '<span class="k">累計収益</span><span class="v up">' + money(a.cum) + '</span></div>' +
+            '<div style="display:flex;justify-content:flex-end;margin-top:9px">' +
+            '<button class="act" data-exit="' + a.id + '">売却（EXIT）</button></div>';
+        }
+        h += '</div>';
+        return;
+      }
       const remain = a.type === 'concession' ? Math.max(0, a.life - a.age) + 'ヶ月' : '無期限';
       h += '<div class="card"><div class="deal-h"><div class="deal-t">' + esc(a.name) + '</div>' +
         '<span class="pill t-' + a.type + '">' + D.TYPE_LABEL[a.type] + '</span></div>' +
@@ -683,6 +729,62 @@ window.UI = (function () {
         '本部のレベルと信用力を高めれば、次は取れる。', 'down');
     }
     render();
+  }
+
+  /* --- M&A モーダル --- */
+  let curMA = null, curOffer = 2;
+  function maOpen(id) {
+    const t = E.findTarget(id);
+    if (!t) return;
+    curMA = t; curOffer = 2;
+    maDraw();
+  }
+  function maDraw() {
+    const t = curMA, S = E.S;
+    const dv = D.DIV_BY_ID[t.div], rg = D.REGION_BY_ID[t.region];
+    const o = D.MA_OFFERS[curOffer];
+    const price = E.maPrice(t, curOffer);
+    const gw = price - t.netAssets;
+    const p = E.maWin(t, curOffer);
+    const err = E.maCheck(t, curOffer);
+    const col = p > 0.55 ? 'var(--up)' : p > 0.3 ? 'var(--warn)' : 'var(--down)';
+    const yr = t.dd ? t.trueProfit : t.shownProfit;
+
+    let offers = '<div class="aggr">';
+    D.MA_OFFERS.forEach(function (x, i) {
+      offers += '<button data-offer="' + i + '" class="' + (i === curOffer ? 'on' : '') + '"><b>' + x.n + '</b>×' + x.k.toFixed(2) + '</button>';
+    });
+    offers += '</div><p class="tiny" style="margin-bottom:12px">' + o.desc + '</p>';
+
+    modal('<h2>🏢 ' + esc(t.name) + '</h2>' +
+      '<p class="tiny" style="margin-bottom:12px">' +
+        '<span class="pill">' + dv.icon + ' ' + dv.name + '</span> ' +
+        '<span class="pill">' + rg.flag + ' ' + rg.name + '</span> ' +
+        '<span class="pill">' + (t.listed ? '上場企業' : '非上場') + '</span> ' +
+        '<span class="pill">競合 ' + t.rivals + '社</span></p>' +
+      '<h3>デューデリジェンス</h3>' +
+      (t.dd
+        ? '<div class="kv"><span class="k">実力純利益（年）</span><span class="v up">' + money(t.trueProfit) + '</span>' +
+          '<span class="k">簿外債務</span><span class="v ' + (t.hidden > 0 ? 'down' : 'up') + '">' +
+          (t.hidden > 0 ? money(t.hidden) + ' を発見' : 'なし') + '</span></div>'
+        : '<p class="tiny warn">未実施。開示された数字は ' + money(t.shownProfit) + '/年 だが、<strong>実力値も簿外債務も見えていない</strong>。' +
+          'DDを省いて買えば、簿外債務はそのまま当社の損失になる。</p>' +
+          '<button class="act" style="width:100%" data-dd="' + t.id + '">DDを実施する（' + money(E.ddCost(t)) + '）</button>') +
+      '<h3>買収条件</h3>' + offers +
+      '<div class="kv">' +
+      '<span class="k">純資産</span><span class="v">' + money(t.netAssets) + '</span>' +
+      '<span class="k">買収価額</span><span class="v down">-' + money(price) + '</span>' +
+      '<span class="k">のれん</span><span class="v ' + (gw > t.netAssets * 0.3 ? 'down' : '') + '">' + money(gw) + '</span>' +
+      '<span class="k">投資利回り（' + (t.dd ? '実力' : '表面') + '）</span><span class="v">' + pct(yr / price) + '/年</span>' +
+      '</div>' +
+      (gw > 0 ? '<p class="tiny muted" style="margin-top:8px">のれんは償却しない。平時は無害だが、統合に失敗すると一括で減損する。</p>' : '') +
+      '<h3>成約確度</h3>' +
+      '<div class="gauge"><i style="width:' + (p * 100).toFixed(0) + '%;background:' + col + '"></i></div>' +
+      '<div class="row small"><span class="muted">' + dv.short + 'の陣容・格付・信用</span>' +
+      '<b style="color:' + col + '">' + Math.round(p * 100) + '%</b></div>' +
+      (err ? '<p class="down small" style="margin-top:12px">⚠ ' + err + '</p>' : '') +
+      '<div class="mbtns"><button data-close>見送る</button>' +
+      '<button class="pri" data-buy="' + t.id + '"' + (err ? ' disabled' : '') + '>買収を提案する</button></div>');
   }
 
   /* --- 金額入力モーダル --- */
@@ -1035,14 +1137,32 @@ window.UI = (function () {
       '<div class="mbtns"><button class="pri" data-close>次の段階へ</button></div>', true);
   }
 
+  function tobModal(t, after) {
+    onClose = after;
+    const S = E.S;
+    modal('<div class="evt-ic">⚔️</div><h2 style="text-align:center" class="down">敵対的買収提案</h2>' +
+      '<p style="margin-top:10px">' + esc(t.raider) + ' が、当社株に ' + pct(t.premium, 0) +
+      ' のプレミアムを乗せた公開買付を表明した。買付総額 ' + money(t.price) + '。</p>' +
+      '<p class="tiny">PBR ' + S.pbr.toFixed(2) + ' 倍・株主信任 ' + Math.round(S.trust) +
+      '。市場は当社を「解体したほうが価値がある会社」と見ている。<strong>防衛に失敗すれば当社は消滅する。</strong></p>' +
+      '<h3>防衛策</h3>' +
+      '<div class="mbtns" style="flex-direction:column;gap:8px">' +
+      '<button data-def="buyback">自社株買いで対抗（' + money(E.defendCost()) + '・現金 ' + money(S.cash) + '）</button>' +
+      '<button data-def="white">ホワイトナイトを招く（株式24%を渡す／成功率86%）</button>' +
+      '<button data-def="explain">株主に説明する（信任 ' + Math.round(S.trust) + ' 次第・無償）</button>' +
+      '</div>', true);
+  }
+
   function endModal(win) {
     const S = E.S;
     onClose = null;
     modal('<div class="evt-ic">' + (win ? '👑' : '💀') + '</div>' +
-      '<h2 style="text-align:center">' + (win ? '世界最大の総合商社' : '経営破綻') + '</h2>' +
+      '<h2 style="text-align:center">' + (win ? '世界最大の総合商社' : S.overReason === 'tob' ? '被買収' : '経営破綻') + '</h2>' +
       '<p style="text-align:center;margin-top:8px">' +
       (win ? esc(S.company) + ' は世界の頂点に立った。<br>ラーメンから航空機まで、地球上のあらゆる商いが<br>この会社を通っている。'
-           : esc(S.company) + ' は債務超過に陥り、<br>再建を断念した。') + '</p>' +
+           : S.overReason === 'tob'
+             ? esc(S.company) + ' は敵対的買収に屈した。<br>看板は下ろされ、事業は切り売りされていく。'
+             : esc(S.company) + ' は債務超過に陥り、<br>再建を断念した。') + '</p>' +
       '<div class="fy-grid">' +
       '<div class="b"><label>最終純資産</label><b class="gold">' + money(E.equity()) + '</b></div>' +
       '<div class="b"><label>経過</label><b>' + Math.floor(S.turn / 12) + '年' + (S.turn % 12) + 'ヶ月</b></div>' +
@@ -1060,6 +1180,8 @@ window.UI = (function () {
     fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
     fyGrad: fyGrad, fyPromo: fyPromo,
     personCard: personCard, personModal: personModal, setAdminSub: setAdminSub,
+    maOpen: maOpen, maDraw: maDraw, tobModal: tobModal,
+    setOffer: function (i) { curOffer = i; maDraw(); },
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,

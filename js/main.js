@@ -21,6 +21,7 @@
     const out = E.advance();
     const q = [];
     if (out.event) q.push(function (n) { U.eventModal(out.event, n); });
+    if (out.tob) q.push(function (n) { U.tobModal(out.tob, n); });
     if (out.fy) q.push(function (n) { U.fyOpen(out.fy, n); });
     if (out.promote) q.push(function (n) { U.promoteModal(out.promote, n, out.raise); });
     if (out.over) q.push(function () { U.endModal(false); });
@@ -50,7 +51,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -78,6 +79,70 @@
     if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
     if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
     if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }
+    if (t.hasAttribute('data-ma')) { U.maOpen(t.dataset.ma); return; }
+    if (t.hasAttribute('data-offer')) { U.setOffer(+t.dataset.offer); return; }
+    if (t.hasAttribute('data-dd')) {
+      const r = E.runDD(t.dataset.dd);
+      if (!r.ok) U.alertBox('実施できない', r.msg, 'down'); else U.maDraw();
+      U.render();
+      return;
+    }
+    if (t.hasAttribute('data-buy')) {
+      const r = E.acquire(t.dataset.buy, currentOffer());
+      U.closeModal();
+      if (!r.ok) U.alertBox('提案できない', r.msg, 'down');
+      else if (r.won) U.alertBox('買収成立',
+        '「' + U.esc(r.target.name) + '」を ' + E.money(r.price) + ' で取得した。<br>' +
+        'のれん ' + E.money(r.goodwill) + ' を計上。<br><br>' +
+        (r.surprise > 0 ? '<span class="down">DDを省いたツケで、' + E.money(r.surprise) + ' の簿外債務が発覚した。</span><br><br>' : '') +
+        'これから12ヶ月の<b>統合（PMI）</b>に入る。投資タブで統合責任者を指名せよ。', 'up');
+      else U.alertBox('競り負け', '「' + U.esc(r.target.name) + '」は他社に取られた。<br>成約確度は ' + Math.round(r.prob * 100) + '% だった。', 'down');
+      U.render();
+      return;
+    }
+    if (t.hasAttribute('data-pmi')) {
+      const aid = t.dataset.pmi;
+      const cands = E.S.people.slice().sort(function (a, b) { return b.lead - a.lead; }).slice(0, 8);
+      let h = '<h2>統合責任者の指名</h2><p>統率の高い幹部を送り込むほど統合の成功率が上がる。' +
+        '「PMIの鬼」を持つ人材がいれば最優先だ。</p>';
+      if (!cands.length) h += '<div class="empty">送り込める幹部がいない。</div>';
+      cands.forEach(function (p) { h += U.personCard(p, 'data-setpmi="' + aid + '" data-p="' + p.id + '"'); });
+      h += '<div class="mbtns"><button data-close>閉じる</button></div>';
+      U.modal(h);
+      return;
+    }
+    if (t.hasAttribute('data-setpmi')) {
+      E.setPMILeader(t.dataset.setpmi, t.dataset.p);
+      U.closeModal(); U.render();
+      return;
+    }
+    if (t.hasAttribute('data-exit')) {
+      const a = E.S.assets.filter(function (x) { return x.id === t.dataset.exit; })[0];
+      if (!a) return;
+      U.modal('<h2>事業会社の売却</h2><p>「' + U.esc(a.name) + '」を売却する。<br>' +
+        '育てた会社を高値で手放すのは、商社の本来の稼ぎ方でもある。<br><br>' +
+        '現在価値 ' + E.money(a.value) + '／シナジー ×' + (1 + a.synergy * 0.55).toFixed(2) + '</p>' +
+        '<div class="mbtns"><button data-close>やめる</button>' +
+        '<button class="pri" data-exitok="' + a.id + '">売却する</button></div>');
+      return;
+    }
+    if (t.hasAttribute('data-exitok')) {
+      const r = E.exitCompany(t.dataset.exitok);
+      U.closeModal();
+      if (!r.ok) U.alertBox('売却できない', r.msg, 'down');
+      else U.alertBox('EXIT', E.money(r.proceeds) + ' で売却した。', 'up');
+      U.render();
+      return;
+    }
+    if (t.hasAttribute('data-def')) {
+      const r = E.defendTOB(t.dataset.def);
+      if (!r.ok) { U.alertBox('実行できない', r.msg, 'down'); return; }
+      U.closeModal();
+      if (r.defended) U.alertBox('防衛成功', r.msg, 'up');
+      else U.endModal(false);
+      U.render();
+      return;
+    }
     if (t.hasAttribute('data-pdiv')) { E.assignDiv(t.dataset.pdiv, t.dataset.v); U.personModal(t.dataset.pdiv); U.render(); return; }
     if (t.hasAttribute('data-preg')) { E.dispatchTo(t.dataset.preg, t.dataset.v || null); U.personModal(t.dataset.preg); U.render(); return; }
     if (t.hasAttribute('data-phead')) {
@@ -175,6 +240,10 @@
     }
   });
 
+  function currentOffer() {
+    const on = document.querySelector('.aggr button.on[data-offer]');
+    return on ? +on.dataset.offer : 2;
+  }
   function currentStance() {
     const on = document.querySelector('.aggr button.on');
     return on ? +on.dataset.stance : 2;
@@ -184,7 +253,8 @@
   document.addEventListener('click', function (ev) {
     if (ev.target.classList.contains('backdrop')) {
       const box = $('#modal-box');
-      if (box.querySelector('[data-fy]') || box.querySelector('[data-act="reset"]')) return;
+      if (box.querySelector('[data-fy]') || box.querySelector('[data-act="reset"]') ||
+          box.querySelector('[data-def]')) return;
       U.closeModal(); U.render();
     }
   });

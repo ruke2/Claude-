@@ -102,6 +102,28 @@ module.exports = function makePolicy(E, D) {
     const no = D.REGIONS.filter(function (r) { return !E.hasOffice(r.id); });
     if (no.length && surplus > E.officeCost() && eq > E.officeCost() * 12) E.openOffice(no[0].id);
 
+    // M&A: DD を必ず実施し、割安な会社だけを相場並みで取る
+    if (!process.env.NOMA && S.ma && S.ma.length) {
+      S.ma.forEach(function (t) {
+        if (t.dd || S.cash < E.ddCost(t) * 5) return;
+        if (E.maPrice(t, 2) > S.cash * 0.8) return;
+        E.runDD(t.id);
+      });
+      const best = S.ma.filter(function (t) {
+        return t.dd && t.hidden === 0 && !E.maCheck(t, 2) &&
+          E.maPrice(t, 2) < S.cash * 0.75 && t.trueProfit / E.maPrice(t, 2) > 0.065;
+      }).sort(function (a, b) { return b.trueProfit / E.maPrice(b, 2) - a.trueProfit / E.maPrice(a, 2); })[0];
+      if (best) E.acquire(best.id, 2);
+    }
+    // 統合責任者の指名
+    S.assets.forEach(function (a) {
+      if (a.type !== 'company' || a.pmiDone || a.pmiLeader) return;
+      const c = S.people.slice().sort(function (x, y) {
+        return (E.traitOf(y).pmi || 0) * 100 + y.lead - (E.traitOf(x).pmi || 0) * 100 - x.lead;
+      })[0];
+      if (c) E.setPMILeader(a.id, c.id);
+    });
+
     // 幹部の補充（枠に余裕があり、資金に余裕があるとき）
     if (!process.env.NOHIRE && S.people.length < 14 && surplus > E.careerCost() * 6) {
       const cand = E.careerCandidates().sort(function (a, b) { return E.personPower(b) - E.personPower(a); });

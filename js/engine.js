@@ -195,6 +195,7 @@ window.ENGINE = (function () {
       shares: 0.30, pbr: 0.85, trust: 52, roeTTM: 0, pbrPrev: 0.85,
       plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
       people: [], gradQueue: [], morale: 62, peopleNews: [], hunted: 0,
+      ma: [], maStats: { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 }, tobCooldown: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
@@ -458,6 +459,146 @@ window.ENGINE = (function () {
     return out;
   }
 
+  /* ---------------- M&A ---------------- */
+  function genTarget() {
+    const dv = pick(D.DIVISIONS);
+    const sc = scale();
+    const na = sc * rnd(25, 190);
+    const trueYield = rnd(0.060, 0.200);
+    const hidden = Math.random() < 0.34 ? na * rnd(0.05, 0.28) : 0;
+    return {
+      id: uid(),
+      name: pick(D.MA_PREFIX) + pick(D.MA_BIZ[dv.id]),
+      div: dv.id,
+      region: Math.random() < 0.45 ? 'jp' : pick(D.REGIONS).id,
+      listed: Math.random() < 0.45,
+      netAssets: na,
+      trueProfit: na * trueYield,                       // 年間の実力純利益
+      shownProfit: na * trueYield * rnd(0.75, 1.45),    // 表面上の数字
+      hidden: hidden,
+      rivals: ri(0, 3),
+      ttl: ri(2, 5),
+      dd: false,
+    };
+  }
+  function refreshMA() {
+    if (S.stage < 1) { S.ma = []; return; }
+    for (let i = S.ma.length - 1; i >= 0; i--) {
+      S.ma[i].ttl--;
+      if (S.ma[i].ttl <= 0) S.ma.splice(i, 1);
+    }
+    const target = Math.min(5, S.stage + 1);
+    while (S.ma.length < target) S.ma.push(genTarget());
+  }
+  function findTarget(id) { return S.ma.filter(function (t) { return t.id === id; })[0]; }
+
+  function ddCost(t) { return t.netAssets * 0.022 * (1 - Math.min(0.5, eyePt() * 0.07)); }
+  function runDD(id) {
+    const t = findTarget(id);
+    if (!t) return { ok: false, msg: '見つからない' };
+    if (t.dd) return { ok: false, msg: '実施済み' };
+    const c = ddCost(t);
+    if (S.cash < c) return { ok: false, msg: 'DD費用が足りない（必要 ' + money(c) + '）' };
+    S.cash -= c; capex(c);
+    t.dd = true;
+    log('「' + t.name + '」のデューデリジェンスを実施（' + money(c) + '）。', '');
+    save();
+    return { ok: true, cost: c };
+  }
+
+  function maPrice(t, oi) { return t.netAssets * D.MA_OFFERS[oi].k; }
+  function maWin(t, oi) {
+    let s = 52 + D.MA_OFFERS[oi].win;
+    s -= t.rivals * 9;
+    s += rating().win + S.credit * 0.10;
+    s += divSalesPt(t.div) * 0.3;
+    s += t.listed ? -8 : 0;
+    return clamp(s, 3, 96) / 100;
+  }
+  function maCheck(t, oi) {
+    const p = maPrice(t, oi);
+    if (p > S.cash) return '手元資金が不足（必要 ' + money(p) + ' / 現金 ' + money(S.cash) + '）';
+    if (p > Math.max(1, equity()) * 0.55 + borrowLimit() * 0.35) return '会社の体力に対して大きすぎる買収だ';
+    return null;
+  }
+  function acquire(id, oi) {
+    const t = findTarget(id);
+    if (!t) return { ok: false, msg: '見つからない' };
+    const err = maCheck(t, oi);
+    if (err) return { ok: false, msg: err };
+    const price = maPrice(t, oi);
+    const p = maWin(t, oi);
+    S.ma.splice(S.ma.indexOf(t), 1);
+    if (Math.random() > p) {
+      log('「' + t.name + '」の買収は競合に競り負けた。', 'down');
+      return { ok: true, won: false, prob: p, target: t };
+    }
+    S.cash -= price; countInvest(price);
+    const goodwill = price - t.netAssets;
+    // DDを省くと簿外債務をそのまま掴む
+    const surprise = t.dd ? 0 : t.hidden;
+    const dvm = D.DIV_BY_ID[t.div];
+    S.assets.push({
+      id: t.id, type: 'company', name: t.name, div: t.div, region: t.region,
+      comms: dvm.comms.slice(),
+      basis: price, value: price - surprise,
+      goodwill: goodwill, netAssets: t.netAssets,
+      profitBase: t.trueProfit / 12, growth: rnd(0.0040, 0.0110),
+      yieldRate: t.trueProfit / 12 / Math.max(1, price),
+      pmiLeft: 12, pmiLeader: null, pmiDone: false, synergy: 0, ddDone: t.dd,
+      age: 0, cum: 0, impaired: 0, life: 0,
+    });
+    S.maStats.done++;
+    S.credit = clamp(S.credit + 1.5, 0, 100);
+    log('「' + t.name + '」を ' + money(price) + ' で買収（のれん ' + money(goodwill) + '）。', 'gold');
+    if (surprise > 0) {
+      log('DDを省いたツケで、' + money(surprise) + ' の簿外債務が発覚した。', 'down');
+      S.credit = clamp(S.credit - 4, 0, 100);
+    }
+    save();
+    return { ok: true, won: true, prob: p, target: t, price: price, goodwill: goodwill, surprise: surprise };
+  }
+
+  function setPMILeader(assetId, personId) {
+    const a = S.assets.filter(function (x) { return x.id === assetId; })[0];
+    if (!a || a.type !== 'company') return { ok: false, msg: '見つからない' };
+    S.assets.forEach(function (x) { if (x.pmiLeader === personId && x.id !== assetId) x.pmiLeader = null; });
+    a.pmiLeader = personId || null;
+    const p = personId ? findPerson(personId) : null;
+    if (p) pnews(p.name + ' を「' + a.name + '」の統合責任者に指名した。', 'gold', p.face);
+    save();
+    return { ok: true };
+  }
+  function pmiChance(a) {
+    const p = a.pmiLeader ? findPerson(a.pmiLeader) : null;
+    let c = 0.30;
+    if (p) c += p.lead / 220 + (traitOf(p).pmi || 0);
+    if (a.ddDone) c += 0.12;
+    c += corpOf('hr') * 0.03 + S.morale * 0.0015;
+    c -= Math.min(0.25, a.goodwill / Math.max(1, a.netAssets) * 0.25);
+    return clamp(c, 0.05, 0.95);
+  }
+  function divSynergy(divId) {
+    let v = 0;
+    S.assets.forEach(function (a) { if (a.type === 'company' && a.div === divId) v += a.synergy; });
+    return Math.min(0.30, v * 0.09);
+  }
+  function exitCompany(id) {
+    const i = S.assets.findIndex(function (a) { return a.id === id; });
+    if (i < 0) return { ok: false, msg: '見つからない' };
+    const a = S.assets[i];
+    if (!a.pmiDone) return { ok: false, msg: '統合が終わっていない会社は売れない' };
+    const mult = 1 + a.synergy * 0.22 + a.age * 0.0022;
+    const proceeds = a.value * clamp(mult, 0.7, 1.9) * rnd(0.93, 1.08);
+    S.cash += proceeds;
+    S.assets.splice(i, 1);
+    S.pend.gain += proceeds - a.value;
+    S.maStats.exits++;
+    log('「' + a.name + '」を ' + money(proceeds) + ' で売却（取得原価比 ' + signed(proceeds - a.basis) + '）。', proceeds >= a.basis ? 'up' : 'down');
+    save();
+    return { ok: true, proceeds: proceeds };
+  }
+
   /* ---------------- deal generation ---------------- */
   function typeWeights() {
     const s = S.stage;
@@ -500,7 +641,7 @@ window.ENGINE = (function () {
 
     if (type === 'trade') {
       d.volume = sc * rnd(30, 110) * sm;
-      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1) * (1 + divTraitMargin(dv.id));
+      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1) * (1 + divTraitMargin(dv.id) + divSynergy(dv.id));
       d.months = ri(1, 4);
       d.capital = d.volume * rnd(0.16, 0.30);
       d.risk = rnd(0.006, 0.042);
@@ -508,7 +649,7 @@ window.ENGINE = (function () {
       d.exposure = d.capital;
     } else if (type === 'project') {
       d.contract = sc * rnd(48, 200) * sm;
-      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10) * (1 + divTraitMargin(dv.id));
+      d.marginRate = rnd(0.05, 0.17) * (1 + boostOf(dv.id) * 0.10) * (1 + divTraitMargin(dv.id) + divSynergy(dv.id));
       d.months = ri(6, 20);
       d.adv = d.contract * rnd(0.12, 0.25);
       d.cost = d.contract * (1 - d.marginRate);
@@ -552,6 +693,7 @@ window.ENGINE = (function () {
     s += boostOf(d.div) * 8;
     s += regionWin(d.region);
     s += peopleWin(d);
+    s += divSynergy(d.div) * 40;
     s += (S.morale - 60) * 0.16;
     s += rating().win;
     s += S.credit * 0.13;
@@ -916,9 +1058,58 @@ window.ENGINE = (function () {
     }
   }
 
+  /* 買収した事業会社: PMI → 稼働 → のれん減損 */
+  function processCompany(a, L) {
+    a.age++;
+    const mAdj = 1 + (mfac(a.comms) - 1) * 0.30;
+    if (!a.pmiDone) {
+      a.pmiLeft--;
+      const d0 = a.profitBase * 0.30 * clamp(mAdj, 0.3, 1.6);
+      S.cash += d0; L.dividend += d0; a.cum += d0; seg(a.div).dividend += d0;
+      if (a.pmiLeft <= 0) {
+        a.pmiDone = true;
+        if (Math.random() < pmiChance(a)) {
+          a.synergy = rnd(0.70, 1.30);
+          S.maStats.pmiOk++;
+          S.credit = clamp(S.credit + 3, 0, 100);
+          S.trust = clamp(S.trust + 3, 0, 100);
+          log('「' + a.name + '」の統合が完了。シナジーが立ち上がった。', 'up');
+        } else {
+          a.synergy = rnd(0, 0.25);
+          const w = a.goodwill * rnd(0.55, 1.0);
+          a.value = Math.max(0, a.value - w);
+          a.impaired = clamp(a.impaired + 0.30, 0, 0.9);
+          L.impair -= w; seg(a.div).impair -= w;
+          S.maStats.pmiNg++; S.stats.impair++;
+          S.credit = clamp(S.credit - 6, 0, 100);
+          S.trust = clamp(S.trust - 8, 0, 100);
+          log('「' + a.name + '」の統合に失敗。のれん ' + money(w) + ' を減損した。', 'down');
+        }
+      }
+      return;
+    }
+    const d = a.profitBase * (1 + a.synergy * 0.55) * clamp(mAdj, 0.25, 2.0) * fxFac();
+    S.cash += d; L.dividend += d; a.cum += d; seg(a.div).dividend += d;
+    const target = a.basis * Math.pow(1 + a.growth * (1 + a.synergy * 0.5), a.age)
+      * clamp(mAdj, 0.5, 1.9) * (1 - a.impaired);
+    const nv = a.value + (target - a.value) * 0.18;
+    L.reval += nv - a.value; seg(a.div).reval += nv - a.value;
+    a.value = Math.max(0, nv);
+    if (a.goodwill > 0 && a.value < a.basis * 0.70 &&
+        Math.random() < 0.05 * S.mod.impair * traitMin('impair', 1)) {
+      const w = Math.min(a.goodwill, a.value * rnd(0.15, 0.35));
+      a.value -= w; a.impaired = clamp(a.impaired + 0.10, 0, 0.9);
+      L.impair -= w; seg(a.div).impair -= w;
+      S.stats.impair++;
+      S.credit = clamp(S.credit - 3, 0, 100);
+      log('「' + a.name + '」ののれんを ' + money(w) + ' 減損した。', 'down');
+    }
+  }
+
   function processAssets(L) {
     for (let i = S.assets.length - 1; i >= 0; i--) {
       const a = S.assets[i];
+      if (a.type === 'company') { processCompany(a, L); continue; }
       a.age++;
       const mf = mfac(a.comms);
       const sens = a.type === 'concession' ? 1.0 : 0.35;
@@ -1038,11 +1229,59 @@ window.ENGINE = (function () {
     return l.findIndex(function (x) { return x.me; }) + 1;
   }
 
+  /* ---------------- 敵対的買収 ---------------- */
+  function checkTOB() {
+    if (S.tobCooldown > 0) { S.tobCooldown--; return null; }
+    if (S.stage < 2 || S.over) return null;
+    if (S.pbr > 0.72 || S.trust > 48) return null;
+    if (Math.random() > 0.07) return null;
+    const raider = pick(['外資系プライベート・エクイティ', pick(S.rivals).name + '（同業）', 'アクティビスト・ファンド']);
+    const premium = rnd(0.25, 0.55);
+    S.tob = { raider: raider, premium: premium, price: mcap() * (1 + premium) };
+    S.tobCooldown = 20;
+    log('【敵対的買収提案】' + raider + ' が当社株の公開買付を表明した。', 'down');
+    return S.tob;
+  }
+  function defendCost() { return mcap() * 0.22; }
+  function defendTOB(kind) {
+    let ok = false, msg = '';
+    if (kind === 'buyback') {
+      const need = defendCost();
+      if (S.cash < need) return { ok: false, msg: '自社株買いの資金がない（必要 ' + money(need) + '）' };
+      S.cash -= need; capex(need);
+      const pr = sharePrice();
+      if (pr > 0.01) S.shares = Math.max(0.02, S.shares - need / pr);
+      S.pbr = clamp(S.pbr * 1.28, 0.22, 4.0);
+      ok = Math.random() < clamp(0.55 + S.trust * 0.005, 0.30, 0.92);
+      msg = ok ? '自社株買いで株価を押し上げ、公開買付は不成立に終わった。'
+               : '自社株買いでは足りなかった。株主は高値の誘惑に勝てなかった。';
+    } else if (kind === 'white') {
+      const give = 0.24;
+      const raise = mcap() * give * 0.8;
+      S.shares *= (1 + give);
+      S.cash += raise;
+      S.trust = clamp(S.trust + 6, 0, 100);
+      ok = Math.random() < 0.86;
+      msg = ok ? '同業のホワイトナイトが現れ、買収提案は退けられた。独立性の一部と引き換えに ' + money(raise) + ' を得た。'
+               : 'ホワイトナイトの支援も間に合わなかった。';
+    } else {
+      const p = clamp(S.trust / 100 * 0.95, 0.05, 0.88);
+      ok = Math.random() < p;
+      S.trust = clamp(S.trust - 8, 0, 100);
+      msg = ok ? '株主説明が奏功し、公開買付は否決された。'
+               : '株主は経営陣の説明を信じなかった。';
+    }
+    if (!ok) { S.over = true; S.overReason = 'tob'; }
+    else { S.tob = null; S.credit = clamp(S.credit + 3, 0, 100); }
+    save();
+    return { ok: true, defended: ok, msg: msg };
+  }
+
   /* ---------------- advance one month ---------------- */
   function advance() {
     if (S.over || S.cleared) return { over: true };
     const eqBefore = equity();
-    const out = { event: null, fy: null, promote: null, over: false, cleared: false };
+    const out = { event: null, fy: null, promote: null, over: false, cleared: false, tob: null };
 
     S.m++; if (S.m > 12) { S.m = 1; S.y++; }
     S.turn++;
@@ -1088,6 +1327,7 @@ window.ENGINE = (function () {
     stepPeople();
     stepRivals();
     refreshMarket();
+    refreshMA();
     S.slots = slotsMax();
 
     const eqAfter = equity();
@@ -1109,7 +1349,7 @@ window.ENGINE = (function () {
     if (eqAfter < 0) {
       S.insolvent++;
       log('債務超過（' + S.insolvent + 'ヶ月連続）。抜本的な立て直しが必要だ。', 'down');
-      if (S.insolvent >= 4) { S.over = true; out.over = true; }
+      if (S.insolvent >= 4) { S.over = true; S.overReason = 'insolvent'; out.over = true; }
     } else S.insolvent = 0;
 
     // 決算（3月）
@@ -1161,6 +1401,7 @@ window.ENGINE = (function () {
     if (S.stage === D.STAGES.length - 1 && myRank() === 1) {
       S.cleared = true; out.cleared = true;
     }
+    if (!S.over && !S.cleared) out.tob = checkTOB();
     save();
     return out;
   }
@@ -1236,6 +1477,9 @@ window.ENGINE = (function () {
     if (!S.gradQueue) S.gradQueue = [];
     if (S.morale == null) S.morale = 62;
     if (!S.peopleNews) S.peopleNews = [];
+    if (!S.ma) S.ma = [];
+    if (!S.maStats) S.maStats = { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 };
+    if (S.tobCooldown == null) S.tobCooldown = 0;
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -1265,6 +1509,10 @@ window.ENGINE = (function () {
     promotePerson: promotePerson, promoteSlots: promoteSlots,
     gradCost: gradCost, hireGrads: hireGrads, careerCost: careerCost, careerCandidates: careerCandidates,
     hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
+    genTarget: genTarget, findTarget: findTarget, ddCost: ddCost, runDD: runDD,
+    maPrice: maPrice, maWin: maWin, maCheck: maCheck, acquire: acquire,
+    setPMILeader: setPMILeader, pmiChance: pmiChance, divSynergy: divSynergy,
+    exitCompany: exitCompany, defendTOB: defendTOB, defendCost: defendCost,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,

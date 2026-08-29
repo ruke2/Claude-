@@ -77,6 +77,37 @@ const MONTHS = +(process.argv[2] || 40);
     }
   }
 
+  // M&A のUIを直接検証（乱数プレイでは段階に届かないため状態を作る）
+  await page.evaluate(() => {
+    ENGINE.S.stage = 2; ENGINE.S.cash = 4000; ENGINE.S.ma = [ENGINE.genTarget(), ENGINE.genTarget()];
+    UI.render();
+  });
+  await page.click('#tabs button[data-tab="market"]');
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma-list.png') });
+  await page.click('[data-ma]');
+  await page.waitForTimeout(60);
+  const ddb = await page.$('[data-dd]');
+  if (ddb) await ddb.click();
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma.png') });
+  const buy = await page.$('[data-buy]:not([disabled])');
+  if (buy) { await buy.click(); await page.waitForTimeout(60); const c = await page.$('[data-close]'); if (c) await c.click(); }
+  await page.click('#tabs button[data-tab="assets"]');
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma-asset.png') });
+  const pmib = await page.$('[data-pmi]');
+  if (pmib) { await pmib.click(); await page.waitForTimeout(60);
+    const sp = await page.$('[data-setpmi]'); if (sp) await sp.click(); }
+
+  // 敵対的買収の防衛モーダル
+  await page.evaluate(() => {
+    UI.tobModal({ raider: '外資系プライベート・エクイティ', premium: 0.42, price: ENGINE.mcap() * 1.42 }, null);
+  });
+  await page.waitForTimeout(60);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'tob.png') });
+  await page.evaluate(() => UI.closeModal());
+
   // 人事タブ
   await page.click('#tabs button[data-tab="admin"]');
   await page.click('[data-sub="hr"]');
