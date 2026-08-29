@@ -423,6 +423,56 @@ window.GAME = (function () {
       desc: '減損と不祥事が減り、格付が上がる' },
   ];
 
+  /* ---- 中期経営計画：重点戦略カード ------------------ */
+  /* fx のキーは engine 側の fx()/fxAdd() が解釈する */
+  D.PLAN_CARDS = [
+    { id: 'resource', name: '資源メジャー化', icon: '⛏️',
+      good: '権益案件が数多く持ち込まれ、利回りが26%上がる',
+      bad:  '減損リスクが3割増しになる',
+      fx: { concW: 2.6, concYield: 1.26, impair: 1.32 } },
+    { id: 'nonres', name: '非資源シフト', icon: '🏬',
+      good: 'トレードと事業投資が増え、採算も改善する',
+      bad:  '資源権益はほとんど回ってこなくなる',
+      fx: { tradeW: 1.22, invW: 1.32, concW: 0.35, margin: 1.05 } },
+    { id: 'asia', name: 'アジア・パシフィック深耕', icon: '🌏',
+      good: '東南アジア・中国・インドの案件が大型化し、落札力 +9pt。拠点開設費も3割安い',
+      bad:  'その他地域の落札力 −4pt',
+      fx: { officeCost: 0.65 }, prefRegions: ['asia', 'cn', 'in'], prefWin: 9, otherWin: -4, prefSize: 1.35 },
+    { id: 'green', name: '脱炭素トランジション', icon: '🌱',
+      good: '生活産業・機械の案件が増え、サステナ水準が毎年上がる。減損も減る',
+      bad:  '化石燃料権益の利回りが下がる',
+      fx: { impair: 0.80, fossilYield: 0.85, esgYear: 0.45 }, divBoost: { consumer: 1.6, machinery: 1.4 } },
+    { id: 'digital', name: 'デジタル戦略', icon: '💻',
+      good: '商談枠 +1、販管費 −10%、DX水準が毎年上がる',
+      bad:  '目に見える売上を生まない（他のカードを1枚諦めることになる）',
+      fx: { slots: 1, sga: 0.90, dxYear: 0.34 } },
+    { id: 'talent', name: '人材投資', icon: '🧑‍💼',
+      good: '同時に回せる案件が +4、人材水準が毎年上がる',
+      bad:  '人件費が1割上がる',
+      fx: { cap: 4, wage: 1.10, hrYear: 0.45 } },
+    { id: 'discipline', name: '財務規律', icon: '🏦',
+      good: '調達金利 −0.7%、信用が積み上がりやすい',
+      bad:  '借入枠が15%縮む＝成長が鈍る',
+      fx: { spread: 0.007, lev: 0.85, credit: 0.06 } },
+    { id: 'partner', name: 'グローバル・パートナーシップ', icon: '🤝',
+      good: '大型案件（💎）が持ち込まれやすく、全案件が15%大型化する',
+      bad:  '競合が1社増える',
+      fx: { bigChance: 0.06, rivals: 1, sizeAll: 1.15 } },
+  ];
+  D.CARD_BY_ID = {};
+  D.PLAN_CARDS.forEach(function (c) { D.CARD_BY_ID[c.id] = c; });
+
+  /* ---- 中期経営計画：目標の難易度 -------------------- */
+  D.PLAN_TIERS = ['保守的', '標準', '挑戦的'];
+  D.PLAN_ITEMS = [
+    { id: 'profit', name: '最終年度 純利益', unit: 'money',
+      desc: '3年目の通期純利益。素直な規模の目標' },
+    { id: 'roe', name: '最終年度 ROE', unit: 'pct',
+      desc: '経営の質。規模を追うと下がるので上の目標と綱引きになる' },
+    { id: 'invest', name: '3年累計 投資額', unit: 'money',
+      desc: '予算配分・権益取得・本部投資の累計。守りに入ることを許さない' },
+  ];
+
   /* ---- ライバル商社 ---------------------------------- */
   D.RIVALS = [
     { name: '蒼海商事',   base: 96000, g: 0.0072 },
@@ -584,6 +634,7 @@ window.ENGINE = (function () {
   }
   function stage() { return D.STAGES[S.stage]; }
   function scale() { return stage().scale; }
+  function fiscalYear() { return S.m >= 4 ? S.y + 1 : S.y; }
   function dateLabel(y, m) { return y + '年' + m + '月'; }
   function now() { return dateLabel(S.y, S.m); }
 
@@ -615,18 +666,70 @@ window.ENGINE = (function () {
   }
   function segTotal(x) { return x.gross + x.dividend + x.reval + x.impair; }
 
-  function boostOf(id) { return (S.boost && S.boost[id]) || 0; }
+  /* ---- 中期経営計画：重点戦略カードの効果 ---- */
+  function planCards() { return (S.plan && S.plan.cards) || []; }
+  function hasCard(id) { return planCards().indexOf(id) >= 0; }
+  function fx(k, base) {
+    let v = base;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.fx && c.fx[k] != null) v *= c.fx[k];
+    });
+    return v;
+  }
+  function fxAdd(k) {
+    let v = 0;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.fx && c.fx[k] != null) v += c.fx[k];
+    });
+    return v;
+  }
+  function regionWin(regId) {
+    let v = 0;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (!c || !c.prefRegions) return;
+      v += c.prefRegions.indexOf(regId) >= 0 ? (c.prefWin || 0) : (c.otherWin || 0);
+    });
+    return v;
+  }
+  function regionSize(regId) {
+    let v = 1;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.prefRegions && c.prefRegions.indexOf(regId) >= 0) v *= (c.prefSize || 1);
+    });
+    return v;
+  }
+  function divCardW(divId) {
+    let v = 1;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.divBoost && c.divBoost[divId]) v *= c.divBoost[divId];
+    });
+    return v;
+  }
+  /* 投資額の累計（中計の投資目標に効く） */
+  function countInvest(v) {
+    if (v <= 0) return;
+    if (S.plan) S.plan.cumInvest = (S.plan.cumInvest || 0) + v;
+    S.cumInvest = (S.cumInvest || 0) + v;
+  }
+
+  function boostOf(id) { return ((S.boost && S.boost[id]) || 0) + (S.planBonus || 0) * 0.25; }
   function corpOf(id) { return (S.corp && S.corp[id]) || 0; }
 
   function divOf(id) { return S.div[id]; }
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
-  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2)); }
+  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')); }
   function slotsMax() {
-    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3) + Math.floor(corpOf('dx')), 3, 11);
+    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3)
+      + Math.floor(corpOf('dx')) + fxAdd('slots'), 3, 12);
   }
-  function borrowLimit() { return Math.max(0, equity() * rating().lev - S.debt); }
-  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread); }
+  function borrowLimit() { return Math.max(0, equity() * fx('lev', rating().lev) - S.debt); }
+  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread')); }
 
   function bookAssets() {
     let v = 0;
@@ -666,6 +769,7 @@ window.ENGINE = (function () {
       seg: {}, segPrev: null,
       budget: {}, boost: {}, corp: { dx: 0, hr: 0, esg: 0 },
       shares: 0.30, pbr: 0.85, trust: 52, roeTTM: 0, pbrPrev: 0.85,
+      plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
@@ -681,24 +785,32 @@ window.ENGINE = (function () {
   /* ---------------- deal generation ---------------- */
   function typeWeights() {
     const s = S.stage;
-    if (s === 0) return [{ t: 'trade', w: 76 }, { t: 'project', w: 12 }, { t: 'investment', w: 9 }, { t: 'concession', w: 3 }];
-    if (s === 1) return [{ t: 'trade', w: 62 }, { t: 'project', w: 16 }, { t: 'investment', w: 14 }, { t: 'concession', w: 8 }];
-    if (s === 2) return [{ t: 'trade', w: 50 }, { t: 'project', w: 18 }, { t: 'investment', w: 18 }, { t: 'concession', w: 14 }];
-    return [{ t: 'trade', w: 40 }, { t: 'project', w: 18 }, { t: 'investment', w: 22 }, { t: 'concession', w: 20 }];
+    let b;
+    if (s === 0) b = [76, 12, 9, 3];
+    else if (s === 1) b = [62, 16, 14, 8];
+    else if (s === 2) b = [50, 18, 18, 14];
+    else b = [40, 18, 22, 20];
+    return [
+      { t: 'trade', w: b[0] * fx('tradeW', 1) },
+      { t: 'project', w: b[1] },
+      { t: 'investment', w: b[2] * fx('invW', 1) },
+      { t: 'concession', w: b[3] * fx('concW', 1) },
+    ];
   }
 
   function genDeal(big) {
     const sc = scale();
     const type = wpick(typeWeights(), 'w').t;
     const dv = wpick(D.DIVISIONS.map(function (x) {
-      return { d: x, w: 1 + boostOf(x.id) * 0.7 };
+      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) };
     }), 'w').d;
     // 拠点のある地域が出やすい
     let reg;
     if (Math.random() < 0.45 && S.offices.length) reg = pick(S.offices);
     else reg = pick(D.REGIONS).id;
     const item = pick(D.ITEMS[type][dv.id]);
-    const sm = (big ? rnd(2.4, 4.0) : rnd(0.75, 1.35)) * (1 + boostOf(dv.id) * 0.20);
+    const sm = (big ? rnd(2.4, 4.0) : rnd(0.75, 1.35)) * (1 + boostOf(dv.id) * 0.20)
+      * fx('sizeAll', 1) * regionSize(reg);
     const rg = D.REGION_BY_ID[reg];
 
     const d = {
@@ -706,13 +818,13 @@ window.ENGINE = (function () {
       name: rg.name + '／' + item,
       comms: dv.comms.slice(),
       ttl: ri(2, 5),
-      rivals: ri(1, 5),
+      rivals: ri(1, 5) + fxAdd('rivals'),
       diff: rnd(0.45, 1.45) + (type === 'concession' ? 0.25 : 0) + (big ? 0.35 : 0),
     };
 
     if (type === 'trade') {
       d.volume = sc * rnd(30, 110) * sm;
-      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10);
+      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1);
       d.months = ri(1, 4);
       d.capital = d.volume * rnd(0.16, 0.30);
       d.risk = rnd(0.006, 0.042);
@@ -729,7 +841,8 @@ window.ENGINE = (function () {
       d.risk = rnd(0.02, 0.07);
     } else if (type === 'concession') {
       d.invest = sc * rnd(60, 270) * sm;
-      d.yieldRate = rnd(0.0095, 0.021) * (1 + boostOf(dv.id) * 0.08);
+      d.yieldRate = rnd(0.0095, 0.021) * (1 + boostOf(dv.id) * 0.08) * fx('concYield', 1)
+        * (dv.id === 'energy' ? fx('fossilYield', 1) : 1);
       d.life = ri(48, 140);
       d.upfront = d.invest;
       d.exposure = d.invest;
@@ -737,7 +850,7 @@ window.ENGINE = (function () {
     } else {
       d.invest = sc * rnd(38, 200) * sm;
       d.yieldRate = rnd(0.0062, 0.0128) * (1 + boostOf(dv.id) * 0.08);
-      d.growth = rnd(0.0022, 0.0068);
+      d.growth = rnd(0.0022, 0.0068) * fx('margin', 1);
       d.upfront = d.invest;
       d.exposure = d.invest;
       d.risk = rnd(0.005, 0.02);
@@ -752,6 +865,7 @@ window.ENGINE = (function () {
     }
     const target = 7 + Math.min(5, S.offices.length - 1) + Math.min(4, S.stage);
     while (S.market.length < target) S.market.push(genDeal());
+    if (Math.random() < fxAdd('bigChance')) S.market.push(genDeal(true));
   }
 
   /* ---------------- bidding ---------------- */
@@ -760,6 +874,7 @@ window.ENGINE = (function () {
     let s = 46;
     s += divOf(d.div).lv * 4.2;
     s += boostOf(d.div) * 8;
+    s += regionWin(d.region);
     s += rating().win;
     s += S.credit * 0.13;
     s += hasOffice(d.region) ? 10 : 0;
@@ -829,7 +944,7 @@ window.ENGINE = (function () {
         risk: d.risk, delays: 0, big: d.big,
       });
     } else {
-      S.cash -= d.invest;
+      S.cash -= d.invest; countInvest(d.invest);
       S.assets.push({
         id: d.id, type: d.type, name: d.name, div: d.div, region: d.region, comms: d.comms,
         basis: d.invest, value: d.invest, yieldRate: d.yieldRate * (0.85 + 0.15 * st.mult),
@@ -870,18 +985,18 @@ window.ENGINE = (function () {
     const c = upgradeCost(divId);
     if (S.div[divId].lv >= 25) return { ok: false, msg: '既に最高水準' };
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
-    S.cash -= c; capex(c);
+    S.cash -= c; capex(c); countInvest(c);
     S.div[divId].lv++;
     log(D.DIV_BY_ID[divId].name + ' に ' + money(c) + ' を投資、Lv.' + S.div[divId].lv + ' へ。', 'gold');
     return { ok: true };
   }
 
-  function officeCost() { return scale() * 16 + 5; }
+  function officeCost() { return fx('officeCost', scale() * 16 + 5); }
   function openOffice(regId) {
     if (hasOffice(regId)) return { ok: false, msg: '既に拠点がある' };
     const c = officeCost();
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
-    S.cash -= c; capex(c);
+    S.cash -= c; capex(c); countInvest(c);
     S.offices.push(regId);
     S.credit = clamp(S.credit + 1.5, 0, 100);
     log(D.REGION_BY_ID[regId].name + 'に拠点を開設した。', 'gold');
@@ -905,7 +1020,7 @@ window.ENGINE = (function () {
   }
 
   /* 年次の資源配分 */
-  function budgetPool() { return Math.max(0, S.cash * 0.65); }
+  function budgetPool() { return Math.max(0, S.cash * (0.65 + (S.planBonus || 0) * 0.12)); }
   function budgetUnit() { return Math.max(0.1, Math.round(budgetPool() / 16 * 10) / 10); }
   function allocateBudget(map) {
     let total = 0;
@@ -917,12 +1032,101 @@ window.ENGINE = (function () {
     D.BUDGET_CORP.forEach(function (c) {
       S.corp[c.id] = Math.min(6, S.corp[c.id] * 0.86 + (map[c.id] || 0) / (scale() * 9));
     });
-    S.cash -= total; capex(total);
+    S.cash -= total; capex(total); countInvest(total);
     S.budget = map;
     if (total > 0) log('年度予算 ' + money(total) + ' を配分した。', 'gold');
     else log('今年度は投資を見送った。各本部の地力が落ちていく。', 'down');
     save();
     return total;
+  }
+
+  /* ---------------- 中期経営計画 ---------------- */
+  function planTargetOptions() {
+    const eq = Math.max(1, equity());
+    const last = S.fyHistory.length ? S.fyHistory[S.fyHistory.length - 1].profit : eq * 0.10;
+    const base = Math.max(eq * 0.06, last, 1);
+    return {
+      profit: [base * 3.6, base * 7.5, base * 14.0],
+      roe: [0.15, 0.26, 0.40],
+      invest: [eq * 1.05, eq * 2.10, eq * 3.60],
+    };
+  }
+  function formulatePlan(tiers, cards) {
+    const opt = planTargetOptions();
+    S.planNo = (S.planNo || 0) + 1;
+    S.plan = {
+      no: S.planNo,
+      startFY: fiscalYear() + 1, endFY: fiscalYear() + 3,
+      tiers: tiers,
+      targets: {
+        profit: opt.profit[tiers.profit],
+        roe: opt.roe[tiers.roe],
+        invest: opt.invest[tiers.invest],
+      },
+      cards: cards.slice(0, 2),
+      cumInvest: 0,
+    };
+    log('第' + S.planNo + '次中期経営計画（' + S.plan.startFY + '〜' + S.plan.endFY + '年3月期）を策定した。', 'gold');
+    save();
+    return S.plan;
+  }
+  function evaluatePlan(rec) {
+    const p = S.plan;
+    if (!p) return null;
+    const res = {
+      no: p.no, startFY: p.startFY, endFY: p.endFY, cards: p.cards.slice(),
+      items: [
+        { id: 'profit', target: p.targets.profit, actual: rec.profit, ok: rec.profit >= p.targets.profit },
+        { id: 'roe', target: p.targets.roe, actual: rec.roe, ok: rec.roe >= p.targets.roe },
+        { id: 'invest', target: p.targets.invest, actual: p.cumInvest || 0, ok: (p.cumInvest || 0) >= p.targets.invest },
+      ],
+    };
+    res.count = res.items.filter(function (x) { return x.ok; }).length;
+    const hard = (p.tiers.profit + p.tiers.roe + p.tiers.invest) / 6;
+    if (res.count === 3) {
+      S.trust = clamp(S.trust + 12 + hard * 10, 0, 100);
+      S.credit = clamp(S.credit + 6 + hard * 4, 0, 100);
+      S.pbr = clamp(S.pbr * (1.15 + hard * 0.18), 0.22, 4.0);
+      res.gain = 0.30 + hard * 0.50;
+      res.msg = '全項目を達成。市場は当社の実行力を認め、投資余力と現場の勢いが積み上がった。';
+      res.tone = 'up';
+    } else if (res.count === 2) {
+      S.trust = clamp(S.trust + 5, 0, 100);
+      S.credit = clamp(S.credit + 2, 0, 100);
+      res.gain = 0.12;
+      res.msg = '概ね計画線。ただし積み残しは記憶される。';
+      res.tone = '';
+    } else if (res.count === 1) {
+      S.trust = clamp(S.trust - 5, 0, 100);
+      res.gain = -0.20;
+      res.msg = '未達が目立つ。説明責任を問う声が出ている。';
+      res.tone = 'warn';
+    } else {
+      S.trust = clamp(S.trust - (14 + hard * 8), 0, 100);
+      S.credit = clamp(S.credit - 6, 0, 100);
+      S.pbr = clamp(S.pbr * 0.78, 0.22, 4.0);
+      res.gain = -0.60;
+      res.msg = '全項目未達。株主は経営陣の姿勢そのものを疑い始めた。';
+      res.tone = 'down';
+    }
+    S.planBonus = clamp((S.planBonus || 0) + res.gain, 0, 1.2);
+    res.bonus = S.planBonus;
+    log('第' + p.no + '次中計 ' + res.count + '/3 達成。' + res.msg, res.tone === 'up' ? 'gold' : res.tone === 'down' ? 'down' : 'info');
+    S.planHistory.push(res);
+    S.plan = null;
+    save();
+    return res;
+  }
+  function planProgress() {
+    if (!S.plan) return null;
+    const t = S.plan.targets;
+    return {
+      no: S.plan.no, endFY: S.plan.endFY, cards: S.plan.cards,
+      yearsLeft: Math.max(0, S.plan.endFY - fiscalYear() + 1),
+      profit: { cur: S.fy.profit, target: t.profit },
+      roe: { cur: S.roeTTM, target: t.roe },
+      invest: { cur: S.plan.cumInvest || 0, target: t.invest },
+    };
   }
 
   function sellAsset(id) {
@@ -1060,7 +1264,7 @@ window.ENGINE = (function () {
 
       // 減損
       if (a.value < a.basis * 0.68 &&
-          Math.random() < 0.09 * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
+          Math.random() < fx('impair', 0.09) * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
         L.impair -= w; seg(a.div).impair -= w;
@@ -1078,12 +1282,13 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * S.wageRate;
+    const wage = S.staff * fx('wage', S.wageRate);
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
+    const sgaF = fx('sga', sga);
     const int = S.debt * interestRate() / 12;
-    S.cash -= (wage + sga + int);
-    L.wage -= wage; L.sga -= sga; L.interest -= int;
+    S.cash -= (wage + sgaF + int);
+    L.wage -= wage; L.sga -= sgaF; L.interest -= int;
   }
 
   function rescue(L) {
@@ -1198,7 +1403,7 @@ window.ENGINE = (function () {
       }
       checkLevel(d.id);
     });
-    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05, 0, 100);
+    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit'), 0, 100);
 
     stepRivals();
     refreshMarket();
@@ -1237,6 +1442,14 @@ window.ENGINE = (function () {
         wage: S.fy.wage || 0, sga: S.fy.sga || 0, interest: S.fy.interest || 0, gain: S.fy.gain || 0,
         debt: S.debt, cash: S.cash, shares: S.shares,
       };
+      if (S.plan) {
+        S.corp.dx = Math.min(6, S.corp.dx + fxAdd('dxYear'));
+        S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
+        S.corp.esg = Math.min(6, S.corp.esg + fxAdd('esgYear'));
+      }
+      rec.needEval = !!(S.plan && S.plan.endFY <= S.y);
+      rec.needPlan = !S.plan || rec.needEval;
+      rec.plan = S.plan;
       S.fyHistory.push(rec);
       if (S.fyHistory.length > 40) S.fyHistory.shift();
       S.segPrev = S.seg; S.seg = newSeg();
@@ -1331,6 +1544,11 @@ window.ENGINE = (function () {
     if (S.roeTTM == null) S.roeTTM = 0;
     if (!S.pend) S.pend = { capex: 0, gain: 0 };
     if (S.lastCapex == null) S.lastCapex = 0;
+    if (S.planNo == null) S.planNo = 0;
+    if (!S.planHistory) S.planHistory = [];
+    if (S.plan === undefined) S.plan = null;
+    if (S.cumInvest == null) S.cumInvest = 0;
+    if (S.planBonus == null) S.planBonus = 0;
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -1349,6 +1567,9 @@ window.ENGINE = (function () {
     seg: seg, segTotal: segTotal, boostOf: boostOf, corpOf: corpOf,
     budgetPool: budgetPool, budgetUnit: budgetUnit, allocateBudget: allocateBudget,
     mcap: mcap, sharePrice: sharePrice, bps: bps, payoutMax: payoutMax,
+    planTargetOptions: planTargetOptions, formulatePlan: formulatePlan,
+    evaluatePlan: evaluatePlan, planProgress: planProgress, hasCard: hasCard,
+    fiscalYear: fiscalYear,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,
@@ -1479,6 +1700,7 @@ window.UI = (function () {
     const fixed = S.staff * S.wageRate + S.offices.length * 0.5 * Math.sqrt(E.scale()) + Math.max(0, E.equity()) * 0.0006 + 0.25 + S.debt * E.interestRate() / 12;
 
     let h = '';
+    h += planCard();
     h += '<div class="card"><div class="sect">経営指標</div><div class="kv">' +
       '<span class="k">総資産（現金＋簿価）</span><span class="v">' + money(S.cash + E.bookAssets()) + '</span>' +
       '<span class="k">有利子負債</span><span class="v">' + money(S.debt) + '</span>' +
@@ -1526,6 +1748,37 @@ window.UI = (function () {
       h += '<div class="logline"><span class="t">' + l.t + '</span><span class="b ' + (l.k || '') + '">' + esc(l.b) + '</span></div>';
     });
     h += '</div>';
+    return h;
+  }
+
+  /* 中期経営計画の進捗 */
+  function planCard() {
+    const S = E.S, p = E.planProgress();
+    if (!p) {
+      return S.planNo ? '' :
+        '<div class="card quiet" style="background:var(--card2)"><div class="sect">中期経営計画</div>' +
+        '<p class="tiny muted" style="margin:0">最初の決算（3月）で第1次中期経営計画を策定する。' +
+        '3年分の数値目標と重点戦略を、自分で選んで背負うことになる。</p></div>';
+    }
+    function bar(cur, target, label, fmt) {
+      const r = target > 0 ? E.clamp(cur / target, 0, 1) : 0;
+      const ok = cur >= target;
+      return '<div style="margin-bottom:11px"><div class="row small"><span class="muted">' + label + '</span>' +
+        '<span class="num ' + (ok ? 'up' : '') + '">' + fmt(cur) + ' <span class="muted">/ ' + fmt(target) + '</span></span></div>' +
+        '<div class="bar ' + (ok ? 'g' : '') + '"><i style="width:' + (r * 100).toFixed(0) + '%"></i></div></div>';
+    }
+    let h = '<div class="card"><div class="sect">第' + p.no + '次中期経営計画</div>' +
+      '<div class="row" style="margin-bottom:11px"><span class="small muted">' + p.endFY + '年3月期まで</span>' +
+      '<b class="gold">残り ' + p.yearsLeft + '年度</b></div>' +
+      bar(p.profit.cur, p.profit.target, '今期 純利益', money) +
+      bar(p.roe.cur, p.roe.target, 'ROE（直近12ヶ月）', function (v) { return pct(v); }) +
+      bar(p.invest.cur, p.invest.target, '3年累計 投資額', money) +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
+    p.cards.forEach(function (cid) {
+      const c = D.CARD_BY_ID[cid];
+      if (c) h += '<span class="pill" style="color:var(--gold2);border-color:var(--gold-line,#7d6229)">' + c.icon + ' ' + c.name + '</span>';
+    });
+    h += '</div></div>';
     return h;
   }
 
@@ -1753,6 +2006,17 @@ window.UI = (function () {
     });
     h += '</div>';
 
+    if (S.planHistory && S.planHistory.length) {
+      h += '<div class="card"><div class="sect">中期経営計画の実績</div>';
+      S.planHistory.slice().reverse().forEach(function (v) {
+        h += '<div class="divrow"><div class="ic">' + (v.count === 3 ? '🏆' : v.count === 0 ? '💥' : '📄') + '</div>' +
+          '<div class="nm"><b>第' + v.no + '次（' + v.startFY + '〜' + v.endFY + '）</b>' +
+          '<div class="tiny muted">' + v.cards.map(function (c) { return (D.CARD_BY_ID[c] || {}).name || c; }).join(' ／ ') + '</div></div>' +
+          '<div class="lv"><b class="' + (v.count === 3 ? 'up' : v.count === 0 ? 'down' : '') + '">' + v.count + '/3</b></div></div>';
+      });
+      h += '</div>';
+    }
+
     if (S.fyHistory.length) {
       h += '<div class="card"><div class="sect">決算履歴</div><div class="kv">';
       S.fyHistory.slice().reverse().slice(0, 12).forEach(function (f) {
@@ -1914,13 +2178,22 @@ window.UI = (function () {
 
   /* ---------- 決算ウィザード（4ステップ） ---------- */
   let fyW = null;
-  const STEP_NAMES = ['決算発表', '格付レビュー', '資源配分', '株主還元'];
+  const STEP_NAMES = {
+    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括',
+    budget: '資源配分', payout: '株主還元', planNew: '中期経営計画 策定',
+  };
 
   function fyOpen(rec, done) {
+    const steps = ['result', 'rating'];
+    if (rec.needEval) steps.push('planEval');
+    steps.push('budget', 'payout');
+    if (rec.needPlan) steps.push('planNew');
     fyW = {
-      rec: rec, step: 0, done: done,
+      rec: rec, steps: steps, step: 0, done: done,
       alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
       ratio: 0.3, buyback: 0, allocated: false,
+      evalRes: null,
+      tiers: { profit: 1, roe: 1, invest: 1 }, cards: [],
     };
     fyDraw();
   }
@@ -1929,15 +2202,18 @@ window.UI = (function () {
 
   function fyDraw() {
     const w = fyW, r = w.rec, S = E.S;
+    const id = w.steps[w.step], last = w.step === w.steps.length - 1;
     let dots = '<div class="wiz-step">';
-    for (let i = 0; i < 4; i++) dots += '<i class="' + (i <= w.step ? 'on' : '') + '"></i>';
+    for (let i = 0; i < w.steps.length; i++) dots += '<i class="' + (i <= w.step ? 'on' : '') + '"></i>';
     dots += '</div>';
     const head = '<p class="tiny" style="margin-bottom:2px;letter-spacing:.14em;color:var(--dim2)">' +
-      r.fy + '年3月期 決算 ／ STEP ' + (w.step + 1) + ' of 4</p>' +
-      '<h2>' + STEP_NAMES[w.step] + '</h2>';
+      r.fy + '年3月期 決算 ／ STEP ' + (w.step + 1) + ' of ' + w.steps.length + '</p>' +
+      '<h2>' + STEP_NAMES[id] + '</h2>';
+    const NEXT = '<button class="pri" data-fy="next">次へ</button>';
+    const BACK = '<button data-fy="back">戻る</button>';
     let body = '', btns = '';
 
-    if (w.step === 0) {
+    if (id === 'result') {
       const grow = r.eqStart > 0 ? (r.eqEnd / r.eqStart - 1) : 0;
       let tbl = '<table class="seg-t"><thead><tr><th>本部</th><th>商い</th><th>配当</th><th>評価・減損</th><th>計</th></tr></thead><tbody>';
       let tot = 0;
@@ -1965,9 +2241,9 @@ window.UI = (function () {
         '<div class="b"><label>完了案件</label><b>' + r.deals + '件</b></div>' +
         '<div class="b"><label>世界順位</label><b>' + r.rank + '位</b></div>' +
         '</div>';
-      btns = '<div class="mbtns"><button class="pri" data-fy="next">格付レビューへ</button></div>';
+      btns = '<div class="mbtns">' + NEXT + '</div>';
 
-    } else if (w.step === 1) {
+    } else if (id === 'rating') {
       const rt = E.rating(), sc = E.ratingScore();
       const eq = Math.max(1, E.equity()), de = S.debt / eq;
       const roeS = E.clamp((S.roeTTM || 0) * 100 - 6, -12, 16);
@@ -1988,9 +2264,31 @@ window.UI = (function () {
         '<span class="k">調達金利（年）</span><span class="v">' + pct(E.interestRate(), 2) + '</span>' +
         '<span class="k">入札での信認</span><span class="v ' + (rt.win >= 0 ? 'up' : 'down') + '">' + (rt.win >= 0 ? '+' : '') + rt.win + 'pt</span>' +
         '</div>';
-      btns = '<div class="mbtns"><button data-fy="back">戻る</button><button class="pri" data-fy="next">資源配分へ</button></div>';
+      btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
 
-    } else if (w.step === 2) {
+    } else if (id === 'planEval') {
+      if (!w.evalRes) w.evalRes = E.evaluatePlan(r);
+      const v = w.evalRes;
+      body = '<p>第' + v.no + '次中期経営計画（' + v.startFY + '〜' + v.endFY + '年3月期）が満了した。</p>' +
+        '<div class="row" style="align-items:center;margin:14px 0 4px">' +
+        '<span class="muted small">達成項目</span>' +
+        '<b class="' + (v.count === 3 ? 'up' : v.count === 0 ? 'down' : 'gold') + '" style="font-size:30px">' +
+        v.count + ' / 3</b></div>';
+      v.items.forEach(function (x) {
+        const it = D.PLAN_ITEMS.filter(function (y) { return y.id === x.id; })[0];
+        const f = x.id === 'roe' ? function (n) { return pct(n); } : money;
+        body += '<div class="alloc"><div class="ic">' + (x.ok ? '✅' : '❌') + '</div>' +
+          '<div class="nm"><b>' + it.name + '</b><span>目標 ' + f(x.target) + ' ／ 実績 ' + f(x.actual) + '</span></div>' +
+          '<div class="amt ' + (x.ok ? 'up' : 'down') + '">' + (x.ok ? '達成' : '未達') + '</div></div>';
+      });
+      body += '<p class="' + (v.tone || '') + '" style="margin-top:14px">' + v.msg + '</p>' +
+        '<div class="kv"><span class="k">株主信任</span><span class="v">' + Math.round(S.trust) + ' / 100</span>' +
+        '<span class="k">PBR</span><span class="v ' + (S.pbr < 1 ? 'down' : 'up') + '">' + S.pbr.toFixed(2) + ' 倍</span>' +
+        '<span class="k">実績ボーナス（投資余力・落札力）</span><span class="v ' + (v.gain >= 0 ? 'up' : 'down') + '">' +
+        (v.gain >= 0 ? '+' : '') + v.gain.toFixed(2) + ' → ' + (v.bonus || 0).toFixed(2) + '</span></div>';
+      btns = '<div class="mbtns">' + NEXT + '</div>';
+
+    } else if (id === 'budget') {
       const used = allocSum(), left = w.pool - used;
       body = '<p>翌1年の投資予算を配る。<strong>本部予算は1年で切れ、配らなかった本部は地力を失う。</strong>コーポレート投資は蓄積するが毎年目減りする。</p>' +
         '<div class="pool"><span class="muted">残り配分枠<br><span class="tiny">当初 ' + money(w.pool) + '（現金の65%）</span></span>' +
@@ -2016,10 +2314,10 @@ window.UI = (function () {
       });
       const none = D.DIVISIONS.filter(function (d) { return !allocGet(d.id); }).length;
       if (none) body += '<p class="tiny warn" style="margin-top:10px">⚠ ' + none + '本部が無投資。放置した本部は毎月わずかに地力を失い、やがてレベルが下がる。</p>';
-      btns = '<div class="mbtns"><button data-fy="back">戻る</button>' +
+      btns = '<div class="mbtns">' + BACK +
         '<button class="pri" data-fy="next">この予算で確定（' + money(used) + '）</button></div>';
 
-    } else {
+    } else if (id === 'payout') {
       const profit = Math.max(0, r.profit);
       const div = profit * w.ratio;
       const maxBB = Math.max(0, S.cash * 0.35);
@@ -2042,12 +2340,45 @@ window.UI = (function () {
         '<span class="k">支出合計</span><span class="v down">-' + money(div + w.buyback) + '</span>' +
         '<span class="k">残る現金</span><span class="v">' + money(Math.max(0, S.cash - div - w.buyback)) + '</span>' +
         '</div>';
-      btns = '<div class="mbtns"><button class="pri" data-fy="finish">決議して次年度へ</button></div>';
+      btns = '<div class="mbtns"><button class="pri" data-fy="' + (last ? 'finish' : 'next') + '">' +
+        (last ? '決議して次年度へ' : '決議して中計策定へ') + '</button></div>';
+
+    } else {
+      /* 中期経営計画の策定 */
+      const opt = E.planTargetOptions();
+      const fyStart = E.fiscalYear() + 1;
+      body = '<p>今後3年（' + fyStart + '〜' + (fyStart + 2) + '年3月期）で何を約束するかを決める。' +
+        '<strong>挑戦的な目標ほど達成時の見返りは大きく、未達のときの反動も大きい。</strong></p>' +
+        '<h3>数値目標</h3>';
+      D.PLAN_ITEMS.forEach(function (it) {
+        const cur = w.tiers[it.id];
+        body += '<div style="margin-bottom:14px"><div class="row"><b style="font-size:13px">' + it.name + '</b>' +
+          '<b class="gold num">' + (it.unit === 'pct' ? pct(opt[it.id][cur]) : money(opt[it.id][cur])) + '</b></div>' +
+          '<div class="tiny muted" style="margin-bottom:6px">' + it.desc + '</div><div class="aggr">';
+        D.PLAN_TIERS.forEach(function (tn, i) {
+          body += '<button data-tier="' + it.id + '" data-i="' + i + '" class="' + (i === cur ? 'on' : '') + '"' +
+            ' style="grid-column:span 1"><b>' + tn + '</b>' +
+            (it.unit === 'pct' ? pct(opt[it.id][i], 0) : money(opt[it.id][i])) + '</button>';
+        });
+        body += '</div></div>';
+      });
+      body += '<h3>重点戦略（2枚選ぶ・3年間有効）</h3>';
+      D.PLAN_CARDS.forEach(function (c) {
+        const on = w.cards.indexOf(c.id) >= 0;
+        body += '<button class="deal" data-card="' + c.id + '"' +
+          (on ? ' style="border-color:var(--gold);background:rgba(217,178,95,.10)"' : '') + '>' +
+          '<div class="deal-h"><div class="deal-t">' + c.icon + ' ' + c.name + '</div>' +
+          (on ? '<span class="pill" style="color:var(--gold2);border-color:var(--gold)">選択中</span>' : '') + '</div>' +
+          '<div class="tiny up" style="margin-top:6px">＋ ' + c.good + '</div>' +
+          '<div class="tiny down" style="margin-top:3px">− ' + c.bad + '</div></button>';
+      });
+      btns = '<div class="mbtns"><button class="pri" data-fy="finish"' + (w.cards.length !== 2 ? ' disabled' : '') + '>' +
+        (w.cards.length !== 2 ? 'あと' + (2 - w.cards.length) + '枚選ぶ' : '第' + ((E.S.planNo || 0) + 1) + '次中計を発表する') + '</button></div>';
     }
 
     modal(dots + head + body + btns, true);
 
-    if (w.step === 3) {
+    if (id === 'payout') {
       const S2 = E.S, maxBB = Math.max(0, S2.cash * 0.35);
       const rd = $('#rg-div'), rb = $('#rg-bb');
       if (rd) rd.addEventListener('input', function (e) { w.ratio = +e.target.value / 100; fyDraw(); });
@@ -2068,18 +2399,27 @@ window.UI = (function () {
     fyDraw();
   }
 
+  function fyTier(item, i) { fyW.tiers[item] = i; fyDraw(); }
+  function fyCard(id) {
+    const c = fyW.cards, i = c.indexOf(id);
+    if (i >= 0) c.splice(i, 1);
+    else if (c.length < 2) c.push(id);
+    fyDraw();
+  }
+
+  function fyCommitStep() {
+    const w = fyW, id = w.steps[w.step];
+    if (id === 'budget' && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
+    if (id === 'payout' && !w.paid) { E.payout({ ratio: w.ratio, buyback: w.buyback }); w.paid = true; }
+    if (id === 'planNew' && !w.planned) { E.formulatePlan(w.tiers, w.cards); w.planned = true; }
+  }
+
   function fyNav(dir) {
     const w = fyW;
+    if (!w) return;
     if (dir === 'back') { w.step = Math.max(0, w.step - 1); fyDraw(); return; }
-    if (dir === 'next') {
-      if (w.step === 2 && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
-      w.step = Math.min(3, w.step + 1);
-      fyDraw();
-      return;
-    }
-    // finish
-    if (!w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
-    E.payout({ ratio: w.ratio, buyback: w.buyback });
+    fyCommitStep();
+    if (dir === 'next' && w.step < w.steps.length - 1) { w.step++; fyDraw(); return; }
     const done = w.done; fyW = null;
     closeModal(); render();
     if (done) done();
@@ -2119,7 +2459,7 @@ window.UI = (function () {
     modal: modal, closeModal: closeModal, alertBox: alertBox,
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
     amountModal: amountModal, eventModal: eventModal,
-    fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav,
+    fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,
@@ -2180,7 +2520,7 @@ window.UI = (function () {
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -2202,6 +2542,8 @@ window.UI = (function () {
     }
     if (t.hasAttribute('data-fy')) { U.fyNav(t.dataset.fy); return; }
     if (t.hasAttribute('data-alloc')) { U.fyAlloc(t.dataset.alloc, +t.dataset.d); return; }
+    if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
+    if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
 
     /* --- タブ --- */
     if (t.closest('#tabs')) { U.setTab(t.dataset.tab); return; }

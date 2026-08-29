@@ -50,7 +50,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -72,6 +72,8 @@
     }
     if (t.hasAttribute('data-fy')) { U.fyNav(t.dataset.fy); return; }
     if (t.hasAttribute('data-alloc')) { U.fyAlloc(t.dataset.alloc, +t.dataset.d); return; }
+    if (t.hasAttribute('data-tier')) { U.fyTier(t.dataset.tier, +t.dataset.i); return; }
+    if (t.hasAttribute('data-card')) { U.fyCard(t.dataset.card); return; }
 
     /* --- タブ --- */
     if (t.closest('#tabs')) { U.setTab(t.dataset.tab); return; }

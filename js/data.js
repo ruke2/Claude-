@@ -113,6 +113,56 @@ window.GAME = (function () {
       desc: '減損と不祥事が減り、格付が上がる' },
   ];
 
+  /* ---- 中期経営計画：重点戦略カード ------------------ */
+  /* fx のキーは engine 側の fx()/fxAdd() が解釈する */
+  D.PLAN_CARDS = [
+    { id: 'resource', name: '資源メジャー化', icon: '⛏️',
+      good: '権益案件が数多く持ち込まれ、利回りが26%上がる',
+      bad:  '減損リスクが3割増しになる',
+      fx: { concW: 2.6, concYield: 1.26, impair: 1.32 } },
+    { id: 'nonres', name: '非資源シフト', icon: '🏬',
+      good: 'トレードと事業投資が増え、採算も改善する',
+      bad:  '資源権益はほとんど回ってこなくなる',
+      fx: { tradeW: 1.22, invW: 1.32, concW: 0.35, margin: 1.05 } },
+    { id: 'asia', name: 'アジア・パシフィック深耕', icon: '🌏',
+      good: '東南アジア・中国・インドの案件が大型化し、落札力 +9pt。拠点開設費も3割安い',
+      bad:  'その他地域の落札力 −4pt',
+      fx: { officeCost: 0.65 }, prefRegions: ['asia', 'cn', 'in'], prefWin: 9, otherWin: -4, prefSize: 1.35 },
+    { id: 'green', name: '脱炭素トランジション', icon: '🌱',
+      good: '生活産業・機械の案件が増え、サステナ水準が毎年上がる。減損も減る',
+      bad:  '化石燃料権益の利回りが下がる',
+      fx: { impair: 0.80, fossilYield: 0.85, esgYear: 0.45 }, divBoost: { consumer: 1.6, machinery: 1.4 } },
+    { id: 'digital', name: 'デジタル戦略', icon: '💻',
+      good: '商談枠 +1、販管費 −10%、DX水準が毎年上がる',
+      bad:  '目に見える売上を生まない（他のカードを1枚諦めることになる）',
+      fx: { slots: 1, sga: 0.90, dxYear: 0.34 } },
+    { id: 'talent', name: '人材投資', icon: '🧑‍💼',
+      good: '同時に回せる案件が +4、人材水準が毎年上がる',
+      bad:  '人件費が1割上がる',
+      fx: { cap: 4, wage: 1.10, hrYear: 0.45 } },
+    { id: 'discipline', name: '財務規律', icon: '🏦',
+      good: '調達金利 −0.7%、信用が積み上がりやすい',
+      bad:  '借入枠が15%縮む＝成長が鈍る',
+      fx: { spread: 0.007, lev: 0.85, credit: 0.06 } },
+    { id: 'partner', name: 'グローバル・パートナーシップ', icon: '🤝',
+      good: '大型案件（💎）が持ち込まれやすく、全案件が15%大型化する',
+      bad:  '競合が1社増える',
+      fx: { bigChance: 0.06, rivals: 1, sizeAll: 1.15 } },
+  ];
+  D.CARD_BY_ID = {};
+  D.PLAN_CARDS.forEach(function (c) { D.CARD_BY_ID[c.id] = c; });
+
+  /* ---- 中期経営計画：目標の難易度 -------------------- */
+  D.PLAN_TIERS = ['保守的', '標準', '挑戦的'];
+  D.PLAN_ITEMS = [
+    { id: 'profit', name: '最終年度 純利益', unit: 'money',
+      desc: '3年目の通期純利益。素直な規模の目標' },
+    { id: 'roe', name: '最終年度 ROE', unit: 'pct',
+      desc: '経営の質。規模を追うと下がるので上の目標と綱引きになる' },
+    { id: 'invest', name: '3年累計 投資額', unit: 'money',
+      desc: '予算配分・権益取得・本部投資の累計。守りに入ることを許さない' },
+  ];
+
   /* ---- ライバル商社 ---------------------------------- */
   D.RIVALS = [
     { name: '蒼海商事',   base: 96000, g: 0.0072 },

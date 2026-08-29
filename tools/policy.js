@@ -1,7 +1,14 @@
 /* 検証用の「そこそこ賢い経営者」ポリシー（人間プレイヤーの代理） */
 module.exports = function makePolicy(E, D) {
   /* 決算期の意思決定: 資源配分 → 株主還元 */
+  const CARD_SETS = {
+    balanced: ['nonres', 'digital'],
+    resource: ['resource', 'partner'],
+    asia: ['asia', 'talent'],
+    safe: ['discipline', 'green'],
+  };
   function annual(S, rec) {
+    if (rec.needEval) E.evaluatePlan(rec);
     const pool = E.budgetPool();
     const spend = Math.min(pool * 0.55, Math.max(0, rec.profit) * 0.8);
     const map = {};
@@ -24,6 +31,12 @@ module.exports = function makePolicy(E, D) {
     const ratio = S.debt > eq ? 0.10 : 0.30;
     const bb = (S.pbr < 0.9 && S.cash > eq * 0.5) ? Math.min(S.cash * 0.12, eq * 0.03) : 0;
     E.payout({ ratio: ratio, buyback: bb });
+
+    if (rec.needPlan) {
+      const set = CARD_SETS[process.env.CARDS || 'balanced'] || CARD_SETS.balanced;
+      const t = +(process.env.TIER || 1);
+      E.formulatePlan({ profit: t, roe: t, invest: t }, set);
+    }
   }
 
   const turn = function (S) {

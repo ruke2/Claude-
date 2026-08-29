@@ -32,7 +32,18 @@ const MONTHS = +(process.argv[2] || 40);
           }
           if (!shotFY) { await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy2.png') }); }
         }
-        const fin = await page.$('[data-fy="finish"]');
+        // 中計策定: カードを2枚選ぶ
+        const cards = await page.$$('[data-card]');
+        if (cards.length) {
+          const sel = await page.$$('[data-card][style]');
+          for (let k = sel.length; k < 2 && k < cards.length; k++) {
+            const cc = await page.$$('[data-card]');
+            await cc[k].click();
+            await page.waitForTimeout(15);
+          }
+          await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'plan.png') });
+        }
+        const fin = await page.$('[data-fy="finish"]:not([disabled])');
         if (fin) {
           if (!shotFY) { await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'fy3.png') }); shotFY = true; }
           await fin.click();

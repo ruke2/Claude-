@@ -55,6 +55,7 @@ window.ENGINE = (function () {
   }
   function stage() { return D.STAGES[S.stage]; }
   function scale() { return stage().scale; }
+  function fiscalYear() { return S.m >= 4 ? S.y + 1 : S.y; }
   function dateLabel(y, m) { return y + '年' + m + '月'; }
   function now() { return dateLabel(S.y, S.m); }
 
@@ -86,18 +87,70 @@ window.ENGINE = (function () {
   }
   function segTotal(x) { return x.gross + x.dividend + x.reval + x.impair; }
 
-  function boostOf(id) { return (S.boost && S.boost[id]) || 0; }
+  /* ---- 中期経営計画：重点戦略カードの効果 ---- */
+  function planCards() { return (S.plan && S.plan.cards) || []; }
+  function hasCard(id) { return planCards().indexOf(id) >= 0; }
+  function fx(k, base) {
+    let v = base;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.fx && c.fx[k] != null) v *= c.fx[k];
+    });
+    return v;
+  }
+  function fxAdd(k) {
+    let v = 0;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.fx && c.fx[k] != null) v += c.fx[k];
+    });
+    return v;
+  }
+  function regionWin(regId) {
+    let v = 0;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (!c || !c.prefRegions) return;
+      v += c.prefRegions.indexOf(regId) >= 0 ? (c.prefWin || 0) : (c.otherWin || 0);
+    });
+    return v;
+  }
+  function regionSize(regId) {
+    let v = 1;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.prefRegions && c.prefRegions.indexOf(regId) >= 0) v *= (c.prefSize || 1);
+    });
+    return v;
+  }
+  function divCardW(divId) {
+    let v = 1;
+    planCards().forEach(function (id) {
+      const c = D.CARD_BY_ID[id];
+      if (c && c.divBoost && c.divBoost[divId]) v *= c.divBoost[divId];
+    });
+    return v;
+  }
+  /* 投資額の累計（中計の投資目標に効く） */
+  function countInvest(v) {
+    if (v <= 0) return;
+    if (S.plan) S.plan.cumInvest = (S.plan.cumInvest || 0) + v;
+    S.cumInvest = (S.cumInvest || 0) + v;
+  }
+
+  function boostOf(id) { return ((S.boost && S.boost[id]) || 0) + (S.planBonus || 0) * 0.25; }
   function corpOf(id) { return (S.corp && S.corp[id]) || 0; }
 
   function divOf(id) { return S.div[id]; }
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
-  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2)); }
+  function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')); }
   function slotsMax() {
-    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3) + Math.floor(corpOf('dx')), 3, 11);
+    return clamp(3 + Math.floor(Math.sqrt(S.staff) / 3.5) + Math.floor(S.offices.length / 3)
+      + Math.floor(corpOf('dx')) + fxAdd('slots'), 3, 12);
   }
-  function borrowLimit() { return Math.max(0, equity() * rating().lev - S.debt); }
-  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread); }
+  function borrowLimit() { return Math.max(0, equity() * fx('lev', rating().lev) - S.debt); }
+  function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread')); }
 
   function bookAssets() {
     let v = 0;
@@ -137,6 +190,7 @@ window.ENGINE = (function () {
       seg: {}, segPrev: null,
       budget: {}, boost: {}, corp: { dx: 0, hr: 0, esg: 0 },
       shares: 0.30, pbr: 0.85, trust: 52, roeTTM: 0, pbrPrev: 0.85,
+      plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
@@ -152,24 +206,32 @@ window.ENGINE = (function () {
   /* ---------------- deal generation ---------------- */
   function typeWeights() {
     const s = S.stage;
-    if (s === 0) return [{ t: 'trade', w: 76 }, { t: 'project', w: 12 }, { t: 'investment', w: 9 }, { t: 'concession', w: 3 }];
-    if (s === 1) return [{ t: 'trade', w: 62 }, { t: 'project', w: 16 }, { t: 'investment', w: 14 }, { t: 'concession', w: 8 }];
-    if (s === 2) return [{ t: 'trade', w: 50 }, { t: 'project', w: 18 }, { t: 'investment', w: 18 }, { t: 'concession', w: 14 }];
-    return [{ t: 'trade', w: 40 }, { t: 'project', w: 18 }, { t: 'investment', w: 22 }, { t: 'concession', w: 20 }];
+    let b;
+    if (s === 0) b = [76, 12, 9, 3];
+    else if (s === 1) b = [62, 16, 14, 8];
+    else if (s === 2) b = [50, 18, 18, 14];
+    else b = [40, 18, 22, 20];
+    return [
+      { t: 'trade', w: b[0] * fx('tradeW', 1) },
+      { t: 'project', w: b[1] },
+      { t: 'investment', w: b[2] * fx('invW', 1) },
+      { t: 'concession', w: b[3] * fx('concW', 1) },
+    ];
   }
 
   function genDeal(big) {
     const sc = scale();
     const type = wpick(typeWeights(), 'w').t;
     const dv = wpick(D.DIVISIONS.map(function (x) {
-      return { d: x, w: 1 + boostOf(x.id) * 0.7 };
+      return { d: x, w: (1 + boostOf(x.id) * 0.7) * divCardW(x.id) };
     }), 'w').d;
     // 拠点のある地域が出やすい
     let reg;
     if (Math.random() < 0.45 && S.offices.length) reg = pick(S.offices);
     else reg = pick(D.REGIONS).id;
     const item = pick(D.ITEMS[type][dv.id]);
-    const sm = (big ? rnd(2.4, 4.0) : rnd(0.75, 1.35)) * (1 + boostOf(dv.id) * 0.20);
+    const sm = (big ? rnd(2.4, 4.0) : rnd(0.75, 1.35)) * (1 + boostOf(dv.id) * 0.20)
+      * fx('sizeAll', 1) * regionSize(reg);
     const rg = D.REGION_BY_ID[reg];
 
     const d = {
@@ -177,13 +239,13 @@ window.ENGINE = (function () {
       name: rg.name + '／' + item,
       comms: dv.comms.slice(),
       ttl: ri(2, 5),
-      rivals: ri(1, 5),
+      rivals: ri(1, 5) + fxAdd('rivals'),
       diff: rnd(0.45, 1.45) + (type === 'concession' ? 0.25 : 0) + (big ? 0.35 : 0),
     };
 
     if (type === 'trade') {
       d.volume = sc * rnd(30, 110) * sm;
-      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10);
+      d.marginRate = rnd(0.025, 0.075) * (1 + boostOf(dv.id) * 0.10) * fx('margin', 1);
       d.months = ri(1, 4);
       d.capital = d.volume * rnd(0.16, 0.30);
       d.risk = rnd(0.006, 0.042);
@@ -200,7 +262,8 @@ window.ENGINE = (function () {
       d.risk = rnd(0.02, 0.07);
     } else if (type === 'concession') {
       d.invest = sc * rnd(60, 270) * sm;
-      d.yieldRate = rnd(0.0095, 0.021) * (1 + boostOf(dv.id) * 0.08);
+      d.yieldRate = rnd(0.0095, 0.021) * (1 + boostOf(dv.id) * 0.08) * fx('concYield', 1)
+        * (dv.id === 'energy' ? fx('fossilYield', 1) : 1);
       d.life = ri(48, 140);
       d.upfront = d.invest;
       d.exposure = d.invest;
@@ -208,7 +271,7 @@ window.ENGINE = (function () {
     } else {
       d.invest = sc * rnd(38, 200) * sm;
       d.yieldRate = rnd(0.0062, 0.0128) * (1 + boostOf(dv.id) * 0.08);
-      d.growth = rnd(0.0022, 0.0068);
+      d.growth = rnd(0.0022, 0.0068) * fx('margin', 1);
       d.upfront = d.invest;
       d.exposure = d.invest;
       d.risk = rnd(0.005, 0.02);
@@ -223,6 +286,7 @@ window.ENGINE = (function () {
     }
     const target = 7 + Math.min(5, S.offices.length - 1) + Math.min(4, S.stage);
     while (S.market.length < target) S.market.push(genDeal());
+    if (Math.random() < fxAdd('bigChance')) S.market.push(genDeal(true));
   }
 
   /* ---------------- bidding ---------------- */
@@ -231,6 +295,7 @@ window.ENGINE = (function () {
     let s = 46;
     s += divOf(d.div).lv * 4.2;
     s += boostOf(d.div) * 8;
+    s += regionWin(d.region);
     s += rating().win;
     s += S.credit * 0.13;
     s += hasOffice(d.region) ? 10 : 0;
@@ -300,7 +365,7 @@ window.ENGINE = (function () {
         risk: d.risk, delays: 0, big: d.big,
       });
     } else {
-      S.cash -= d.invest;
+      S.cash -= d.invest; countInvest(d.invest);
       S.assets.push({
         id: d.id, type: d.type, name: d.name, div: d.div, region: d.region, comms: d.comms,
         basis: d.invest, value: d.invest, yieldRate: d.yieldRate * (0.85 + 0.15 * st.mult),
@@ -341,18 +406,18 @@ window.ENGINE = (function () {
     const c = upgradeCost(divId);
     if (S.div[divId].lv >= 25) return { ok: false, msg: '既に最高水準' };
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
-    S.cash -= c; capex(c);
+    S.cash -= c; capex(c); countInvest(c);
     S.div[divId].lv++;
     log(D.DIV_BY_ID[divId].name + ' に ' + money(c) + ' を投資、Lv.' + S.div[divId].lv + ' へ。', 'gold');
     return { ok: true };
   }
 
-  function officeCost() { return scale() * 16 + 5; }
+  function officeCost() { return fx('officeCost', scale() * 16 + 5); }
   function openOffice(regId) {
     if (hasOffice(regId)) return { ok: false, msg: '既に拠点がある' };
     const c = officeCost();
     if (S.cash < c) return { ok: false, msg: '資金が足りない（必要 ' + money(c) + '）' };
-    S.cash -= c; capex(c);
+    S.cash -= c; capex(c); countInvest(c);
     S.offices.push(regId);
     S.credit = clamp(S.credit + 1.5, 0, 100);
     log(D.REGION_BY_ID[regId].name + 'に拠点を開設した。', 'gold');
@@ -376,7 +441,7 @@ window.ENGINE = (function () {
   }
 
   /* 年次の資源配分 */
-  function budgetPool() { return Math.max(0, S.cash * 0.65); }
+  function budgetPool() { return Math.max(0, S.cash * (0.65 + (S.planBonus || 0) * 0.12)); }
   function budgetUnit() { return Math.max(0.1, Math.round(budgetPool() / 16 * 10) / 10); }
   function allocateBudget(map) {
     let total = 0;
@@ -388,12 +453,101 @@ window.ENGINE = (function () {
     D.BUDGET_CORP.forEach(function (c) {
       S.corp[c.id] = Math.min(6, S.corp[c.id] * 0.86 + (map[c.id] || 0) / (scale() * 9));
     });
-    S.cash -= total; capex(total);
+    S.cash -= total; capex(total); countInvest(total);
     S.budget = map;
     if (total > 0) log('年度予算 ' + money(total) + ' を配分した。', 'gold');
     else log('今年度は投資を見送った。各本部の地力が落ちていく。', 'down');
     save();
     return total;
+  }
+
+  /* ---------------- 中期経営計画 ---------------- */
+  function planTargetOptions() {
+    const eq = Math.max(1, equity());
+    const last = S.fyHistory.length ? S.fyHistory[S.fyHistory.length - 1].profit : eq * 0.10;
+    const base = Math.max(eq * 0.06, last, 1);
+    return {
+      profit: [base * 3.6, base * 7.5, base * 14.0],
+      roe: [0.15, 0.26, 0.40],
+      invest: [eq * 1.05, eq * 2.10, eq * 3.60],
+    };
+  }
+  function formulatePlan(tiers, cards) {
+    const opt = planTargetOptions();
+    S.planNo = (S.planNo || 0) + 1;
+    S.plan = {
+      no: S.planNo,
+      startFY: fiscalYear() + 1, endFY: fiscalYear() + 3,
+      tiers: tiers,
+      targets: {
+        profit: opt.profit[tiers.profit],
+        roe: opt.roe[tiers.roe],
+        invest: opt.invest[tiers.invest],
+      },
+      cards: cards.slice(0, 2),
+      cumInvest: 0,
+    };
+    log('第' + S.planNo + '次中期経営計画（' + S.plan.startFY + '〜' + S.plan.endFY + '年3月期）を策定した。', 'gold');
+    save();
+    return S.plan;
+  }
+  function evaluatePlan(rec) {
+    const p = S.plan;
+    if (!p) return null;
+    const res = {
+      no: p.no, startFY: p.startFY, endFY: p.endFY, cards: p.cards.slice(),
+      items: [
+        { id: 'profit', target: p.targets.profit, actual: rec.profit, ok: rec.profit >= p.targets.profit },
+        { id: 'roe', target: p.targets.roe, actual: rec.roe, ok: rec.roe >= p.targets.roe },
+        { id: 'invest', target: p.targets.invest, actual: p.cumInvest || 0, ok: (p.cumInvest || 0) >= p.targets.invest },
+      ],
+    };
+    res.count = res.items.filter(function (x) { return x.ok; }).length;
+    const hard = (p.tiers.profit + p.tiers.roe + p.tiers.invest) / 6;
+    if (res.count === 3) {
+      S.trust = clamp(S.trust + 12 + hard * 10, 0, 100);
+      S.credit = clamp(S.credit + 6 + hard * 4, 0, 100);
+      S.pbr = clamp(S.pbr * (1.15 + hard * 0.18), 0.22, 4.0);
+      res.gain = 0.30 + hard * 0.50;
+      res.msg = '全項目を達成。市場は当社の実行力を認め、投資余力と現場の勢いが積み上がった。';
+      res.tone = 'up';
+    } else if (res.count === 2) {
+      S.trust = clamp(S.trust + 5, 0, 100);
+      S.credit = clamp(S.credit + 2, 0, 100);
+      res.gain = 0.12;
+      res.msg = '概ね計画線。ただし積み残しは記憶される。';
+      res.tone = '';
+    } else if (res.count === 1) {
+      S.trust = clamp(S.trust - 5, 0, 100);
+      res.gain = -0.20;
+      res.msg = '未達が目立つ。説明責任を問う声が出ている。';
+      res.tone = 'warn';
+    } else {
+      S.trust = clamp(S.trust - (14 + hard * 8), 0, 100);
+      S.credit = clamp(S.credit - 6, 0, 100);
+      S.pbr = clamp(S.pbr * 0.78, 0.22, 4.0);
+      res.gain = -0.60;
+      res.msg = '全項目未達。株主は経営陣の姿勢そのものを疑い始めた。';
+      res.tone = 'down';
+    }
+    S.planBonus = clamp((S.planBonus || 0) + res.gain, 0, 1.2);
+    res.bonus = S.planBonus;
+    log('第' + p.no + '次中計 ' + res.count + '/3 達成。' + res.msg, res.tone === 'up' ? 'gold' : res.tone === 'down' ? 'down' : 'info');
+    S.planHistory.push(res);
+    S.plan = null;
+    save();
+    return res;
+  }
+  function planProgress() {
+    if (!S.plan) return null;
+    const t = S.plan.targets;
+    return {
+      no: S.plan.no, endFY: S.plan.endFY, cards: S.plan.cards,
+      yearsLeft: Math.max(0, S.plan.endFY - fiscalYear() + 1),
+      profit: { cur: S.fy.profit, target: t.profit },
+      roe: { cur: S.roeTTM, target: t.roe },
+      invest: { cur: S.plan.cumInvest || 0, target: t.invest },
+    };
   }
 
   function sellAsset(id) {
@@ -531,7 +685,7 @@ window.ENGINE = (function () {
 
       // 減損
       if (a.value < a.basis * 0.68 &&
-          Math.random() < 0.09 * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
+          Math.random() < fx('impair', 0.09) * S.mod.impair * (1 - Math.min(0.60, corpOf('esg') * 0.16))) {
         const w = a.value * rnd(0.18, 0.42);
         a.value -= w; a.impaired = clamp(a.impaired + 0.12, 0, 0.8);
         L.impair -= w; seg(a.div).impair -= w;
@@ -549,12 +703,13 @@ window.ENGINE = (function () {
   }
 
   function financeCosts(L) {
-    const wage = S.staff * S.wageRate;
+    const wage = S.staff * fx('wage', S.wageRate);
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
+    const sgaF = fx('sga', sga);
     const int = S.debt * interestRate() / 12;
-    S.cash -= (wage + sga + int);
-    L.wage -= wage; L.sga -= sga; L.interest -= int;
+    S.cash -= (wage + sgaF + int);
+    L.wage -= wage; L.sga -= sgaF; L.interest -= int;
   }
 
   function rescue(L) {
@@ -669,7 +824,7 @@ window.ENGINE = (function () {
       }
       checkLevel(d.id);
     });
-    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05, 0, 100);
+    S.credit = clamp(S.credit + corpOf('esg') * 0.07 + corpOf('hr') * 0.05 + fxAdd('credit'), 0, 100);
 
     stepRivals();
     refreshMarket();
@@ -708,6 +863,14 @@ window.ENGINE = (function () {
         wage: S.fy.wage || 0, sga: S.fy.sga || 0, interest: S.fy.interest || 0, gain: S.fy.gain || 0,
         debt: S.debt, cash: S.cash, shares: S.shares,
       };
+      if (S.plan) {
+        S.corp.dx = Math.min(6, S.corp.dx + fxAdd('dxYear'));
+        S.corp.hr = Math.min(6, S.corp.hr + fxAdd('hrYear'));
+        S.corp.esg = Math.min(6, S.corp.esg + fxAdd('esgYear'));
+      }
+      rec.needEval = !!(S.plan && S.plan.endFY <= S.y);
+      rec.needPlan = !S.plan || rec.needEval;
+      rec.plan = S.plan;
       S.fyHistory.push(rec);
       if (S.fyHistory.length > 40) S.fyHistory.shift();
       S.segPrev = S.seg; S.seg = newSeg();
@@ -802,6 +965,11 @@ window.ENGINE = (function () {
     if (S.roeTTM == null) S.roeTTM = 0;
     if (!S.pend) S.pend = { capex: 0, gain: 0 };
     if (S.lastCapex == null) S.lastCapex = 0;
+    if (S.planNo == null) S.planNo = 0;
+    if (!S.planHistory) S.planHistory = [];
+    if (S.plan === undefined) S.plan = null;
+    if (S.cumInvest == null) S.cumInvest = 0;
+    if (S.planBonus == null) S.planBonus = 0;
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -820,6 +988,9 @@ window.ENGINE = (function () {
     seg: seg, segTotal: segTotal, boostOf: boostOf, corpOf: corpOf,
     budgetPool: budgetPool, budgetUnit: budgetUnit, allocateBudget: allocateBudget,
     mcap: mcap, sharePrice: sharePrice, bps: bps, payoutMax: payoutMax,
+    planTargetOptions: planTargetOptions, formulatePlan: formulatePlan,
+    evaluatePlan: evaluatePlan, planProgress: planProgress, hasCard: hasCard,
+    fiscalYear: fiscalYear,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,

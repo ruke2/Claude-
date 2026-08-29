@@ -119,6 +119,7 @@ window.UI = (function () {
     const fixed = S.staff * S.wageRate + S.offices.length * 0.5 * Math.sqrt(E.scale()) + Math.max(0, E.equity()) * 0.0006 + 0.25 + S.debt * E.interestRate() / 12;
 
     let h = '';
+    h += planCard();
     h += '<div class="card"><div class="sect">経営指標</div><div class="kv">' +
       '<span class="k">総資産（現金＋簿価）</span><span class="v">' + money(S.cash + E.bookAssets()) + '</span>' +
       '<span class="k">有利子負債</span><span class="v">' + money(S.debt) + '</span>' +
@@ -166,6 +167,37 @@ window.UI = (function () {
       h += '<div class="logline"><span class="t">' + l.t + '</span><span class="b ' + (l.k || '') + '">' + esc(l.b) + '</span></div>';
     });
     h += '</div>';
+    return h;
+  }
+
+  /* 中期経営計画の進捗 */
+  function planCard() {
+    const S = E.S, p = E.planProgress();
+    if (!p) {
+      return S.planNo ? '' :
+        '<div class="card quiet" style="background:var(--card2)"><div class="sect">中期経営計画</div>' +
+        '<p class="tiny muted" style="margin:0">最初の決算（3月）で第1次中期経営計画を策定する。' +
+        '3年分の数値目標と重点戦略を、自分で選んで背負うことになる。</p></div>';
+    }
+    function bar(cur, target, label, fmt) {
+      const r = target > 0 ? E.clamp(cur / target, 0, 1) : 0;
+      const ok = cur >= target;
+      return '<div style="margin-bottom:11px"><div class="row small"><span class="muted">' + label + '</span>' +
+        '<span class="num ' + (ok ? 'up' : '') + '">' + fmt(cur) + ' <span class="muted">/ ' + fmt(target) + '</span></span></div>' +
+        '<div class="bar ' + (ok ? 'g' : '') + '"><i style="width:' + (r * 100).toFixed(0) + '%"></i></div></div>';
+    }
+    let h = '<div class="card"><div class="sect">第' + p.no + '次中期経営計画</div>' +
+      '<div class="row" style="margin-bottom:11px"><span class="small muted">' + p.endFY + '年3月期まで</span>' +
+      '<b class="gold">残り ' + p.yearsLeft + '年度</b></div>' +
+      bar(p.profit.cur, p.profit.target, '今期 純利益', money) +
+      bar(p.roe.cur, p.roe.target, 'ROE（直近12ヶ月）', function (v) { return pct(v); }) +
+      bar(p.invest.cur, p.invest.target, '3年累計 投資額', money) +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">';
+    p.cards.forEach(function (cid) {
+      const c = D.CARD_BY_ID[cid];
+      if (c) h += '<span class="pill" style="color:var(--gold2);border-color:var(--gold-line,#7d6229)">' + c.icon + ' ' + c.name + '</span>';
+    });
+    h += '</div></div>';
     return h;
   }
 
@@ -393,6 +425,17 @@ window.UI = (function () {
     });
     h += '</div>';
 
+    if (S.planHistory && S.planHistory.length) {
+      h += '<div class="card"><div class="sect">中期経営計画の実績</div>';
+      S.planHistory.slice().reverse().forEach(function (v) {
+        h += '<div class="divrow"><div class="ic">' + (v.count === 3 ? '🏆' : v.count === 0 ? '💥' : '📄') + '</div>' +
+          '<div class="nm"><b>第' + v.no + '次（' + v.startFY + '〜' + v.endFY + '）</b>' +
+          '<div class="tiny muted">' + v.cards.map(function (c) { return (D.CARD_BY_ID[c] || {}).name || c; }).join(' ／ ') + '</div></div>' +
+          '<div class="lv"><b class="' + (v.count === 3 ? 'up' : v.count === 0 ? 'down' : '') + '">' + v.count + '/3</b></div></div>';
+      });
+      h += '</div>';
+    }
+
     if (S.fyHistory.length) {
       h += '<div class="card"><div class="sect">決算履歴</div><div class="kv">';
       S.fyHistory.slice().reverse().slice(0, 12).forEach(function (f) {
@@ -554,13 +597,22 @@ window.UI = (function () {
 
   /* ---------- 決算ウィザード（4ステップ） ---------- */
   let fyW = null;
-  const STEP_NAMES = ['決算発表', '格付レビュー', '資源配分', '株主還元'];
+  const STEP_NAMES = {
+    result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括',
+    budget: '資源配分', payout: '株主還元', planNew: '中期経営計画 策定',
+  };
 
   function fyOpen(rec, done) {
+    const steps = ['result', 'rating'];
+    if (rec.needEval) steps.push('planEval');
+    steps.push('budget', 'payout');
+    if (rec.needPlan) steps.push('planNew');
     fyW = {
-      rec: rec, step: 0, done: done,
+      rec: rec, steps: steps, step: 0, done: done,
       alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
       ratio: 0.3, buyback: 0, allocated: false,
+      evalRes: null,
+      tiers: { profit: 1, roe: 1, invest: 1 }, cards: [],
     };
     fyDraw();
   }
@@ -569,15 +621,18 @@ window.UI = (function () {
 
   function fyDraw() {
     const w = fyW, r = w.rec, S = E.S;
+    const id = w.steps[w.step], last = w.step === w.steps.length - 1;
     let dots = '<div class="wiz-step">';
-    for (let i = 0; i < 4; i++) dots += '<i class="' + (i <= w.step ? 'on' : '') + '"></i>';
+    for (let i = 0; i < w.steps.length; i++) dots += '<i class="' + (i <= w.step ? 'on' : '') + '"></i>';
     dots += '</div>';
     const head = '<p class="tiny" style="margin-bottom:2px;letter-spacing:.14em;color:var(--dim2)">' +
-      r.fy + '年3月期 決算 ／ STEP ' + (w.step + 1) + ' of 4</p>' +
-      '<h2>' + STEP_NAMES[w.step] + '</h2>';
+      r.fy + '年3月期 決算 ／ STEP ' + (w.step + 1) + ' of ' + w.steps.length + '</p>' +
+      '<h2>' + STEP_NAMES[id] + '</h2>';
+    const NEXT = '<button class="pri" data-fy="next">次へ</button>';
+    const BACK = '<button data-fy="back">戻る</button>';
     let body = '', btns = '';
 
-    if (w.step === 0) {
+    if (id === 'result') {
       const grow = r.eqStart > 0 ? (r.eqEnd / r.eqStart - 1) : 0;
       let tbl = '<table class="seg-t"><thead><tr><th>本部</th><th>商い</th><th>配当</th><th>評価・減損</th><th>計</th></tr></thead><tbody>';
       let tot = 0;
@@ -605,9 +660,9 @@ window.UI = (function () {
         '<div class="b"><label>完了案件</label><b>' + r.deals + '件</b></div>' +
         '<div class="b"><label>世界順位</label><b>' + r.rank + '位</b></div>' +
         '</div>';
-      btns = '<div class="mbtns"><button class="pri" data-fy="next">格付レビューへ</button></div>';
+      btns = '<div class="mbtns">' + NEXT + '</div>';
 
-    } else if (w.step === 1) {
+    } else if (id === 'rating') {
       const rt = E.rating(), sc = E.ratingScore();
       const eq = Math.max(1, E.equity()), de = S.debt / eq;
       const roeS = E.clamp((S.roeTTM || 0) * 100 - 6, -12, 16);
@@ -628,9 +683,31 @@ window.UI = (function () {
         '<span class="k">調達金利（年）</span><span class="v">' + pct(E.interestRate(), 2) + '</span>' +
         '<span class="k">入札での信認</span><span class="v ' + (rt.win >= 0 ? 'up' : 'down') + '">' + (rt.win >= 0 ? '+' : '') + rt.win + 'pt</span>' +
         '</div>';
-      btns = '<div class="mbtns"><button data-fy="back">戻る</button><button class="pri" data-fy="next">資源配分へ</button></div>';
+      btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
 
-    } else if (w.step === 2) {
+    } else if (id === 'planEval') {
+      if (!w.evalRes) w.evalRes = E.evaluatePlan(r);
+      const v = w.evalRes;
+      body = '<p>第' + v.no + '次中期経営計画（' + v.startFY + '〜' + v.endFY + '年3月期）が満了した。</p>' +
+        '<div class="row" style="align-items:center;margin:14px 0 4px">' +
+        '<span class="muted small">達成項目</span>' +
+        '<b class="' + (v.count === 3 ? 'up' : v.count === 0 ? 'down' : 'gold') + '" style="font-size:30px">' +
+        v.count + ' / 3</b></div>';
+      v.items.forEach(function (x) {
+        const it = D.PLAN_ITEMS.filter(function (y) { return y.id === x.id; })[0];
+        const f = x.id === 'roe' ? function (n) { return pct(n); } : money;
+        body += '<div class="alloc"><div class="ic">' + (x.ok ? '✅' : '❌') + '</div>' +
+          '<div class="nm"><b>' + it.name + '</b><span>目標 ' + f(x.target) + ' ／ 実績 ' + f(x.actual) + '</span></div>' +
+          '<div class="amt ' + (x.ok ? 'up' : 'down') + '">' + (x.ok ? '達成' : '未達') + '</div></div>';
+      });
+      body += '<p class="' + (v.tone || '') + '" style="margin-top:14px">' + v.msg + '</p>' +
+        '<div class="kv"><span class="k">株主信任</span><span class="v">' + Math.round(S.trust) + ' / 100</span>' +
+        '<span class="k">PBR</span><span class="v ' + (S.pbr < 1 ? 'down' : 'up') + '">' + S.pbr.toFixed(2) + ' 倍</span>' +
+        '<span class="k">実績ボーナス（投資余力・落札力）</span><span class="v ' + (v.gain >= 0 ? 'up' : 'down') + '">' +
+        (v.gain >= 0 ? '+' : '') + v.gain.toFixed(2) + ' → ' + (v.bonus || 0).toFixed(2) + '</span></div>';
+      btns = '<div class="mbtns">' + NEXT + '</div>';
+
+    } else if (id === 'budget') {
       const used = allocSum(), left = w.pool - used;
       body = '<p>翌1年の投資予算を配る。<strong>本部予算は1年で切れ、配らなかった本部は地力を失う。</strong>コーポレート投資は蓄積するが毎年目減りする。</p>' +
         '<div class="pool"><span class="muted">残り配分枠<br><span class="tiny">当初 ' + money(w.pool) + '（現金の65%）</span></span>' +
@@ -656,10 +733,10 @@ window.UI = (function () {
       });
       const none = D.DIVISIONS.filter(function (d) { return !allocGet(d.id); }).length;
       if (none) body += '<p class="tiny warn" style="margin-top:10px">⚠ ' + none + '本部が無投資。放置した本部は毎月わずかに地力を失い、やがてレベルが下がる。</p>';
-      btns = '<div class="mbtns"><button data-fy="back">戻る</button>' +
+      btns = '<div class="mbtns">' + BACK +
         '<button class="pri" data-fy="next">この予算で確定（' + money(used) + '）</button></div>';
 
-    } else {
+    } else if (id === 'payout') {
       const profit = Math.max(0, r.profit);
       const div = profit * w.ratio;
       const maxBB = Math.max(0, S.cash * 0.35);
@@ -682,12 +759,45 @@ window.UI = (function () {
         '<span class="k">支出合計</span><span class="v down">-' + money(div + w.buyback) + '</span>' +
         '<span class="k">残る現金</span><span class="v">' + money(Math.max(0, S.cash - div - w.buyback)) + '</span>' +
         '</div>';
-      btns = '<div class="mbtns"><button class="pri" data-fy="finish">決議して次年度へ</button></div>';
+      btns = '<div class="mbtns"><button class="pri" data-fy="' + (last ? 'finish' : 'next') + '">' +
+        (last ? '決議して次年度へ' : '決議して中計策定へ') + '</button></div>';
+
+    } else {
+      /* 中期経営計画の策定 */
+      const opt = E.planTargetOptions();
+      const fyStart = E.fiscalYear() + 1;
+      body = '<p>今後3年（' + fyStart + '〜' + (fyStart + 2) + '年3月期）で何を約束するかを決める。' +
+        '<strong>挑戦的な目標ほど達成時の見返りは大きく、未達のときの反動も大きい。</strong></p>' +
+        '<h3>数値目標</h3>';
+      D.PLAN_ITEMS.forEach(function (it) {
+        const cur = w.tiers[it.id];
+        body += '<div style="margin-bottom:14px"><div class="row"><b style="font-size:13px">' + it.name + '</b>' +
+          '<b class="gold num">' + (it.unit === 'pct' ? pct(opt[it.id][cur]) : money(opt[it.id][cur])) + '</b></div>' +
+          '<div class="tiny muted" style="margin-bottom:6px">' + it.desc + '</div><div class="aggr">';
+        D.PLAN_TIERS.forEach(function (tn, i) {
+          body += '<button data-tier="' + it.id + '" data-i="' + i + '" class="' + (i === cur ? 'on' : '') + '"' +
+            ' style="grid-column:span 1"><b>' + tn + '</b>' +
+            (it.unit === 'pct' ? pct(opt[it.id][i], 0) : money(opt[it.id][i])) + '</button>';
+        });
+        body += '</div></div>';
+      });
+      body += '<h3>重点戦略（2枚選ぶ・3年間有効）</h3>';
+      D.PLAN_CARDS.forEach(function (c) {
+        const on = w.cards.indexOf(c.id) >= 0;
+        body += '<button class="deal" data-card="' + c.id + '"' +
+          (on ? ' style="border-color:var(--gold);background:rgba(217,178,95,.10)"' : '') + '>' +
+          '<div class="deal-h"><div class="deal-t">' + c.icon + ' ' + c.name + '</div>' +
+          (on ? '<span class="pill" style="color:var(--gold2);border-color:var(--gold)">選択中</span>' : '') + '</div>' +
+          '<div class="tiny up" style="margin-top:6px">＋ ' + c.good + '</div>' +
+          '<div class="tiny down" style="margin-top:3px">− ' + c.bad + '</div></button>';
+      });
+      btns = '<div class="mbtns"><button class="pri" data-fy="finish"' + (w.cards.length !== 2 ? ' disabled' : '') + '>' +
+        (w.cards.length !== 2 ? 'あと' + (2 - w.cards.length) + '枚選ぶ' : '第' + ((E.S.planNo || 0) + 1) + '次中計を発表する') + '</button></div>';
     }
 
     modal(dots + head + body + btns, true);
 
-    if (w.step === 3) {
+    if (id === 'payout') {
       const S2 = E.S, maxBB = Math.max(0, S2.cash * 0.35);
       const rd = $('#rg-div'), rb = $('#rg-bb');
       if (rd) rd.addEventListener('input', function (e) { w.ratio = +e.target.value / 100; fyDraw(); });
@@ -708,18 +818,27 @@ window.UI = (function () {
     fyDraw();
   }
 
+  function fyTier(item, i) { fyW.tiers[item] = i; fyDraw(); }
+  function fyCard(id) {
+    const c = fyW.cards, i = c.indexOf(id);
+    if (i >= 0) c.splice(i, 1);
+    else if (c.length < 2) c.push(id);
+    fyDraw();
+  }
+
+  function fyCommitStep() {
+    const w = fyW, id = w.steps[w.step];
+    if (id === 'budget' && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
+    if (id === 'payout' && !w.paid) { E.payout({ ratio: w.ratio, buyback: w.buyback }); w.paid = true; }
+    if (id === 'planNew' && !w.planned) { E.formulatePlan(w.tiers, w.cards); w.planned = true; }
+  }
+
   function fyNav(dir) {
     const w = fyW;
+    if (!w) return;
     if (dir === 'back') { w.step = Math.max(0, w.step - 1); fyDraw(); return; }
-    if (dir === 'next') {
-      if (w.step === 2 && !w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
-      w.step = Math.min(3, w.step + 1);
-      fyDraw();
-      return;
-    }
-    // finish
-    if (!w.allocated) { E.allocateBudget(w.alloc); w.allocated = true; }
-    E.payout({ ratio: w.ratio, buyback: w.buyback });
+    fyCommitStep();
+    if (dir === 'next' && w.step < w.steps.length - 1) { w.step++; fyDraw(); return; }
     const done = w.done; fyW = null;
     closeModal(); render();
     if (done) done();
@@ -759,7 +878,7 @@ window.UI = (function () {
     modal: modal, closeModal: closeModal, alertBox: alertBox,
     openDeal: openDeal, drawDeal: drawDeal, bidResult: bidResult,
     amountModal: amountModal, eventModal: eventModal,
-    fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav,
+    fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },
     esc: esc,
