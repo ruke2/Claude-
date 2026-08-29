@@ -33,6 +33,12 @@ module.exports = function makePolicy(E, D) {
   function annual(S, rec) {
     if (rec.needEval) E.evaluatePlan(rec);
     people(S);
+    // 組織形態: 事業会社が育ったらグループ経営、そうでなければカンパニー制
+    if (!process.env.NOORG) {
+      const companies = S.assets.filter(function (a) { return a.type === 'company' && a.pmiDone; }).length;
+      const want = companies >= 2 ? 'group' : S.stage >= 2 ? 'company' : 'div';
+      if (want !== S.org && !E.canSwitchOrg(want)) E.switchOrg(want);
+    }
     const pool = E.budgetPool();
     const spend = Math.min(pool * 0.55, Math.max(0, rec.profit) * 0.8);
     const map = {};
@@ -56,6 +62,7 @@ module.exports = function makePolicy(E, D) {
     const bb = (S.pbr < 0.9 && S.cash > eq * 0.5) ? Math.min(S.cash * 0.12, eq * 0.03) : 0;
     E.payout({ ratio: ratio, buyback: bb });
 
+    if (rec.needVote) E.ceoVote();
     if (rec.needPlan) {
       const set = CARD_SETS[process.env.CARDS || 'balanced'] || CARD_SETS.balanced;
       const t = +(process.env.TIER || 1);

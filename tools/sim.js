@@ -37,6 +37,9 @@ function playOne(verbose) {
   const ppl = S.people || [];
   return { plans: ph.length, planOk: ph.reduce((a, x) => a + x.count, 0), planFull: ph.filter(x => x.count === 3).length,
            bonus: S.planBonus || 0,
+           gov: S.gov || 0, scandals0: S.scandals || 0, terms: S.ceoTerms || 0,
+           ousted: S.overReason === 'ousted' ? 1 : 0, tobbed: S.overReason === 'tob' ? 1 : 0,
+           org: S.org,
            ma: (S.maStats || {}).done || 0, pmiOk: (S.maStats || {}).pmiOk || 0,
            pmiNg: (S.maStats || {}).pmiNg || 0, exits: (S.maStats || {}).exits || 0,
            people: ppl.length, avgAge: ppl.length ? ppl.reduce((a, p) => a + p.age, 0) / ppl.length : 0,
@@ -64,6 +67,8 @@ console.log('純資産 中央値:', E.money(med('eq')));
 console.log('平均順位    :', avg('rank').toFixed(1));
 console.log('落札率      :', (avg('won') / (avg('won') + avg('lost')) * 100).toFixed(0) + '%');
 console.log('減損/貸倒   :', avg('impair').toFixed(1), '/', avg('def').toFixed(1));
+const orgd = {}; res.forEach(r => { orgd[r.org] = (orgd[r.org] || 0) + 1; });
+console.log('組織/統治   :', JSON.stringify(orgd), 'ガバナンス ' + avg('gov').toFixed(0) + ', 任期 ' + avg('terms').toFixed(1) + '期, 解任 ' + res.reduce((a,r)=>a+r.ousted,0) + '件, 被買収 ' + res.reduce((a,r)=>a+r.tobbed,0) + '件');
 console.log('M&A         :', avg('ma').toFixed(1) + '件, 統合成功 ' + avg('pmiOk').toFixed(1) + ' / 失敗 ' + avg('pmiNg').toFixed(1) + ', EXIT ' + avg('exits').toFixed(1));
 console.log('人材        :', avg('people').toFixed(1) + '名, 平均年齢 ' + avg('avgAge').toFixed(0) + ', 平均能力 ' + avg('power').toFixed(0) + ', 士気 ' + avg('morale').toFixed(0));
 const tp = res.reduce((a, r) => a + r.plans, 0), to = res.reduce((a, r) => a + r.planOk, 0), tf = res.reduce((a, r) => a + r.planFull, 0);

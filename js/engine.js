@@ -138,6 +138,42 @@ window.ENGINE = (function () {
     S.cumInvest = (S.cumInvest || 0) + v;
   }
 
+  /* ---- 組織形態 ---- */
+  function org() { return D.ORG_BY_ID[S.org] || D.ORGS[1]; }
+  function ofx(k, base) { const v = org().fx[k]; return v == null ? base : base * v; }
+  function ofxAdd(k) { return org().fx[k] || 0; }
+  function orgSwitchCost() { return Math.max(3, Math.max(0, equity()) * 0.035); }
+  function canSwitchOrg(id) {
+    const o = D.ORG_BY_ID[id];
+    if (!o) return '組織形態が不正';
+    if (id === S.org) return '既にその体制だ';
+    if (S.stage < o.minStage) return D.STAGES[o.minStage].name + ' 以上でなければ移行できない';
+    if (fiscalYear() - S.orgSwitchFY < 3) return '前回の移行から3年は経たないと現場がもたない';
+    if (S.cash < orgSwitchCost()) return '移行コストが足りない（必要 ' + money(orgSwitchCost()) + '）';
+    return null;
+  }
+  function switchOrg(id) {
+    const err = canSwitchOrg(id);
+    if (err) return { ok: false, msg: err };
+    const c = orgSwitchCost();
+    S.cash -= c; capex(c);
+    S.org = id; S.orgSwitchFY = fiscalYear();
+    S.morale = clamp(S.morale - 8, 0, 100);
+    log('組織を' + D.ORG_BY_ID[id].name + 'へ移行した（移行費用 ' + money(c) + '）。現場は当面混乱する。', 'gold');
+    save();
+    return { ok: true };
+  }
+  /* カンパニー制の自律収益 */
+  function autonomyIncome() {
+    if (!ofxAdd('autonomy')) return 0;
+    let v = 0;
+    D.DIVISIONS.forEach(function (d) {
+      const pt = divSalesPt(d.id);
+      if (pt > 0) v += pt / 100 * scale() * 1.5 * (1 + boostOf(d.id) * 0.2);
+    });
+    return v;
+  }
+
   function boostOf(id) { return ((S.boost && S.boost[id]) || 0) + (S.planBonus || 0) * 0.25; }
   function corpOf(id) { return (S.corp && S.corp[id]) || 0; }
 
@@ -145,12 +181,13 @@ window.ENGINE = (function () {
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
   function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')
-      + Math.floor(S.people.reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1)); }
+      + Math.floor(S.people.reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1))
+      * (org().fx.capMul || 1) | 0; }
   function slotsMax() {
     let ppl = 0;
     S.people.forEach(function (p) { ppl += roleW(p); });
     return clamp(2 + Math.floor(Math.sqrt(S.staff) / 6) + Math.floor(S.offices.length / 3)
-      + Math.floor(corpOf('dx')) + fxAdd('slots') + Math.floor(ppl / 1.9), 3, 14);
+      + Math.floor(corpOf('dx')) + fxAdd('slots') + ofxAdd('slots') + Math.floor(ppl / 1.9), 3, 14);
   }
   function borrowLimit() { return Math.max(0, equity() * fx('lev', rating().lev) - S.debt); }
   function interestRate() { return Math.max(0.004, S.rateBase + rating().spread - fxAdd('spread') - traitBest('spread')); }
@@ -196,6 +233,7 @@ window.ENGINE = (function () {
       plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
       people: [], gradQueue: [], morale: 62, peopleNews: [], hunted: 0,
       ma: [], maStats: { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 }, tobCooldown: 0,
+      org: 'div', orgSwitchFY: 0, gov: 72, scandals: 0, ceoFY: 2027, ceoTerms: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
@@ -581,7 +619,7 @@ window.ENGINE = (function () {
   function divSynergy(divId) {
     let v = 0;
     S.assets.forEach(function (a) { if (a.type === 'company' && a.div === divId) v += a.synergy; });
-    return Math.min(0.30, v * 0.09);
+    return Math.min(0.30, v * 0.09) * (org().fx.synergy || 1);
   }
   function exitCompany(id) {
     const i = S.assets.findIndex(function (a) { return a.id === id; });
@@ -840,7 +878,7 @@ window.ENGINE = (function () {
   }
 
   /* 年次の資源配分 */
-  function budgetPool() { return Math.max(0, S.cash * (0.65 + (S.planBonus || 0) * 0.12)); }
+  function budgetPool() { return ofx('budget', Math.max(0, S.cash * (0.65 + (S.planBonus || 0) * 0.12))); }
   function budgetUnit() { return Math.max(0.1, Math.round(budgetPool() / 16 * 10) / 10); }
   function allocateBudget(map) {
     let total = 0;
@@ -1155,7 +1193,7 @@ window.ENGINE = (function () {
     const wage = S.staff * fx('wage', S.wageRate) + fx('wage', rosterCost());
     const sga = (S.offices.length * 0.5 * Math.sqrt(scale()) + Math.max(0, equity()) * 0.0006 + 0.25)
       * (1 - Math.min(0.35, corpOf('dx') * 0.10));
-    const sgaF = fx('sga', sga);
+    const sgaF = ofx('sga', fx('sga', sga));
     const int = S.debt * interestRate() / 12;
     S.cash -= (wage + sgaF + int);
     L.wage -= wage; L.sga -= sgaF; L.interest -= int;
@@ -1206,7 +1244,7 @@ window.ENGINE = (function () {
     return nowE / past - 1;
   }
   function stepEquityMarket() {
-    S.roeTTM = roeTrailing();
+    S.roeTTM = clamp(roeTrailing(), -3, 3);
     const g = clamp(growthTrailing(), -0.6, 1.4);
     let t = 0.55 + S.roeTTM * 5.0 + (S.trust - 50) * 0.008 + g * 0.55 + corpOf('esg') * 0.03;
     t = clamp(t, 0.28, 3.4);
@@ -1227,6 +1265,69 @@ window.ENGINE = (function () {
   function myRank() {
     const l = ranking();
     return l.findIndex(function (x) { return x.me; }) + 1;
+  }
+
+  /* ---------------- ガバナンスと不祥事 ---------------- */
+  function stepGov() {
+    let d = 0.22 + corpOf('esg') * 0.30 + ofxAdd('gov');
+    const de = S.debt / Math.max(1, equity());
+    if (de > 1.2) d -= 0.30;
+    if (S.people.length < 6) d -= 0.20;          // 監督する人がいない
+    S.gov = clamp(S.gov + d, 0, 100);
+  }
+  function checkScandal(L) {
+    if (Math.random() > (100 - S.gov) / 100 * 0.030) return null;
+    const sc = pick(D.SCANDALS);
+    const fine = Math.max(0.4, Math.max(0, equity()) * rnd(0.008, 0.038));
+    S.cash -= fine; L.defaults -= fine;
+    S.credit = clamp(S.credit - 9, 0, 100);
+    S.trust = clamp(S.trust - 9, 0, 100);
+    S.morale = clamp(S.morale - 6, 0, 100);
+    S.gov = clamp(S.gov + 7, 0, 100);
+    S.scandals++;
+    log('【不祥事】' + sc.t + '。制裁金・対応費用 ' + money(fine) + '。', 'down');
+    return { ic: '📰', title: sc.t, text: sc.d + ' 制裁金と対応費用で ' + money(fine) + ' を失った。' };
+  }
+
+  /* ---------------- 社長信任 ---------------- */
+  function confidenceScore() {
+    const recent = (S.planHistory || []).slice(-2);
+    const planOk = recent.reduce(function (a, x) { return a + x.count; }, 0);
+    const r = myRank();
+    return clamp(
+      S.trust * 0.5 + planOk * 5 + clamp((S.roeTTM || 0) * 100, -15, 15)
+      + (S.gov - 60) * 0.25 - S.scandals * 4
+      + (r <= 3 ? 8 : r <= 6 ? 3 : 0), 0, 100);
+  }
+  function confidenceDetail() {
+    const recent = (S.planHistory || []).slice(-2);
+    const planOk = recent.reduce(function (a, x) { return a + x.count; }, 0);
+    const r = myRank();
+    return [
+      { k: '株主信任', v: S.trust * 0.5 },
+      { k: '直近2期の中計達成（' + planOk + '/6項目）', v: planOk * 5 },
+      { k: 'ROE', v: clamp((S.roeTTM || 0) * 100, -15, 15) },
+      { k: 'ガバナンス', v: (S.gov - 60) * 0.25 },
+      { k: '不祥事（' + S.scandals + '件）', v: -S.scandals * 4 },
+      { k: '世界順位（' + r + '位）', v: r <= 3 ? 8 : r <= 6 ? 3 : 0 },
+    ];
+  }
+  function ceoVote() {
+    const sc = confidenceScore();
+    const pass = sc >= 40;
+    S.ceoFY = fiscalYear();
+    S.ceoTerms = (S.ceoTerms || 0) + 1;
+    S.scandals = 0;
+    if (pass) {
+      S.planBonus = clamp((S.planBonus || 0) + 0.12, 0, 1.2);
+      S.trust = clamp(S.trust + 5, 0, 100);
+      log('社長信任投票を通過（信任スコア ' + Math.round(sc) + '）。任期が延長された。', 'gold');
+    } else {
+      S.over = true; S.overReason = 'ousted';
+      log('社長信任投票で不信任（信任スコア ' + Math.round(sc) + '）。経営陣は退陣した。', 'down');
+    }
+    save();
+    return { score: sc, pass: pass, detail: confidenceDetail() };
   }
 
   /* ---------------- 敵対的買収 ---------------- */
@@ -1299,6 +1400,11 @@ window.ENGINE = (function () {
     processActive(L);
     processAssets(L);
     financeCosts(L);
+    const auto = autonomyIncome();
+    if (auto > 0) { S.cash += auto; L.dividend += auto; }
+    stepGov();
+    const scd = checkScandal(L);
+    if (scd && !out.event) out.event = scd;
     rescue(L);
 
     // 信用の自然回復・減衰と財務規律（D/Eレバレッジは格付を蝕む）
@@ -1370,6 +1476,7 @@ window.ENGINE = (function () {
       }
       rec.people = annualPeople();
       rec.morale = S.morale;
+      rec.needVote = S.stage >= 1 && (rec.fy - (S.ceoFY || 2027)) >= D.CONFIDENCE_EVERY;
       rec.needEval = !!(S.plan && S.plan.endFY <= S.y);
       rec.needPlan = !S.plan || rec.needEval;
       rec.plan = S.plan;
@@ -1480,6 +1587,12 @@ window.ENGINE = (function () {
     if (!S.ma) S.ma = [];
     if (!S.maStats) S.maStats = { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 };
     if (S.tobCooldown == null) S.tobCooldown = 0;
+    if (!S.org) S.org = 'div';
+    if (S.orgSwitchFY == null) S.orgSwitchFY = 0;
+    if (S.gov == null) S.gov = 72;
+    if (S.scandals == null) S.scandals = 0;
+    if (S.ceoFY == null) S.ceoFY = 2027;
+    if (S.ceoTerms == null) S.ceoTerms = 0;
   }
 
   function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
@@ -1513,6 +1626,9 @@ window.ENGINE = (function () {
     maPrice: maPrice, maWin: maWin, maCheck: maCheck, acquire: acquire,
     setPMILeader: setPMILeader, pmiChance: pmiChance, divSynergy: divSynergy,
     exitCompany: exitCompany, defendTOB: defendTOB, defendCost: defendCost,
+    org: org, orgSwitchCost: orgSwitchCost, canSwitchOrg: canSwitchOrg, switchOrg: switchOrg,
+    autonomyIncome: autonomyIncome, confidenceScore: confidenceScore,
+    confidenceDetail: confidenceDetail, ceoVote: ceoVote,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,

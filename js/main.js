@@ -6,10 +6,10 @@
   const $ = function (s) { return document.querySelector(s); };
 
   /* ---- モーダルを順番に流す ---- */
-  function runQueue(items) {
+  function runQueue(items, done) {
     let i = 0;
     (function next() {
-      if (i >= items.length) { U.render(); return; }
+      if (i >= items.length) { U.render(); if (done) done(); return; }
       const f = items[i++];
       f(next);
     })();
@@ -24,10 +24,12 @@
     if (out.tob) q.push(function (n) { U.tobModal(out.tob, n); });
     if (out.fy) q.push(function (n) { U.fyOpen(out.fy, n); });
     if (out.promote) q.push(function (n) { U.promoteModal(out.promote, n, out.raise); });
-    if (out.over) q.push(function () { U.endModal(false); });
-    if (out.cleared) q.push(function () { U.endModal(true); });
     U.render();
-    runQueue(q);
+    runQueue(q, function () {
+      // 決算ウィザード中の信任投票などでも終局しうるため、最後に必ず確認する
+      if (E.S.over) U.endModal(false);
+      else if (E.S.cleared) U.endModal(true);
+    });
   }
 
   /* ---- 起動 ---- */
@@ -51,7 +53,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -79,6 +81,23 @@
     if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
     if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
     if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }
+    if (t.hasAttribute('data-org')) {
+      const o = window.GAME.ORG_BY_ID[t.dataset.org];
+      U.modal('<h2>' + o.icon + ' ' + o.name + 'へ移行</h2>' +
+        '<p class="up">＋ ' + o.good + '</p><p class="down">− ' + o.bad + '</p>' +
+        '<p>移行費用 ' + E.money(E.orgSwitchCost()) + '。現場は当面混乱し、士気が下がる。<br>' +
+        '一度移行すると3年は戻せない。</p>' +
+        '<div class="mbtns"><button data-close>やめる</button>' +
+        '<button class="pri" data-orgok="' + o.id + '">移行する</button></div>');
+      return;
+    }
+    if (t.hasAttribute('data-orgok')) {
+      const r = E.switchOrg(t.dataset.orgok);
+      U.closeModal();
+      if (!r.ok) U.alertBox('移行できない', r.msg, 'down');
+      U.render();
+      return;
+    }
     if (t.hasAttribute('data-ma')) { U.maOpen(t.dataset.ma); return; }
     if (t.hasAttribute('data-offer')) { U.setOffer(+t.dataset.offer); return; }
     if (t.hasAttribute('data-dd')) {

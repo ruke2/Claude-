@@ -512,10 +512,43 @@ window.UI = (function () {
     });
     h += '</div>';
 
+    h += '<div class="card"><div class="sect">組織形態</div>';
+    D.ORGS.forEach(function (o) {
+      const cur = S.org === o.id, err = E.canSwitchOrg(o.id);
+      h += '<div class="divrow"><div class="ic">' + o.icon + '</div>' +
+        '<div class="nm"><b class="' + (cur ? 'gold' : S.stage < o.minStage ? 'muted' : '') + '">' + o.name + '</b>' +
+        '<div class="tiny up">＋ ' + o.good + '</div>' +
+        '<div class="tiny down">− ' + o.bad + '</div></div>' +
+        (cur ? '<span class="pill" style="color:var(--gold2);border-color:var(--gold)">現体制</span>'
+             : '<button class="act" data-org="' + o.id + '"' + (err ? ' disabled' : '') + '>' +
+               (S.stage < o.minStage ? '🔒' : money(E.orgSwitchCost())) + '</button>') +
+        '</div>';
+    });
+    h += '<p class="tiny muted" style="margin:9px 0 0">移行には純資産の3.5%と、士気の一時的な低下を伴う。前回移行から3年は動かせない。</p></div>';
+
+    h += '<div class="card"><div class="sect">ガバナンスと信任</div><div class="kv">' +
+      '<span class="k">ガバナンス</span><span class="v ' + (S.gov >= 70 ? 'up' : S.gov < 50 ? 'down' : 'warn') + '">' + Math.round(S.gov) + ' / 100</span>' +
+      '<span class="k">今期の不祥事</span><span class="v ' + (S.scandals ? 'down' : '') + '">' + S.scandals + '件</span>' +
+      '<span class="k">社長信任スコア</span><span class="v ' + (E.confidenceScore() >= 40 ? 'up' : 'down') + '">' + Math.round(E.confidenceScore()) + ' / 100</span>' +
+      '<span class="k">次の信任投票</span><span class="v">' + (S.ceoFY + D.CONFIDENCE_EVERY) + '年3月期</span>' +
+      '<span class="k">任期</span><span class="v">' + (S.ceoTerms + 1) + '期目</span>' +
+      '</div>' +
+      '<div class="gauge"><i style="width:' + Math.round(S.gov) + '%;background:' +
+      (S.gov >= 70 ? 'var(--up)' : S.gov < 50 ? 'var(--down)' : 'var(--warn)') + '"></i></div>' +
+      '<p class="tiny muted" style="margin:8px 0 0">ガバナンスが低いほど不祥事が起きやすい。サステナ・内部統制への予算配分で回復し、' +
+      'カンパニー制・グループ経営・高レバレッジ・幹部不足で低下する。' +
+      '<strong>信任スコアが40を切ると解任される。</strong></p></div>';
+
+    if (E.autonomyIncome() > 0) {
+      h += '<div class="card quiet"><div class="row"><span class="small muted">カンパニー制の自律収益（月次）</span>' +
+        '<b class="up num">' + money(E.autonomyIncome()) + '</b></div></div>';
+    }
+
     h += '<div class="card"><div class="sect">通算成績</div><div class="kv">' +
       '<span class="k">落札 / 失注</span><span class="v">' + S.stats.won + ' / ' + S.stats.lost + '</span>' +
       '<span class="k">完了案件</span><span class="v">' + S.stats.done + '</span>' +
       '<span class="k">減損 / 貸倒</span><span class="v down">' + S.stats.impair + ' / ' + S.stats.defaults + '</span>' +
+      '<span class="k">M&amp;A（成功/失敗/売却）</span><span class="v">' + S.maStats.done + ' (' + S.maStats.pmiOk + '/' + S.maStats.pmiNg + '/' + S.maStats.exits + ')</span>' +
       '<span class="k">経過</span><span class="v">' + S.turn + 'ヶ月</span>' +
       '</div><div style="margin-top:10px"><button class="act" style="width:100%" data-act="reset">最初からやり直す</button></div></div>';
     return h;
@@ -704,16 +737,35 @@ window.UI = (function () {
 
   /* 大型案件では担当本部の幹部が意見を述べる */
   function advice(d) {
-    const S = E.S;
-    if (d.exposure < Math.max(1, E.equity()) * 0.22) return '';
-    const ps = E.divPeople(d.div).sort(function (a, b) { return b.role - a.role || b.sales - a.sales; });
+    const S = E.S, eq = Math.max(1, E.equity());
+    if (d.exposure < eq * 0.22) return '';
+    const board = d.exposure > eq * 0.30;
+    let ps = E.divPeople(d.div).sort(function (a, b) { return b.role - a.role || b.sales - a.sales; });
+    if (board) {
+      const others = S.people.filter(function (p) { return p.div !== d.div && p.role >= 2; })
+        .sort(function (a, b) { return b.role - a.role; });
+      ps = ps.slice(0, 2).concat(others.slice(0, 2)).slice(0, 3);
+    } else ps = ps.slice(0, 1);
     if (!ps.length) {
-      return '<div class="quote"><b>（担当本部に幹部がいない）</b>誰も中身を検証できないまま、判子だけが回っている。</div>';
+      return '<div class="quote"><b>（意見を述べられる幹部がいない）</b>誰も中身を検証しないまま、判子だけが回っている。</div>';
     }
-    const p = ps[0], t = E.toneOf(p);
-    const good = E.winScore(d, curStance) > 0.34 && E.mfac(d.comms) > 0.88;
-    return '<div class="quote"><b>' + p.face + ' ' + esc(p.name) + '（' + D.ROLES[p.role] + '）</b>' +
-      '「' + (good ? t.yes : t.no) + '」</div>';
+    const p0 = E.winScore(d, curStance), mk = E.mfac(d.comms);
+    let yes = 0, h = '';
+    ps.forEach(function (p) {
+      const t = E.toneOf(p);
+      const ok = p0 > 0.34 && mk > 0.88 - (p.eye - 50) / 260;
+      if (ok) yes++;
+      h += '<div class="quote" style="border-left-color:' + (ok ? 'var(--up)' : 'var(--down)') + '">' +
+        '<b>' + p.face + ' ' + esc(p.name) + '（' + D.ROLES[p.role] + '・' +
+        D.DIV_BY_ID[p.div].short + '）<span class="' + (ok ? 'up' : 'down') + '" style="float:right">' +
+        (ok ? '賛成' : '反対') + '</span></b>「' + (ok ? t.yes : t.no) + '」</div>';
+    });
+    return (board
+      ? '<h3>役員会（純資産の30%を超える案件）</h3>' +
+        (yes * 2 <= ps.length
+          ? '<p class="tiny down">役員会は反対多数。押し切ることはできるが、その責任は経営者が負う。</p>'
+          : '<p class="tiny up">役員会は賛成多数。</p>')
+      : '<h3>担当本部の意見</h3>') + h;
   }
 
   function bidResult(res) {
@@ -818,6 +870,7 @@ window.UI = (function () {
   let fyW = null;
   const STEP_NAMES = {
     result: '決算発表', rating: '格付レビュー', planEval: '中期経営計画 総括', hr: '人事',
+    vote: '社長信任投票',
     budget: '資源配分', payout: '株主還元', planNew: '中期経営計画 策定',
   };
 
@@ -826,11 +879,12 @@ window.UI = (function () {
     if (rec.needEval) steps.push('planEval');
     steps.push('budget', 'payout');
     if (rec.needPlan) steps.push('planNew');
+    if (rec.needVote) steps.push('vote');
     fyW = {
       rec: rec, steps: steps, step: 0, done: done,
       alloc: {}, unit: E.budgetUnit(), pool: E.budgetPool(),
       ratio: 0.3, buyback: 0, allocated: false,
-      evalRes: null, gradIdx: 0, gradDone: false, promos: [],
+      evalRes: null, voteRes: null, gradIdx: 0, gradDone: false, promos: [],
       tiers: { profit: 1, roe: 1, invest: 1 }, cards: [],
     };
     fyDraw();
@@ -954,6 +1008,25 @@ window.UI = (function () {
       });
       body += '<p class="tiny muted" style="margin-top:8px">昇進が止まった幹部は不満を溜め、いずれ他社に引き抜かれる。</p>';
       btns = '<div class="mbtns">' + BACK + NEXT + '</div>';
+
+    } else if (id === 'vote') {
+      if (!w.voteRes) w.voteRes = E.ceoVote();
+      const v = w.voteRes;
+      body = '<p>就任から' + D.CONFIDENCE_EVERY + '事業年度。取締役会と株主が、経営陣を続投させるかを問う。</p>' +
+        '<div class="row" style="align-items:center;margin:14px 0 6px">' +
+        '<span class="muted small">信任スコア（40以上で続投）</span>' +
+        '<b class="' + (v.pass ? 'up' : 'down') + '" style="font-size:32px">' + Math.round(v.score) + '</b></div>' +
+        '<div class="gauge"><i style="width:' + Math.round(v.score) + '%;background:' +
+        (v.pass ? 'var(--up)' : 'var(--down)') + '"></i></div><div class="kv" style="margin-top:12px">';
+      v.detail.forEach(function (x) {
+        body += '<span class="k">' + x.k + '</span><span class="v ' + (x.v >= 0 ? 'up' : 'down') + '">' +
+          (x.v >= 0 ? '+' : '') + x.v.toFixed(1) + '</span>';
+      });
+      body += '</div><p class="' + (v.pass ? 'up' : 'down') + '" style="margin-top:14px">' +
+        (v.pass ? '信任された。任期が延長され、実績ボーナスが積み増された。'
+                : '不信任。あなたはこの会社の経営から外れることになった。') + '</p>';
+      btns = '<div class="mbtns"><button class="pri" data-fy="finish">' +
+        (v.pass ? '次の任期へ' : '退任する') + '</button></div>';
 
     } else if (id === 'planEval') {
       if (!w.evalRes) w.evalRes = E.evaluatePlan(r);
@@ -1156,12 +1229,16 @@ window.UI = (function () {
   function endModal(win) {
     const S = E.S;
     onClose = null;
-    modal('<div class="evt-ic">' + (win ? '👑' : '💀') + '</div>' +
-      '<h2 style="text-align:center">' + (win ? '世界最大の総合商社' : S.overReason === 'tob' ? '被買収' : '経営破綻') + '</h2>' +
+    modal('<div class="evt-ic">' + (win ? '👑' : S.overReason === 'tob' ? '⚔️'
+        : S.overReason === 'ousted' ? '🚪' : '💀') + '</div>' +
+      '<h2 style="text-align:center">' + (win ? '世界最大の総合商社'
+        : S.overReason === 'tob' ? '被買収' : S.overReason === 'ousted' ? '社長解任' : '経営破綻') + '</h2>' +
       '<p style="text-align:center;margin-top:8px">' +
       (win ? esc(S.company) + ' は世界の頂点に立った。<br>ラーメンから航空機まで、地球上のあらゆる商いが<br>この会社を通っている。'
            : S.overReason === 'tob'
              ? esc(S.company) + ' は敵対的買収に屈した。<br>看板は下ろされ、事業は切り売りされていく。'
+             : S.overReason === 'ousted'
+               ? esc(S.company) + ' は残る。<br>ただし、あなたはもうその経営者ではない。'
              : esc(S.company) + ' は債務超過に陥り、<br>再建を断念した。') + '</p>' +
       '<div class="fy-grid">' +
       '<div class="b"><label>最終純資産</label><b class="gold">' + money(E.equity()) + '</b></div>' +
