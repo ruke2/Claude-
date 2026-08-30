@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0d1117">
+<title>SOGO SHOSHA 〜総合商社経営〜</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app" hidden>
+  <header id="hud">
+    <div class="hud-top">
+      <div class="hud-id">
+        <span id="hud-stage" class="stage-badge">街の貿易商</span>
+        <span id="hud-company">—</span>
+      </div>
+      <div class="hud-date"><span id="hud-date">2026年4月</span></div>
+    </div>
+    <div class="hud-stats">
+      <div class="stat"><label>現金</label><b id="hud-cash">—</b></div>
+      <div class="stat"><label>純資産</label><b id="hud-equity">—</b></div>
+      <div class="stat"><label>前月純利益</label><b id="hud-profit">—</b></div>
+      <div class="stat"><label>格付</label><b id="hud-rating">—</b></div>
+    </div>
+    <div class="hud-mkt" id="hud-mkt"></div>
+    <div class="hud-bar"><div id="hud-bar-fill"></div><span id="hud-bar-label"></span></div>
+  </header>
+
+  <main id="view"></main>
+
+  <div id="turnbar">
+    <div class="slots"><span id="slot-label">商談枠</span><div id="slot-dots"></div></div>
+    <button id="btn-next" class="btn-next">▶ 翌月へ</button>
+  </div>
+
+  <nav id="tabs">
+    <button data-tab="dash" class="on"><i>📊</i><span>経営</span></button>
+    <button data-tab="market"><i>🤝</i><span>商談</span></button>
+    <button data-tab="active"><i>📦</i><span>進行</span></button>
+    <button data-tab="assets"><i>💼</i><span>投資</span></button>
+    <button data-tab="biz"><i>🏭</i><span>事業</span></button>
+    <button data-tab="admin"><i>🏢</i><span>本社</span></button>
+    <button data-tab="rank"><i>🏆</i><span>順位</span></button>
+  </nav>
+</div>
+
+<div id="modal-root" hidden>
+  <div class="backdrop"></div>
+  <div class="modal" id="modal-box"></div>
+</div>
+
+<div id="title">
+  <div class="title-inner">
+    <p class="tag">TURN-BASED TRADING HOUSE SIM</p>
+    <h1>SOGO<br>SHOSHA</h1>
+    <p class="sub">〜総合商社経営〜</p>
+    <p class="lead">ラーメンから航空機まで。<br>一介の貿易商から、世界最大の総合商社へ。</p>
+    <label class="field"><span>商社名</span>
+      <input id="input-company" maxlength="12" placeholder="蒼龍商事" value="蒼龍商事">
+    </label>
+    <button id="btn-start" class="btn-primary">創業する</button>
+    <button id="btn-continue" class="btn-ghost" hidden>続きから</button>
+    <button id="btn-slots" class="btn-ghost">セーブデータ</button>
+    <p class="credit">市況・為替・地政学リスクを読み、<br>トレード / 権益 / 事業投資で稼ぐターン制経営SLG</p>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
