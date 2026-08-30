@@ -346,34 +346,34 @@ window.UI = (function () {
   function viewMarket() {
     const S = E.S;
     let h = '';
-    if (S.ma && S.ma.length) {
-      h += '<div class="sect">M&amp;A 候補（' + S.ma.length + '社）</div>';
-      S.ma.forEach(function (t) {
-        const dv = D.DIV_BY_ID[t.div], rg = D.REGION_BY_ID[t.region];
-        h += '<button class="deal" data-ma="' + t.id + '" style="border-color:#5a3f86">' +
-          '<div class="deal-h"><div class="deal-t">🏢 ' + esc(t.name) + '</div>' +
-          '<span class="pill t-concession">' + (t.listed ? '上場' : '非上場') + '</span></div>' +
-          '<div class="deal-m"><span class="pill">' + dv.icon + ' ' + dv.short + '</span>' +
-          '<span class="pill">' + rg.flag + ' ' + rg.name + '</span>' +
-          '<span class="pill">競合 ' + t.rivals + '社</span>' +
-          (t.dd ? '<span class="pill" style="color:var(--up);border-color:#2f6b4c">DD済</span>'
-                : '<span class="pill" style="color:var(--warn);border-color:#7a5628">DD未実施</span>') + '</div>' +
-          '<div class="tiny muted" style="margin-top:7px">純資産 ' + money(t.netAssets) +
-            ' ／ ' + (t.dd ? '実力純利益 ' + money(t.trueProfit) + '/年' : '表面純利益 ' + money(t.shownProfit) + '/年') + '</div>' +
-          '<div class="deal-f"><span class="muted">残り ' + t.ttl + 'ヶ月</span>' +
-          '<span class="gold">想定 ' + money(E.maPrice(t, 2)) + '</span></div></button>';
-      });
-      h += '<div style="height:6px"></div>';
-    }
-    if (!S.market.length) return h + '<div class="empty">現在、打診されている案件はない。<br>翌月へ進めば新しい商談が持ち込まれる。</div>';
-    h += '<div class="sect">持ち込まれている案件（' + S.market.length + '件）</div>';
-    S.market.forEach(function (d) {
+    const autoOn = S.auto && S.auto.on;
+    const covered = S.market.filter(function (d) { return E.isAutoTarget(d); });
+    const manual = autoOn ? S.market.filter(function (d) { return !E.isAutoTarget(d); }) : S.market;
+
+    h += '<div class="card quiet"><div class="row" style="align-items:center">' +
+      '<span class="small"><b class="' + (autoOn ? 'gold' : 'muted') + '">定型商談課</b>' +
+      '<span class="tiny muted"> ' + (autoOn ? E.autoLimitName() + 'まで自動で応札' : '停止中') + '</span></span>' +
+      '<button class="act" data-act="autocfg">設定</button></div>' +
+      (autoOn
+        ? '<div class="kv" style="margin-top:8px">' +
+          '<span class="k">今月の対象</span><span class="v">' + covered.length + '件（枠 ' + E.autoCap() + '）</span>' +
+          '<span class="k">抱えている自動案件</span><span class="v">' + E.autoActive() + ' / ' + E.autoBook() + '</span>' +
+          (S.autoLog ? '<span class="k">前月の実績</span><span class="v up">' + S.autoLog.bid + '件応札 → ' + S.autoLog.won + '件受注</span>' : '') +
+          '</div>'
+        : '<p class="tiny muted" style="margin:7px 0 0">小口の商いを手で捌く必要はない。設定から有効にできる。</p>') +
+      '</div>';
+
+    if (!manual.length) return h + '<div class="empty">手で判断すべき案件はいまない。<br>小口は定型商談課が捌いている。</div>';
+    h += '<div class="sect">持ち込まれている案件（' + manual.length + '件' +
+      (autoOn && covered.length ? '／自動対象 ' + covered.length + '件は非表示' : '') + '）</div>';
+    manual.forEach(function (d) {
       const dv = D.DIV_BY_ID[d.div], rg = D.REGION_BY_ID[d.region];
       const p = E.winScore(d, 2);
       h += '<button class="deal" data-deal="' + d.id + '">' +
         '<div class="deal-h"><div class="deal-t">' + (d.big ? '💎 ' : '') + esc(d.name) + '</div>' +
         '<span class="pill t-' + d.type + '">' + D.TYPE_LABEL[d.type] + '</span></div>' +
         '<div class="deal-m"><span class="pill">' + dv.icon + ' ' + dv.short + '</span>' +
+        '<span class="pill">' + (D.TIER_BY_ID[d.tier] || { name: '—' }).name + '</span>' +
         '<span class="pill">' + rg.flag + ' ' + rg.name + (E.hasOffice(d.region) ? '（拠点有）' : '') + '</span>' +
         '<span class="pill">競合 ' + d.rivals + '社</span></div>' +
         '<div class="tiny muted" style="margin-top:7px">' + dealSummary(d) + '</div>' +
@@ -430,32 +430,7 @@ window.UI = (function () {
     S.assets.forEach(function (a) {
       const dv = D.DIV_BY_ID[a.div], rg = D.REGION_BY_ID[a.region];
       const pl = a.value - a.basis;
-      if (a.type === 'company') {
-        const leader = a.pmiLeader ? E.findPerson(a.pmiLeader) : null;
-        h += '<div class="card"><div class="deal-h"><div class="deal-t">🏢 ' + esc(a.name) + '</div>' +
-          '<span class="pill ' + (a.pmiDone ? 't-investment' : 't-project') + '">' +
-          (a.pmiDone ? '稼働' : '統合中') + '</span></div>' +
-          '<div class="tiny muted" style="margin-top:6px">' + dv.icon + ' ' + dv.short + ' ／ ' + rg.flag + ' ' + rg.name + '</div>';
-        if (!a.pmiDone) {
-          const pc = E.pmiChance(a);
-          h += '<div class="bar"><i style="width:' + ((12 - a.pmiLeft) / 12 * 100).toFixed(0) + '%"></i></div>' +
-            '<div class="deal-f"><span class="muted">統合まで残り ' + a.pmiLeft + 'ヶ月</span>' +
-            '<span class="' + (pc > 0.6 ? 'up' : pc > 0.4 ? 'warn' : 'down') + '">成功確度 ' + Math.round(pc * 100) + '%</span></div>' +
-            '<div class="row small" style="margin-top:8px"><span class="muted">統合責任者</span>' +
-            '<span>' + (leader ? leader.face + ' ' + esc(leader.name) + '（統率 ' + leader.lead + '）' : '<span class="down">未指名</span>') + '</span></div>' +
-            '<button class="act" style="width:100%;margin-top:8px" data-pmi="' + a.id + '">統合責任者を指名する</button>';
-        } else {
-          h += '<div class="kv" style="margin-top:9px">' +
-            '<span class="k">取得原価 / うち のれん</span><span class="v">' + money(a.basis) + ' / ' + money(a.goodwill) + '</span>' +
-            '<span class="k">現在価値</span><span class="v ' + (pl >= 0 ? 'up' : 'down') + '">' + money(a.value) + ' (' + signed(pl) + ')</span>' +
-            '<span class="k">シナジー</span><span class="v ' + (a.synergy > 0.5 ? 'up' : 'down') + '">×' + (1 + a.synergy * 0.55).toFixed(2) + '</span>' +
-            '<span class="k">累計収益</span><span class="v up">' + money(a.cum) + '</span></div>' +
-            '<div style="display:flex;justify-content:flex-end;margin-top:9px">' +
-            '<button class="act" data-exit="' + a.id + '">売却（EXIT）</button></div>';
-        }
-        h += '</div>';
-        return;
-      }
+      if (a.type === 'company') return;   // 事業会社は「事業」タブで扱う
       const remain = a.type === 'concession' ? Math.max(0, a.life - a.age) + 'ヶ月' : '無期限';
       h += '<div class="card"><div class="deal-h"><div class="deal-t">' + esc(a.name) + '</div>' +
         '<span class="pill t-' + a.type + '">' + D.TYPE_LABEL[a.type] + '</span></div>' +
@@ -643,6 +618,11 @@ window.UI = (function () {
         '<b class="up num">' + money(E.autonomyIncome()) + '</b></div></div>';
     }
 
+    h += '<div class="card"><div class="sect">セーブデータ</div>' +
+      '<p class="tiny muted" style="margin:0 0 10px">進行状況は毎月自動保存される。手動スロットへの保存と、' +
+      '端末をまたぐ書き出し・読み込みもここから。</p>' +
+      '<button class="act gold" style="width:100%" data-act="slots">セーブ / ロード / 書き出し</button></div>';
+
     h += '<div class="card"><div class="sect">通算成績</div><div class="kv">' +
       '<span class="k">落札 / 失注</span><span class="v">' + S.stats.won + ' / ' + S.stats.lost + '</span>' +
       '<span class="k">完了案件</span><span class="v">' + S.stats.done + '</span>' +
@@ -683,6 +663,118 @@ window.UI = (function () {
       (p.role < 3 ? '<button class="pri" data-phead="' + p.id + '">本部長に任命</button>' : '<button disabled>本部長</button>') +
       '<button data-close>閉じる</button></div>';
     modal(h);
+  }
+
+  /* ---------- 事業（企業ユニバース） ---------- */
+  let bizSub = 'world';
+  function setBizSub(v) { bizSub = v; render(); }
+
+  function ownerLabel(t) {
+    if (t.owner === 'me') return { cls: 'mine', txt: '当社傘下' };
+    if (t.owner) return { cls: 'taken', txt: esc(t.owner) + ' 傘下' };
+    if (t.forSale) return { cls: 'sale', txt: '売却意向：' + t.reason };
+    return null;
+  }
+  function companyRow(t) {
+    const rg = D.REGION_BY_ID[t.region];
+    const ol = ownerLabel(t);
+    const mine = t.owner === 'me';
+    const shown = t.dd || mine ? E.trueProfitOf(t) : E.shownProfitOf(t);
+    return '<button class="co' + (mine ? ' mine' : t.owner ? ' taken' : t.forSale ? ' sale' : '') + '"' +
+      ' data-co="' + t.id + '">' +
+      '<div class="co-h"><div class="n">' + esc(t.name) + '</div>' +
+      '<div class="v gold">' + money(t.netAssets) + '</div></div>' +
+      '<div class="co-m">' +
+      (ol ? '<span class="co-b ' + ol.cls + '">' + ol.txt + '</span>' : '') +
+      '<span class="co-b">' + rg.flag + ' ' + rg.name + '</span>' +
+      '<span class="co-b">' + (t.listed ? '上場' : '非上場') + '</span>' +
+      (t.dd ? '<span class="co-b" style="color:var(--info)">DD済</span>' : '') +
+      '</div>' +
+      '<div class="tiny muted" style="margin-top:6px">利益 ' + money(shown) + '/年（利回り ' +
+        pct(shown / Math.max(1, t.netAssets), 1) + '）／ 成長 ' + pct(t.growth * 12, 1) + '/年</div>' +
+      '</button>';
+  }
+
+  function viewBiz() {
+    const S = E.S;
+    let h = '<div class="subtabs">' +
+      '<button data-bsub="world" class="' + (bizSub === 'world' ? 'on' : '') + '">業界</button>' +
+      '<button data-bsub="own" class="' + (bizSub === 'own' ? 'on' : '') + '">傘下（' +
+        S.assets.filter(function (a) { return a.type === 'company'; }).length + '）</button>' +
+      '</div>';
+    return h + (bizSub === 'own' ? viewOwned() : viewWorld());
+  }
+
+  function viewWorld() {
+    const S = E.S, list = E.universeList();
+    const forSale = list.filter(function (t) { return t.owner == null && t.forSale; }).length;
+    let h = '<div class="card quiet"><div class="row"><span class="small muted">売却意向のある会社</span>' +
+      '<b class="' + (forSale ? 'up' : 'muted') + '">' + forSale + ' 社</b></div>' +
+      '<p class="tiny muted" style="margin:7px 0 0">世界の会社は入れ替わらない。業績が動き、売却意向が立ち、' +
+      '他商社に買われていく。<strong>意向のない会社にも打診はできる</strong>が、25%のプレミアムを積んでも通りにくい。</p></div>';
+    D.SECTORS.forEach(function (sec) {
+      const cs = list.filter(function (t) { return t.div === sec.id; })
+        .sort(function (a, b) { return a.netAssets - b.netAssets; });
+      const mine = cs.filter(function (t) { return t.owner === 'me'; }).length;
+      h += '<div class="sector"><b>' + sec.icon + ' ' + sec.name + '</b>' +
+        '<span>' + cs.length + '社' + (mine ? ' ／ 当社 ' + mine + '社' : '') + '</span></div>';
+      cs.forEach(function (t) { h += companyRow(t); });
+    });
+    return h;
+  }
+
+  function viewOwned() {
+    const S = E.S;
+    const cs = S.assets.filter(function (a) { return a.type === 'company'; });
+    if (!cs.length) {
+      return '<div class="empty">傘下の事業会社はまだない。<br>「業界」から売却意向のある会社を探そう。</div>';
+    }
+    let tot = 0, inc = 0;
+    cs.forEach(function (a) { tot += a.value; inc += a.profitBase * (1 + a.synergy * 0.55); });
+    let h = '<div class="card"><div class="sect">傘下事業</div><div class="kv">' +
+      '<span class="k">会社数</span><span class="v">' + cs.length + '社</span>' +
+      '<span class="k">簿価合計</span><span class="v">' + money(tot) + '</span>' +
+      '<span class="k">月次の持分利益（概算）</span><span class="v up">' + money(inc) + '</span>' +
+      '<span class="k">出向中の幹部</span><span class="v">' + E.seconded().length + '名</span>' +
+      '</div></div>';
+    cs.forEach(function (a) {
+      const dv = D.DIV_BY_ID[a.div], rg = D.REGION_BY_ID[a.region];
+      const pl = a.value - a.basis;
+      h += '<div class="card"><div class="deal-h"><div class="deal-t">🏢 ' + esc(a.name) + '</div>' +
+        '<span class="pill ' + (a.pmiDone ? 't-investment' : 't-project') + '">' +
+        (a.pmiDone ? '稼働' : '統合中') + '</span></div>' +
+        '<div class="tiny muted" style="margin-top:6px">' + dv.icon + ' ' + dv.short + ' ／ ' + rg.flag + ' ' + rg.name + '</div>';
+      if (!a.pmiDone) {
+        const pc = E.pmiChance(a), leader = a.pmiLeader ? E.findPerson(a.pmiLeader) : null;
+        h += '<div class="bar"><i style="width:' + ((12 - a.pmiLeft) / 12 * 100).toFixed(0) + '%"></i></div>' +
+          '<div class="deal-f"><span class="muted">統合まで残り ' + a.pmiLeft + 'ヶ月</span>' +
+          '<span class="' + (pc > 0.6 ? 'up' : pc > 0.4 ? 'warn' : 'down') + '">成功確度 ' + Math.round(pc * 100) + '%</span></div>' +
+          '<div class="row small" style="margin-top:8px"><span class="muted">統合責任者</span>' +
+          '<span>' + (leader ? leader.face + ' ' + esc(leader.name) : '<span class="down">未指名</span>') + '</span></div>' +
+          '<button class="act" style="width:100%;margin-top:8px" data-pmi="' + a.id + '">統合責任者を指名する</button>';
+      } else {
+        h += '<div class="kv" style="margin-top:9px">' +
+          '<span class="k">取得原価 / のれん</span><span class="v">' + money(a.basis) + ' / ' + money(a.goodwill) + '</span>' +
+          '<span class="k">現在価値</span><span class="v ' + (pl >= 0 ? 'up' : 'down') + '">' + money(a.value) + ' (' + signed(pl) + ')</span>' +
+          '<span class="k">シナジー</span><span class="v ' + (a.synergy > 0.5 ? 'up' : 'down') + '">×' + (1 + a.synergy * 0.55).toFixed(2) + '</span>' +
+          '<span class="k">累計収益</span><span class="v up">' + money(a.cum) + '</span></div>';
+      }
+      h += '<h3 style="margin:14px 0 0;font-size:10px;letter-spacing:.16em;color:var(--dim2)">出向（マネジメント派遣）</h3>' +
+        '<div class="posts">';
+      D.POSTS.forEach(function (ps) {
+        const who = E.postHolder(a, ps.id);
+        h += '<button data-post="' + a.id + '" data-ps="' + ps.id + '" class="' + (who ? 'on' : '') + '">' +
+          '<b>' + ps.icon + '</b>' + ps.name +
+          '<span class="who">' + (who ? who.face + ' ' + esc(who.name.split(' ')[0]) : '空席') + '</span></button>';
+      });
+      h += '</div><p class="tiny muted">' + D.POSTS.map(function (ps) { return ps.name + 'は' + ps.desc.replace('が', 'が'); }).join('。') + '。</p>';
+      if (a.pmiDone) {
+        h += '<div style="display:flex;justify-content:flex-end;margin-top:9px">' +
+          '<button class="act" data-exit="' + a.id + '">売却（EXIT）</button></div>';
+      }
+      h += '</div>';
+    });
+    return h;
   }
 
   function viewRank() {
@@ -740,7 +832,8 @@ window.UI = (function () {
 
   /* ---------------- render ---------------- */
   function render() {
-    const map = { dash: viewDash, market: viewMarket, active: viewActive, assets: viewAssets, admin: viewAdmin, rank: viewRank };
+    const map = { dash: viewDash, market: viewMarket, active: viewActive, assets: viewAssets,
+      biz: viewBiz, admin: viewAdmin, rank: viewRank };
     $('#view').innerHTML = (map[tab] || viewDash)();
     renderHud();
   }
@@ -909,7 +1002,9 @@ window.UI = (function () {
     const p = E.maWin(t, curOffer);
     const err = E.maCheck(t, curOffer);
     const col = p > 0.55 ? 'var(--up)' : p > 0.3 ? 'var(--warn)' : 'var(--down)';
-    const yr = t.dd ? t.trueProfit : t.shownProfit;
+    const yr = t.dd ? E.trueProfitOf(t) : E.shownProfitOf(t);
+    const uns = E.unsolicited(t);
+    const owned = t.owner === 'me';
 
     let offers = '<div class="aggr">';
     D.MA_OFFERS.forEach(function (x, i) {
@@ -918,22 +1013,32 @@ window.UI = (function () {
     offers += '</div><p class="tiny" style="margin-bottom:12px">' + o.desc + '</p>';
 
     modal('<h2>🏢 ' + esc(t.name) + '</h2>' +
-      '<p class="tiny" style="margin-bottom:12px">' +
+      '<p class="tiny" style="margin-bottom:10px">' +
         '<span class="pill">' + dv.icon + ' ' + dv.name + '</span> ' +
         '<span class="pill">' + rg.flag + ' ' + rg.name + '</span> ' +
-        '<span class="pill">' + (t.listed ? '上場企業' : '非上場') + '</span> ' +
-        '<span class="pill">競合 ' + t.rivals + '社</span></p>' +
+        '<span class="pill">' + (t.listed ? '上場企業' : '非上場') + '</span>' +
+        (t.forSale ? ' <span class="pill" style="color:var(--up);border-color:#2f6b4c">競合 ' + t.rivals + '社</span>' : '') +
+        '</p>' +
+      (owned ? '<p class="up">当社の傘下にある。「事業」タブの傘下から経営できる。</p>'
+       : t.owner ? '<p class="down">' + esc(t.owner) + ' の傘下にある。当面は手が出せない。</p>'
+       : t.forSale
+         ? '<div class="quote"><b>売却意向あり — ' + t.reason + '</b>' +
+           (D.SALE_REASONS.filter(function (r) { return r.t === t.reason; })[0] || {}).d + '</div>'
+         : '<div class="quote"><b>売る気はない</b>いま手を挙げても、25%のプレミアムを積んだうえで通りにくい。' +
+           '意向が立つのを待つという手もある。</div>') +
+      (t.owner ? '' :
       '<h3>デューデリジェンス</h3>' +
       (t.dd
-        ? '<div class="kv"><span class="k">実力純利益（年）</span><span class="v up">' + money(t.trueProfit) + '</span>' +
+        ? '<div class="kv"><span class="k">実力純利益（年）</span><span class="v up">' + money(E.trueProfitOf(t)) + '</span>' +
           '<span class="k">簿外債務</span><span class="v ' + (t.hidden > 0 ? 'down' : 'up') + '">' +
           (t.hidden > 0 ? money(t.hidden) + ' を発見' : 'なし') + '</span></div>'
-        : '<p class="tiny warn">未実施。開示された数字は ' + money(t.shownProfit) + '/年 だが、<strong>実力値も簿外債務も見えていない</strong>。' +
+        : '<p class="tiny warn">未実施。開示された数字は ' + money(E.shownProfitOf(t)) + '/年 だが、<strong>実力値も簿外債務も見えていない</strong>。' +
           'DDを省いて買えば、簿外債務はそのまま当社の損失になる。</p>' +
           '<button class="act" style="width:100%" data-dd="' + t.id + '">DDを実施する（' + money(E.ddCost(t)) + '）</button>') +
       '<h3>買収条件</h3>' + offers +
       '<div class="kv">' +
       '<span class="k">純資産</span><span class="v">' + money(t.netAssets) + '</span>' +
+      (uns ? '<span class="k">非友好的プレミアム</span><span class="v down">+25%</span>' : '') +
       '<span class="k">買収価額</span><span class="v down">-' + money(price) + '</span>' +
       '<span class="k">のれん</span><span class="v ' + (gw > t.netAssets * 0.3 ? 'down' : '') + '">' + money(gw) + '</span>' +
       '<span class="k">投資利回り（' + (t.dd ? '実力' : '表面') + '）</span><span class="v">' + pct(yr / price) + '/年</span>' +
@@ -945,7 +1050,9 @@ window.UI = (function () {
       '<b style="color:' + col + '">' + Math.round(p * 100) + '%</b></div>' +
       (err ? '<p class="down small" style="margin-top:12px">⚠ ' + err + '</p>' : '') +
       '<div class="mbtns"><button data-close>見送る</button>' +
-      '<button class="pri" data-buy="' + t.id + '"' + (err ? ' disabled' : '') + '>買収を提案する</button></div>');
+      '<button class="pri" data-buy="' + t.id + '"' + (err ? ' disabled' : '') + '>' +
+      (uns ? '非友好的に打診する' : '買収を提案する') + '</button></div>') +
+      (t.owner ? '<div class="mbtns"><button data-close>閉じる</button></div>' : ''));
   }
 
   /* --- 金額入力モーダル --- */
@@ -1370,6 +1477,84 @@ window.UI = (function () {
       '</div>', true);
   }
 
+  /* 出向のポジション指名 */
+  function postModal(assetId, post) {
+    const a = E.assetById(assetId);
+    if (!a) return;
+    const ps = D.POST_BY_ID[post];
+    const cur = E.postHolder(a, post);
+    const ab = ps.ab;
+    const cands = E.hqPeople().slice().sort(function (x, y) { return y[ab] - x[ab]; }).slice(0, 8);
+    let h = '<h2>' + ps.icon + ' ' + esc(a.name) + ' ／ ' + ps.name + '</h2>' +
+      '<p>' + ps.desc + '。<strong>出向した幹部は本社の戦力から抜ける</strong>が、本人の成長は5割速くなる。</p>';
+    if (cur) {
+      h += '<h3>現任</h3>' + personCard(cur, '') +
+        '<div class="mbtns"><button data-recall="' + cur.id + '">本社に呼び戻す</button></div>';
+    }
+    h += '<h3>送り込む幹部（' + (ab === 'lead' ? '統率' : ab === 'eye' ? '目利き' : '営業力') + '順）</h3>';
+    if (!cands.length) h += '<div class="empty">本社に送り込める幹部がいない。</div>';
+    cands.forEach(function (p) {
+      h += personCard(p, 'data-second="' + assetId + '" data-ps="' + post + '" data-p="' + p.id + '"');
+    });
+    h += '<div class="mbtns"><button data-close>閉じる</button></div>';
+    modal(h);
+  }
+
+  /* 定型商談課の設定 */
+  function autoModal() {
+    const S = E.S, a = S.auto;
+    let h = '<h2>定型商談課</h2>' +
+      '<p>一定規模以下の案件を、手動の商談枠とは<strong>別枠で</strong>自動的に応札する部署。' +
+      '会社が大きくなっても小口の商いは続く。</p>' +
+      '<div class="mbtns" style="margin:0 0 14px">' +
+      '<button class="' + (a.on ? 'pri' : '') + '" data-auto="on">稼働</button>' +
+      '<button class="' + (!a.on ? 'pri' : '') + '" data-auto="off">停止</button></div>' +
+      '<h3>自動で捌く規模</h3><div class="aggr" style="grid-template-columns:repeat(4,1fr)">';
+    D.AUTO_LIMITS.forEach(function (l, i) {
+      h += '<button data-autolim="' + i + '" class="' + (a.limit === i ? 'on' : '') + '">' +
+        '<b>' + D.DEAL_TIERS[l.tier].name + '</b>まで</button>';
+    });
+    h += '</div><p class="tiny muted">対象にした規模帯の案件は商談タブから隠れ、毎月まとめて処理される。</p>' +
+      '<h3>提示条件</h3><div class="aggr" style="grid-template-columns:repeat(3,1fr)">';
+    D.AUTO_STANCES.forEach(function (si, i) {
+      h += '<button data-autost="' + i + '" class="' + (a.stance === i ? 'on' : '') + '">' +
+        '<b>' + D.STANCES[si].n + '</b>×' + D.STANCES[si].mult.toFixed(2) + '</button>';
+    });
+    h += '</div><div class="kv" style="margin-top:12px">' +
+      '<span class="k">月間の応札枠</span><span class="v">' + E.autoCap() + '件</span>' +
+      '<span class="k">同時に抱えられる件数</span><span class="v">' + E.autoBook() + '件</span>' +
+      '</div><p class="tiny muted">枠は社員数・DX投資・本社の幹部数で増える。</p>' +
+      '<div class="mbtns"><button class="pri" data-close>閉じる</button></div>';
+    modal(h);
+  }
+
+  /* セーブデータ */
+  function slotsModal(fromTitle) {
+    const list = E.slotList();
+    let h = '<h2>セーブデータ</h2>' +
+      '<p class="tiny">自動セーブは毎月更新される。手動スロット1〜3には、残しておきたい局面を保存できる。</p>';
+    list.forEach(function (sl) {
+      const auto = sl.id === 'auto';
+      h += '<div class="slot"><div class="ic">' + (auto ? '🔄' : '💾') + '</div><div class="m">' +
+        '<b>' + (auto ? '自動セーブ' : 'スロット ' + sl.id) + '</b>' +
+        '<span>' + (sl.empty ? '空き'
+          : esc(sl.company) + ' ／ ' + sl.stage + ' ／ ' + sl.date + ' ／ 純資産 ' + money(sl.equity) +
+            (sl.over ? '（破綻）' : sl.cleared ? '（クリア）' : '')) + '</span></div>' +
+        '<div class="a">' +
+        (E.S && !auto ? '<button data-svsave="' + sl.id + '">保存</button>' : '') +
+        (!sl.empty ? '<button class="pri" data-svload="' + sl.id + '">' + (fromTitle ? '開始' : '再開') + '</button>' : '') +
+        (!sl.empty && !auto ? '<button class="dan" data-svdel="' + sl.id + '">×</button>' : '') +
+        '</div></div>';
+    });
+    h += '<h3>書き出し / 読み込み</h3>' +
+      '<p class="tiny">端末を移すときは、下の文字列をコピーして保存しておく。貼り付けて「読み込む」で復元できる。</p>' +
+      '<textarea class="sv-txt" id="sv-txt" placeholder="ここにセーブデータを貼り付けて「読み込む」">' +
+      (E.S ? esc(E.exportText()) : '') + '</textarea>' +
+      '<div class="mbtns"><button data-svcopy>コピー</button><button data-svimport>読み込む</button></div>' +
+      '<div class="mbtns"><button class="pri" data-close>閉じる</button></div>';
+    modal(h);
+  }
+
   function endModal(win) {
     const S = E.S;
     onClose = null;
@@ -1401,7 +1586,8 @@ window.UI = (function () {
     fyOpen: fyOpen, fyAlloc: fyAlloc, fyNav: fyNav, fyTier: fyTier, fyCard: fyCard,
     fyGrad: fyGrad, fyPromo: fyPromo, fyGradPol: fyGradPol, setBand: setBand,
     personCard: personCard, personModal: personModal, setAdminSub: setAdminSub,
-    maOpen: maOpen, maDraw: maDraw, tobModal: tobModal,
+    maOpen: maOpen, maDraw: maDraw, tobModal: tobModal, setBizSub: setBizSub,
+    postModal: postModal, autoModal: autoModal, slotsModal: slotsModal,
     setOffer: function (i) { curOffer = i; maDraw(); },
     promoteModal: promoteModal, endModal: endModal,
     setStance: function (i) { curStance = i; drawDeal(); },

@@ -53,7 +53,7 @@
 
   /* ---- イベント委譲 ---- */
   document.addEventListener('click', function (ev) {
-    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-gpol],[data-band],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],#tabs button,#btn-next,#btn-start,#btn-continue');
+    const t = ev.target.closest('[data-close],[data-bid],[data-stance],[data-deal],[data-sell],[data-up],[data-office],[data-act],[data-fy],[data-alloc],[data-tier],[data-card],[data-grad],[data-gpol],[data-band],[data-promo],[data-sub],[data-person],[data-pdiv],[data-preg],[data-phead],[data-hire],[data-ma],[data-offer],[data-dd],[data-buy],[data-pmi],[data-setpmi],[data-exit],[data-exitok],[data-def],[data-org],[data-orgok],[data-bsub],[data-co],[data-post],[data-second],[data-recall],[data-auto],[data-autolim],[data-autost],[data-svsave],[data-svload],[data-svdel],[data-svcopy],[data-svimport],#btn-slots,#tabs button,#btn-next,#btn-start,#btn-continue');
     if (!t) return;
 
     /* --- タイトル --- */
@@ -61,6 +61,52 @@
     if (t.id === 'btn-continue') {
       if (E.load()) { boot(); U.render(); }
       else U.alertBox('データなし', 'セーブデータが見つからなかった。', 'down');
+      return;
+    }
+    if (t.id === 'btn-slots') { U.slotsModal(true); return; }
+
+    /* --- セーブ / ロード --- */
+    if (t.hasAttribute('data-svsave')) {
+      const r = E.saveSlot(t.dataset.svsave);
+      U.closeModal();
+      if (!r.ok) U.alertBox('保存できない', r.msg, 'down');
+      else U.alertBox('保存', 'スロット ' + t.dataset.svsave + ' に保存した。', 'up');
+      return;
+    }
+    if (t.hasAttribute('data-svload')) {
+      if (!E.loadSlot(t.dataset.svload)) { U.alertBox('読み込めない', 'このスロットのデータが壊れているようだ。', 'down'); return; }
+      U.closeModal();
+      $('#title').classList.add('hide');
+      $('#app').hidden = false;
+      U.setTab('dash');
+      return;
+    }
+    if (t.hasAttribute('data-svdel')) {
+      E.deleteSlot(t.dataset.svdel);
+      U.slotsModal(!E.S);
+      return;
+    }
+    if (t.hasAttribute('data-svcopy')) {
+      const ta = document.querySelector('#sv-txt');
+      if (ta) {
+        ta.select(); ta.setSelectionRange(0, 999999);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        if (!ok && navigator.clipboard) { navigator.clipboard.writeText(ta.value).catch(function () {}); ok = true; }
+        t.textContent = ok ? 'コピーした' : '手動で選択してコピー';
+      }
+      return;
+    }
+    if (t.hasAttribute('data-svimport')) {
+      const ta = document.querySelector('#sv-txt');
+      if (!ta || !ta.value.trim()) { U.alertBox('読み込めない', 'セーブデータを貼り付けてから押してほしい。', 'down'); return; }
+      const r = E.importText(ta.value);
+      if (!r.ok) { U.alertBox('読み込めない', r.msg, 'down'); return; }
+      U.closeModal();
+      $('#title').classList.add('hide');
+      $('#app').hidden = false;
+      U.setTab('dash');
+      U.alertBox('読み込み完了', U.esc(E.S.company) + ' の記録を復元した。', 'up');
       return;
     }
 
@@ -82,6 +128,24 @@
     if (t.hasAttribute('data-band')) { U.setBand(+t.dataset.band); return; }
     if (t.hasAttribute('data-promo')) { U.fyPromo(t.dataset.promo); return; }
     if (t.hasAttribute('data-sub')) { U.setAdminSub(t.dataset.sub); return; }
+    if (t.hasAttribute('data-bsub')) { U.setBizSub(t.dataset.bsub); return; }
+    if (t.hasAttribute('data-co')) { U.maOpen(t.dataset.co); return; }
+    if (t.hasAttribute('data-post')) { U.postModal(t.dataset.post, t.dataset.ps); return; }
+    if (t.hasAttribute('data-second')) {
+      const r = E.secondTo(t.dataset.second, t.dataset.ps, t.dataset.p);
+      U.closeModal();
+      if (!r.ok) U.alertBox('出向させられない', r.msg, 'down');
+      U.render();
+      return;
+    }
+    if (t.hasAttribute('data-recall')) {
+      E.recallPerson(t.dataset.recall);
+      U.closeModal(); U.render();
+      return;
+    }
+    if (t.hasAttribute('data-auto')) { E.setAuto({ on: t.dataset.auto === 'on' }); U.autoModal(); U.render(); return; }
+    if (t.hasAttribute('data-autolim')) { E.setAuto({ limit: +t.dataset.autolim }); U.autoModal(); U.render(); return; }
+    if (t.hasAttribute('data-autost')) { E.setAuto({ stance: +t.dataset.autost }); U.autoModal(); U.render(); return; }
     if (t.hasAttribute('data-person')) { U.personModal(t.dataset.person); return; }
     if (t.hasAttribute('data-org')) {
       const o = window.GAME.ORG_BY_ID[t.dataset.org];
@@ -201,6 +265,8 @@
     /* --- 本社アクション --- */
     const act = t.dataset.act;
     if (act === 'sell-ok') { E.sellAsset(t.dataset.id); E.save(); U.closeModal(); U.render(); return; }
+    if (act === 'autocfg') { U.autoModal(); return; }
+    if (act === 'slots') { U.slotsModal(false); return; }
     if (act === 'career') {
       const cs = E.careerCandidates();
       window.__cands = cs;

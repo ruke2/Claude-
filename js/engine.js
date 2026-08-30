@@ -182,12 +182,13 @@ window.ENGINE = (function () {
   function divOf(id) { return S.div[id]; }
   function hasOffice(r) { return S.offices.indexOf(r) >= 0; }
 
+  function manualActive() { return S.active.filter(function (a) { return !a.auto; }).length; }
   function capacity() { return Math.min(40, 4 + Math.floor(Math.sqrt(S.staff) * 1.2) + Math.floor(corpOf('hr') * 2.2) + fxAdd('cap')
-      + Math.floor(S.people.reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1))
+      + Math.floor(hqPeople().reduce(function (a, p) { return a + p.lead / 100 * roleW(p); }, 0) * 1.1))
       * (org().fx.capMul || 1) | 0; }
   function slotsMax() {
     let ppl = 0;
-    S.people.forEach(function (p) { ppl += roleW(p); });
+    hqPeople().forEach(function (p) { ppl += roleW(p); });
     return clamp(2 + Math.floor(Math.sqrt(S.staff) / 6) + Math.floor(S.offices.length / 3)
       + Math.floor(corpOf('dx')) + fxAdd('slots') + ofxAdd('slots') + Math.floor(ppl / 1.9), 3, 14);
   }
@@ -237,12 +238,15 @@ window.ENGINE = (function () {
       plan: null, planNo: 0, planHistory: [], cumInvest: 0, planBonus: 0,
       people: [], gradQueue: [], morale: 62, peopleNews: [], hunted: 0,
       ma: [], maStats: { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 }, tobCooldown: 0,
+      universe: [], auto: { on: true, limit: 1, stance: 1 }, autoLog: null,
+      autoStats: { bid: 0, won: 0, profit: 0 },
       org: 'div', orgSwitchFY: 0, gov: 72, scandals: 0, ceoFY: 2027, ceoTerms: 0,
       over: false, cleared: false, insolvent: 0,
       pendingEvent: null,
     };
     D.DIVISIONS.forEach(function (d, i) { S.div[d.id] = { lv: i < 2 ? 2 : 1, exp: 0 }; S.boost[d.id] = 0; });
     S.seg = newSeg();
+    buildUniverse();
     D.COMM_KEYS.forEach(function (k) { S.mk[k] = 100 + randn() * 6; S.mkPrev[k] = S.mk[k]; });
     // 創業メンバー3名
     ['energy', 'metals', 'food'].forEach(function (dv, i) {
@@ -310,7 +314,12 @@ window.ENGINE = (function () {
   function staffCost() { return S.staff * avgStaffSalary() / 10000 / 12; }
   function rosterCost() { let c = 0; S.people.forEach(function (p) { c += personCost(p); }); return c; }
   function rosterMax() { return 24; }
-  function divPeople(divId) { return S.people.filter(function (p) { return p.div === divId; }); }
+  /* 出向中の幹部は本社の戦力から外れる */
+  function hqPeople() { return S.people.filter(function (p) { return !p.second; }); }
+  function divPeople(divId) {
+    return S.people.filter(function (p) { return p.div === divId && !p.second; });
+  }
+  function seconded() { return S.people.filter(function (p) { return !!p.second; }); }
   function divHead(divId) {
     return S.people.filter(function (p) { return p.div === divId && p.role >= 3; })
       .sort(function (a, b) { return b.lead - a.lead; })[0] || null;
@@ -349,7 +358,7 @@ window.ENGINE = (function () {
   }
   function eyePt() {
     let v = 0;
-    S.people.forEach(function (p) { v += p.eye / 100 * roleW(p); });
+    hqPeople().forEach(function (p) { v += p.eye / 100 * roleW(p); });
     return v;
   }
   /* 案件ごとの人材ボーナス */
@@ -506,6 +515,7 @@ window.ENGINE = (function () {
         * (1 + personPower(p) / 260) * retain;
       if (p.role >= 3) f *= 0.7;
       if (Math.random() < clamp(f, 0, 0.06)) {
+        if (p.second) { const b = assetById(p.second.assetId); if (b) clearPost(b, p.second.post); }
         S.people.splice(i, 1);
         pnews(p.name + '（' + D.ROLES[p.role] + '）が退職。「' + toneOf(p).leave + '」', 'down', p.face);
         S.morale = clamp(S.morale - 2.5, 0, 100);
@@ -521,13 +531,15 @@ window.ENGINE = (function () {
       const p = S.people[i];
       p.age++;
       if (p.age >= 63) {
+        if (p.second) { const b = assetById(p.second.assetId); if (b) clearPost(b, p.second.post); }
         S.people.splice(i, 1);
         out.retired.push(p);
         pnews(p.name + '（' + p.age + '・' + D.ROLES[p.role] + '）が退任。長い勤めだった。', 'info', p.face);
         continue;
       }
       const af = p.age < 32 ? 1.7 : p.age < 40 ? 1.2 : p.age < 50 ? 0.7 : 0.28;
-      const inc = function (v) { return Math.round(clamp(v + g * af * rnd(1.2, 3.4) * (p.region ? 1.35 : 1), 1, 99)); };
+      const boost = p.second ? 1.5 : p.region ? 1.35 : 1;
+      const inc = function (v) { return Math.round(clamp(v + g * af * rnd(1.2, 3.4) * boost, 1, 99)); };
       p.sales = inc(p.sales); p.eye = inc(p.eye); p.lead = inc(p.lead);
       out.grown++;
     }
@@ -557,40 +569,77 @@ window.ENGINE = (function () {
     return out;
   }
 
-  /* ---------------- M&A ---------------- */
-  function genTarget() {
-    const dv = pick(D.DIVISIONS);
-    const sc = scale();
-    const na = sc * rnd(25, 190);
-    const trueYield = rnd(0.060, 0.200);
-    const hidden = Math.random() < 0.34 ? na * rnd(0.05, 0.28) : 0;
-    return {
-      id: uid(),
-      name: pick(D.MA_PREFIX) + pick(D.MA_BIZ[dv.id]),
-      div: dv.id,
-      region: Math.random() < 0.45 ? 'jp' : pick(D.REGIONS).id,
-      listed: Math.random() < 0.45,
-      netAssets: na,
-      trueProfit: na * trueYield,                       // 年間の実力純利益
-      shownProfit: na * trueYield * rnd(0.75, 1.45),    // 表面上の数字
-      hidden: hidden,
-      rivals: ri(0, 3),
-      ttl: ri(2, 5),
-      dd: false,
-    };
+  /* ---------------- 企業ユニバース ----------------
+     世界の会社は入れ替わらない。ゲーム開始時に生成され、以後は業績が動き、
+     売却意向が立ったり消えたり、他社に買われたりする。 */
+  function buildUniverse() {
+    const used = {};
+    S.universe = [];
+    D.SECTORS.forEach(function (sec) {
+      D.COMPANY_SIZES.forEach(function (base, tier) {
+        let name, guard = 0;
+        do { name = pick(D.MA_PREFIX) + pick(D.MA_BIZ[sec.id]); } while (used[name] && guard++ < 30);
+        used[name] = 1;
+        const na = base * rnd(0.6, 1.7);
+        S.universe.push({
+          id: uid(), name: name, div: sec.id, tier: tier,
+          region: Math.random() < 0.42 ? 'jp' : pick(D.REGIONS).id,
+          listed: tier >= 3 ? Math.random() < 0.8 : Math.random() < 0.3,
+          netAssets: na,
+          yieldRate: rnd(0.030, 0.160),
+          growth: rnd(-0.0025, 0.0105),
+          hidden: Math.random() < 0.34 ? na * rnd(0.05, 0.28) : 0,
+          shownMul: rnd(0.75, 1.45),
+          owner: null, forSale: false, reason: null, saleLeft: 0,
+          dd: false, rivals: 0, cool: 0,
+        });
+      });
+    });
   }
-  function refreshMA() {
-    if (S.stage < 1) { S.ma = []; return; }
-    for (let i = S.ma.length - 1; i >= 0; i--) {
-      S.ma[i].ttl--;
-      if (S.ma[i].ttl <= 0) S.ma.splice(i, 1);
-    }
-    const target = Math.min(5, S.stage + 1);
-    while (S.ma.length < target) S.ma.push(genTarget());
+  function universeList() { return S.universe || []; }
+  function findTarget(id) { return (S.universe || []).filter(function (t) { return t.id === id; })[0]; }
+  function trueProfitOf(t) { return t.netAssets * t.yieldRate; }
+  function shownProfitOf(t) { return trueProfitOf(t) * t.shownMul; }
+
+  /* 毎月：業績が動き、売却意向が立ち消えし、他社が買っていく */
+  function stepUniverse() {
+    const boom = (S.mk.crude + S.mk.iron + S.mk.copper + S.mk.grain) / 400;
+    (S.universe || []).forEach(function (t) {
+      if (t.cool > 0) t.cool--;
+      const sec = D.DIV_BY_ID[t.div];
+      const mf = sec ? mfac(sec.comms) : 1;
+      t.netAssets = Math.max(5, t.netAssets * (1 + t.growth + randn() * 0.012 + (mf - 1) * 0.004));
+      t.yieldRate = clamp(t.yieldRate + randn() * 0.0035 + (0.075 - t.yieldRate) * 0.01, -0.03, 0.24);
+
+      if (t.owner === 'me') return;
+      if (t.forSale) {
+        t.saleLeft--;
+        if (t.owner == null && Math.random() < 0.020 * (0.6 + boom)) {
+          t.owner = pick(S.rivals).name;
+          t.forSale = false; t.reason = null;
+          log('【M&A】' + t.owner + ' が「' + t.name + '」を買収した。', 'down');
+          return;
+        }
+        if (t.saleLeft <= 0) { t.forSale = false; t.reason = null; }
+      } else if (t.owner == null && t.cool <= 0) {
+        const p = 0.006 + (t.yieldRate < 0.045 ? 0.010 : 0) + (t.growth < 0 ? 0.008 : 0);
+        if (Math.random() < p) {
+          t.forSale = true; t.reason = pick(D.SALE_REASONS).t; t.saleLeft = ri(4, 14);
+          t.rivals = ri(0, 3); t.cool = 24;
+        }
+      }
+    });
   }
-  function findTarget(id) { return S.ma.filter(function (t) { return t.id === id; })[0]; }
+  function releaseCompany(id, toRival) {
+    const t = findTarget(id);
+    if (!t) return;
+    t.owner = toRival || null;
+    t.forSale = false; t.reason = null; t.cool = 18; t.dd = false;
+  }
 
   function ddCost(t) { return t.netAssets * 0.022 * (1 - Math.min(0.5, eyePt() * 0.07)); }
+  /* 売却意向がない会社への打診は割高で、しかも通りにくい */
+  function unsolicited(t) { return !t.forSale; }
   function runDD(id) {
     const t = findTarget(id);
     if (!t) return { ok: false, msg: '見つからない' };
@@ -604,16 +653,19 @@ window.ENGINE = (function () {
     return { ok: true, cost: c };
   }
 
-  function maPrice(t, oi) { return t.netAssets * D.MA_OFFERS[oi].k; }
+  function maPrice(t, oi) { return t.netAssets * D.MA_OFFERS[oi].k * (unsolicited(t) ? 1.25 : 1); }
   function maWin(t, oi) {
     let s = 52 + D.MA_OFFERS[oi].win;
     s -= t.rivals * 9;
     s += rating().win + S.credit * 0.10;
     s += divSalesPt(t.div) * 0.3;
     s += t.listed ? -8 : 0;
+    if (unsolicited(t)) s -= 26;
     return clamp(s, 3, 96) / 100;
   }
   function maCheck(t, oi) {
+    if (t.owner === 'me') return '既に当社の傘下だ';
+    if (t.owner) return t.owner + ' の傘下にある';
     const p = maPrice(t, oi);
     if (p > S.cash) return '手元資金が不足（必要 ' + money(p) + ' / 現金 ' + money(S.cash) + '）';
     if (p > Math.max(1, equity()) * 0.55 + borrowLimit() * 0.35) return '会社の体力に対して大きすぎる買収だ';
@@ -626,9 +678,9 @@ window.ENGINE = (function () {
     if (err) return { ok: false, msg: err };
     const price = maPrice(t, oi);
     const p = maWin(t, oi);
-    S.ma.splice(S.ma.indexOf(t), 1);
     if (Math.random() > p) {
-      log('「' + t.name + '」の買収は競合に競り負けた。', 'down');
+      t.cool = ri(6, 14);
+      log('「' + t.name + '」の買収提案は実らなかった。', 'down');
       return { ok: true, won: false, prob: p, target: t };
     }
     S.cash -= price; countInvest(price);
@@ -636,14 +688,16 @@ window.ENGINE = (function () {
     // DDを省くと簿外債務をそのまま掴む
     const surprise = t.dd ? 0 : t.hidden;
     const dvm = D.DIV_BY_ID[t.div];
+    t.owner = 'me'; t.forSale = false; t.reason = null;
     S.assets.push({
       id: t.id, type: 'company', name: t.name, div: t.div, region: t.region,
       comms: dvm.comms.slice(),
       basis: price, value: price - surprise,
       sales: t.netAssets * rnd(1.4, 3.2),
       goodwill: goodwill, netAssets: t.netAssets,
-      profitBase: t.trueProfit / 12, growth: rnd(0.0040, 0.0110),
-      yieldRate: t.trueProfit / 12 / Math.max(1, price),
+      profitBase: trueProfitOf(t) / 12, growth: Math.max(0.0015, t.growth + 0.003),
+      yieldRate: trueProfitOf(t) / 12 / Math.max(1, price),
+      posts: {},
       pmiLeft: 12, pmiLeader: null, pmiDone: false, synergy: 0, ddDone: t.dd,
       age: 0, cum: 0, impaired: 0, life: 0,
     });
@@ -657,6 +711,62 @@ window.ENGINE = (function () {
     }
     save();
     return { ok: true, won: true, prob: p, target: t, price: price, goodwill: goodwill, surprise: surprise };
+  }
+
+  /* ---------------- 出向 ----------------
+     傘下企業の社長・CFO・営業責任者に幹部を送り込む。
+     送った人材は本社の戦力から抜けるが、事業会社の成長と安全性を直接押し上げる。 */
+  function assetById(id) { return S.assets.filter(function (a) { return a.id === id; })[0]; }
+  function postHolder(a, post) {
+    const id = a.posts && a.posts[post];
+    return id ? findPerson(id) : null;
+  }
+  function postAbility(a, post) {
+    const p = postHolder(a, post);
+    if (!p) return 0;
+    return p[D.POST_BY_ID[post].ab] || 0;
+  }
+  function clearPost(a, post) {
+    if (!a.posts || !a.posts[post]) return;
+    const q = findPerson(a.posts[post]);
+    if (q) q.second = null;
+    delete a.posts[post];
+  }
+  function secondTo(assetId, post, personId) {
+    const a = assetById(assetId);
+    const p = findPerson(personId);
+    if (!a || a.type !== 'company') return { ok: false, msg: '傘下の事業会社ではない' };
+    if (!p) return { ok: false, msg: '見つからない' };
+    if (!D.POST_BY_ID[post]) return { ok: false, msg: '役職が不正' };
+    a.posts = a.posts || {};
+    clearPost(a, post);
+    if (p.second) {
+      const b = assetById(p.second.assetId);
+      if (b) clearPost(b, p.second.post);
+    }
+    a.posts[post] = p.id;
+    p.second = { assetId: assetId, post: post };
+    p.region = null;
+    pnews(p.name + ' を「' + a.name + '」の' + D.POST_BY_ID[post].name + 'として出向させた。', 'gold', p.face);
+    save();
+    return { ok: true };
+  }
+  function recallPerson(personId) {
+    const p = findPerson(personId);
+    if (!p || !p.second) return { ok: false, msg: '出向していない' };
+    const a = assetById(p.second.assetId);
+    if (a) clearPost(a, p.second.post);
+    p.second = null;
+    pnews(p.name + ' を本社に呼び戻した。', '', p.face);
+    save();
+    return { ok: true };
+  }
+  function secondBonus(a) {
+    return {
+      lead: postAbility(a, 'ceo'),
+      eye: postAbility(a, 'cfo'),
+      sales: postAbility(a, 'sales'),
+    };
   }
 
   function setPMILeader(assetId, personId) {
@@ -673,6 +783,7 @@ window.ENGINE = (function () {
     const p = a.pmiLeader ? findPerson(a.pmiLeader) : null;
     let c = 0.30;
     if (p) c += p.lead / 220 + (traitOf(p).pmi || 0);
+    c += secondBonus(a).lead / 260;
     if (a.ddDone) c += 0.12;
     c += corpOf('hr') * 0.03 + S.morale * 0.0015;
     c -= Math.min(0.25, a.goodwill / Math.max(1, a.netAssets) * 0.25);
@@ -680,7 +791,9 @@ window.ENGINE = (function () {
   }
   function divSynergy(divId) {
     let v = 0;
-    S.assets.forEach(function (a) { if (a.type === 'company' && a.div === divId) v += a.synergy; });
+    S.assets.forEach(function (a) {
+      if (a.type === 'company' && a.div === divId) v += a.synergy + postAbility(a, 'sales') / 300;
+    });
     return Math.min(0.30, v * 0.09) * (org().fx.synergy || 1);
   }
   function exitCompany(id) {
@@ -691,7 +804,9 @@ window.ENGINE = (function () {
     const mult = 1 + a.synergy * 0.22 + a.age * 0.0022;
     const proceeds = a.value * clamp(mult, 0.7, 1.9) * rnd(0.93, 1.08);
     S.cash += proceeds;
+    D.POSTS.forEach(function (ps) { clearPost(a, ps.id); });
     S.assets.splice(i, 1);
+    releaseCompany(a.id, Math.random() < 0.5 ? pick(S.rivals).name : null);
     S.pend.gain += proceeds - a.value;
     S.maStats.exits++;
     log('「' + a.name + '」を ' + money(proceeds) + ' で売却（取得原価比 ' + signed(proceeds - a.basis) + '）。', proceeds >= a.basis ? 'up' : 'down');
@@ -726,12 +841,13 @@ window.ENGINE = (function () {
     if (Math.random() < 0.45 && S.offices.length) reg = pick(S.offices);
     else reg = pick(D.REGIONS).id;
     const item = pick(D.ITEMS[type][dv.id]);
-    const sm = (big ? rnd(2.4, 4.0) : rnd(0.75, 1.35)) * (1 + boostOf(dv.id) * 0.20)
+    const tier = big ? D.TIER_BY_ID.mega : wpick(D.DEAL_TIERS, 'w');
+    const sm = tier.kn * (big ? rnd(1.1, 1.6) : rnd(0.8, 1.28)) * (1 + boostOf(dv.id) * 0.20)
       * fx('sizeAll', 1) * regionSize(reg);
     const rg = D.REGION_BY_ID[reg];
 
     const d = {
-      id: uid(), type: type, div: dv.id, region: reg, big: !!big,
+      id: uid(), type: type, div: dv.id, region: reg, big: !!big, tier: tier.id,
       name: rg.name + '／' + item,
       comms: dv.comms.slice(),
       ttl: ri(2, 5),
@@ -780,7 +896,7 @@ window.ENGINE = (function () {
       S.market[i].ttl--;
       if (S.market[i].ttl <= 0) S.market.splice(i, 1);
     }
-    const target = 7 + Math.min(5, S.offices.length - 1) + Math.min(4, S.stage);
+    const target = 11 + Math.min(5, S.offices.length - 1) + Math.min(4, S.stage);
     while (S.market.length < target) S.market.push(genDeal());
     if (Math.random() < fxAdd('bigChance')) S.market.push(genDeal(true));
   }
@@ -808,10 +924,15 @@ window.ENGINE = (function () {
     return clamp(s, 4, 93) / 100;
   }
 
-  function bidCheck(d) {
-    if (S.slots <= 0) return '今月の商談枠を使い切っている';
-    if (S.active.length >= capacity() && (d.type === 'trade' || d.type === 'project'))
-      return '人員が足りず、これ以上の案件は回せない（現行 ' + S.active.length + '/' + capacity() + '）';
+  function bidCheck(d, auto) {
+    if (!auto && S.slots <= 0) return '今月の商談枠を使い切っている';
+    if (d.type === 'trade' || d.type === 'project') {
+      if (auto) {
+        if (autoActive() >= autoBook()) return '定型商談課の手が回らない';
+      } else if (manualActive() >= capacity()) {
+        return '人員が足りず、これ以上の案件は回せない（現行 ' + manualActive() + '/' + capacity() + '）';
+      }
+    }
     if (d.upfront > S.cash) return '手元資金が不足（必要 ' + money(d.upfront) + ' / 現金 ' + money(S.cash) + '）';
     const eq = equity();
     if (eq > 0 && d.exposure > eq * 0.62 + borrowLimit() * 0.4)
@@ -821,14 +942,15 @@ window.ENGINE = (function () {
     return null;
   }
 
-  function bid(dealId, stanceIdx) {
+  function bid(dealId, stanceIdx, opt) {
+    opt = opt || {};
     const i = S.market.findIndex(function (x) { return x.id === dealId; });
     if (i < 0) return { ok: false, msg: '案件が見つからない' };
     const d = S.market[i];
-    const err = bidCheck(d);
+    const err = bidCheck(d, opt.auto);
     if (err) return { ok: false, msg: err };
 
-    S.slots--;
+    if (!opt.auto) S.slots--;
     const p = winScore(d, stanceIdx);
     const won = Math.random() < p;
     S.market.splice(i, 1);
@@ -837,7 +959,7 @@ window.ENGINE = (function () {
     if (!won) {
       S.stats.lost++;
       divOf(d.div).exp += 0.35;
-      log('「' + d.name + '」失注。競合が条件で上回った。', 'down');
+      if (!opt.auto) log('「' + d.name + '」失注。競合が条件で上回った。', 'down');
       return { ok: true, won: false, prob: p, deal: d };
     }
 
@@ -852,7 +974,7 @@ window.ENGINE = (function () {
       S.active.push({
         id: d.id, type: 'trade', name: d.name, div: d.div, region: d.region, comms: d.comms,
         volume: d.volume, marginRate: d.marginRate * st.mult, capital: d.capital,
-        months: d.months, prog: 0, risk: d.risk, big: d.big,
+        months: d.months, prog: 0, risk: d.risk, big: d.big, auto: !!opt.auto, tier: d.tier,
         mkAtBid: mfac(d.comms), fxAtBid: S.fx,
       });
     } else if (d.type === 'project') {
@@ -861,7 +983,7 @@ window.ENGINE = (function () {
         id: d.id, type: 'project', name: d.name, div: d.div, region: d.region, comms: d.comms,
         contract: d.contract * (0.82 + 0.18 * st.mult),
         cost: d.cost, months: d.months, prog: 0, wip: 0, adv: d.adv,
-        risk: d.risk, delays: 0, big: d.big,
+        risk: d.risk, delays: 0, big: d.big, auto: !!opt.auto, tier: d.tier,
       });
     } else {
       S.cash -= d.invest; countInvest(d.invest);
@@ -871,7 +993,7 @@ window.ENGINE = (function () {
         growth: d.growth || 0, life: d.life || 0, age: 0, cum: 0, impaired: 0, big: d.big,
       });
     }
-    log('「' + d.name + '」を獲得（' + st.n + '条件）。', 'up');
+    if (!opt.auto) log('「' + d.name + '」を獲得（' + st.n + '条件）。', 'up');
     return { ok: true, won: true, prob: p, deal: d };
   }
 
@@ -966,8 +1088,8 @@ window.ENGINE = (function () {
     const last = S.fyHistory.length ? S.fyHistory[S.fyHistory.length - 1].profit : eq * 0.10;
     const base = Math.max(eq * 0.06, last, 1);
     return {
-      profit: [base * 3.6, base * 7.5, base * 14.0],
-      roe: [0.15, 0.26, 0.40],
+      profit: [base * 4.2, base * 9.0, base * 17.0],
+      roe: [0.17, 0.29, 0.44],
       invest: [eq * 1.05, eq * 2.10, eq * 3.60],
     };
   }
@@ -1192,16 +1314,17 @@ window.ENGINE = (function () {
       }
       return;
     }
-    const d = a.profitBase * (1 + a.synergy * 0.55) * clamp(mAdj, 0.25, 2.0) * fxFac();
+    const sb = secondBonus(a);
+    const d = a.profitBase * (1 + a.synergy * 0.55 + sb.sales / 260) * clamp(mAdj, 0.25, 2.0) * fxFac();
     S.cash += d; L.dividend += d; a.cum += d; seg(a.div).dividend += d;
     addRev(d, (a.sales || 0) / 12, a.div);
-    const target = a.basis * Math.pow(1 + a.growth * (1 + a.synergy * 0.5), a.age)
+    const target = a.basis * Math.pow(1 + a.growth * (1 + a.synergy * 0.5 + sb.lead / 130), a.age)
       * clamp(mAdj, 0.5, 1.9) * (1 - a.impaired);
     const nv = a.value + (target - a.value) * 0.18;
     L.reval += nv - a.value; seg(a.div).reval += nv - a.value; signRev(nv - a.value, a.div);
     a.value = Math.max(0, nv);
     if (a.goodwill > 0 && a.value < a.basis * 0.70 &&
-        Math.random() < 0.05 * S.mod.impair * traitMin('impair', 1)) {
+        Math.random() < 0.05 * S.mod.impair * traitMin('impair', 1) * (1 - Math.min(0.6, sb.eye / 170))) {
       const w = Math.min(a.goodwill, a.value * rnd(0.15, 0.35));
       a.value -= w; a.impaired = clamp(a.impaired + 0.10, 0, 0.9);
       L.impair -= w; seg(a.div).impair -= w; addCost(w);
@@ -1399,6 +1522,62 @@ window.ENGINE = (function () {
     return { score: sc, pass: pass, detail: confidenceDetail() };
   }
 
+  /* ---------------- 定型商談課（自動入札） ----------------
+     会社が大きくなっても小口の商いは続く。手動の商談枠とは別枠で、
+     一定規模以下の案件をまとめて捌く。 */
+  function autoCap() {
+    if (!S.auto || !S.auto.on) return 0;
+    return Math.min(24, 3 + Math.floor(S.staff / 35) + Math.floor(corpOf('dx') * 2)
+      + Math.floor(hqPeople().length / 3));
+  }
+  function tierIndex(id) {
+    for (let i = 0; i < D.DEAL_TIERS.length; i++) if (D.DEAL_TIERS[i].id === id) return i;
+    return 3;
+  }
+  function autoLimitTier() { return D.AUTO_LIMITS[(S.auto && S.auto.limit) || 0].tier; }
+  function autoLimitName() { return D.DEAL_TIERS[autoLimitTier()].name; }
+  function isAutoTarget(d) {
+    return !!(S.auto && S.auto.on) && tierIndex(d.tier) <= autoLimitTier();
+  }
+  /* 自動で抱えられる案件数は手動の枠とは別建て */
+  function autoActive() { return S.active.filter(function (a) { return a.auto; }).length; }
+  function autoBook() { return autoCap() * 4; }
+  function runAutoDesk() {
+    if (!S.auto || !S.auto.on) { S.autoLog = null; return null; }
+    const cap = autoCap();
+    if (cap <= 0) { S.autoLog = null; return null; }
+    const stance = D.AUTO_STANCES[(S.auto.stance || 0)];
+    const cands = S.market.filter(function (d) {
+      return isAutoTarget(d) && !bidCheck(d, true);
+    }).map(function (d) {
+      let ev;
+      if (d.type === 'trade') ev = d.volume * d.marginRate;
+      else if (d.type === 'project') ev = d.contract * d.marginRate;
+      else ev = d.invest * d.yieldRate * 20;
+      return { d: d, s: ev / Math.max(1, d.months || 18) * winScore(d, stance) };
+    }).sort(function (a, b) { return b.s - a.s; });
+
+    let bid_ = 0, won = 0;
+    for (let i = 0; i < cands.length && bid_ < cap; i++) {
+      if (autoActive() >= autoBook()) break;
+      const r = bid(cands[i].d.id, stance, { auto: true });
+      if (!r.ok) continue;
+      bid_++;
+      if (r.won) won++;
+    }
+    S.autoStats.bid += bid_; S.autoStats.won += won;
+    S.autoLog = bid_ ? { bid: bid_, won: won, cap: cap, tier: autoLimitName() } : null;
+    if (bid_) log('定型商談課が ' + bid_ + '件に応札し ' + won + '件を受注（' + autoLimitName() + 'まで）。', won ? '' : 'down');
+    return S.autoLog;
+  }
+  function setAuto(o) {
+    S.auto = S.auto || { on: true, limit: 1, stance: 1 };
+    if (o.on != null) S.auto.on = !!o.on;
+    if (o.limit != null) S.auto.limit = clamp(Math.round(o.limit), 0, D.AUTO_LIMITS.length - 1);
+    if (o.stance != null) S.auto.stance = clamp(Math.round(o.stance), 0, D.AUTO_STANCES.length - 1);
+    save();
+  }
+
   /* ---------------- 敵対的買収 ---------------- */
   function checkTOB() {
     if (S.tobCooldown > 0) { S.tobCooldown--; return null; }
@@ -1462,6 +1641,7 @@ window.ENGINE = (function () {
     S.mod.delay += (1 - S.mod.delay) * 0.5;
 
     S.mRev = 0; S.mCost = 0; S.mGTV = 0;
+    runAutoDesk();
     stepMarket();
     out.event = rollEvent();
 
@@ -1502,8 +1682,8 @@ window.ENGINE = (function () {
 
     stepPeople();
     stepRivals();
+    stepUniverse();
     refreshMarket();
-    refreshMA();
     S.slots = slotsMax();
 
     const eqAfter = equity();
@@ -1617,22 +1797,98 @@ window.ENGINE = (function () {
     return { div: div, buyback: bb };
   }
 
-  /* ---------------- save / load ---------------- */
-  function save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* noop */ }
-  }
-  function hasSave() {
-    try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
-  }
-  function load() {
+  /* ---------------- セーブ / ロード ----------------
+     スロットは auto（毎ターン自動）と 1〜3（手動）。
+     旧 v1 の単一キーは初回アクセス時に auto へ引き継ぐ。 */
+  const SLOTS = ['auto', '1', '2', '3'];
+  const SLOT_PREFIX = 'sogoshosha.slot.';
+  function slotKey(id) { return SLOT_PREFIX + id; }
+
+  function writeSlot(id, st) {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      localStorage.setItem(slotKey(id), JSON.stringify({ v: 2, t: Date.now(), s: st }));
+      return true;
+    } catch (e) { return false; }
+  }
+  function readSlot(id) {
+    try {
+      const raw = localStorage.getItem(slotKey(id));
       if (!raw) return null;
-      S = JSON.parse(raw);
-      if (!S || !S.div) return null;
-      migrate();
-      return S;
+      const o = JSON.parse(raw);
+      if (o && o.v === 2 && o.s) return o;
+      if (o && o.div) return { v: 1, t: 0, s: o };   // 旧形式
+      return null;
     } catch (e) { return null; }
+  }
+  /* 旧 v1 キーを auto スロットへ移行する */
+  function migrateLegacy() {
+    try {
+      const old = localStorage.getItem(SAVE_KEY);
+      if (old && !localStorage.getItem(slotKey('auto'))) {
+        localStorage.setItem(slotKey('auto'), JSON.stringify({ v: 2, t: Date.now(), s: JSON.parse(old) }));
+      }
+    } catch (e) { /* noop */ }
+  }
+
+  function save() { if (S) writeSlot('auto', S); }
+  function saveSlot(id) {
+    if (!S) return { ok: false, msg: 'セーブするゲームがない' };
+    if (!writeSlot(id, S)) return { ok: false, msg: '保存できなかった（ブラウザの保存領域がいっぱいかもしれない）' };
+    return { ok: true };
+  }
+  function slotInfo(id) {
+    const o = readSlot(id);
+    if (!o) return { id: id, empty: true };
+    const st = o.s;
+    let eq = 0;
+    try {
+      let book = 0;
+      (st.assets || []).forEach(function (a) { book += a.value || 0; });
+      (st.active || []).forEach(function (a) {
+        book += a.type === 'trade' ? (a.capital || 0) : ((a.wip || 0) - (a.adv || 0));
+      });
+      eq = (st.cash || 0) + book - (st.debt || 0);
+    } catch (e) { eq = 0; }
+    return {
+      id: id, empty: false,
+      company: st.company || '—',
+      stage: (D.STAGES[st.stage || 0] || {}).name || '—',
+      date: (st.y || 2026) + '年' + (st.m || 4) + '月',
+      turn: st.turn || 0, equity: eq,
+      savedAt: o.t ? new Date(o.t) : null,
+      over: !!st.over, cleared: !!st.cleared,
+    };
+  }
+  function slotList() { return SLOTS.map(slotInfo); }
+  function loadSlot(id) {
+    const o = readSlot(id);
+    if (!o) return null;
+    S = o.s;
+    if (!S || !S.div) { S = null; return null; }
+    migrate();
+    return S;
+  }
+  function deleteSlot(id) {
+    try { localStorage.removeItem(slotKey(id)); return true; } catch (e) { return false; }
+  }
+  function hasSave() { migrateLegacy(); return SLOTS.some(function (id) { return !!readSlot(id); }); }
+  function load() { migrateLegacy(); return loadSlot('auto'); }
+
+  /* 書き出し / 読み込み（テキストの受け渡し） */
+  function exportText() {
+    if (!S) return '';
+    return JSON.stringify({ game: 'sogoshosha', v: 2, t: Date.now(), s: S });
+  }
+  function importText(txt) {
+    let o;
+    try { o = JSON.parse(String(txt).trim()); }
+    catch (e) { return { ok: false, msg: 'データの形式が読めない（JSONとして解釈できなかった）' }; }
+    const st = o && (o.s || (o.div ? o : null));
+    if (!st || !st.div || !st.company) return { ok: false, msg: 'このゲームのセーブデータではないようだ' };
+    S = st;
+    migrate();
+    save();
+    return { ok: true };
   }
   /* 旧セーブに新フィールドを補う */
   function migrate() {
@@ -1662,9 +1918,11 @@ window.ENGINE = (function () {
     if (S.fy.revenue == null) { S.fy.revenue = 0; S.fy.cost = 0; S.fy.gtv = 0; }
     if (S.mRev == null) { S.mRev = 0; S.mCost = 0; S.mGTV = 0; }
     if (!S.peopleNews) S.peopleNews = [];
-    if (!S.ma) S.ma = [];
+    if (!S.universe || !S.universe.length) buildUniverse();
     if (!S.maStats) S.maStats = { done: 0, pmiOk: 0, pmiNg: 0, exits: 0 };
     if (S.tobCooldown == null) S.tobCooldown = 0;
+    if (!S.auto) S.auto = { on: true, limit: 1, stance: 1 };
+    if (!S.autoStats) S.autoStats = { bid: 0, won: 0, profit: 0 };
     if (!S.org) S.org = 'div';
     if (S.orgSwitchFY == null) S.orgSwitchFY = 0;
     if (S.gov == null) S.gov = 72;
@@ -1673,7 +1931,9 @@ window.ENGINE = (function () {
     if (S.ceoTerms == null) S.ceoTerms = 0;
   }
 
-  function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ } }
+  function wipe() {
+    try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(slotKey('auto')); } catch (e) { /* noop */ }
+  }
 
   /* ---------------- public ---------------- */
   return {
@@ -1694,7 +1954,9 @@ window.ENGINE = (function () {
     fiscalYear: fiscalYear,
     genPerson: genPerson, toneOf: toneOf, traitOf: traitOf, roleW: roleW,
     personPower: personPower, personCost: personCost, rosterCost: rosterCost, rosterMax: rosterMax,
-    divPeople: divPeople, divExec: divExec, divHead: divHead, divSalesPt: divSalesPt, divLeadPt: divLeadPt, eyePt: eyePt,
+    divPeople: divPeople, divExec: divExec, hqPeople: hqPeople, seconded: seconded,
+    secondTo: secondTo, recallPerson: recallPerson, postHolder: postHolder,
+    postAbility: postAbility, secondBonus: secondBonus, assetById: assetById, divHead: divHead, divSalesPt: divSalesPt, divLeadPt: divLeadPt, eyePt: eyePt,
     peopleWin: peopleWin, hasTrait: hasTrait, traitBest: traitBest, findPerson: findPerson,
     assignDiv: assignDiv, appointHead: appointHead, dispatchTo: dispatchTo,
     promotePerson: promotePerson, promoteSlots: promoteSlots,
@@ -1704,16 +1966,22 @@ window.ENGINE = (function () {
     gradPolicy: gradPolicy, setGradPolicy: setGradPolicy, gradPlan: gradPlan,
     gradAccept: gradAccept, gradYield: gradYield, monthsInFY: monthsInFY,
     hireCareer: hireCareer, huntCost: huntCost, headhunt: headhunt,
-    genTarget: genTarget, findTarget: findTarget, ddCost: ddCost, runDD: runDD,
+    findTarget: findTarget, universeList: universeList, ddCost: ddCost, runDD: runDD,
+    trueProfitOf: trueProfitOf, shownProfitOf: shownProfitOf, unsolicited: unsolicited,
     maPrice: maPrice, maWin: maWin, maCheck: maCheck, acquire: acquire,
     setPMILeader: setPMILeader, pmiChance: pmiChance, divSynergy: divSynergy,
     exitCompany: exitCompany, defendTOB: defendTOB, defendCost: defendCost,
+    autoCap: autoCap, autoLimitTier: autoLimitTier, autoLimitName: autoLimitName,
+    isAutoTarget: isAutoTarget, setAuto: setAuto, autoActive: autoActive, autoBook: autoBook,
+    manualActive: manualActive, tierIndex: tierIndex,
     org: org, orgSwitchCost: orgSwitchCost, canSwitchOrg: canSwitchOrg, switchOrg: switchOrg,
     autonomyIncome: autonomyIncome, confidenceScore: confidenceScore,
     confidenceDetail: confidenceDetail, ceoVote: ceoVote,
     capacity: capacity, slotsMax: slotsMax, mfac: mfac, hasOffice: hasOffice,
     ranking: ranking, myRank: myRank, now: now,
     save: save, load: load, hasSave: hasSave, wipe: wipe,
+    SLOTS: SLOTS, slotInfo: slotInfo, slotList: slotList, saveSlot: saveSlot,
+    loadSlot: loadSlot, deleteSlot: deleteSlot, exportText: exportText, importText: importText,
     money: money, signed: signed, pct: pct, clamp: clamp,
   };
 })();

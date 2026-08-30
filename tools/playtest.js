@@ -90,36 +90,80 @@ const MONTHS = +(process.argv[2] || 40);
     console.log('note: 乱数プレイが終局したため、UI検証用に再生成しました');
   }
 
-  // M&A のUIを直接検証（乱数プレイでは段階に届かないため状態を作る）
+  // 事業タブ（企業ユニバース）の検証: 資金を積んで売却意向を立てる
   await page.evaluate(() => {
-    ENGINE.S.stage = 2; ENGINE.S.cash = 4000; ENGINE.S.ma = [ENGINE.genTarget(), ENGINE.genTarget()];
+    ENGINE.S.stage = 2; ENGINE.S.cash = 6000;
+    const open_ = ENGINE.universeList().filter(t => t.owner == null).sort((a, b) => a.netAssets - b.netAssets);
+    open_.slice(0, 3).forEach(t => { t.forSale = true; t.reason = '後継者不在'; t.saleLeft = 10; t.rivals = 1; });
     UI.render();
   });
+  await page.click('#tabs button[data-tab="biz"]');
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'biz.png') });
+
+  // 買収まで通す
+  const target = await page.evaluate(() => {
+    const t = ENGINE.universeList().filter(x => x.forSale && x.owner == null)
+      .sort((a, b) => a.netAssets - b.netAssets)[0];
+    return t ? t.id : null;
+  });
+  if (target) {
+    await page.click('[data-co="' + target + '"]');
+    await page.waitForTimeout(60);
+    const dd = await page.$('[data-dd]'); if (dd) await dd.click();
+    await page.waitForTimeout(60);
+    await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'co.png') });
+    // 成約するまで数回試す（出向まで検証したいため）
+    for (let k = 0; k < 8; k++) {
+      const buy = await page.$('[data-buy]:not([disabled])');
+      if (!buy) break;
+      await buy.click(); await page.waitForTimeout(50);
+      const c = await page.$('[data-close]'); if (c) await c.click();
+      const done = await page.evaluate(id => ENGINE.S.assets.some(a => a.id === id), target);
+      if (done) break;
+      await page.evaluate(id => { const t = ENGINE.findTarget(id); if (t) { t.cool = 0; t.forSale = true; } }, target);
+      await page.click('[data-co="' + target + '"]');
+      await page.waitForTimeout(40);
+    }
+  }
+  // 傘下タブ・出向
+  await page.evaluate(() => { UI.setBizSub('own'); });
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'owned.png') });
+  const pst = await page.$('[data-post]');
+  if (pst) {
+    await pst.click(); await page.waitForTimeout(60);
+    await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'post.png') });
+    const sec = await page.$('[data-second]');
+    if (sec) await sec.click();
+    const c = await page.$('[data-close]'); if (c) await c.click();
+  }
+  await page.evaluate(() => { UI.setBizSub('world'); });
+
+  // 定型商談課の設定
   await page.click('#tabs button[data-tab="market"]');
   await page.waitForTimeout(60);
-  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma-list.png') });
-  await page.click('[data-ma]');
-  await page.waitForTimeout(60);
-  const ddb = await page.$('[data-dd]');
-  if (ddb) await ddb.click();
-  await page.waitForTimeout(60);
-  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma.png') });
-  const buy = await page.$('[data-buy]:not([disabled])');
-  if (buy) { await buy.click(); await page.waitForTimeout(60); const c = await page.$('[data-close]'); if (c) await c.click(); }
-  await page.click('#tabs button[data-tab="assets"]');
-  await page.waitForTimeout(60);
-  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'ma-asset.png') });
-  const pmib = await page.$('[data-pmi]');
-  if (pmib) { await pmib.click(); await page.waitForTimeout(60);
-    const sp = await page.$('[data-setpmi]'); if (sp) await sp.click(); }
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'market.png') });
+  const acfg = await page.$('[data-act="autocfg"]');
+  if (acfg) {
+    await acfg.click(); await page.waitForTimeout(60);
+    await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'auto.png') });
+    await page.click('[data-autolim="2"]'); await page.waitForTimeout(40);
+    const c = await page.$('[data-close]'); if (c) await c.click();
+  }
 
-  // 敵対的買収の防衛モーダル
-  await page.evaluate(() => {
-    UI.tobModal({ raider: '外資系プライベート・エクイティ', premium: 0.42, price: ENGINE.mcap() * 1.42 }, null);
-  });
+  // セーブ / ロード
+  const sv = await page.$('[data-act="slots"]');
+  await page.click('#tabs button[data-tab="admin"]');
   await page.waitForTimeout(60);
-  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'tob.png') });
-  await page.evaluate(() => UI.closeModal());
+  await page.evaluate(() => { UI.slotsModal(false); });
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'save.png') });
+  await page.click('[data-svsave="1"]');
+  await page.waitForTimeout(40);
+  const c2 = await page.$('[data-close]'); if (c2) await c2.click();
+  const slotOK = await page.evaluate(() => !ENGINE.slotInfo('1').empty);
+  console.log('slot save:', slotOK ? 'ok' : 'FAILED');
 
   // 人事タブ
   await page.click('#tabs button[data-tab="admin"]');
@@ -136,7 +180,7 @@ const MONTHS = +(process.argv[2] || 40);
   await page.screenshot({ path: path.join(__dirname, '..', '.shots', 'pay.png') });
   await page.click('[data-sub="fin"]');
 
-  for (const t of ['dash', 'market', 'active', 'assets', 'admin', 'rank']) {
+  for (const t of ['dash', 'market', 'active', 'assets', 'biz', 'admin', 'rank']) {
     await page.click('#tabs button[data-tab="' + t + '"]');
     await page.waitForTimeout(60);
     await page.screenshot({ path: path.join(__dirname, '..', '.shots', t + '.png') });

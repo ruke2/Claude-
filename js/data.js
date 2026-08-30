@@ -32,10 +32,10 @@ window.GAME = (function () {
   /* goal = 純資産(億円) */
   D.STAGES = [
     { name: '街の貿易商',   title: '創業',           goal: 200,     scale: 1 },
-    { name: '専門商社',     title: '専業で名を上げる', goal: 1000,   scale: 4 },
-    { name: '中堅商社',     title: '総合化への布石',  goal: 6000,    scale: 18 },
-    { name: '大手商社',     title: '財閥系に並ぶ',    goal: 40000,   scale: 90 },
-    { name: '総合商社',     title: '五大商社の一角',  goal: 260000,  scale: 420 },
+    { name: '専門商社',     title: '専業で名を上げる', goal: 1500,   scale: 4 },
+    { name: '中堅商社',     title: '総合化への布石',  goal: 9800,    scale: 18 },
+    { name: '大手商社',     title: '財閥系に並ぶ',    goal: 68000,   scale: 90 },
+    { name: '総合商社',     title: '五大商社の一角',  goal: 480000,  scale: 420 },
     { name: '世界最大の商社', title: 'グローバル覇権', goal: Infinity, scale: 1800 },
   ];
 
@@ -54,6 +54,35 @@ window.GAME = (function () {
   ];
   D.REGION_BY_ID = {};
   D.REGIONS.forEach(function (r) { D.REGION_BY_ID[r.id] = r; });
+
+  /* ---- 案件の規模帯 ---------------------------------- */
+  /* 会社が大きくなっても小口の商いは無くならない。規模帯は常に同じ比率で現れ、
+     小さいものは「定型商談課」が自動で捌く。 */
+  D.DEAL_TIERS = [
+    { id: 'retail', name: '小口', k: 0.08, w: 26 },
+    { id: 'small',  name: '小型', k: 0.22, w: 24 },
+    { id: 'mid',    name: '中型', k: 0.50, w: 22 },
+    { id: 'core',   name: '主力', k: 1.00, w: 20 },
+    { id: 'mega',   name: '大型', k: 2.20, w: 8 },
+  ];
+  /* 規模帯を入れても案件規模の期待値が変わらないよう正規化する（kn を使う） */
+  (function () {
+    let sw = 0, sk = 0;
+    D.DEAL_TIERS.forEach(function (t) { sw += t.w; sk += t.k * t.w; });
+    const mean = sk / sw;
+    D.DEAL_TIERS.forEach(function (t) { t.kn = t.k / mean; });
+  })();
+  D.TIER_BY_ID = {};
+  D.DEAL_TIERS.forEach(function (t) { D.TIER_BY_ID[t.id] = t; });
+
+  /* 自動商談の対象上限（規模帯で指定する） */
+  D.AUTO_LIMITS = [
+    { n: '小口のみ', tier: 0 },
+    { n: '小型まで', tier: 1 },
+    { n: '中型まで', tier: 2 },
+    { n: '主力まで', tier: 3 },
+  ];
+  D.AUTO_STANCES = [1, 2, 3];   // 薄利 / 標準 / 強気
 
   /* ---- 案件テンプレ ---------------------------------- */
   /* type: trade(トレード) / project(EPC) / concession(権益) / investment(事業投資) */
@@ -277,12 +306,45 @@ window.GAME = (function () {
   D.MA_BIZ = {
     energy:    ['燃料小売チェーン', '電力小売', 'ガスエナジー', 'バイオ燃料'],
     metals:    ['メタルワークス', '金属リサイクル', '特殊鋼販売', 'アルミ工業'],
-    chem:      ['ケミカル', '農薬販売網', 'コーティング', '電池materials'],
+    chem:      ['ケミカル', '農薬販売網', 'コーティング', '電池材料'],
     machinery: ['建機レンタル', '船舶リース', 'モータース', 'エンジニアリング'],
     food:      ['フーズ', '製粉', '水産加工', 'フードサービス'],
     consumer:  ['ストアーズ', 'ロジスティクス', 'ヘルスケア', 'ヒューマンリソース', 'リース'],
   };
   D.MA_STAGES = { scout: '打診', dd: 'デューデリ済', pmi: '統合中', run: '稼働' };
+
+  /* 業界。企業ユニバースはこの単位で並ぶ */
+  D.SECTORS = [
+    { id: 'energy',    name: 'エネルギー・電力', icon: '⛽' },
+    { id: 'metals',    name: '金属・素材',       icon: '⛏️' },
+    { id: 'chem',      name: '化学・農業',       icon: '🧪' },
+    { id: 'machinery', name: '機械・輸送',       icon: '🏗️' },
+    { id: 'food',      name: '食品・水産',       icon: '🌾' },
+    { id: 'consumer',  name: '生活・サービス',   icon: '🏬' },
+  ];
+  /* 各業界に置く企業の規模帯（純資産・億円） */
+  D.COMPANY_SIZES = [40, 170, 620, 2300, 9000, 34000, 130000];
+
+  /* 売却意向が立つ理由 */
+  D.SALE_REASONS = [
+    { t: '後継者不在', d: '創業家に継ぐ者がおらず、身売り先を探している' },
+    { t: '業績不振',   d: '数期連続の赤字で、単独での再建を諦めつつある' },
+    { t: '親会社の方針転換', d: '親会社が非中核事業の切り離しを決めた' },
+    { t: '業界再編',   d: '再編観測が強まり、経営陣が相手を探し始めた' },
+    { t: 'ファンドの出口', d: '投資ファンドが保有期限を迎え、売却先を探している' },
+  ];
+
+  /* 出向のポジション */
+  D.POSTS = [
+    { id: 'ceo',   name: '社長',       icon: '👔', ab: 'lead',
+      desc: '統率が事業の成長率と統合の成功率を押し上げる' },
+    { id: 'cfo',   name: 'CFO',        icon: '📐', ab: 'eye',
+      desc: '目利きが減損リスクを抑え、価値の下振れを防ぐ' },
+    { id: 'sales', name: '営業責任者', icon: '🤝', ab: 'sales',
+      desc: '営業力が事業の収益力と、同じ本部の採算を押し上げる' },
+  ];
+  D.POST_BY_ID = {};
+  D.POSTS.forEach(function (p) { D.POST_BY_ID[p.id] = p; });
 
   /* 買収の提示倍率（純資産倍率） */
   D.MA_OFFERS = [
