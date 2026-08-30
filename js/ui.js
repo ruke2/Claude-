@@ -832,6 +832,7 @@ window.UI = (function () {
 
   /* ---------------- render ---------------- */
   function render() {
+    if (!E.S) return;   // タイトル画面（ゲーム未開始）では描画しない
     const map = { dash: viewDash, market: viewMarket, active: viewActive, assets: viewAssets,
       biz: viewBiz, admin: viewAdmin, rank: viewRank };
     $('#view').innerHTML = (map[tab] || viewDash)();
