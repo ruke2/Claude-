@@ -14,13 +14,15 @@ export class CityRenderer {
     this.cv = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.g = game;
-    this.cam = { x: 0, y: 0, zoomIdx: 3, rot: 0 };
+    this.cam = { x: 0, y: 0, zoomIdx: 2, rot: 0 };
     this.time = timeOfQuarter(game.quarter);
     this.weather = WEATHERS.clear;
     this.layer = 'normal';        // normal | owner | value
     this.hover = null;
     this.selected = null;
     this.cache = new Map();
+    this.last = new Map();      // 直前の時間帯のスプライト（再生成中のつなぎ）
+    this.budget = 999;
     this.t = 0;
     this.stars = null;
     this.skyline = null;
@@ -40,7 +42,10 @@ export class CityRenderer {
     this.skyline = null;
   }
 
-  invalidate() { this.cache.clear(); }
+  invalidate() {
+    // 一度に全棟を描き直すと重いので、フレームごとに少しずつ作り替える
+    this.cache.clear();
+  }
 
   setQuarter(q) {
     const t = timeOfQuarter(q);
@@ -49,9 +54,10 @@ export class CityRenderer {
   setWeather(key) { this.weather = WEATHERS[key] || WEATHERS.clear; }
 
   center() {
-    // マップ中心が画面中央に来るようカメラを置く
+    // マップ中心が画面中央に来るようカメラを置く。建物が上に伸びる分だけ下げる
     const p = toScreen(MAP_W / 2, MAP_H / 2, 0, this.cam.rot, this.zoom);
-    this.cam.x = -p.x; this.cam.y = -p.y;
+    this.cam.x = -p.x;
+    this.cam.y = -p.y + this.h * 0.14;
   }
 
   zoomBy(d, ax, ay) {
@@ -106,9 +112,10 @@ export class CityRenderer {
   drawSky() {
     const { ctx, w, h } = this;
     const T = this.time, W = this.weather;
-    const g = ctx.createLinearGradient(0, 0, 0, h);
+    const hz0 = this.horizonY();
+    const g = ctx.createLinearGradient(0, Math.min(0, hz0 - h * 1.35), 0, hz0);
     T.sky.forEach((c, i) => g.addColorStop(i / (T.sky.length - 1), c));
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, Math.max(1, hz0));
 
     // 星
     if (T.key === 'night') {
@@ -116,6 +123,7 @@ export class CityRenderer {
         this.stars = [];
         for (let i = 0; i < 160; i++) this.stars.push({ x: hash2(i, 1) * w, y: hash2(i, 2) * h * 0.55, r: hash2(i, 3) * 1.3 + 0.2, p: hash2(i, 4) });
       }
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, Math.max(1, hz0)); ctx.clip();
       ctx.save();
       for (const s of this.stars) {
         ctx.globalAlpha = (0.3 + 0.7 * Math.abs(Math.sin(this.t * 0.7 + s.p * 9))) * (1 - W.cloud * 0.8);
@@ -123,15 +131,17 @@ export class CityRenderer {
         ctx.fillRect(s.x, s.y, s.r, s.r);
       }
       ctx.restore();
+      ctx.restore();
     }
 
     // 太陽／月
-    const sx = T.sun.x * w, sy = T.sun.y * h * 0.62;
+    const sx = T.sun.x * w, sy = hz0 - T.sun.alt * Math.max(180, hz0);
     const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, T.sun.r * 5);
     sg.addColorStop(0, T.sun.color);
     sg.addColorStop(0.18, T.sun.color.replace(/[\d.]+\)$/, '0.30)'));
     sg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.save(); ctx.globalAlpha = 1 - W.cloud * 0.65;
+    ctx.beginPath(); ctx.rect(0, 0, w, Math.max(1, hz0)); ctx.clip();
     ctx.fillStyle = sg; ctx.fillRect(0, 0, w, h);
     ctx.beginPath(); ctx.arc(sx, sy, T.sun.r * 0.42, 0, Math.PI * 2);
     ctx.fillStyle = T.key === 'night' ? 'rgba(232,240,255,0.92)' : T.sun.color; ctx.fill();
@@ -139,11 +149,12 @@ export class CityRenderer {
 
     // 雲
     ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, w, Math.max(1, hz0)); ctx.clip();
     const cn = Math.round(6 + W.cloud * 14);
     for (let i = 0; i < cn; i++) {
       const sp = 6 + hash2(i, 11) * 14;
       const cx = ((hash2(i, 12) * w * 1.6 + this.t * sp) % (w * 1.6)) - w * 0.3;
-      const cy = hash2(i, 13) * h * 0.42;
+      const cy = hash2(i, 13) * Math.max(60, hz0 * 0.72);
       const cw = 60 + hash2(i, 14) * 180, chh = 14 + hash2(i, 15) * 26;
       const a = (0.06 + W.cloud * 0.30) * (0.5 + hash2(i, 16) * 0.5);
       ctx.globalAlpha = a;
@@ -161,14 +172,52 @@ export class CityRenderer {
     ctx.restore();
 
     // 遠景スカイライン
-    this.drawSkyline();
+    const hz = this.horizonY();
+    this.drawSkyline(hz);
+    // 海（地平線より下）
+    this.drawSea(hz);
     // 地平のもや
-    const fg = ctx.createLinearGradient(0, h * 0.30, 0, h * 0.72);
-    fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(1, T.fog);
-    ctx.fillStyle = fg; ctx.fillRect(0, 0, w, h);
+    const fg = ctx.createLinearGradient(0, hz - h * 0.16, 0, hz + h * 0.10);
+    fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(0.55, T.fog); fg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = fg; ctx.fillRect(0, Math.max(0, hz - h * 0.16), w, h * 0.26);
   }
 
-  drawSkyline() {
+  /** 地平線のY座標（カメラに緩やかに追随する） */
+  horizonY() {
+    return this.h * 0.40 + this.cam.y * 0.22;
+  }
+
+  /** 海面 */
+  drawSea(hz) {
+    const { ctx, w, h } = this;
+    const T = this.time, W = this.weather;
+    const top = Math.max(-h, hz);
+    const g = ctx.createLinearGradient(0, top, 0, h);
+    const pal = {
+      morning: ['#7d97b8', '#3d5b80', '#1e3550'],
+      noon: ['#89b4d8', '#3d76a8', '#1d4a72'],
+      evening: ['#c98868', '#6b3f58', '#2c1e36'],
+      night: ['#1b3350', '#0d1c30', '#060d18'],
+    }[T.key];
+    g.addColorStop(0, pal[0]); g.addColorStop(0.18, pal[1]); g.addColorStop(1, pal[2]);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, top, w, h - top);
+    // 波
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, top, w, h - top); ctx.clip();
+    for (let i = 0; i < 70; i++) {
+      const r = hash2(i, 31), r2 = hash2(i, 37);
+      const depth = r2 * r2;
+      const y = top + depth * (h - top) + Math.sin(this.t * 0.9 + r * 20) * 2;
+      const len = (8 + r * 90) * (0.3 + depth);
+      ctx.globalAlpha = (0.05 + r * 0.14) * (1 - W.cloud * 0.4);
+      ctx.fillStyle = T.key === 'evening' ? '#ffcb9a' : T.key === 'night' ? '#6f9ad0' : '#ffffff';
+      ctx.fillRect(((r * w * 1.4 + this.t * (6 + depth * 20)) % (w * 1.4)) - w * 0.2, y, len, 1 + depth * 2);
+    }
+    ctx.restore();
+  }
+
+  drawSkyline(hz) {
     const { ctx, w, h } = this;
     const T = this.time;
     if (!this.skyline || this.skyline.w !== w) {
@@ -200,7 +249,7 @@ export class CityRenderer {
     }
     ctx.save();
     ctx.globalAlpha = 0.85 - this.weather.cloud * 0.35;
-    ctx.drawImage(this.skyline.cv, 0, h * 0.30);
+    ctx.drawImage(this.skyline.cv, 0, (hz ?? h * 0.4) - this.skyline.cv.height);
     ctx.restore();
   }
 
@@ -210,8 +259,8 @@ export class CityRenderer {
   tileColor(c) {
     const T = this.time;
     if (c.terrain === TERRAIN.WATER) return null;
-    if (c.terrain === TERRAIN.ROAD) return shade(220, 6, 22, T.faceTop);
-    if (c.terrain === TERRAIN.AVENUE) return shade(220, 5, 26, T.faceTop);
+    if (c.terrain === TERRAIN.ROAD) return shade(220, 5, 27, T.faceTop);
+    if (c.terrain === TERRAIN.AVENUE) return shade(220, 4, 31, T.faceTop);
     if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) return shade(120, 30, 30, T.faceTop);
     const d = DISTRICTS[c.d];
     if (this.layer === 'owner') {
@@ -226,7 +275,7 @@ export class CityRenderer {
       const v = Math.min(1, c.baseValue / 42000);
       return shade(240 - v * 240, 62, 20 + v * 26, T.faceTop);
     }
-    return shade(d ? d.hue : 210, 8, c.vacant ? 26 : 21, T.faceTop);
+    return shade(d ? d.hue : 210, 7, c.vacant ? 30 : 25, T.faceTop);
   }
 
   drawTile(c, px, py) {
@@ -400,6 +449,11 @@ export class CityRenderer {
     const fullKey = pj ? `${key}|c${Math.round(pj.progress * 10)}` : key;
     let s = this.cache.get(fullKey);
     if (s) return s;
+    if (this.budget <= 0) {
+      const old = this.last.get(c.id);
+      if (old) return old;
+    }
+    this.budget--;
     if (pj && pj.status !== 'done') {
       const pseudo = { use: pj.use, floors: pj.floors, grade: pj.grade, facade: 'grid', height: pj.heightM, seed: pj.seed, lit: 0.4, antenna: false, crown: 0 };
       s = renderBuilding(pseudo, this.time, this.zoom, { construction: pj.progress });
@@ -407,6 +461,7 @@ export class CityRenderer {
       s = renderBuilding(c.building, this.time, this.zoom);
     } else return null;
     this.cache.set(fullKey, s);
+    this.last.set(c.id, s);
     return s;
   }
 
@@ -414,7 +469,9 @@ export class CityRenderer {
   //  メイン描画
   // --------------------------------------------------------
   draw(dt) {
+    const __t0 = performance.now();
     this.t += dt;
+    this.budget = 18;          // 1フレームで作り直す建物数の上限
     this.pulse = (Math.sin(this.t * 3) + 1) / 2;
     const { ctx, w, h } = this;
     const g = this.g, z = this.zoom, T = this.time, W = this.weather;
@@ -422,6 +479,7 @@ export class CityRenderer {
     this.drawSky();
 
     ctx.translate(w / 2 + this.cam.x, h / 2 + this.cam.y);
+    this.drawIslandBase();
 
     // 描画順（奥→手前）
     const order = [];
@@ -454,8 +512,8 @@ export class CityRenderer {
         ctx.globalAlpha = T.shadow * (1 - W.cloud * 0.5);
         ctx.fillStyle = '#000';
         const sh = Math.min(28, this.heightOf(c) * 0.24) * z;
-        diamond(ctx, px + T.shadowDir[0] * sh * 0.5, py + T.shadowDir[1] * sh * 0.3, TILE_W * z * 0.9, TILE_H * z * 0.9);
-        ctx.filter = 'blur(2px)'; ctx.fill(); ctx.filter = 'none';
+        diamond(ctx, px + T.shadowDir[0] * sh * 0.5, py + T.shadowDir[1] * sh * 0.3, TILE_W * z * 0.92, TILE_H * z * 0.92);
+        ctx.fill();
         ctx.restore();
         ctx.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
       }
@@ -475,6 +533,48 @@ export class CityRenderer {
       ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.16;
       ctx.fillStyle = '#2a4a80'; ctx.fillRect(0, 0, w, h); ctx.restore();
     }
+    const ms = performance.now() - __t0;
+    this.stat = this.stat || { n: 0, sum: 0, max: 0 };
+    this.stat.n++; this.stat.sum += ms; this.stat.max = Math.max(this.stat.max, ms);
+  }
+
+  /** 都市が乗る島の土台 */
+  drawIslandBase() {
+    const { ctx } = this;
+    const z = this.zoom, T = this.time;
+    const corners = [[-0.5, -0.5], [MAP_W - 0.5, -0.5], [MAP_W - 0.5, MAP_H - 0.5], [-0.5, MAP_H - 0.5]]
+      .map(([x, y]) => toScreen(x, y, 0, this.cam.rot, z));
+    const D = 34 * z;
+    // 上面（海面の縁取り）
+    ctx.beginPath();
+    corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = T.key === 'night' ? '#0a1424' : T.key === 'evening' ? '#3a2434' : '#26384e';
+    ctx.fill();
+    // 側面（手前2辺）
+    const bottom = corners.reduce((a, b) => (b.y > a.y ? b : a));
+    const bi = corners.indexOf(bottom);
+    for (const k of [-1, 1]) {
+      const p1 = corners[bi], p2 = corners[(bi + k + 4) % 4];
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p2.x, p2.y + D); ctx.lineTo(p1.x, p1.y + D);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, p1.y, 0, p1.y + D);
+      const base = k < 0 ? T.faceL : T.faceR;
+      g.addColorStop(0, shade(30, 12, 20, base));
+      g.addColorStop(1, shade(220, 16, 7, base));
+      ctx.fillStyle = g; ctx.fill();
+    }
+    // 波打ち際
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = T.key === 'night' ? 'rgba(120,170,230,.5)' : 'rgba(255,255,255,.55)';
+    ctx.lineWidth = Math.max(1, z * 1.6);
+    ctx.beginPath();
+    corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y + Math.sin(this.t * 1.5 + i) * 1.5) : ctx.moveTo(p.x, p.y));
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
   }
 
   /** 区画の状態を示す床面オーバーレイ */

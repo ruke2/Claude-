@@ -88,7 +88,7 @@ export const MAP_ROWS = [
   'KK.BB.BB.TT.BBBB',
   'BB.BB.BB.BB.BBBB',
   'BB.BB#BB.BB.BBBB',
-  '================',
+  '=====.=====.====',
   '~~~~~~~~~~~~~~~~',
 ];
 

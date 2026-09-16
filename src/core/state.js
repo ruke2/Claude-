@@ -259,8 +259,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     diff,
   };
 
-  // 初期の運転資金と1件の仕掛かり用地
   g.finance.quarterAcc = blankPL();
+  g.weather = 'clear';
   return g;
 }
 
