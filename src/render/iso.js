@@ -5,7 +5,7 @@ import { MAP_W, MAP_H } from '../data/city.js';
 
 export const TILE_W = 74;     // タイル幅(基準)
 export const TILE_H = 37;     // タイル高(基準)
-export const Z_UNIT = 1.62;   // 建物1mあたりの画面高さ(基準)
+export const Z_UNIT = 1.30;   // 建物1mあたりの画面高さ(基準)
 
 /** 回転を適用したグリッド座標 */
 export function rotate(gx, gy, rot) {

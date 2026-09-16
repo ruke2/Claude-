@@ -222,14 +222,14 @@ export class CityRenderer {
     const T = this.time;
     if (!this.skyline || this.skyline.w !== w) {
       const cv = document.createElement('canvas');
-      cv.width = Math.max(1, Math.floor(w)); cv.height = Math.max(1, Math.floor(h * 0.45));
+      cv.width = Math.max(1, Math.floor(w)); cv.height = Math.max(1, Math.floor(h * 0.24));
       const c2 = cv.getContext('2d');
       for (let layer = 0; layer < 2; layer++) {
         let x = -20;
         const base = cv.height;
         while (x < cv.width + 20) {
           const r1 = hash2(Math.floor(x), layer * 7 + 1), r2 = hash2(Math.floor(x), layer * 7 + 2);
-          const bw = 16 + r1 * 44, bh = (18 + r2 * 96) * (layer ? 0.7 : 1);
+          const bw = 14 + r1 * 38, bh = (12 + r2 * 58) * (layer ? 0.66 : 1);
           c2.fillStyle = layer
             ? (T.key === 'night' ? 'rgba(20,32,55,0.85)' : T.key === 'evening' ? 'rgba(76,48,66,0.7)' : 'rgba(150,175,205,0.45)')
             : (T.key === 'night' ? 'rgba(10,18,34,0.95)' : T.key === 'evening' ? 'rgba(48,30,48,0.85)' : 'rgba(112,142,180,0.55)');
@@ -498,6 +498,22 @@ export class CityRenderer {
       this.drawTile(c, px, py);
     }
 
+    // 建物が地面に落とす影（建物本体より先にまとめて描く）
+    if (T.shadow > 0.05) {
+      ctx.save();
+      ctx.globalAlpha = T.shadow * (1 - W.cloud * 0.55);
+      ctx.fillStyle = '#05080f';
+      for (const { c } of order) {
+        const hh = this.heightOf(c);
+        if (hh < 1) continue;
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const scX = p.x + w / 2 + this.cam.x, scY = p.y + h / 2 + this.cam.y;
+        if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
+        this.drawShadow(p.x, p.y, hh, c);
+      }
+      ctx.restore();
+    }
+
     // 建物・ハイライト
     for (const { c } of order) {
       const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
@@ -506,17 +522,7 @@ export class CityRenderer {
       if (scX < -margin || scX > w + margin || scY < -margin * 2 || scY > h + margin * 1.6) continue;
       this.drawOverlay(c, px, py);
       const sp = this.buildingSprite(c);
-      if (sp) {
-        // 影
-        ctx.save();
-        ctx.globalAlpha = T.shadow * (1 - W.cloud * 0.5);
-        ctx.fillStyle = '#000';
-        const sh = Math.min(28, this.heightOf(c) * 0.24) * z;
-        diamond(ctx, px + T.shadowDir[0] * sh * 0.5, py + T.shadowDir[1] * sh * 0.3, TILE_W * z * 0.92, TILE_H * z * 0.92);
-        ctx.fill();
-        ctx.restore();
-        ctx.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
-      }
+      if (sp) ctx.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
       this.drawMarker(c, px, py);
     }
 
@@ -536,6 +542,31 @@ export class CityRenderer {
     const ms = performance.now() - __t0;
     this.stat = this.stat || { n: 0, sum: 0, max: 0 };
     this.stat.n++; this.stat.sum += ms; this.stat.max = Math.max(this.stat.max, ms);
+  }
+
+  /** 建物が地面に落とす影（底面を太陽の反対方向に引き伸ばす） */
+  drawShadow(px, py, heightM, c) {
+    const { ctx } = this;
+    const z = this.zoom, T = this.time;
+    const use = (c.building && c.building.use) || (c.projectId ? 'office' : 'office');
+    const foot = { office: .90, resi: .86, rental: .86, retail: .95, hotel: .86, logi: .96, house: .66, mixed: .93 }[use] || 0.88;
+    const w = TILE_W * z * foot, h = TILE_H * z * foot;
+    const hpx = heightM * Z_UNIT * z;
+    const len = Math.min(hpx * 0.5, TILE_W * z * 2.6);
+    const ox = T.shadowDir[0] * len * 0.5, oy = T.shadowDir[1] * len * 0.32;
+    const base = [[px, py - h / 2], [px + w / 2, py], [px, py + h / 2], [px - w / 2, py]];
+    const pts = base.concat(base.map(([x, y]) => [x + ox, y + oy]));
+    // 8点の凸包（Andrew's monotone chain）
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [], upper = [];
+    for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+    for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+    const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+    ctx.beginPath();
+    hull.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.closePath();
+    ctx.fill();
   }
 
   /** 都市が乗る島の土台 */

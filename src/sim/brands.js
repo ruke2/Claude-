@@ -88,9 +88,10 @@ export function damageBrand(g, brandId, amount, repHit = 0) {
 export function stepBrands(g, rng, news) {
   for (const b of g.brands) {
     const G = BRAND_GRADES[b.grade];
-    // 供給が途切れると忘れられる
+    // 供給が途切れると少しずつ忘れられる（完全には消えない）
     const idle = g.week - b.lastUsedWeek;
-    if (idle > 52) b.awareness = clamp(b.awareness - 0.05, 0, 100);
+    const floor = 3 + b.supplied * 1.5;
+    if (idle > 104 && b.awareness > floor) b.awareness = clamp(b.awareness - 0.02, floor, 100);
     // 広告投資
     if (b.adSpend > 0) {
       const w = b.adSpend / 52;

@@ -7,7 +7,7 @@ import { shade, hsl, USE_HSL } from './palette.js';
 import { TILE_W, TILE_H, Z_UNIT } from './iso.js';
 
 /** 用途ごとの敷地占有率 */
-const FOOT = { office: .84, resi: .80, rental: .80, retail: .90, hotel: .80, logi: .95, house: .60, mixed: .88 };
+const FOOT = { office: .90, resi: .86, rental: .86, retail: .95, hotel: .86, logi: .96, house: .66, mixed: .93 };
 /** ベイ（窓の横方向分割数） */
 const BAYS = { office: 7, resi: 6, rental: 6, retail: 5, hotel: 6, logi: 4, house: 3, mixed: 7 };
 
@@ -76,7 +76,7 @@ function drawGrime(ctx, o, side, H, T, zoom) {
   const g = ctx.createLinearGradient(0, cy + h / 2 - H, 0, cy + h / 2);
   g.addColorStop(0, 'rgba(0,0,0,0)');
   g.addColorStop(0.82, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(6,10,18,${0.30 + (1 - T.faceTop) * 0.2})`);
+  g.addColorStop(1, `rgba(8,12,20,${0.22 + (1 - T.faceTop) * 0.16})`);
   ctx.fillStyle = g;
   ctx.fill();
 }
@@ -91,14 +91,14 @@ function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
   const span = Math.max(0.001, vB - vA);
   const fh = span / Math.max(1, floors);
   const winLit = T.windowLit * (b.lit ?? 0.6);
-  const darkWin = shade(hu, sa + 10, li, mul * 0.40);
+  const darkWin = shade(hu, sa + 8, li, mul * 0.58);
 
   // --- 壁 ---
   facePath(ctx, o, side, 0, 1, vA, vB, H);
   const wallTop = o.cy + o.h / 2 - H * vB, wallBot = o.cy + o.h / 2 - H * vA;
   const wg = ctx.createLinearGradient(0, wallTop, 0, wallBot);
-  wg.addColorStop(0, shade(hu, sa, li, mul * 1.08));
-  wg.addColorStop(1, shade(hu, sa, li, mul * 0.88));
+  wg.addColorStop(0, shade(hu, sa, li, mul * 1.14));
+  wg.addColorStop(1, shade(hu, sa, li, mul * 0.94));
   ctx.fillStyle = wg;
   ctx.fill();
 
@@ -108,12 +108,12 @@ function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
 
   if (facade === 'curtain') {
     // ガラスのカーテンウォール。空を映し込む
-    const glassBase = shade(202, 22, 44, mul * 1.05);
+    const glassBase = shade(202, 20, 52, mul * 1.05);
     facePath(ctx, o, side, 0.03, 0.97, vA + fh * 0.1, vB - fh * 0.1, H);
     const sg = ctx.createLinearGradient(0, wallTop, 0, wallBot);
     sg.addColorStop(0, shade(T.key === 'night' ? 220 : 205, 30, T.key === 'night' ? 22 : 62, mul * 1.15));
     sg.addColorStop(0.55, glassBase);
-    sg.addColorStop(1, shade(210, 18, 30, mul));
+    sg.addColorStop(1, shade(210, 16, 40, mul));
     ctx.fillStyle = sg; ctx.fill();
     // 横連窓の目地
     ctx.strokeStyle = shade(hu, sa, li, mul * 1.26, 0.7);
