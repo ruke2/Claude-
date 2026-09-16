@@ -6,6 +6,7 @@ import { DISTRICTS, TERRAIN, USES } from '../data/city.js';
 import { uid } from '../core/state.js';
 import { landAppraisal, devPlan, bestUseFit } from './valuation.js';
 import { orgPower } from './hr.js';
+import { WEEKS_PER_QUARTER } from '../core/time.js';
 
 /** 土地に潜むリスクと好材料 */
 export const RISKS = [
@@ -31,14 +32,17 @@ const KINDS = {
 };
 export { KINDS as LISTING_KINDS };
 
-/** 毎四半期の売却情報生成 */
+/** 毎週の売却情報生成 */
 export function generateListings(g, rng, news) {
   const p = orgPower(g);
   // 用地部の情報力で入手できる案件数が増える
   const infoPower = p.land.quality / 100 + p.land.capacity / 26 + (g.acquisitions.some(a => a.kind === 'broker' && !a.failed) ? 0.5 : 0);
-  const n = clamp(Math.round(1.6 + infoPower * 1.5 + g.market.sentiment * 1.4 + rng.range(-0.6, 0.9)), 1, 7);
-
-  if (g.listings.length >= 10) return;
+  // 週あたりの持ち込み件数（端数は確率的に切り上げる）
+  const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
+  let n = Math.floor(rate);
+  if (rng.next() < rate - n) n++;
+  n = clamp(n, 0, 3);
+  if (g.listings.length >= 16) return;
   const pool = g.cells.filter(c =>
     c.terrain === TERRAIN.LOT && c.d && !c.onSale && c.owner !== 'player' && !c.projectId && !c.assetId && !c.invId);
   if (!pool.length) return;
@@ -76,7 +80,7 @@ export function generateListings(g, rng, news) {
     c.onSale = {
       id: uid('L'), cellId: c.id, kind, appraisal,
       askPrice: Math.round(appraisal * askMul * heat),
-      deadline: kind === 'nego' ? rng.int(2, 4) : rng.int(1, 3),
+      deadline: kind === 'nego' ? rng.int(5, 11) : rng.int(3, 8),
       seller, risks, ddLevel: 0, bid: null,
       bestUse: bestUseFit(c),
       note: rng.pick([
@@ -84,7 +88,7 @@ export function generateListings(g, rng, news) {
         '地元では以前から売却の噂があった土地である。', '入札参加者は多いと見られる。',
         '条件次第では価格交渉の余地がある。', '売主は価格よりも計画内容を重視している。',
       ]),
-      turn: g.turn,
+      week: g.week,
     };
     g.listings.push(c.onSale);
   }
@@ -215,7 +219,7 @@ export function acquireForPlayer(g, listing, cell, amount, news) {
   cell.vacant = true;
   cell.building = null;
   cell.lastPaid = amount;
-  cell.acquiredTurn = g.turn;
+  cell.acquiredWeek = g.week;
   cell.risks = listing.risks.map(r => ({ ...r }));
   cell.onSale = null;
   cell.holdCost = 0;
@@ -232,14 +236,16 @@ export function acquireForPlayer(g, listing, cell, amount, news) {
 export function acquireForRival(g, listing, cell, rvId, amount) {
   const rv = g.rivals.find(r => r.id === rvId);
   cell.owner = rvId; cell.onSale = null; cell.vacant = true; cell.building = null;
-  cell.rivalDev = { turn: g.turn, quarters: 4 + Math.floor(Math.random() * 6), use: listing.bestUse };
+  cell.rivalDev = { week: g.week, weeks: 52 + Math.floor(Math.random() * 78), use: listing.bestUse };
   if (rv) { rv.cash -= amount; rv.lots++; rv.momentum = Math.min(3, (rv.momentum || 0) + 1); }
   const idx = g.listings.indexOf(listing);
   if (idx >= 0) g.listings.splice(idx, 1);
 }
 
-/** 所有しているだけで発生する保有コスト（固定資産税・金利） */
+/** 所有しているだけで発生する保有コスト（固定資産税ほか・週あたり） */
 export function holdingCost(g, cell) {
   const v = cell.lastPaid || landAppraisal(g, cell);
-  return Math.round(v * 0.0042);   // 四半期あたり（年約1.7%相当）
+  return v * 0.0042 / WEEKS_PER_QUARTER;   // 年約1.7%相当
 }
+/** 四半期換算の保有コスト（表示用） */
+export function holdingCostQ(g, cell) { return Math.round(holdingCost(g, cell) * WEEKS_PER_QUARTER); }

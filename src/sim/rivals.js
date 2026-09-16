@@ -7,9 +7,10 @@ import { makeBuilding } from '../core/state.js';
 import { ttm, marketCap, buildBS } from './finance.js';
 import { avgAbility } from '../core/state.js';
 import { DEPTS, RANKS } from '../data/hrdata.js';
+import { WEEKS_PER_QUARTER } from '../core/time.js';
 
-/** 競合各社の四半期更新 */
-export function stepRivals(g, rng, news) {
+/** 競合各社の四半期決算（四半期末にのみ呼ぶ） */
+export function stepRivalsQuarter(g, rng, news) {
   const m = g.market;
   const cyc = (m.sentiment - 0.5) * 2;
 
@@ -30,14 +31,18 @@ export function stepRivals(g, rng, news) {
     rv.employees = Math.round(rv.employees * (1 + growth * 0.35));
     rv.stock = Math.round(rv.stock * (1 + growth * 1.6 + cyc * 0.03 + rng.normal(0, 0.03)) * 100) / 100;
     rv.momentum = Math.max(0, (rv.momentum || 0) - 0.34);
-    rv.history.push({ turn: g.turn, rev: rv.rev, op: rv.op, np: rv.np });
+    rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np });
     if (rv.history.length > 60) rv.history.shift();
   }
+}
 
+/** 競合の週次の動き（開発・干渉） */
+export function stepRivalsWeekly(g, rng, news) {
+  const W = WEEKS_PER_QUARTER;
   // 競合が保有地で進めている開発の竣工
   for (const c of g.cells) {
     if (!c.rivalDev) continue;
-    if (g.turn - c.rivalDev.turn < c.rivalDev.quarters) continue;
+    if (g.week - c.rivalDev.week < c.rivalDev.weeks) continue;
     const rv = g.rivals.find(r => r.id === c.owner);
     const use = c.rivalDev.use;
     const d = DISTRICTS[c.d];
@@ -52,7 +57,7 @@ export function stepRivals(g, rng, news) {
 
   // 競合の新規プロジェクト着手（保有する空地）
   for (const rv of g.rivals) {
-    if (!rng.chance(0.22 * rv.aggression)) continue;
+    if (!rng.chance(0.22 * rv.aggression / W)) continue;
     const owned = g.cells.filter(c => c.owner === rv.id && !c.building && !c.rivalDev && c.d);
     if (!owned.length) {
       // 手持ちが無ければ第三者所有地を取得する
@@ -60,14 +65,14 @@ export function stepRivals(g, rng, news) {
       if (pool.length && rng.chance(0.5)) {
         const c = rng.pick(pool);
         c.owner = rv.id; c.building = null; c.vacant = true;
-        c.rivalDev = { turn: g.turn, quarters: rng.int(4, 10), use: pickUse(rv, c, rng) };
+        c.rivalDev = { week: g.week, weeks: rng.int(52, 130), use: pickUse(rv, c, rng) };
         rv.lots++;
         if (rng.chance(0.4)) news.push({ icon: '◈', type: 'rival', rival: rv.id, text: `${rv.name}が${DISTRICTS[c.d].name}で用地を取得し、建替え計画を進めている。` });
       }
       continue;
     }
     const c = rng.pick(owned);
-    c.rivalDev = { turn: g.turn, quarters: rng.int(4, 10), use: pickUse(rv, c, rng) };
+    c.rivalDev = { week: g.week, weeks: rng.int(52, 130), use: pickUse(rv, c, rng) };
   }
 
   // 競合からの干渉
@@ -82,9 +87,9 @@ function pickUse(rv, c, rng) {
 
 /** プレイヤーへの干渉イベント */
 function interfere(g, rng, news) {
-  const t = ttm(g);
+  const W = WEEKS_PER_QUARTER;
   // 引き抜き
-  if (g.staff.length > 12 && rng.chance(0.14)) {
+  if (g.staff.length > 12 && rng.chance(0.14 / W)) {
     const cands = g.staff.filter(s => !s.subsidiary && avgAbility(s) > 62 && s.morale < 0.72);
     if (cands.length) {
       const s = rng.pick(cands);
@@ -92,14 +97,14 @@ function interfere(g, rng, news) {
       const resist = clamp01(s.loyalty * 0.6 + s.morale * 0.5 + (g.hrPolicy.programs.welfare ? 0.1 : 0));
       if (!rng.chance(resist)) {
         g.staff.splice(g.staff.indexOf(s), 1);
-        news.push({ icon: '🎯', type: 'rival', rival: rv.id, text: `${rv.name}に${DEPTS[s.dept].name}の${RANKS[s.rank].name}・${s.name}が引き抜かれた。` });
+        news.push({ icon: '🎯', type: 'rival', rival: rv.id, major: true, text: `${rv.name}に${DEPTS[s.dept].name}の${RANKS[s.rank].name}・${s.name}が引き抜かれた。` });
       } else {
         news.push({ icon: '🛡', type: 'hr', text: `${s.name}が${rv.name}からのオファーを断り、残留を決めた。` });
       }
     }
   }
-  // 大型案件の発表（プレイヤーの地区と競合）
-  if (rng.chance(0.18)) {
+  // 大型案件の発表
+  if (rng.chance(0.18 / W)) {
     const rv = rng.pick(g.rivals);
     const d = DISTRICTS[rng.pick(Object.keys(DISTRICTS))];
     news.push({
@@ -113,13 +118,13 @@ function interfere(g, rng, news) {
     });
   }
   // 買収提案（プレイヤーが上場していて時価総額が小さいとき）
-  if (g.company.listed && !g.takeoverOffer && rng.chance(0.05)) {
+  if (g.company.listed && !g.takeoverOffer && rng.chance(0.05 / W)) {
     const cap = marketCap(g);
     const rv = g.rivals.find(r => r.cash > cap * 1.3 && r.rev > ttm(g).revenue * 2.2);
     if (rv && cap > 0) {
       const premium = rng.range(1.22, 1.55);
-      g.takeoverOffer = { rival: rv.id, name: rv.name, price: Math.round(cap * premium), premium, turn: g.turn };
-      news.push({ icon: '🦈', type: 'rival', rival: rv.id, text: `${rv.name}が当社に対し、時価総額に${Math.round((premium - 1) * 100)}%のプレミアムを乗せた買収提案を行った。` });
+      g.takeoverOffer = { rival: rv.id, name: rv.name, price: Math.round(cap * premium), premium, week: g.week };
+      news.push({ icon: '🦈', type: 'rival', rival: rv.id, major: true, text: `${rv.name}が当社に対し、時価総額に${Math.round((premium - 1) * 100)}%のプレミアムを乗せた買収提案を行った。` });
     }
   }
 }

@@ -43,14 +43,14 @@ input,select{font-family:inherit;font-size:13px}
 
 #cityHud{
   position:fixed;left:86px;z-index:6;pointer-events:none;
-  bottom:calc(52px + env(safe-area-inset-bottom,0px));
+  bottom:calc(46px + env(safe-area-inset-bottom,0px));
   font-size:12px;letter-spacing:.04em;text-shadow:0 2px 10px #000;
 }
 .cityhud-line{font-weight:600}
 .cityhud-line.dim{color:var(--ink-dim);font-weight:400;margin-top:2px;max-width:420px}
 
-#viewControls{position:fixed;right:18px;z-index:6;display:flex;flex-direction:column;gap:7px;
-  bottom:calc(52px + env(safe-area-inset-bottom,0px))}
+#viewControls{position:fixed;right:18px;z-index:8;display:flex;gap:7px;
+  bottom:calc(46px + env(safe-area-inset-bottom,0px))}
 .vbtn{
   width:38px;height:38px;border-radius:9px;background:var(--glass);
   border:1px solid var(--line);color:var(--ink-dim);font-size:16px;
@@ -93,12 +93,20 @@ input,select{font-family:inherit;font-size:13px}
 .turn-date{text-align:right;line-height:1.25}
 #hdrDate{font-family:Oswald,sans-serif;font-size:16px;display:block;letter-spacing:.03em}
 .turn-season{font-size:10px;color:var(--gold);letter-spacing:.2em}
+.turn-btns{display:flex;gap:5px}
 .btn-next{
-  padding:9px 18px;border-radius:9px;font-weight:700;font-size:13px;letter-spacing:.06em;
+  padding:7px 12px;border-radius:9px;font-weight:700;font-size:13px;letter-spacing:.04em;
   background:linear-gradient(145deg,#e3b558,#b98c33);color:#170f03;
   box-shadow:0 4px 18px rgba(227,181,88,.28);transition:.16s;white-space:nowrap;
+  display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:52px;
+}
+.btn-next small{font-size:9px;font-weight:500;opacity:.85;margin-top:1px}
+.btn-next.ghosty{
+  background:rgba(227,181,88,.12);color:var(--gold-2);
+  border:1px solid rgba(227,181,88,.35);box-shadow:none;
 }
 .btn-next:hover{transform:translateY(-1px);box-shadow:0 7px 24px rgba(227,181,88,.42)}
+.btn-next.ghosty:hover{background:rgba(227,181,88,.22);box-shadow:none}
 .btn-next:disabled{opacity:.4;cursor:wait;transform:none}
 
 /* ---------- side tabs ---------- */
@@ -144,6 +152,37 @@ input,select{font-family:inherit;font-size:13px}
 #panelClose{color:var(--ink-mute);font-size:15px;padding:4px 8px;border-radius:6px}
 #panelClose:hover{color:var(--red);background:rgba(255,107,122,.1)}
 .panel-body{flex:1;overflow-y:auto;padding:16px 18px 40px}
+
+/* ---------- week feed ---------- */
+#feed{
+  position:fixed;right:18px;z-index:7;width:312px;max-width:calc(100vw - 36px);
+  bottom:calc(98px + env(safe-area-inset-bottom,0px));
+  background:var(--glass);backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:11px;overflow:hidden;
+  box-shadow:0 14px 40px rgba(0,0,0,.45);
+}
+#feed.collapsed .feed-body{display:none}
+.feed-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 11px;border-bottom:1px solid var(--line-soft);
+  font-size:10.5px;letter-spacing:.14em;color:var(--gold);font-weight:700;
+}
+#feedToggle{color:var(--ink-mute);font-size:11px;padding:2px 6px;border-radius:5px}
+#feedToggle:hover{color:var(--ink)}
+.feed-body{max-height:212px;overflow-y:auto;padding:5px 0}
+.feed-item{
+  display:flex;gap:8px;padding:5px 11px;font-size:11.5px;line-height:1.55;
+  border-bottom:1px solid rgba(140,170,215,.05);
+}
+.feed-item:last-child{border-bottom:none}
+.feed-item .fi{flex:0 0 15px;text-align:center;font-size:12px}
+.feed-item.major{background:rgba(227,181,88,.07)}
+.feed-item.major .ft{color:var(--gold-2)}
+.feed-week{
+  padding:4px 11px;font-size:9.5px;letter-spacing:.1em;color:var(--ink-mute);
+  background:rgba(255,255,255,.025);font-weight:600;
+}
+.feed-empty{padding:16px 11px;text-align:center;color:var(--ink-mute);font-size:11px}
 
 /* ---------- ticker ---------- */
 #ticker{
@@ -334,8 +373,14 @@ table.tbl tr.sum td{border-top:1px solid var(--line);font-weight:700;background:
 .toast.bad{border-color:var(--red)} .toast.good{border-color:var(--green)}
 @keyframes toastIn{from{transform:translate(-50%,14px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 
+@media(max-width:1100px){
+  #feed{width:250px}
+}
 @media(max-width:900px){
   #panel{width:100%;left:0;padding-left:66px}
   .stat-strip{display:none}
   .title-logo{letter-spacing:.04em}
+  #feed{display:none}
+  .btn-next small{display:none}
+  .btn-next{min-width:40px;padding:9px 10px}
 }

@@ -41,7 +41,7 @@ export function render(g) {
 
   return `
   ${alerts(g, k, t, p)}
-  ${section('主要指標', `直近4四半期（${g.year}年Q${g.quarter}時点）`, `
+  ${section('主要指標', `直近4四半期（${g.year}年 ${g.month}月時点）`, `
     <div class="grid4">
       ${mini('売上高', moneyHTML(t.revenue), '直近4四半期')}
       ${mini('営業利益', moneyHTML(t.op), `利益率 ${pct(k.opMargin)}`, t.op >= 0 ? 'var(--green)' : 'var(--red)')}
@@ -119,20 +119,20 @@ export function render(g) {
 function alerts(g, k, t, p) {
   const list = [];
   const od = overdraft(g);
-  const burn = Math.round(personnelCost(g) + 200);
+  const burn = Math.round(personnelCost(g) * 13 + 200);
 
   if (od > 0) list.push({ lv: 'red', t: '借入枠を超過している', d: `超過額 ${money(od)}。この状態が4四半期続くと支払不能となる。物件売却・増資・返済で早急に解消すること。` });
   if (g.cash < burn) list.push({ lv: 'red', t: '手元資金が薄い', d: `現預金 ${money(g.cash)} に対し、四半期の固定的支出は約 ${money(burn)}。調達余力は ${money(k.room)}。` });
   if (k.de > 3.2 && od <= 0) list.push({ lv: 'amber', t: `D/Eレシオが ${k.de.toFixed(1)}倍`, d: '負債への依存が高い。金利上昇や市況悪化の影響を受けやすい。保有物件の売却による圧縮を検討すること。' });
   if (k.equityRatio < 0.18) list.push({ lv: 'amber', t: `自己資本比率 ${pct(k.equityRatio, 0)}`, d: `格付は ${k.rating.id}。金利は ${pct(k.rate, 2)} まで上がっている。` });
 
-  const stale = g.inventory.filter(i => i.quartersOnSale >= 8 && i.soldRatio < 0.8);
+  const stale = g.inventory.filter(i => i.weeksOnSale >= 104 && i.soldRatio < 0.8);
   if (stale.length) list.push({ lv: 'amber', t: `長期在庫 ${stale.length}件`, d: `${stale.map(i => i.name).join('・')}。値下げしなければ評価損が続く。` });
 
   const idle = g.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId);
   if (idle.length >= 3) list.push({ lv: 'amber', t: `未着工の用地 ${idle.length}件`, d: '保有しているだけで固定資産税と金利がかかる。早期に事業化するか、方針を見直すこと。' });
 
-  if (!g.projects.length && !g.inventory.length && g.turn > 4) list.push({ lv: 'amber', t: '開発パイプラインが切れている', d: '進行中の案件も販売中の在庫もない。数年後の売上がゼロになる。用地の仕込みを急ぐこと。' });
+  if (!g.projects.length && !g.inventory.length && g.week > 26) list.push({ lv: 'amber', t: '開発パイプラインが切れている', d: '進行中の案件も販売中の在庫もない。数年後の売上がゼロになる。用地の仕込みを急ぐこと。' });
 
   const mor = g.staff.length ? g.staff.reduce((a, s) => a + s.morale, 0) / g.staff.length : 1;
   if (mor < 0.55) list.push({ lv: 'amber', t: '社員の士気が低下している', d: `平均モチベーション ${(mor * 100).toFixed(0)}。給与水準は市場比 ${pct(payIndex(g), 0)}。離職と引き抜きが増える。` });

@@ -66,9 +66,19 @@ export const WEATHERS = {
   snow: { key: 'snow', label: '雪', icon: '❅', cloud: 0.86, rain: 0, snow: 1, desat: 0.5, dim: 0.14 },
 };
 
-/** 四半期 → 時間帯 */
-export function timeOfQuarter(q) {
-  return [TIMES.morning, TIMES.noon, TIMES.evening, TIMES.night][(q - 1) % 4];
+/** 月 → 時間帯（季節で日照が変わる） */
+export function timeOfMonth(m) {
+  if (m === 12 || m <= 2) return TIMES.night;      // 冬は日が短い
+  if (m <= 5) return TIMES.morning;                // 春
+  if (m <= 8) return TIMES.noon;                   // 夏
+  return TIMES.evening;                            // 秋
+}
+/** 月 → 季節名 */
+export function seasonOfMonth(m) {
+  if (m === 12 || m <= 2) return '冬';
+  if (m <= 5) return '春';
+  if (m <= 8) return '夏';
+  return '秋';
 }
 
 /** HSL文字列を作る小道具 */

@@ -7,17 +7,17 @@ import { SEASON } from '../core/format.js';
 import { DISTRICTS, USES } from '../data/city.js';
 
 const CAT = {
-  land: '用地', dev: '開発', sales: '販売', lease: '賃貸', fin: '財務',
+  brand: 'ブランド', land: '用地', dev: '開発', sales: '販売', lease: '賃貸', fin: '財務',
   hr: '人事', ma: 'M&A', rival: '競合', market: '市況',
 };
 
-export function buildReport(g, rep) {
+export function buildReport(g, rep, reports = []) {
   const h = g.finance.history;
   const prev = h.length >= 2 ? h[h.length - 2] : null;
   const pl = rep.pl;
   const d = (cur, before) => before ? (cur - before) : 0;
 
-  const bids = rep.bids.filter(b => b.listing.bid);
+  const bids = (reports.length ? reports.flatMap(r => r.bids) : rep.bids).filter(b => b.listing.bid);
   const bidHTML = bids.length ? bids.map(b => {
     const c = b.cell;
     const win = b.result === 'win';
@@ -40,12 +40,14 @@ export function buildReport(g, rep) {
     </div>`;
   }).join('') : '';
 
+  const all = rep.quarterNews || rep.news;
   const byCat = {};
-  for (const n of rep.news) (byCat[n.type] = byCat[n.type] || []).push(n);
+  for (const n of all) (byCat[n.type] = byCat[n.type] || []).push(n);
   const newsHTML = Object.entries(byCat).map(([cat, list]) => `
     <div class="sec">
       <div class="sec-t"><span>${CAT[cat] || cat}</span><span class="note">${list.length}件</span></div>
-      ${list.map(n => `<div class="newsitem"><span class="ico">${n.icon}</span><span>${n.text}</span></div>`).join('')}
+      ${list.slice(-14).map(n => `<div class="newsitem"><span class="ico">${n.icon}</span><span>${n.text}</span></div>`).join('')}
+      ${list.length > 14 ? `<div class="hint">ほか${list.length - 14}件</div>` : ''}
     </div>`).join('') || empty('特筆すべき出来事はなかった');
 
   const rank = rep.rank;

@@ -6,6 +6,8 @@ import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } fro
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { feasibility, canStart } from '../sim/project.js';
 import { landAppraisal } from '../sim/valuation.js';
+import { weeksLabel } from '../core/time.js';
+import { brandsFor, brandEffect, BRAND_CATEGORIES } from '../sim/brands.js';
 import { orgPower, projectCapacity } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
 
@@ -18,7 +20,7 @@ export function render(g, ctx) {
 
   const running = g.projects.length ? g.projects.map(pj => {
     const c = g.cells.find(x => x.id === pj.cellId);
-    const total = pj.quarters + pj.delay;
+    const total = Math.max(4, pj.weeks + pj.delay);
     const remain = Math.max(0, total - pj.elapsed);
     const over = pj.overrun;
     return `<div class="card">
@@ -28,10 +30,10 @@ export function render(g, ctx) {
       </div>
       <div class="card-s">${DISTRICTS[pj.district].name}／地上${pj.floors}階・延床${num(pj.gfa)}坪／${GRADES[pj.grade].name}</div>
       ${bar(pj.progress, 'gold')}
-      <div class="kv"><span class="k">進捗</span><span class="v">${(pj.progress * 100).toFixed(0)}%（残り${remain}期）</span></div>
+      <div class="kv"><span class="k">進捗</span><span class="v">${(pj.progress * 100).toFixed(0)}%（残り${weeksLabel(remain)}）</span></div>
       <div class="kv"><span class="k">工事予算 / 支出</span><span class="v">${money(pj.budget)} / ${money(pj.spent)}</span></div>
       ${over ? `<div class="kv"><span class="k">増減額</span><span class="v ${over > 0 ? 'down' : 'up'}">${money(over, { sign: true })}</span></div>` : ''}
-      ${pj.delay ? `<div class="kv"><span class="k">工期</span><span class="v ${pj.delay > 0 ? 'down' : 'up'}">${pj.delay > 0 ? `${pj.delay}期 遅延` : `${-pj.delay}期 前倒し`}</span></div>` : ''}
+      ${pj.delay ? `<div class="kv"><span class="k">工期</span><span class="v ${pj.delay > 0 ? 'down' : 'up'}">${pj.delay > 0 ? `${pj.delay}週 遅延` : `${-pj.delay}週 前倒し`}</span></div>` : ''}
       ${pj.saleArea ? `<div class="kv"><span class="k">事前契約率（青田売り）</span><span class="v">${(pj.preContract * 100).toFixed(0)}%</span></div>${bar(pj.preContract)}` : ''}
       ${pj.events.length ? `<div class="hint">${pj.events.slice(-2).map(e => `${e.icon} ${e.text}`).join('<br>')}</div>` : ''}
       <div class="btnrow">
@@ -83,13 +85,16 @@ export function bestPlan(g, c) {
 export function openPlan(g, cell, ctx) {
   const d = DISTRICTS[cell.d];
   const rec = bestPlan(g, cell);
-  let use = rec.use, grade = rec.grade;
+  let use = rec.use, grade = rec.grade, brandId = null;
 
   openModal(`事業計画 — ${d.name} ${num(cell.area)}坪`, build(), []);
   bind();
 
   function build() {
-    const plan = feasibility(g, cell, use, grade);
+    const avail = brandsFor(g, use);
+    if (brandId && !avail.some(b => b.id === brandId)) brandId = null;
+    const plan = feasibility(g, cell, use, grade, brandId);
+    const bf = brandEffect(g, brandId);
     const err = canStart(g, cell);
     const equity = Math.max(0, plan.buildCost - Math.max(0, g.cash - 500));
     const risks = (cell.risks || []).filter(r => r.bad);
@@ -112,6 +117,16 @@ export function openPlan(g, cell, ctx) {
         <select id="selGrade">${Object.values(GRADES).map(x => `<option value="${x.id}" ${x.id === grade ? 'selected' : ''}>${x.name}（建設費 ×${x.costMul.toFixed(2)} ／ 単価 ×${x.priceMul.toFixed(2)}）</option>`).join('')}</select>
       </div>
       <div class="hint">${GRADES[grade].desc}　ブランド寄与 +${GRADES[grade].brandGain}</div>
+      <div class="field" style="margin-top:10px"><label>自社ブランド</label>
+        <select id="selBrand">
+          <option value="">（ブランドを冠さない）</option>
+          ${avail.map(b => `<option value="${b.id}" ${b.id === brandId ? 'selected' : ''}>${b.name}（認知度 ${b.awareness.toFixed(0)}）</option>`).join('')}
+        </select>
+      </div>
+      <div class="hint">${avail.length
+        ? (brandId ? `単価 +${pct(bf.price - 1, 1)}／契約速度 +${pct(bf.speed - 1, 1)}／賃料 +${pct(bf.rent - 1, 1)}。供給するとこのブランドの認知度が上がる。`
+          : 'ブランドを冠すると単価と契約速度が上がり、供給実績がブランドを育てる。')
+        : `この用途（${USES[use].name}）に使えるブランドがない。ブランドタブから立ち上げられる。`}</div>
     </div>
 
     ${risks.length || goods.length ? `<div class="sec">
@@ -129,7 +144,7 @@ export function openPlan(g, cell, ctx) {
           ${kv('階数', '地上' + plan.floors + '階')}
           ${kv('建物高さ', plan.heightM + 'm')}
           ${kv('容積消化率', pct(plan.farUse, 0))}
-          ${kv('工期', plan.quarters + '四半期')}
+          ${kv('工期', weeksLabel(plan.weeks) + `（${plan.weeks}週）`)}
         </div>
         <div>
           ${plan.saleArea ? kv('分譲面積', num(plan.saleArea) + '坪') : ''}
@@ -151,7 +166,7 @@ export function openPlan(g, cell, ctx) {
         ${kv('着工に要する資金', money(plan.buildCost))}
         ${kv('現預金', money(g.cash))}
         ${kv('借入余力', money(Math.max(0, debtCapacity(g) - g.debt)))}
-        <div class="hint">工事代金は出来高に応じて${plan.quarters}回に分けて支払う。四半期あたり約${money(Math.round(plan.buildCost / plan.quarters))}。</div>
+        <div class="hint">工事代金は出来高に応じて毎週支払う。1週あたり約${money(Math.round(plan.buildCost / plan.weeks))}、四半期あたり約${money(Math.round(plan.buildCost / plan.weeks * 13))}。</div>
       </div>
     </div>
 
@@ -168,8 +183,10 @@ export function openPlan(g, cell, ctx) {
     const su = body.querySelector('#selUse'), sg = body.querySelector('#selGrade');
     if (su) su.onchange = e => { use = e.target.value; refresh(); };
     if (sg) sg.onchange = e => { grade = e.target.value; refresh(); };
+    const sb = body.querySelector('#selBrand');
+    if (sb) sb.onchange = e => { brandId = e.target.value || null; refresh(); };
     const st = body.querySelector('[data-start]');
-    if (st) st.onclick = () => { ctx.startProject(cell, use, grade); closeModal(); };
+    if (st) st.onclick = () => { ctx.startProject(cell, use, grade, brandId); closeModal(); };
   }
 }
 

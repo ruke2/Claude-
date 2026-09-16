@@ -37,10 +37,14 @@
   <div class="stat-strip" id="statStrip"></div>
   <div class="turnbox">
     <div class="turn-date">
-      <span id="hdrDate">2026年 Q1</span>
-      <span class="turn-season" id="hdrSeason">春</span>
+      <span id="hdrDate">2026年 1月 第1週</span>
+      <span class="turn-season" id="hdrSeason">冬・夜景</span>
     </div>
-    <button id="btnNext" class="btn-next">次の四半期 ▶</button>
+    <div class="turn-btns">
+      <button id="btnWeek" class="btn-next" title="1週進める（スペース）">▶<small>1週</small></button>
+      <button id="btnMonth" class="btn-next ghosty" title="1ヶ月進める">▶▶<small>1ヶ月</small></button>
+      <button id="btnQuarter" class="btn-next ghosty" title="四半期末（決算）まで進める">▶▶▶<small>決算まで</small></button>
+    </div>
   </div>
 </header>
 
@@ -53,6 +57,7 @@
   <button class="tab" data-panel="asset"><i>▤</i><span>保有</span></button>
   <button class="tab" data-panel="fin"><i>◱</i><span>財務</span></button>
   <button class="tab" data-panel="hr"><i>☗</i><span>人事</span></button>
+  <button class="tab" data-panel="brand"><i>◆</i><span>ブランド</span></button>
   <button class="tab" data-panel="ma"><i>⚯</i><span>M&amp;A</span></button>
   <button class="tab" data-panel="rival"><i>◎</i><span>競合</span></button>
 </nav>
@@ -65,6 +70,12 @@
   </div>
   <div class="panel-body" id="panelBody"></div>
 </aside>
+
+<!-- ============ 週次フィード ============ -->
+<div id="feed">
+  <div class="feed-head"><span id="feedTitle">今週の動き</span><button id="feedToggle">▾</button></div>
+  <div class="feed-body" id="feedBody"></div>
+</div>
 
 <!-- ============ ティッカー ============ -->
 <div id="ticker"><div class="ticker-track" id="tickerTrack"></div></div>

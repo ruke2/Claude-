@@ -114,7 +114,7 @@ export const USES = {
   office: {
     id: 'office', name: 'オフィスビル', short: 'OFC', icon: '▮',
     build: 1.85,            // 建築費 百万円/延床坪
-    quarters: 7,            // 標準工期（四半期）
+    weeks: 104,             // 標準工期（週）
     efficiency: 0.60,       // 延床に対する貸室/専有比率
     model: 'lease',
     color: '#6fa6e8',
@@ -122,37 +122,37 @@ export const USES = {
   },
   resi: {
     id: 'resi', name: '分譲マンション', short: 'RES', icon: '▤',
-    build: 1.05, quarters: 6, efficiency: 0.74, model: 'sale',
+    build: 1.05, weeks: 91, efficiency: 0.74, model: 'sale',
     color: '#8fd4b0', desc: '竣工前から売れる回転型商品。売れ残ると在庫評価損が出る。',
   },
   rental: {
     id: 'rental', name: '賃貸レジデンス', short: 'RNT', icon: '▥',
-    build: 0.92, quarters: 5, efficiency: 0.78, model: 'lease',
+    build: 0.92, weeks: 78, efficiency: 0.78, model: 'lease',
     color: '#9fd0e8', desc: '景気変動に強い安定収益。利回りは低めだが空室リスクが小さい。',
   },
   retail: {
     id: 'retail', name: '商業施設', short: 'RTL', icon: '▦',
-    build: 1.15, quarters: 6, efficiency: 0.66, model: 'lease',
+    build: 1.15, weeks: 78, efficiency: 0.66, model: 'lease',
     color: '#f0b269', desc: '歩行者需要に強く依存。好立地では極めて高いNOIを生む。',
   },
   hotel: {
     id: 'hotel', name: 'ホテル', short: 'HTL', icon: '▧',
-    build: 1.35, quarters: 8, efficiency: 0.58, model: 'lease',
+    build: 1.35, weeks: 104, efficiency: 0.58, model: 'lease',
     color: '#e79ac0', desc: 'インバウンド循環の影響が最も大きい。好況期の収益は突出する。',
   },
   logi: {
     id: 'logi', name: '物流施設', short: 'LOG', icon: '▬',
-    build: 0.48, quarters: 4, efficiency: 0.88, model: 'lease',
+    build: 0.48, weeks: 52, efficiency: 0.88, model: 'lease',
     color: '#b9c2cf', desc: '工期が短く投資効率が高い。長期固定賃貸で不況耐性も高い。',
   },
   house: {
     id: 'house', name: '戸建分譲', short: 'HSE', icon: '⌂',
-    build: 0.82, quarters: 4, efficiency: 0.80, model: 'sale',
+    build: 0.82, weeks: 39, efficiency: 0.80, model: 'sale',
     color: '#c9d98f', desc: '小さく速く回せる。郊外では堅い需要があるが単価は伸びない。',
   },
   mixed: {
     id: 'mixed', name: '複合再開発', short: 'MIX', icon: '◧',
-    build: 1.55, quarters: 10, efficiency: 0.68, model: 'both',
+    build: 1.55, weeks: 143, efficiency: 0.68, model: 'both',
     color: '#c4a6f0', desc: 'オフィス・商業・住宅を一体開発する大型案件。工期は長いが街の価値ごと押し上げる。',
   },
 };

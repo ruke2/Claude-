@@ -95,7 +95,7 @@ export function openRent(g, a, ctx) {
     rg.oninput = e => sync(+e.target.value);
     sync(+inp.value);
     body.querySelector('[data-set]').onclick = () => {
-      a.rent = Math.round(+inp.value); a.lastRentReview = g.turn;
+      a.rent = Math.round(+inp.value); a.lastRentReview = g.week;
       toast('募集賃料を改定した');
       ctx.refresh(); closeModal();
     };

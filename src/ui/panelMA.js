@@ -48,7 +48,7 @@ export function render(g, ctx) {
         ${chip(`従業員 ${num(t.employees)}名`, 'grey')}
         ${t.ddLevel ? chip(`調査済 Lv${t.ddLevel}`, 'cyan') : chip('未調査', 'amber')}
         ${known.length ? chip(`懸念事項 ${known.length}件`, 'red') : ''}
-        ${chip(`残り${t.expires - g.turn}期`, t.expires - g.turn <= 1 ? 'red' : 'grey')}
+        ${chip(`残り${t.expires - g.week}週`, t.expires - g.week <= 3 ? 'red' : 'grey')}
       </div>
     </div>`;
   }).join('') : empty('現在、売却の打診はない');
@@ -57,7 +57,7 @@ export function render(g, ctx) {
     const fired = a.risks.filter(r => r.fired);
     return `<div class="card">
       <div class="card-t"><span class="card-n">${a.icon} ${a.name}</span>${chip(a.failed ? '失敗' : a.integration >= 1 ? '統合完了' : 'PMI進行中', a.failed ? 'red' : a.integration >= 1 ? 'green' : 'amber')}</div>
-      <div class="card-s">${a.label}／買収額 ${money(a.price)}／${a.acquiredTurn}期に取得</div>
+      <div class="card-s">${a.label}／買収額 ${money(a.price)}</div>
       ${kv('統合進捗', pct(a.integration, 0))}
       ${bar(a.integration, a.failed ? 'red' : 'violet')}
       ${kv('連結売上（年）', money(a.rev))}
@@ -154,7 +154,7 @@ export function openTarget(g, t, ctx) {
       const lv = +b.dataset.dd;
       const cost = Math.round(t.askPrice * (lv === 1 ? 0.006 : 0.018));
       if (g.cash < cost) return toast('資金が不足している', 'bad');
-      const rng = new RNG(g.rngState ^ (g.turn * 104729) ^ lv);
+      const rng = new RNG(g.rngState ^ (g.week * 104729) ^ lv);
       const r = maDueDiligence(g, t, lv, rng);
       g.rngState = rng.s;
       toast(r.found ? `調査で${r.found}件の懸念が判明した` : '重大な問題は見つからなかった', r.found ? 'bad' : 'good');

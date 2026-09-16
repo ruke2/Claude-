@@ -4,7 +4,8 @@
 import { money, num, pct, clamp } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES, TERRAIN } from '../data/city.js';
-import { LISTING_KINDS, ddCost, runDueDiligence, ACQ_FEE, holdingCost } from '../sim/land.js';
+import { LISTING_KINDS, ddCost, runDueDiligence, ACQ_FEE, holdingCostQ } from '../sim/land.js';
+import { weeksLabel } from '../core/time.js';
 import { devPlan, landAppraisal, bestUseFit } from '../sim/valuation.js';
 import { orgPower } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
@@ -34,7 +35,7 @@ export function render(g, ctx) {
       <div class="kv"><span class="k">売出価格</span><span class="v">${money(l.askPrice)}</span></div>
       <div class="kv"><span class="k">当社査定</span><span class="v">${money(l.appraisal)}</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
-        ${chip(`締切まで ${l.deadline}期`, l.deadline <= 1 ? 'red' : 'grey')}
+        ${chip(`締切まで ${l.deadline}週`, l.deadline <= 2 ? 'red' : 'grey')}
         ${l.ddLevel ? chip(`調査済 Lv${l.ddLevel}`, 'cyan') : chip('未調査', 'amber')}
         ${known.length ? chip(`判明した事項 ${known.length}件`, known.some(r => r.bad) ? 'red' : 'green') : ''}
         ${l.bid ? chip(`入札済 ${money(l.bid.amount)}`, 'gold') : ''}
@@ -51,7 +52,7 @@ export function render(g, ctx) {
       <div class="card-t"><span class="card-n">${d.name}　${num(c.area)}坪</span>${chip('未着工', 'amber')}</div>
       <div class="card-s">容積率 ${c.far}%／取得 ${money(book)}／時価 ${money(app)}
         <span class="${gain >= 0 ? 'up' : 'down'}">（${money(gain, { sign: true })}）</span><br>
-        保有コスト ${money(holdingCost(g, c))}／四半期
+        保有コスト ${money(holdingCostQ(g, c))}／四半期
         ${(c.risks || []).filter(r => r.bad).length ? `<br><span style="color:var(--red)">未解消の課題：${(c.risks || []).filter(r => r.bad).map(r => r.name).join('・')}</span>` : ''}
       </div>
       <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業化を検討する</button><button class="btn sm" data-act="focus" data-id="${c.id}">📍 地図で見る</button></div>
@@ -106,7 +107,7 @@ export function openDetail(g, listing, ctx) {
     </div>
 
     <div class="card">
-      <div class="card-t"><span class="card-n">${K.icon} ${K.name}</span>${chip(`締切まで ${listing.deadline}期`, listing.deadline <= 1 ? 'red' : 'grey')}</div>
+      <div class="card-t"><span class="card-n">${K.icon} ${K.name}</span>${chip(`締切まで ${listing.deadline}週`, listing.deadline <= 2 ? 'red' : 'grey')}</div>
       <div class="card-s">${K.desc}<br>売主：${listing.seller}<br>${listing.note}</div>
     </div>
 
@@ -155,7 +156,7 @@ export function openDetail(g, listing, ctx) {
           ${kv('延床面積', num(plan.gfa) + '坪')}
           ${kv('想定階数', '地上' + plan.floors + '階')}
           ${kv('建設費', money(plan.buildCost))}
-          ${kv('工期', plan.quarters + '四半期')}
+          ${kv('工期', weeksLabel(plan.weeks) + `（${plan.weeks}週）`)}
         </div>
         <div>
           ${plan.saleRevenue ? kv('分譲売上', money(plan.saleRevenue)) : ''}
@@ -220,7 +221,7 @@ export function openDetail(g, listing, ctx) {
       if (g.cash < cost) return toast('資金が不足している', 'bad');
       g.cash -= cost;
       g.finance.quarterAcc.cogsOther += cost;
-      const rng = new RNG(g.rngState ^ (listing.id.length * 7919) ^ g.turn);
+      const rng = new RNG(g.rngState ^ (listing.id.length * 7919) ^ g.week);
       const found = runDueDiligence(g, listing, lv, rng);
       g.rngState = rng.s;
       toast(found ? `調査により${found}件の事実が判明した` : '特段の問題は発見されなかった', found ? 'bad' : 'good');
@@ -251,7 +252,7 @@ export function openDetail(g, listing, ctx) {
       if (amt <= 0) return toast('金額を入力すること', 'bad');
       if (amt + fee > g.cash + Math.max(0, debtCapacity(g) - g.debt)) return toast('投資余力を超えている', 'bad');
       listing.bid = { amount: amt, planQuality: [0, 40, 62, 84][planLevel], use, grade };
-      toast(`${money(amt)}で入札した。開札は${listing.deadline}期後である`, 'good');
+      toast(`${money(amt)}で入札した。開札は${listing.deadline}週後である`, 'good');
       ctx.refresh(); closeModal();
     };
     const buy = body.querySelector('[data-buy]');

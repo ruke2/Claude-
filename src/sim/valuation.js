@@ -5,6 +5,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { orgPower } from './hr.js';
+import { brandEffect } from './brands.js';
 
 /** 用途別の建築面積率（敷地に対する各階の床の割合） */
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
@@ -54,15 +55,16 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   const softCost = build * 0.085;                      // 設計・監理・広告宣伝ほか
   const buildCost = Math.round(build + softCost);
 
-  // --- 工期 ---
-  const sizePenalty = Math.floor(floors / 14) + (gfa > 20000 ? 1 : 0);
+  // --- 工期（週） ---
+  const sizePenalty = Math.floor(floors / 14) * 6 + (gfa > 20000 ? 8 : 0);
   const speedUp = subEffect(g, 'speed') + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-  const quarters = Math.max(2, Math.round((U.quarters + sizePenalty) * (1 - speedUp)));
+  const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp)));
 
   // --- 収入 ---
   const brandMul = 1 + (g.company.brand - 40) / 420;
   const fitMul = 0.74 + fit * 0.28;                  // 立地に合わない用途は収益が落ちる
-  const out = { gfa, floors, heightM, sellable, buildCost, quarters, fit, use: useId, grade: gradeId, farUse };
+  const bf = brandEffect(g, opt.brandId);            // 自社ブランドによる上乗せ
+  const out = { gfa, floors, heightM, sellable, buildCost, weeks, fit, use: useId, grade: gradeId, farUse };
 
   const saleShare = useId === 'mixed' ? 0.45 : (U.model === 'sale' ? 1 : 0);
   const leaseShare = 1 - saleShare;
@@ -70,7 +72,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   if (saleShare > 0) {
     const unitPrice = d.priceResi * G.priceMul * g.market.priceIdx
       * (0.88 + (g.market.demand[useId] ?? 1) * 0.16) * (0.9 + c.station * 0.2) * brandMul
-      * (useId === 'house' ? 0.95 : 1) * fitMul;
+      * (useId === 'house' ? 0.95 : 1) * fitMul * bf.price;
     out.salePrice = Math.round(unitPrice * 1000) / 1000;     // 百万円/専有坪
     out.saleArea = Math.round(sellable * saleShare);
     out.saleRevenue = Math.round(out.saleArea * unitPrice);
@@ -79,7 +81,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   if (leaseShare > 0) {
     const rentKey = { office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi', rental: 'rentResi', resi: 'rentResi', mixed: 'rentOffice', house: 'rentResi' }[useId];
     const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-    const rent = baseRent * G.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul;
+    const rent = baseRent * G.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
     out.rent = Math.round(rent);                             // 円/坪/月
     out.nra = Math.round(sellable * leaseShare);
     out.grossRent = Math.round(out.nra * rent * 12 / 1e6);    // 百万円/年
@@ -88,6 +90,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
     out.assetValue = Math.round(out.noi / out.capRate);
   }
 
+  out.brandId = opt.brandId || null;
   out.landCost = opt.landCost ?? landAppraisal(g, c);
   out.totalCost = out.landCost + out.buildCost;
   out.grossValue = (out.saleRevenue || 0) + (out.assetValue || 0);

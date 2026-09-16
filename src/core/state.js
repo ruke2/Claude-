@@ -4,6 +4,7 @@
 // ============================================================
 import { RNG, hash2 } from './rng.js';
 import { clamp, clamp01 } from './format.js';
+import { syncCalendar } from './time.js';
 import { DISTRICTS, MAP_ROWS, MAP_W, MAP_H, TERRAIN, terrainOf, elevationAt, USES, FACADES } from '../data/city.js';
 import { RIVAL_DEFS } from '../data/companies.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN, BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
@@ -204,7 +205,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
         abilityRange: o.rank >= 6 ? [66, 86] : o.rank >= 4 ? [58, 78] : o.rank >= 2 ? [46, 68] : [28, 54],
         loyalty: 0.74,
       });
-      s.joined = { year: 2026 - s.tenure, q: 1 };
+      s.joined = { year: Math.round(2026 - s.tenure), week: 0 };
       if (o.rank === 7) { s.name = '常盤 宗一郎'; s.note = '創業社長'; s.abil.lead = Math.max(s.abil.lead, 82); }
       staff.push(s);
     }
@@ -212,7 +213,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
 
   const g = {
     seed, rngState: rng.s, difficulty,
-    turn: 0, year: 2026, quarter: 1, phase: 'idle',
+    week: 0, year: 2026, month: 1, weekOfMonth: 1, quarter: 1, weekOfYear: 0, weekOfQuarter: 0,
     company: {
       name: companyName,
       brand: 22,            // ブランド力 0-100
@@ -240,9 +241,19 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     hrPolicy: {
       salaryMul: 1.0,
       programs: { training: false, welfare: false, dx: false, brandpr: false },
-      newGradPlan: 8, newGradSalary: 5.4,
       evalStrict: 0.5,
     },
+    // 採用（新卒の年次サイクルと中途の候補者プール）
+    recruit: {
+      ng: {
+        phase: 'idle', year: 2027, plan: 8, salary: 5.4,
+        invest: { seminar: 120, intern: 0, ad: 80, recruiter: 0 },
+        screenPolicy: 0.5, pool: [], offers: [], hired: 0, declined: 0, spent: 0, log: [],
+      },
+      mid: { pools: {}, refreshed: {} },
+    },
+    // 自社ブランド
+    brands: [],
     market: {
       cycle: rng.range(0.15, 0.4),
       priceIdx: 1.0, costIdx: 1.0, rate: diff.rate,
@@ -261,6 +272,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
 
   g.finance.quarterAcc = blankPL();
   g.weather = 'clear';
+  syncCalendar(g);
   return g;
 }
 

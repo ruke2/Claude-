@@ -4,6 +4,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
 import { makeStaff, baseSalaryFor, avgAbility, uid } from '../core/state.js';
+import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR, isYearStart, isAprilFirstWeek } from '../core/time.js';
 
 /** 部署ごとの「質」と「量」を集計する */
 export function orgPower(g) {
@@ -49,13 +50,15 @@ export function projectCapacity(g) {
   return Math.max(3, Math.floor(base) + 1 + g.subsidiaries.filter(s => s.type === 'construction').length * 2);
 }
 
-/** 四半期あたりの人件費（百万円） */
+/** 1週あたりの人件費（百万円） */
 export function personnelCost(g) {
-  const salary = g.staff.reduce((a, s) => a + s.salary, 0) / 4;
+  const salary = g.staff.reduce((a, s) => a + s.salary, 0) / WEEKS_PER_YEAR;
   const welfare = salary * 0.16;                              // 法定福利
-  const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / 4 : 0), 0);
+  const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
   return salary + welfare + programs;
 }
+/** 年額の人件費（表示用） */
+export function personnelCostYear(g) { return personnelCost(g) * WEEKS_PER_YEAR; }
 
 /** 社員が感じる給与の妥当性（1.0で適正） */
 export function salaryFairness(g, s) {
@@ -78,6 +81,7 @@ export function stepHR(g, rng, news) {
   const pol = g.hrPolicy;
   const trainMul = pol.programs.training ? 1.35 : 1.0;
   const welfare = pol.programs.welfare ? 1 : 0;
+  const W = WEEKS_PER_QUARTER;
   const leavers = [];
 
   for (const s of g.staff) {
@@ -87,13 +91,13 @@ export function stepHR(g, rng, news) {
       const room = s.potential - s.abil[k];
       if (room > 0) {
         const isMain = DEPTS[s.dept].key === k;
-        const gain = (room / 100) * youth * trainMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05;
+        const gain = (room / 100) * youth * trainMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05 / W;
         s.abil[k] = clamp(s.abil[k] + gain, 0, 99);
-      } else if (s.age > 48 && rng.chance(0.1)) {
+      } else if (s.age > 48 && rng.chance(0.1 / W)) {
         s.abil[k] = clamp(s.abil[k] - rng.range(0, 0.4), 0, 99);
       }
     }
-    s.tenure += 0.25;
+    s.tenure += 1 / WEEKS_PER_YEAR;
 
     // --- モチベーション ---
     const fair = salaryFairness(g, s);
@@ -101,7 +105,7 @@ export function stepHR(g, rng, news) {
     if (s.rank >= 3) dm += 0.012;
     if (g.market.sentiment > 0.65) dm += 0.008;
     if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
-    s.morale = clamp01(s.morale + dm + rng.normal(0, 0.03));
+    s.morale = clamp01(s.morale + (dm + rng.normal(0, 0.03)) / W);
 
     // --- 離職判定 ---
     let risk = 0.012;
@@ -111,52 +115,23 @@ export function stepHR(g, rng, news) {
     if (pol.programs.welfare) risk *= 0.7;
     if (s.age > 60) risk += 0.16;
     if (avgAbility(s) > 76 && s.rank < 3) risk += 0.02;      // 高能力者の抜擢待ち
-    if (rng.chance(clamp01(risk))) leavers.push(s);
+    if (rng.chance(clamp01(risk) / W)) leavers.push(s);
   }
 
   for (const s of leavers) {
     g.staff.splice(g.staff.indexOf(s), 1);
     const why = s.age > 60 ? '定年退職' : salaryFairness(g, s) < 0.92 ? '待遇への不満' : s.morale < 0.45 ? 'モチベーション低下' : '他社への転職';
-    news.push({ icon: '🚪', type: 'hr', text: `${DEPTS[s.dept].name}の${RANKS[s.rank].name}・${s.name}が退職した（${why}）。` });
+    news.push({ icon: '🚪', type: 'hr', major: s.rank >= 4, text: `${DEPTS[s.dept].name}の${RANKS[s.rank].name}・${s.name}が退職した（${why}）。` });
   }
 
-  // --- 新卒入社（Q1） ---
-  if (g.quarter === 1 && g.turn > 0) {
-    const plan = pol.newGradPlan;
-    const p = orgPower(g);
-    const appeal = clamp01(0.3 + g.company.brand / 160 + p.hr.quality / 320 + (pol.programs.brandpr ? 0.16 : 0) + (pol.newGradSalary - 5.2) * 0.07);
-    const actual = Math.round(plan * clamp(0.55 + appeal * 0.75, 0.3, 1.15));
-    const ch = HIRE_CHANNELS.newgrad;
-    for (let i = 0; i < actual; i++) {
-      const qual = clamp01(appeal + rng.normal(0, 0.18));
-      const s = makeStaff(rng, {
-        ageRange: ch.ageRange, rank: 0,
-        abilityRange: [ch.abilityRange[0] + qual * 10, ch.abilityRange[1] * (0.82 + qual * 0.3)],
-        potentialRange: [ch.potentialRange[0] + qual * 18, Math.min(99, ch.potentialRange[1] * (0.8 + qual * 0.28))],
-        loyalty: ch.loyaltyBase, channel: 'newgrad',
-        dept: rng.pick(DEPT_IDS),
-      });
-      s.tenure = 0; s.joined = { year: g.year, q: 1 };
-      s.salary = Math.round(pol.newGradSalary * 10) / 10;
-      g.staff.push(s);
-    }
-    if (actual > 0) {
-      news.push({ icon: '🎓', type: 'hr', text: `${g.year}年度の新卒${actual}名が入社した（計画${plan}名／内定充足率 ${Math.round(actual / plan * 100)}%）。` });
-    }
-    if (actual < plan * 0.7) {
-      news.push({ icon: '⚠', type: 'hr', text: `採用計画を大きく下回った。初任給とブランド力の見直しが必要である。` });
-    }
-  }
-
-  // --- 定期昇給・昇進（Q1） ---
-  if (g.quarter === 1 && g.turn > 0) {
+  // --- 定期昇給・昇格（年度初め） ---
+  if (isYearStart(g) && g.week > 0) {
     let promoted = 0;
     for (const s of g.staff) {
       s.age += 1;
       const std = baseSalaryFor(s) * pol.salaryMul;
       s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
     }
-    // 上位役職は枠管理
     for (let r = RANKS.length - 2; r >= 1; r--) {
       const rank = RANKS[r];
       const cur = g.staff.filter(s => s.rank === r).length;
@@ -169,17 +144,17 @@ export function stepHR(g, rng, news) {
         const s = cands[i]; if (!s) break;
         s.rank = r; s.salary = Math.max(s.salary, baseSalaryFor(s) * pol.salaryMul);
         s.morale = clamp01(s.morale + 0.14); promoted++;
-        if (r >= 5) news.push({ icon: '⬆', type: 'hr', text: `${s.name}が${rank.name}に昇格した。` });
+        if (r >= 5) news.push({ icon: '⬆', type: 'hr', major: true, text: `${s.name}が${rank.name}に昇格した。` });
       }
     }
-    if (promoted) news.push({ icon: '📋', type: 'hr', text: `${g.year}年度の人事異動で${promoted}名が昇格した。` });
+    if (promoted) news.push({ icon: '📋', type: 'hr', major: true, text: `${g.year}年の定期人事で${promoted}名が昇格し、全社員の給与を改定した。` });
   }
 
   // --- 社長が不在なら後継者を立てる ---
   if (!g.staff.some(s => s.rank === 7) && g.staff.length) {
     const next = g.staff.slice().sort((a, b) => (avgAbility(b) + b.abil.lead) - (avgAbility(a) + a.abil.lead))[0];
     next.rank = 7; next.salary = baseSalaryFor(next);
-    news.push({ icon: '👑', type: 'hr', text: `${next.name}が新社長に就任した。` });
+    news.push({ icon: '👑', type: 'hr', major: true, text: `${next.name}が新社長に就任した。` });
   }
 }
 

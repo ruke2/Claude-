@@ -6,20 +6,22 @@ import { DISTRICTS, USES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { contractSpeed } from './project.js';
 import { assetValue, currentNOI, subEffect } from './valuation.js';
+import { growBrand, damageBrand } from './brands.js';
+import { perWeek, WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
 /** 分譲在庫の販売 */
 export function stepInventory(g, rng, news) {
   const p = orgPower(g);
   const finished = [];
   for (const inv of g.inventory) {
-    inv.quartersOnSale++;
+    inv.weeksOnSale++;
     if (inv.soldRatio >= 0.999) { finished.push(inv); continue; }
 
-    let speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district);
-    // 長期在庫はさらに売れにくくなる（築古感）
-    if (inv.quartersOnSale > 6) speed *= 0.82;
-    if (inv.quartersOnSale > 12) speed *= 0.7;
-    speed *= rng.range(0.78, 1.24);
+    let speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district, inv.brandId);
+    // 長期在庫はさらに売れにくくなる（新築プレミアムの喪失）
+    if (inv.weeksOnSale > 78) speed *= 0.82;
+    if (inv.weeksOnSale > 156) speed *= 0.7;
+    speed *= rng.range(0.7, 1.3);
 
     const before = inv.soldRatio;
     inv.soldRatio = clamp01(inv.soldRatio + speed);
@@ -35,10 +37,11 @@ export function stepInventory(g, rng, news) {
     }
 
     // 長期滞留在庫の評価損
-    if (inv.quartersOnSale >= 8 && inv.soldRatio < 0.8 && rng.chance(0.42)) {
+    if (inv.weeksOnSale >= 104 && inv.soldRatio < 0.8 && rng.chance(0.42 / WEEKS_PER_QUARTER)) {
       const remain = inv.totalValue * (1 - inv.soldRatio);
       const loss = Math.round(remain * rng.range(0.05, 0.12));
       inv.impaired += loss;
+      if (inv.brandId) damageBrand(g, inv.brandId, 0.8, 2.5);
       g.finance.quarterAcc.impairment += loss;
       inv.totalValue -= loss;
       inv.price = Math.round(inv.price * (1 - loss / Math.max(1, remain)) * 1000) / 1000;
@@ -52,15 +55,18 @@ export function stepInventory(g, rng, news) {
     const i = g.inventory.indexOf(inv);
     if (i >= 0) g.inventory.splice(i, 1);
     g.company.brand = clamp(g.company.brand + 0.8, 0, 100);
-    news.push({ icon: '✅', type: 'sales', text: `【${inv.name}】全${inv.units}戸が完売。累計売上${Math.round(inv.revenue / 100).toLocaleString()}億円。` });
+    if (inv.brandId) growBrand(g, inv.brandId, { area: inv.area, base: inv.weeksOnSale < 52 ? 3.4 : 1.2, reputation: inv.weeksOnSale < 52 ? 3 : -1 });
+    news.push({ icon: '✅', type: 'sales', major: true, text: `【${inv.name}】全${inv.units}戸が完売（販売期間${Math.round(inv.weeksOnSale / 4.33)}ヶ月）。累計売上${Math.round(inv.revenue / 100).toLocaleString()}億円。` });
   }
 }
 
 /** 保有資産の運用 */
+const K_OCC = perWeek(0.34);
+
 export function stepAssets(g, rng, news) {
   const p = orgPower(g);
   for (const a of g.assets) {
-    a.age += 0.25;
+    a.age += 1 / WEEKS_PER_YEAR;
     const d = DISTRICTS[a.district];
     const dem = g.market.demand[a.use] ?? 1;
 
@@ -76,10 +82,10 @@ export function stepAssets(g, rng, news) {
     if (a.use === 'logi') target = clamp01(target * 1.06 + 0.04);
     if (a.use === 'hotel') target = clamp01(target * (0.74 + dem * 0.34));
     if (a.age > 25) target *= 0.94;
-    a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * 0.34 + rng.normal(0, 0.022));
+    a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 0.006));
 
     // 賃料改定（2年ごと）
-    if (g.turn - a.lastRentReview >= 8) {
+    if (g.week - a.lastRentReview >= 104) {
       const power = 0.35 + p.lease.quality / 260;
       const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
       if (Math.abs(newRent - a.rent) / a.rent > 0.03) {
@@ -88,32 +94,32 @@ export function stepAssets(g, rng, news) {
           text: `【${a.name}】賃料改定。月坪${a.rent.toLocaleString()}円 → ${newRent.toLocaleString()}円（稼働${Math.round(a.occupancy * 100)}%）。`,
         });
       }
-      a.rent = newRent; a.lastRentReview = g.turn;
+      a.rent = newRent; a.lastRentReview = g.week;
     }
 
-    // 収益計上（四半期）
+    // 収益計上（週次）
     const noiY = currentNOI(g, a);
     a.noi = noiY;
-    const grossQ = Math.round(a.nra * a.rent * 12 / 1e6 * a.occupancy / 4);
-    const opexQ = Math.round(grossQ * 0.24);
-    const deprQ = Math.round(a.bookBuild / 200);      // 50年定額
-    a.bookBuild = Math.max(0, a.bookBuild - deprQ);
-    a.cumNoi += grossQ - opexQ;
-    g.finance.quarterAcc.revLease += grossQ;
-    g.finance.quarterAcc.cogsLease += opexQ + deprQ;
-    g.cash += grossQ - opexQ;
+    const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
+    const opexW = grossW * 0.24;
+    const deprW = a.bookBuild / (50 * WEEKS_PER_YEAR);      // 50年定額
+    a.bookBuild = Math.max(0, a.bookBuild - deprW);
+    a.cumNoi += grossW - opexW;
+    g.finance.quarterAcc.revLease += grossW;
+    g.finance.quarterAcc.cogsLease += opexW + deprW;
+    g.cash += grossW - opexW;
 
     // 管理子会社のフィー収入
     const fee = subEffect(g, 'feeRate');
     if (fee > 0) {
-      const f = Math.round(grossQ * fee * 4);
+      const f = grossW * fee * WEEKS_PER_YEAR / 12;
       g.finance.quarterAcc.revFee += f; g.cash += f;
     }
   }
 
   // 大規模修繕（築15年以上でときどき）
   for (const a of g.assets) {
-    if (a.age > 14 && rng.chance(0.028)) {
+    if (a.age > 14 && rng.chance(0.028 / WEEKS_PER_QUARTER)) {
       const cost = Math.round(a.bookBuild * 0.07 + 200);
       g.cash -= cost; g.finance.quarterAcc.cogsLease += cost;
       news.push({ icon: '🔧', type: 'lease', text: `【${a.name}】大規模修繕を実施。${Math.round(cost / 100).toLocaleString()}億円を支出した。` });
@@ -151,6 +157,7 @@ export function repriceInventory(g, inv, newPrice, news) {
   inv.totalValue = Math.round(inv.revenue + inv.area * remain * inv.price);
   if (newPrice < old * 0.94) {
     g.company.brand = clamp(g.company.brand - 0.6, 0, 100);
+    if (inv.brandId) damageBrand(g, inv.brandId, 1.2, 3);
     news && news.push({ icon: '🏷', type: 'sales', text: `【${inv.name}】販売価格を坪${(old * 100).toFixed(0)}万円→${(inv.price * 100).toFixed(0)}万円に改定した。` });
   }
 }

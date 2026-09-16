@@ -7,6 +7,7 @@ import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { repriceInventory } from '../sim/sales.js';
 import { contractSpeed } from '../sim/project.js';
 import { orgPower } from '../sim/hr.js';
+import { weeksLabel } from '../core/time.js';
 
 export const title = '分譲販売';
 
@@ -18,26 +19,26 @@ export function render(g, ctx) {
     const d = DISTRICTS[inv.district];
     const remain = 1 - inv.soldRatio;
     const speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district);
-    const qLeft = speed > 0 ? Math.ceil(remain / speed) : 99;
+    const qLeft = speed > 0 ? Math.ceil(remain / speed) : 999;
     const gap = inv.price / inv.basePrice - 1;
     return `<div class="card">
       <div class="card-t"><span class="card-n">${inv.name}</span>${chip(USES[inv.use].name, 'green')}</div>
-      <div class="card-s">${d.name}／全${num(inv.units)}戸／${GRADES[inv.grade].name}／販売開始から${inv.quartersOnSale}期</div>
+      <div class="card-s">${d.name}／全${num(inv.units)}戸／${GRADES[inv.grade].name}／販売開始から${weeksLabel(inv.weeksOnSale)}</div>
       ${bar(inv.soldRatio)}
       <div class="kv"><span class="k">契約率</span><span class="v">${pct(inv.soldRatio, 0)}（残 ${num(Math.round(inv.units * remain))}戸）</span></div>
       <div class="kv"><span class="k">販売単価</span><span class="v">坪${(inv.price * 100).toFixed(0)}万円 <span style="color:${Math.abs(gap) < 0.02 ? 'var(--ink-mute)' : gap > 0 ? 'var(--red)' : 'var(--green)'}">（市場比 ${(gap * 100).toFixed(1)}%）</span></span></div>
       <div class="kv"><span class="k">累計売上</span><span class="v">${money(inv.revenue)}</span></div>
       <div class="kv"><span class="k">残戸の在庫簿価</span><span class="v">${money(Math.round(inv.cost * remain))}</span></div>
-      <div class="kv"><span class="k">完売見込み</span><span class="v ${qLeft > 8 ? 'down' : ''}">${qLeft > 40 ? '不明' : `あと約${qLeft}期`}</span></div>
+      <div class="kv"><span class="k">完売見込み</span><span class="v ${qLeft > 104 ? 'down' : ''}">${qLeft > 400 ? '不明' : `あと${weeksLabel(qLeft)}`}</span></div>
       ${inv.impaired ? `<div class="kv"><span class="k">評価損累計</span><span class="v down">${money(inv.impaired)}</span></div>` : ''}
-      ${inv.quartersOnSale >= 8 && inv.soldRatio < 0.8 ? `<div class="hint" style="color:var(--amber)">販売が長期化している。値下げを検討しなければ評価損が発生する。</div>` : ''}
+      ${inv.weeksOnSale >= 104 && inv.soldRatio < 0.8 ? `<div class="hint" style="color:var(--amber)">販売が長期化している。値下げを検討しなければ評価損が発生する。</div>` : ''}
       <div class="btnrow"><button class="btn sm" data-act="focus" data-id="${inv.cellId}">📍</button><button class="btn sm" data-act="sales.price" data-id="${inv.id}">価格を改定する</button></div>
     </div>`;
   }).join('') : empty('分譲在庫はない');
 
   const pre = presales.length ? presales.map(pj => `
     <div class="card">
-      <div class="card-t"><span class="card-n">${pj.name}</span>${chip(`竣工まで${Math.max(0, pj.quarters + pj.delay - pj.elapsed)}期`, 'cyan')}</div>
+      <div class="card-t"><span class="card-n">${pj.name}</span>${chip(`竣工まで${weeksLabel(Math.max(0, pj.weeks + pj.delay - pj.elapsed))}`, 'cyan')}</div>
       <div class="card-s">${DISTRICTS[pj.district].name}／${num(pj.plan.units || 0)}戸予定／坪${(pj.salePrice * 100).toFixed(0)}万円</div>
       ${bar(pj.preContract)}
       <div class="kv"><span class="k">事前契約率</span><span class="v">${pct(pj.preContract, 0)}</span></div>

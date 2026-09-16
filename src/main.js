@@ -2,15 +2,16 @@
 //  摩天楼の設計図 — エントリポイント
 // ============================================================
 import { createGame, cellById } from './core/state.js';
-import { money, num, pct, dcls, arrow, SEASON } from './core/format.js';
+import { money, num, pct, dcls, arrow } from './core/format.js';
+import { dateLabel, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
 import { CityRenderer, ZOOM_STEPS } from './render/city.js';
 import { toScreen } from './render/iso.js';
-import { WEATHERS, timeOfQuarter } from './render/palette.js';
+import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
 import { hash2 } from './core/rng.js';
 import { DISTRICTS, USES, TERRAIN, GRADES } from './data/city.js';
 import { RNG } from './core/rng.js';
 
-import { nextTurn } from './sim/turn.js';
+import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
 import { startProject as simStart, canStart } from './sim/project.js';
 import { acquireForPlayer, holdingCost, generateListings as genListings } from './sim/land.js';
@@ -32,10 +33,11 @@ import * as Fin from './ui/panelFin.js';
 import * as HR from './ui/panelHR.js';
 import * as MA from './ui/panelMA.js';
 import * as Rival from './ui/panelRival.js';
+import * as Brand from './ui/panelBrand.js';
 import { buildReport } from './ui/report.js';
 
-const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, ma: MA, rival: Rival };
-const SAVE_KEY = 'skyline-dev-v1';
+const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival };
+const SAVE_KEY = 'skyline-dev-v2';
 
 let G = null, R = null;
 let currentPanel = null;
@@ -136,7 +138,7 @@ function startGame(saved) {
   window.G = G;   // デバッグ用
   const cv = $('#city');
   R = new CityRenderer(cv, G);
-  R.setQuarter(G.quarter);
+  R.setMonth(G.month);
   R.setWeather(G.weather || 'clear');
   R.center();
   window.R = R;
@@ -215,7 +217,14 @@ function bindInput() {
   $('#panelClose').onclick = closePanel;
   $('#modalClose').onclick = closeModal;
   $('#modalWrap').onclick = e => { if (e.target.id === 'modalWrap') closeModal(); };
-  $('#btnNext').onclick = doNextTurn;
+  $('#btnWeek').onclick = () => advance(1);
+  $('#btnMonth').onclick = () => advance(4);
+  $('#btnQuarter').onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
+  $('#feedToggle').onclick = () => {
+    const f = $('#feed');
+    f.classList.toggle('collapsed');
+    $('#feedToggle').textContent = f.classList.contains('collapsed') ? '▸' : '▾';
+  };
   $('#reportOk').onclick = () => { $('#reportWrap').classList.add('hidden'); afterReport(); };
 
   $('#panelBody').addEventListener('click', onPanelClick);
@@ -223,11 +232,13 @@ function bindInput() {
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.key === 'Escape') { closeModal(); closePanel(); }
-    if (e.key === ' ') { e.preventDefault(); doNextTurn(); }
+    if (e.key === ' ') { e.preventDefault(); advance(1); }
+    if (e.key === 'Enter') { e.preventDefault(); advance(4); }
+    if (e.key === 'q' || e.key === 'Q') advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
     if (e.key === 'r' || e.key === 'R') R.rotateBy(1);
     if (e.key === '+' || e.key === '=') R.zoomBy(1);
     if (e.key === '-') R.zoomBy(-1);
-    const map = { 1: 'dash', 2: 'land', 3: 'dev', 4: 'sales', 5: 'asset', 6: 'fin', 7: 'hr', 8: 'ma', 9: 'rival' };
+    const map = { 1: 'dash', 2: 'land', 3: 'dev', 4: 'sales', 5: 'asset', 6: 'fin', 7: 'hr', 8: 'brand', 9: 'ma', 0: 'rival' };
     if (map[e.key]) openPanel(map[e.key]);
   });
 
@@ -379,7 +390,7 @@ function handleAction(act, id) {
       if (s) HR.openStaff(G, s, ctx);
       break;
     }
-    case 'hr.hire': HR.openHire(G, id, ctx); break;
+    case 'hr.mid': HR.openMid(G, id, ctx); break;
     case 'hr.salary': HR.openSalaryPolicy(G, ctx); break;
     case 'hr.newgrad': HR.openNewGrad(G, ctx); break;
     case 'hr.list': ctx.hrSort = id; refresh(); break;
@@ -447,6 +458,9 @@ function handleAction(act, id) {
       if (t) MA.openTarget(G, t, ctx);
       break;
     }
+    case 'brand.new': Brand.openNew(G, ctx); break;
+    case 'brand.ad': { const b = G.brands.find(x => x.id === id); if (b) Brand.openAd(G, b, ctx); break; }
+    case 'brand.rename': { const b = G.brands.find(x => x.id === id); if (b) Brand.openRename(G, b, ctx); break; }
     case 'rival.sort': ctx.rivalKey = id; refresh(); break;
     case 'rival.detail': Rival.openDetail(G, id, ctx); break;
     case 'rival.reject': {
@@ -468,11 +482,11 @@ function handleAction(act, id) {
 // ------------------------------------------------------------
 //  アクション
 // ------------------------------------------------------------
-function startProject(cell, use, grade) {
+function startProject(cell, use, grade, brandId) {
   const err = canStart(G, cell);
   if (err) return toast(err, 'bad');
-  const rng = new RNG(G.rngState ^ (G.turn * 31337));
-  const pj = simStart(G, cell, use, grade, rng, G.news);
+  const rng = new RNG(G.rngState ^ (G.week * 31337));
+  const pj = simStart(G, cell, use, grade, rng, G.news, brandId);
   G.rngState = rng.s;
   R.invalidate();
   toast(`「${pj.name}」に着工した`, 'good');
@@ -491,27 +505,109 @@ function acquireNow(listing, cell, amount) {
 //  ターン進行
 // ------------------------------------------------------------
 let busy = false;
-function doNextTurn() {
+function setBusy(v) {
+  busy = v;
+  for (const id of ['#btnWeek', '#btnMonth', '#btnQuarter']) $(id).disabled = v;
+}
+
+/** 指定した週数だけ進める。重要な出来事があればそこで止まる */
+function advance(weeks) {
   if (busy || G.gameOver) return;
-  busy = true;
-  $('#btnNext').disabled = true;
+  if (weeks <= 0) weeks = 1;
+  setBusy(true);
   closeModal();
   setTimeout(() => {
-    const rep = nextTurn(G);
-    G.news = (G.news || []).concat(rep.news).slice(-120);
-    // レポートを先に出してから描画を作り替える（体感速度を優先）
-    $('#reportTitle').textContent = `${G.year}年 Q${G.quarter}　決算報告`;
-    $('#reportBody').innerHTML = buildReport(G, rep);
-    $('#reportWrap').classList.remove('hidden');
-    updateHeader();
-    updateTicker();
-    R.setQuarter(G.quarter);
+    const reports = [];
+    for (let i = 0; i < weeks; i++) {
+      const r = nextWeek(G);
+      reports.push(r);
+      G.news = (G.news || []).concat(r.news).slice(-240);
+      if (r.interrupt) break;
+    }
+    R.setMonth(G.month);
     R.setWeather(G.weather);
     R.invalidate();
-    busy = false;
-    $('#btnNext').disabled = false;
+    updateHeader();
+    updateTicker();
+    pushFeed(reports);
+    setBusy(false);
+    presentResults(reports);
     save();
-  }, 60);
+  }, 20);
+}
+
+/** 進行結果の提示 */
+function presentResults(reports) {
+  const last = reports[reports.length - 1];
+  const bids = reports.flatMap(r => r.bids.filter(b => b.listing.bid));
+  if (last.quarterEnd) {
+    $('#reportTitle').textContent = `${G.year}年 Q${G.quarter}　決算報告`;
+    $('#reportBody').innerHTML = buildReport(G, last, reports);
+    $('#reportWrap').classList.remove('hidden');
+    return;
+  }
+  if (bids.length) { showBidResult(bids); return; }
+  refresh();
+  const majors = reports.flatMap(r => r.majorNews || []);
+  if (majors.length) toast(`${majors[0].icon} ${majors[0].text.slice(0, 40)}${majors[0].text.length > 40 ? '…' : ''}`, majors[0].type === 'fin' ? 'bad' : '');
+  if (G.gameOver) showGameOver();
+}
+
+/** 入札の開札結果 */
+function showBidResult(bids) {
+  const html = bids.map(b => {
+    const c = b.cell, win = b.result === 'win';
+    const sorted = (b.bids || []).slice(0, 7);
+    return `<div class="card" style="border-color:${win ? 'rgba(74,222,155,.45)' : 'rgba(255,107,122,.3)'}">
+      <div class="card-t">
+        <span class="card-n">${DISTRICTS[c.d].name}　${num(c.area)}坪</span>
+        ${chip(win ? '落札' : b.result === 'fail' ? '不調' : '失注', win ? 'green' : 'red')}
+      </div>
+      <table class="tbl" style="margin-top:6px">
+        <tr><th>入札者</th><th>金額</th>${b.listing.kind === 'proposal' ? '<th>企画評価</th>' : ''}</tr>
+        ${sorted.map((x, i) => `<tr class="${x.isPlayer ? 'me' : ''}">
+          <td>${i === 0 && b.result !== 'fail' ? '👑 ' : ''}${x.name}</td>
+          <td>${money(x.amount)}</td>
+          ${b.listing.kind === 'proposal' ? `<td>${x.quality.toFixed(0)}</td>` : ''}
+        </tr>`).join('')}
+      </table>
+      ${win && b.second ? `<div class="hint">2位との差 ${money(b.winner.amount - b.second.amount)}（${pct((b.winner.amount - b.second.amount) / b.winner.amount, 1)}）</div>` : ''}
+      ${win ? `<div class="btnrow"><button class="btn sm primary" data-plancell="${c.id}">この土地の事業計画を作る</button></div>` : ''}
+    </div>`;
+  }).join('');
+  openModal('入札の開札', html, [{ label: '閉じる', cls: 'ghost' }]);
+  document.querySelectorAll('[data-plancell]').forEach(b => b.onclick = () => {
+    const c = cellById(G, b.dataset.plancell);
+    closeModal();
+    if (c) { focusCell(c); Dev.openPlan(G, c, ctx); }
+  });
+  refresh();
+}
+
+/** 週次フィード */
+function pushFeed(reports) {
+  const body = $('#feedBody');
+  const blocks = [];
+  for (const r of reports) {
+    if (!r.news.length) continue;
+    const cal = `${r.week % 52 === 0 ? '' : ''}`;
+    blocks.push(`<div class="feed-week">${G.year}年 ${monthOfWeek(r.week)}</div>`
+      + r.news.map(n => `<div class="feed-item ${n.major ? 'major' : ''}">
+          <span class="fi">${n.icon}</span><span class="ft">${n.text}</span></div>`).join(''));
+  }
+  if (!blocks.length) {
+    blocks.push(`<div class="feed-week">${dateLabel(G)}</div><div class="feed-empty">特筆すべき動きはなかった</div>`);
+  }
+  body.innerHTML = blocks.reverse().join('');
+  body.scrollTop = 0;
+  $('#feedTitle').textContent = reports.length > 1 ? `直近${reports.length}週の動き` : '今週の動き';
+}
+function monthOfWeek(week) {
+  const MS = [0, 5, 9, 13, 18, 22, 26, 31, 35, 39, 44, 48];
+  const woy = week % 52;
+  let m = 0;
+  for (let i = 0; i < 12; i++) if (woy >= MS[i]) m = i;
+  return `${m + 1}月 第${woy - MS[m] + 1}週`;
 }
 
 function afterReport() {
@@ -525,7 +621,7 @@ function showGameOver() {
   openModal(G.gameOver.title, `
     <div class="hint" style="font-size:13px;line-height:2">${G.gameOver.text}</div>
     <div class="grid3" style="margin:16px 0">
-      ${mini('経営年数', (G.year - G.company.founded) + '年', `${G.turn}四半期`)}
+      ${mini('経営年数', (G.year - G.company.founded) + '年', `${G.week}週`)}
       ${mini('最終売上高', money(ttm(G).revenue, { unit: false }), '億円')}
       ${mini('業界順位', rank ? rank.rank + '位' : '—', '')}
     </div>
@@ -567,8 +663,8 @@ function updateHeader() {
   const h = G.finance.history;
   const prev = h.length >= 2 ? h[h.length - 2] : null;
   $('#hdrCompany').textContent = G.company.name;
-  $('#hdrDate').textContent = `${G.year}年 Q${G.quarter}`;
-  $('#hdrSeason').textContent = `${SEASON[G.quarter - 1]}・${timeOfQuarter(G.quarter).label}`;
+  $('#hdrDate').textContent = dateLabel(G);
+  $('#hdrSeason').textContent = `${seasonOfMonth(G.month)}・${timeOfMonth(G.month).label}　Q${G.quarter} 第${G.weekOfQuarter + 1}週`;
   const items = [
     { k: '現預金', v: money(G.cash, { unit: false }), u: '億円', d: null },
     { k: '有利子負債', v: money(G.debt, { unit: false }), u: '億円' },

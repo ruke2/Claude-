@@ -3,7 +3,7 @@
 // ============================================================
 import { hash2 } from '../core/rng.js';
 import { MAP_W, MAP_H, DISTRICTS, TERRAIN, USES } from '../data/city.js';
-import { TIMES, WEATHERS, timeOfQuarter, hsl, shade } from './palette.js';
+import { TIMES, WEATHERS, timeOfMonth, hsl, shade } from './palette.js';
 import { TILE_W, TILE_H, Z_UNIT, toScreen, fromScreen, depthKey, diamond, rotate } from './iso.js';
 import { renderBuilding } from './buildings.js';
 
@@ -15,7 +15,7 @@ export class CityRenderer {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.g = game;
     this.cam = { x: 0, y: 0, zoomIdx: 2, rot: 0 };
-    this.time = timeOfQuarter(game.quarter);
+    this.time = timeOfMonth(game.month || 1);
     this.weather = WEATHERS.clear;
     this.layer = 'normal';        // normal | owner | value
     this.hover = null;
@@ -47,8 +47,8 @@ export class CityRenderer {
     this.cache.clear();
   }
 
-  setQuarter(q) {
-    const t = timeOfQuarter(q);
+  setMonth(m) {
+    const t = timeOfMonth(m);
     if (t !== this.time) { this.time = t; this.invalidate(); this.skyline = null; }
   }
   setWeather(key) { this.weather = WEATHERS[key] || WEATHERS.clear; }

@@ -7,6 +7,7 @@ import { orgPower, personnelCost } from './hr.js';
 import { holdingCost } from './land.js';
 import { landAppraisal, assetValue } from './valuation.js';
 import { TERRAIN } from '../data/city.js';
+import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
 export const RATINGS = [
   { id: 'AAA', min: 0.50, spread: 0.0020, label: '最上級。調達コストは業界最安水準。' },
@@ -169,21 +170,22 @@ export function growthRate(g) {
 }
 
 // ------------------------------------------------------------
-//  四半期決算
+//  毎週の費用計上と資金繰り
 // ------------------------------------------------------------
-export function closeQuarter(g, rng, news) {
+export function weeklyCosts(g, news) {
   const acc = g.finance.quarterAcc;
-  const p = orgPower(g);
+  const W = WEEKS_PER_QUARTER;
 
-  // --- 販管費 ---
-  const personnel = personnelCost(g);
-  const fixed = 88 + g.assets.length * 12 + g.inventory.length * 8 + g.projects.length * 16
-    + g.subsidiaries.reduce((s, x) => s + x.upkeep / 4, 0);
-  const ad = Math.round(acc.revSale * 0.028 + g.inventory.length * 22);
+  // --- 販売費及び一般管理費 ---
+  const personnel = personnelCost(g);                       // 週あたり
+  const fixedQ = 88 + g.assets.length * 12 + g.inventory.length * 8 + g.projects.length * 16
+    + g.subsidiaries.reduce((a, x) => a + x.upkeep / 4, 0);
+  const fixed = fixedQ / W;
+  const ad = (g.inventory.length * 22 + g.projects.filter(p => p.saleArea > 0).length * 14) / W;
   const dxCut = g.hrPolicy.programs.dx ? 0.94 : 1;
-  const sga = Math.round((personnel + fixed + ad) * dxCut);
-  acc.personnel = Math.round(personnel);
-  acc.sga = sga;
+  const sga = (personnel + fixed + ad) * dxCut;
+  acc.personnel += personnel * dxCut;
+  acc.sga += sga;
   g.cash -= sga;
 
   // --- 用地の保有コスト ---
@@ -191,34 +193,57 @@ export function closeQuarter(g, rng, news) {
   for (const c of g.cells) {
     if (c.owner === 'player' && !c.assetId && !c.invId && !c.isHQ) hold += holdingCost(g, c);
   }
-  hold = Math.round(hold);
   acc.cogsOther += hold;
   g.cash -= hold;
 
-  // --- 支払利息 ---
-  let emergency = 0;
+  // --- 支払利息（建設中案件に対応する分は取得原価に算入する） ---
   const rate = effectiveRate(g);
-  const interestAll = Math.round(g.debt * rate / 4);
+  const interestAll = g.debt * rate / WEEKS_PER_YEAR;
   g.cash -= interestAll;
-  // 建設中の案件に対応する借入金利は取得原価に算入する（支払利息からは除く）
   const bsNow = buildBS(g);
   const cipRatio = bsNow.total > 0 ? Math.min(0.45, bsNow.cip / bsNow.total) : 0;
-  const capitalized = Math.round(interestAll * cipRatio);
+  const capitalized = interestAll * cipRatio;
   if (capitalized > 0 && g.projects.length) {
     const totalCip = g.projects.reduce((a, p) => a + p.spent + p.landCost, 0) || 1;
-    for (const p of g.projects) {
-      p.spent += Math.round(capitalized * (p.spent + p.landCost) / totalCip);
+    for (const p of g.projects) p.spent += capitalized * (p.spent + p.landCost) / totalCip;
+  }
+  acc.interest += interestAll - capitalized;
+  acc.capitalizedInterest = (acc.capitalizedInterest || 0) + capitalized;
+
+  // --- 資金が尽きたら調達する ---
+  if (g.cash < 0) {
+    const burn = Math.max(200, (sga + interestAll) * 8);
+    const need = Math.ceil((-g.cash + burn) / 100) * 100;
+    const room = Math.max(0, debtCapacity(g) - g.debt);
+    const normal = Math.min(need, room);
+    if (normal > 0) { g.debt += normal; g.cash += normal; }
+    const short = need - normal;
+    if (short > 0) {
+      g.debt += short; g.cash += short;
+      g.overdraftWeeks = (g.overdraftWeeks || 0) + 1;
+      if (g.overdraftWeeks % 4 === 1) {
+        news.push({
+          icon: '🚨', type: 'fin', major: true,
+          text: `借入枠を${Math.round(short / 100).toLocaleString()}億円超過して当座借越を実行した。ペナルティ金利がかかっている。`,
+        });
+      }
+    } else if (news) {
+      news.push({ icon: '🏦', type: 'fin', text: `運転資金として${Math.round(normal / 100).toLocaleString()}億円を借り入れた。` });
     }
   }
-  const interest = interestAll - capitalized;
-  acc.interest = interest;
-  acc.capitalizedInterest = capitalized;
+}
 
-  // --- PL確定 ---
+// ------------------------------------------------------------
+//  四半期決算
+// ------------------------------------------------------------
+export function closeQuarter(g, rng, news) {
+  const acc = g.finance.quarterAcc;
+
   const revenue = acc.revSale + acc.revLease + acc.revFee + acc.revOther;
   const cogs = acc.cogsSale + acc.cogsLease + acc.cogsOther;
   const gross = revenue - cogs;
-  const op = gross - sga;
+  const op = gross - acc.sga;
+  const interest = acc.interest;
   const nonop = -interest;
   const ordinary = op + nonop;
   const extra = acc.gainSale - acc.impairment + acc.extraordinary;
@@ -228,45 +253,32 @@ export function closeQuarter(g, rng, news) {
   g.cash -= tax;
   const net = pretax - tax;
 
-  // --- 資金不足なら自動で借り入れる ---
-  if (g.cash < 0) {
-    // 不足分に加えて当面の運転資金を確保する
-    const burn = Math.max(300, Math.round((acc.sga + interest) * 1.2));
-    const need = Math.ceil((-g.cash + burn) / 100) * 100;
-    const room = Math.max(0, debtCapacity(g) - g.debt);
-    const normal = Math.min(need, room);
-    if (normal > 0) { g.debt += normal; g.cash += normal; }
-    const short = need - normal;
-    if (short > 0) {
-      // 枠を超える当座借越。ペナルティ金利がかかり、続けば破綻する
-      g.debt += short; g.cash += short;
-      g.crisis = (g.crisis || 0) + 1;
-      news.push({
-        icon: '🚨', type: 'fin',
-        text: `借入枠を${Math.round(short / 100).toLocaleString()}億円超過して当座借越を実行した。ペナルティ金利がかかっている（${g.crisis}期連続）。`,
-      });
-    } else {
-      g.crisis = 0;
-      news.push({ icon: '🏦', type: 'fin', text: `運転資金として${Math.round(normal / 100).toLocaleString()}億円を緊急調達した。` });
-    }
-    emergency = need;
-  } else if (g.crisis && overdraft(g) <= 0) g.crisis = 0;
-
-
+  const R = v => Math.round(v);
   const pl = {
-    revenue, revSale: acc.revSale, revLease: acc.revLease, revFee: acc.revFee,
-    cogs, cogsSale: acc.cogsSale, cogsLease: acc.cogsLease, cogsOther: acc.cogsOther,
-    gross, sga, personnel: acc.personnel, op, interest, ordinary,
-    gainSale: acc.gainSale, impairment: acc.impairment, extra, pretax, tax, net,
-    landSpend: acc.landSpend, buildSpend: acc.buildSpend, emergency,
+    revenue: R(revenue), revSale: R(acc.revSale), revLease: R(acc.revLease), revFee: R(acc.revFee),
+    cogs: R(cogs), cogsSale: R(acc.cogsSale), cogsLease: R(acc.cogsLease), cogsOther: R(acc.cogsOther),
+    gross: R(gross), sga: R(acc.sga), personnel: R(acc.personnel), op: R(op),
+    interest: R(interest), ordinary: R(ordinary),
+    gainSale: R(acc.gainSale), impairment: R(acc.impairment), extra: R(extra),
+    pretax: R(pretax), tax, net: R(net),
+    landSpend: R(acc.landSpend), buildSpend: R(acc.buildSpend),
+    capitalizedInterest: R(acc.capitalizedInterest || 0),
   };
   const bs = buildBS(g);
   g.equity = bs.equity;
   g.finance.pl = pl; g.finance.bs = bs;
-  g.finance.history.push({ year: g.year, q: g.quarter, turn: g.turn, pl, bs, rating: ratingOf(g).id, price: g.company.listed ? sharePrice(g) : 0 });
+  g.finance.history.push({
+    year: g.year, q: g.quarter, week: g.week, pl, bs,
+    rating: ratingOf(g).id, price: g.company.listed ? sharePrice(g) : 0,
+  });
   if (g.finance.history.length > 200) g.finance.history.shift();
-  g.kpi.cumRevenue += revenue; g.kpi.cumProfit += net;
-  g.kpi.bestQuarter = Math.max(g.kpi.bestQuarter, net);
+  g.kpi.cumRevenue += pl.revenue; g.kpi.cumProfit += pl.net;
+  g.kpi.bestQuarter = Math.max(g.kpi.bestQuarter, pl.net);
+
+  // 借入枠の超過が続いているかを四半期単位で見る
+  if (overdraft(g) > 0) g.crisis = (g.crisis || 0) + 1;
+  else { g.crisis = 0; g.overdraftWeeks = 0; }
+
   g.finance.quarterAcc = blankPL();
   return pl;
 }

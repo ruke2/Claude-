@@ -6,6 +6,7 @@ import { uid } from '../core/state.js';
 import { SUB_TYPES, TARGET_TEMPLATES } from '../data/companies.js';
 import { orgPower } from './hr.js';
 import { DEPTS } from '../data/hrdata.js';
+import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
 /** 買収先に潜むリスク */
 export const MA_RISKS = [
@@ -49,7 +50,7 @@ export function generateTargets(g, rng, n = 3) {
       synergy: tpl.synergy, effect: { ...tpl.effect },
       rev, op, np, equity, employees, askPrice, quality,
       risks, ddLevel: 0, ddSkill: 0,
-      listedTurn: g.turn, expires: g.turn + rng.int(3, 7),
+      listedWeek: g.week, expires: g.week + rng.int(8, 26),
       note: rng.pick([
         '創業家が後継者不在を理由に売却を検討している。',
         'ファンドが保有しており、出口を探している。',
@@ -92,7 +93,7 @@ export function acquire(g, t, price, rng, news) {
     rev: t.rev, op: t.op, np: t.np, employees: t.employees,
     effect: { ...t.effect }, synergy: t.synergy,
     risks: t.risks.map(r => ({ ...r })),
-    integration: 0.12, integSpeed, acquiredTurn: g.turn,
+    integration: 0.12, integSpeed, acquiredWeek: g.week,
     failed: false, troubles: [], health: 1.0,
   };
   g.acquisitions.push(a);
@@ -119,7 +120,7 @@ export function acquire(g, t, price, rng, news) {
   return a;
 }
 
-/** 四半期ごとの子会社・買収先の処理 */
+/** 毎週の子会社・買収先の処理 */
 export function stepMA(g, rng, news) {
   const p = orgPower(g);
 
@@ -127,7 +128,7 @@ export function stepMA(g, rng, news) {
   for (const a of g.acquisitions) {
     if (a.failed) continue;
     const before = a.integration;
-    a.integration = clamp01(a.integration + a.integSpeed * (a.risks.some(r => r.id === 'culture') ? 0.55 : 1));
+    a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER * (a.risks.some(r => r.id === 'culture') ? 0.55 : 1));
     if (before < 1 && a.integration >= 1) {
       news.push({ icon: '🔗', type: 'ma', text: `${a.name}の統合（PMI）が完了。シナジーが完全に発現した。` });
     }
@@ -135,15 +136,15 @@ export function stepMA(g, rng, news) {
     // 連結損益の取り込み
     const dem = g.market.sentiment;
     const perf = clamp(0.62 + a.integration * 0.5 + (dem - 0.5) * 0.3, 0.3, 1.5) * a.health;
-    const qRev = Math.round(a.rev / 4 * perf);
-    const qOp = Math.round(a.op / 4 * perf * (a.integration > 0.7 ? 1.12 : 0.85));
-    g.finance.quarterAcc.revOther += qRev;
-    g.finance.quarterAcc.cogsOther += Math.max(0, qRev - qOp);
-    g.cash += qOp;
+    const wRev = a.rev / WEEKS_PER_YEAR * perf;
+    const wOp = a.op / WEEKS_PER_YEAR * perf * (a.integration > 0.7 ? 1.12 : 0.85);
+    g.finance.quarterAcc.revOther += wRev;
+    g.finance.quarterAcc.cogsOther += Math.max(0, wRev - wOp);
+    g.cash += wOp;
 
     // のれん償却（20年定額）
     if (a.goodwill > 0) {
-      const am = Math.round(a.goodwillInit / 80);
+      const am = a.goodwillInit / (20 * WEEKS_PER_YEAR);
       a.goodwill = Math.max(0, a.goodwill - am);
       g.goodwill = Math.max(0, g.goodwill - am);
       g.finance.quarterAcc.cogsOther += am;
@@ -152,9 +153,9 @@ export function stepMA(g, rng, news) {
     // --- リスクの顕在化 ---
     for (const r of a.risks) {
       if (r.fired) continue;
-      const window = g.turn - a.acquiredTurn;
-      if (window > 12) continue;
-      if (!rng.chance(0.19)) continue;
+      const window = g.week - a.acquiredWeek;
+      if (window > 156) continue;
+      if (!rng.chance(0.19 / WEEKS_PER_QUARTER)) continue;
       r.fired = true;
       const mitigated = r.found ? 0.45 : 1;     // 事前に把握していれば被害は小さい
       switch (r.id) {
@@ -203,7 +204,7 @@ export function stepMA(g, rng, news) {
     }
 
     // --- のれん減損の判定 ---
-    if (a.goodwill > 0 && g.turn - a.acquiredTurn >= 4 && rng.chance(0.09)) {
+    if (a.goodwill > 0 && g.week - a.acquiredWeek >= 52 && rng.chance(0.09 / WEEKS_PER_QUARTER)) {
       const perfNow = a.health * (0.6 + a.integration * 0.5);
       if (perfNow < 0.78) {
         const loss = Math.round(a.goodwill * clamp(1 - perfNow, 0.3, 1));
@@ -225,17 +226,19 @@ export function stepMA(g, rng, news) {
     const dem = g.market.sentiment;
     if (s.type === 'overseas') {
       const swing = rng.normal(0.4, 1.4) * (0.5 + dem);
-      const pl = Math.round(s.bookValue * 0.035 * swing);
+      const pl = s.bookValue * 0.035 * swing / WEEKS_PER_QUARTER;
       g.finance.quarterAcc.revOther += Math.max(0, pl);
       if (pl < 0) g.finance.quarterAcc.extraordinary += pl;
       g.cash += pl;
       s.lastPL = pl;
-      if (pl < -s.bookValue * 0.06) {
-        news.push({ icon: '🌏', type: 'ma', text: `海外事業子会社が${Math.round(-pl / 100).toLocaleString()}億円の損失を計上した（現地市況と為替の悪化）。` });
-        s.health = clamp01(s.health - 0.06);
-      } else if (pl > s.bookValue * 0.06) {
-        news.push({ icon: '🌏', type: 'ma', text: `海外事業子会社が${Math.round(pl / 100).toLocaleString()}億円の利益を計上した。` });
-        s.health = clamp01(s.health + 0.03);
+      s.accPL = (s.accPL || 0) + pl;
+      if (Math.abs(s.accPL) > s.bookValue * 0.06) {
+        news.push({
+          icon: '🌏', type: 'ma',
+          text: `海外事業子会社が${Math.round(Math.abs(s.accPL) / 100).toLocaleString()}億円の${s.accPL < 0 ? '損失' : '利益'}を計上した${s.accPL < 0 ? '（現地市況と為替の悪化）' : ''}。`,
+        });
+        s.health = clamp01(s.health + (s.accPL < 0 ? -0.06 : 0.03));
+        s.accPL = 0;
       }
     } else {
       // 事業量に応じた損益。仕事が無ければ固定費だけが残る
@@ -245,21 +248,21 @@ export function stepMA(g, rng, news) {
         pm: g.assets.length / 3,
         reit: g.assets.length / 4,
       }[s.type] ?? 1;
-      const pl = Math.round(s.upkeep / 4 * (load - 1) * 1.6);
-      s.lastPL = pl;
+      const pl = s.upkeep / WEEKS_PER_YEAR * (load - 1) * 1.6;
+      s.lastPL = pl * WEEKS_PER_QUARTER;
       g.finance.quarterAcc.revOther += Math.max(0, pl);
       if (pl < 0) g.finance.quarterAcc.cogsOther += -pl;
       g.cash += pl;
-      s.health = clamp01(s.health + (load > 1 ? 0.02 : -0.03));
-      if (s.health < 0.45 && rng.chance(0.2)) {
+      s.health = clamp01(s.health + (load > 1 ? 0.02 : -0.03) / WEEKS_PER_QUARTER);
+      if (s.health < 0.45 && rng.chance(0.2 / WEEKS_PER_QUARTER)) {
         news.push({ icon: '⚠', type: 'ma', text: `${s.name}は業務量が不足しており、固定費が重荷になっている。` });
       }
     }
   }
 
   // --- 候補の入替 ---
-  g.maTargets = g.maTargets.filter(t => t.expires > g.turn);
-  if (g.maTargets.length < 3 && rng.chance(0.65)) {
+  g.maTargets = g.maTargets.filter(t => t.expires > g.week);
+  if (g.maTargets.length < 3 && rng.chance(0.65 / WEEKS_PER_QUARTER)) {
     g.maTargets.push(...generateTargets(g, rng, 1));
   }
 }
@@ -271,7 +274,7 @@ export function foundSubsidiary(g, typeId, rng, news) {
   const sub = {
     id: uid('S'), type: def.id, name: `${g.company.name}${def.name.replace('子会社', '')}`,
     icon: def.icon, bookValue: def.cost, upkeep: def.upkeep,
-    effect: { ...def.effect }, health: 1.0, foundedTurn: g.turn, staffIds: [],
+    effect: { ...def.effect }, health: 1.0, foundedWeek: g.week, staffIds: [],
   };
   g.cash -= def.cost;
   // 人員を出向させる
