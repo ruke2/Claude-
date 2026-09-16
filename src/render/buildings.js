@@ -37,127 +37,219 @@ function topDiamond(ctx, o, H, inset = 0) {
 // ------------------------------------------------------------
 //  ファサード
 // ------------------------------------------------------------
+/** 用途からファサードの型を決める */
+function facadeOf(use, given) {
+  if (given && given !== 'auto') return given;
+  return { office: 'curtain', resi: 'terrace', rental: 'terrace', retail: 'glassbox', hotel: 'grid', logi: 'panel', house: 'brick', mixed: 'curtain' }[use] || 'grid';
+}
+
+const LIT_COLORS = ['#ffe6b0', '#ffd98e', '#fff2d0', '#cfe2ff', '#ffdd9a', '#ffeccb'];
+
+/** 建物全体のファサード（スタックがあれば階層ごとに描き分ける） */
 function drawFacade(ctx, o, side, H, b, T, zoom) {
-  const { use, floors, facade, seed } = b;
+  const stack = (b.stack && b.stack.length > 1) ? b.stack : null;
+  if (!stack) {
+    drawSeg(ctx, o, side, H, b, T, zoom, 0, 1, b.use, b.floors, 0);
+    drawGrime(ctx, o, side, H, T, zoom);
+    return;
+  }
+  const total = stack.reduce((a, x) => a + x.floors, 0) || 1;
+  let acc = 0, i = 0;
+  for (const seg of stack) {
+    const vA = acc / total, vB = (acc + seg.floors) / total;
+    drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, seg.use, seg.floors, i);
+    // セグメントの境界に庇（セットバックの帯）を入れる
+    if (acc > 0) {
+      facePath(ctx, o, side, -0.015, 1.015, vA - 0.004, vA + 0.006, H);
+      ctx.fillStyle = shade(210, 5, 34, side === 'L' ? T.faceL : T.faceR);
+      ctx.fill();
+    }
+    acc += seg.floors; i++;
+  }
+  drawGrime(ctx, o, side, H, T, zoom);
+}
+
+/** 経年の汚れと足元の陰り（アンビエントオクルージョン風） */
+function drawGrime(ctx, o, side, H, T, zoom) {
+  facePath(ctx, o, side, 0, 1, 0, 1, H);
+  const { cx, cy, w, h } = o;
+  const g = ctx.createLinearGradient(0, cy + h / 2 - H, 0, cy + h / 2);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.82, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(6,10,18,${0.30 + (1 - T.faceTop) * 0.2})`);
+  ctx.fillStyle = g;
+  ctx.fill();
+}
+
+/** 1セグメント分のファサード。vA〜vB が担当する高さ範囲 */
+function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
+  const facade = facadeOf(use, b.stack ? 'auto' : b.facade);
+  const seed = b.seed + segIndex * 977;
   const [hu, sa, li] = USE_HSL[use] || USE_HSL.office;
   const mul = side === 'L' ? T.faceL : T.faceR;
   const bays = Math.max(2, Math.round((BAYS[use] || 6) * (o.w / (TILE_W * zoom))));
-  const fl = floors;
+  const span = Math.max(0.001, vB - vA);
+  const fh = span / Math.max(1, floors);
+  const winLit = T.windowLit * (b.lit ?? 0.6);
+  const darkWin = shade(hu, sa + 10, li, mul * 0.40);
 
-  // 壁本体
-  facePath(ctx, o, side, 0, 1, 0, 1, H);
-  const g = ctx.createLinearGradient(o.cx - o.w / 2, o.cy - H, o.cx + o.w / 2, o.cy + o.h / 2);
-  g.addColorStop(0, shade(hu, sa, li, mul * 1.05));
-  g.addColorStop(1, shade(hu, sa, li, mul * 0.86));
-  ctx.fillStyle = g;
+  // --- 壁 ---
+  facePath(ctx, o, side, 0, 1, vA, vB, H);
+  const wallTop = o.cy + o.h / 2 - H * vB, wallBot = o.cy + o.h / 2 - H * vA;
+  const wg = ctx.createLinearGradient(0, wallTop, 0, wallBot);
+  wg.addColorStop(0, shade(hu, sa, li, mul * 1.08));
+  wg.addColorStop(1, shade(hu, sa, li, mul * 0.88));
+  ctx.fillStyle = wg;
   ctx.fill();
 
-  if (H < 5 || o.w < 12) return;
-
-  const winLit = T.windowLit;
-  const litColor = ['#ffe9b8', '#ffdc97', '#fff4d6', '#cfe4ff', '#ffe0a0'];
-  const darkWin = shade(hu, sa + 8, li, mul * 0.44);
-  const glassCool = shade(205, 26, 56, mul * 1.0);
-
-  const fh = 1 / fl;                       // 階の高さ(v単位)
-  const maxDraw = Math.min(fl, 70);
-  const step = Math.max(1, Math.ceil(fl / maxDraw));
+  if (H * span < 4 || o.w < 12) return;
+  const maxDraw = Math.min(floors, 64);
+  const step = Math.max(1, Math.ceil(floors / maxDraw));
 
   if (facade === 'curtain') {
-    // 横連窓＋ガラス反射
-    for (let i = 0; i < fl; i += step) {
-      const v0 = i * fh + fh * 0.22, v1 = i * fh + fh * 0.86;
-      facePath(ctx, o, side, 0.04, 0.96, v0, v1, H);
-      ctx.fillStyle = glassCool; ctx.fill();
-      // 点灯
-      for (let bx = 0; bx < bays; bx++) {
-        const r = hash2(seed + i * 31, bx * 7, side === 'L' ? 3 : 9);
-        if (r < winLit * (b.lit ?? .6)) {
-          facePath(ctx, o, side, 0.04 + bx / bays * 0.92, 0.04 + (bx + 0.88) / bays * 0.92, v0, v1, H);
-          ctx.fillStyle = litColor[Math.floor(r * 997) % 5]; ctx.globalAlpha = 0.55 + r * 0.45;
-          ctx.fill(); ctx.globalAlpha = 1;
-        }
-      }
+    // ガラスのカーテンウォール。空を映し込む
+    const glassBase = shade(202, 22, 44, mul * 1.05);
+    facePath(ctx, o, side, 0.03, 0.97, vA + fh * 0.1, vB - fh * 0.1, H);
+    const sg = ctx.createLinearGradient(0, wallTop, 0, wallBot);
+    sg.addColorStop(0, shade(T.key === 'night' ? 220 : 205, 30, T.key === 'night' ? 22 : 62, mul * 1.15));
+    sg.addColorStop(0.55, glassBase);
+    sg.addColorStop(1, shade(210, 18, 30, mul));
+    ctx.fillStyle = sg; ctx.fill();
+    // 横連窓の目地
+    ctx.strokeStyle = shade(hu, sa, li, mul * 1.26, 0.7);
+    ctx.lineWidth = Math.max(0.4, zoom * 0.55);
+    for (let i = 0; i < floors; i += step) {
+      const v = vA + (i + 1) * fh;
+      facePath(ctx, o, side, 0.03, 0.97, v, v, H); ctx.stroke();
     }
     // 縦マリオン
-    ctx.strokeStyle = shade(hu, sa, li, mul * 1.22); ctx.lineWidth = Math.max(0.5, zoom * 0.7);
     for (let bx = 1; bx < bays; bx++) {
       const u = bx / bays;
-      facePath(ctx, o, side, u, u, 0, 1, H); ctx.stroke();
+      facePath(ctx, o, side, u, u, vA, vB, H); ctx.stroke();
     }
-    // 反射ハイライト
-    facePath(ctx, o, side, side === 'L' ? 0.0 : 0.62, side === 'L' ? 0.28 : 0.98, 0, 1, H);
-    const gr = ctx.createLinearGradient(o.cx - o.w / 2, o.cy - H, o.cx + o.w / 2, o.cy);
-    gr.addColorStop(0, 'rgba(255,255,255,0.10)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gr; ctx.fill();
-  } else if (facade === 'terrace') {
-    // バルコニー付き住居
-    for (let i = 0; i < fl; i += step) {
-      const v0 = i * fh + fh * 0.18, v1 = i * fh + fh * 0.72;
+    // 点灯
+    for (let i = 0; i < floors; i += step) {
       for (let bx = 0; bx < bays; bx++) {
-        const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.78) / bays * 0.88;
+        const r = hash2(seed + i * 31, bx * 7, side === 'L' ? 3 : 9);
+        if (r >= winLit) continue;
+        const v0 = vA + i * fh + fh * 0.22, v1 = vA + i * fh + fh * 0.84;
+        facePath(ctx, o, side, 0.04 + bx / bays * 0.92, 0.04 + (bx + 0.9) / bays * 0.92, v0, v1, H);
+        ctx.fillStyle = LIT_COLORS[Math.floor(r * 997) % 6];
+        ctx.globalAlpha = 0.55 + r * 0.45; ctx.fill(); ctx.globalAlpha = 1;
+      }
+    }
+    // 反射のハイライト
+    facePath(ctx, o, side, side === 'L' ? 0.02 : 0.64, side === 'L' ? 0.3 : 0.98, vA, vB, H);
+    const gr = ctx.createLinearGradient(o.cx - o.w / 2, wallTop, o.cx + o.w / 2, wallBot);
+    gr.addColorStop(0, `rgba(255,255,255,${T.key === 'night' ? 0.03 : 0.11})`);
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gr; ctx.fill();
+
+  } else if (facade === 'glassbox') {
+    // 商業施設：大開口のガラスと庇
+    for (let i = 0; i < floors; i += step) {
+      const v0 = vA + i * fh + fh * 0.12, v1 = vA + i * fh + fh * 0.82;
+      facePath(ctx, o, side, 0.05, 0.95, v0, v1, H);
+      ctx.fillStyle = winLit > 0.25 ? 'rgba(255,226,172,0.80)' : shade(200, 20, 52, mul * 1.06);
+      ctx.fill();
+      // 庇
+      facePath(ctx, o, side, -0.01, 1.01, vA + i * fh + fh * 0.86, vA + i * fh + fh * 0.98, H);
+      ctx.fillStyle = shade(hu, sa - 6, li, mul * 1.18); ctx.fill();
+    }
+    // 看板
+    if (o.w > 20) {
+      facePath(ctx, o, side, 0.12, 0.52, vB - fh * 0.55, vB - fh * 0.15, H);
+      ctx.fillStyle = T.glow > 0.4 ? '#ff7aa8' : shade(hu, sa + 20, li * 0.8, mul);
+      if (T.glow > 0.4) { ctx.shadowColor = '#ff5f95'; ctx.shadowBlur = 10 * zoom; }
+      ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+  } else if (facade === 'terrace') {
+    // 住宅：バルコニーと手すり
+    for (let i = 0; i < floors; i += step) {
+      const base = vA + i * fh;
+      for (let bx = 0; bx < bays; bx++) {
+        const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.8) / bays * 0.88;
         const r = hash2(seed + i * 17, bx * 13, side === 'L' ? 1 : 5);
-        facePath(ctx, o, side, u0, u1, v0, v1, H);
-        ctx.fillStyle = r < winLit * (b.lit ?? .6) ? litColor[Math.floor(r * 887) % 5] : darkWin;
+        facePath(ctx, o, side, u0, u1, base + fh * 0.2, base + fh * 0.72, H);
+        ctx.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 887) % 6] : darkWin;
         ctx.fill();
       }
-      // 手すりライン
-      facePath(ctx, o, side, 0.03, 0.97, i * fh + fh * 0.06, i * fh + fh * 0.2, H);
-      ctx.fillStyle = shade(hu, sa - 4, li, mul * 1.16); ctx.fill();
+      // スラブと手すり
+      facePath(ctx, o, side, -0.01, 1.01, base + fh * 0.02, base + fh * 0.13, H);
+      ctx.fillStyle = shade(hu, sa - 4, li, mul * 1.20); ctx.fill();
+      facePath(ctx, o, side, 0.02, 0.98, base + fh * 0.13, base + fh * 0.30, H);
+      ctx.fillStyle = shade(200, 10, 58, mul * 0.9, 0.45); ctx.fill();
     }
+
   } else if (facade === 'panel') {
     // 倉庫・パネル外壁
-    ctx.strokeStyle = shade(hu, sa, li, mul * 0.88); ctx.lineWidth = Math.max(0.4, zoom * 0.6);
+    ctx.strokeStyle = shade(hu, sa, li, mul * 0.86);
+    ctx.lineWidth = Math.max(0.4, zoom * 0.5);
     for (let bx = 1; bx < bays * 2; bx++) {
       const u = bx / (bays * 2);
-      facePath(ctx, o, side, u, u, 0, 1, H); ctx.stroke();
+      facePath(ctx, o, side, u, u, vA, vB, H); ctx.stroke();
     }
-    for (let i = 0; i < fl; i += step) {
-      const v0 = i * fh + fh * 0.30, v1 = i * fh + fh * 0.52;
+    for (let i = 0; i < floors; i += step) {
+      const v0 = vA + i * fh + fh * 0.32, v1 = vA + i * fh + fh * 0.5;
       facePath(ctx, o, side, 0.08, 0.92, v0, v1, H);
-      ctx.fillStyle = winLit > 0.4 ? 'rgba(255,236,190,0.72)' : shade(200, 16, 48, mul);
+      ctx.fillStyle = winLit > 0.35 ? 'rgba(255,238,196,0.7)' : shade(200, 14, 44, mul);
       ctx.fill();
     }
+    // 搬入口
+    facePath(ctx, o, side, 0.12, 0.42, vA + fh * 0.05, vA + fh * 0.5, H);
+    ctx.fillStyle = shade(hu, sa, li * 0.6, mul); ctx.fill();
+
   } else if (facade === 'brick' || facade === 'stone') {
-    const wide = facade === 'stone' ? 0.62 : 0.5;
-    for (let i = 0; i < fl; i += step) {
-      const v0 = i * fh + fh * 0.24, v1 = i * fh + fh * 0.78;
+    const wide = facade === 'stone' ? 0.6 : 0.48;
+    for (let i = 0; i < floors; i += step) {
+      const v0 = vA + i * fh + fh * 0.24, v1 = vA + i * fh + fh * 0.76;
       for (let bx = 0; bx < bays; bx++) {
         const u0 = 0.08 + bx / bays * 0.84, u1 = 0.08 + (bx + wide) / bays * 0.84;
         const r = hash2(seed + i * 23, bx * 11, side === 'L' ? 2 : 6);
         facePath(ctx, o, side, u0, u1, v0, v1, H);
-        ctx.fillStyle = r < winLit * (b.lit ?? .6) ? litColor[Math.floor(r * 577) % 5] : darkWin;
+        ctx.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 577) % 6] : darkWin;
         ctx.fill();
       }
-      if (facade === 'stone') { // 帯状のコーニス
-        facePath(ctx, o, side, 0, 1, i * fh + fh * 0.88, i * fh + fh * 0.98, H);
-        ctx.fillStyle = shade(hu, sa - 6, li, mul * 1.14); ctx.fill();
-      }
+      facePath(ctx, o, side, -0.01, 1.01, vA + i * fh + fh * 0.86, vA + i * fh + fh * 0.96, H);
+      ctx.fillStyle = shade(hu, sa - 6, li, mul * 1.14); ctx.fill();
     }
+
   } else {
     // grid（標準の格子窓）
-    for (let i = 0; i < fl; i += step) {
-      const v0 = i * fh + fh * 0.22, v1 = i * fh + fh * 0.8;
+    for (let i = 0; i < floors; i += step) {
+      const v0 = vA + i * fh + fh * 0.22, v1 = vA + i * fh + fh * 0.78;
       for (let bx = 0; bx < bays; bx++) {
-        const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.72) / bays * 0.88;
+        const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.74) / bays * 0.88;
         const r = hash2(seed + i * 29, bx * 19, side === 'L' ? 4 : 8);
         facePath(ctx, o, side, u0, u1, v0, v1, H);
-        ctx.fillStyle = r < winLit * (b.lit ?? .6) ? litColor[Math.floor(r * 733) % 5] : darkWin;
+        ctx.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 733) % 6] : darkWin;
         ctx.fill();
       }
+    }
+    ctx.strokeStyle = shade(hu, sa, li, mul * 1.18, 0.5);
+    ctx.lineWidth = Math.max(0.35, zoom * 0.45);
+    for (let i = 0; i < floors; i += step * 2) {
+      const v = vA + i * fh;
+      facePath(ctx, o, side, 0, 1, v, v, H); ctx.stroke();
     }
   }
 
-  // 低層部（店舗・エントランス）
-  if (H > 14) {
-    const v1 = Math.min(0.9, fh * (use === 'retail' ? 2.6 : 1.1));
+  // --- 最下部（エントランス・店舗） ---
+  if (vA < 0.02 && H > 12) {
+    const v1 = Math.min(0.9, fh * (use === 'retail' ? 2.2 : 1.05));
     facePath(ctx, o, side, 0, 1, 0, v1, H);
-    ctx.fillStyle = T.windowLit > 0.4 ? `rgba(255,214,150,${0.24 + T.glow * 0.2})` : 'rgba(20,26,38,0.30)';
+    ctx.fillStyle = T.windowLit > 0.3 ? `rgba(255,216,156,${0.26 + T.glow * 0.22})` : 'rgba(18,24,36,0.34)';
     ctx.fill();
+    // キャノピー
+    facePath(ctx, o, side, -0.02, 1.02, v1, v1 + Math.min(0.03, fh * 0.2), H);
+    ctx.fillStyle = shade(hu, sa - 8, li, mul * 1.22); ctx.fill();
   }
-  // 角のエッジ
-  ctx.strokeStyle = shade(hu, sa, li, mul * 1.3, 0.55); ctx.lineWidth = Math.max(0.5, zoom * 0.8);
-  facePath(ctx, o, side, 0, 1, 0, 1, H); ctx.stroke();
+
+  // --- 角のエッジ ---
+  ctx.strokeStyle = shade(hu, sa, li, mul * 1.34, 0.45);
+  ctx.lineWidth = Math.max(0.4, zoom * 0.7);
+  facePath(ctx, o, side, 0, 1, vA, vB, H); ctx.stroke();
 }
 
 // ------------------------------------------------------------

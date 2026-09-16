@@ -4,12 +4,32 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { uid, makeBuilding } from '../core/state.js';
-import { devPlan, subEffect } from './valuation.js';
+import { devPlan, devPlanStack, subEffect } from './valuation.js';
 import { riskImpact } from './land.js';
 import { orgPower, projectCapacity } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 import { BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
 import { brandEffect, growBrand, getBrand } from './brands.js';
+
+/** 複合開発（フロアスタック）の事業計画 */
+export function feasibilityStack(g, cell, stack, gradeId, brandId) {
+  const eff = riskImpact(g, cell, cell.risks || []);
+  const plan = devPlanStack(g, cell, stack, gradeId, {
+    farPenalty: eff.farMul, landCost: cell.lastPaid || undefined, brandId,
+  });
+  if (!plan) return null;
+  plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
+  plan.weeks += eff.delay;
+  plan.riskExtra = Math.round(eff.extraCost);
+  plan.totalCost = plan.landCost + plan.buildCost;
+  plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
+  plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
+  plan.grossValue = plan.saleRevenue + plan.assetValue;
+  plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * 0.04;
+  plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
+  plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
+  return plan;
+}
 
 /** 企画段階の事業計画を作る（リスク反映済み） */
 export function feasibility(g, cell, useId, gradeId, brandId) {
@@ -54,13 +74,14 @@ function projectName(rng, use, districtId, grade) {
 }
 
 /** 着工 */
-export function startProject(g, cell, useId, gradeId, rng, news, brandId = null) {
-  const plan = feasibility(g, cell, useId, gradeId, brandId);
+export function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null) {
+  const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId) : feasibility(g, cell, useId, gradeId, brandId);
+  if (!plan) return null;
   const bd = getBrand(g, brandId);
   const pj = {
     id: uid('P'), cellId: cell.id, district: cell.d,
     name: bd ? brandedName(rng, bd, useId, cell.d) : projectName(rng, useId, cell.d, gradeId),
-    use: useId, grade: gradeId, brandId,
+    use: useId, grade: gradeId, brandId, stack: plan.stack || null,
     gfa: plan.gfa, floors: plan.floors, heightM: plan.heightM,
     sellable: plan.sellable, saleArea: plan.saleArea || 0, nra: plan.nra || 0,
     budget: plan.buildCost, spent: 0, overrun: 0,
@@ -154,6 +175,7 @@ function completeProject(g, pj, rng, news) {
     grade: pj.grade, year: g.year, name: pj.name,
   });
   cell.building.height = pj.heightM;
+  if (pj.stack) cell.building.stack = pj.stack.map(x => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
   g.kpi.builtCount++;
   g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12000 ? 1.6 : 1), 0, 100);
   if (pj.brandId) growBrand(g, pj.brandId, { area: pj.gfa, units: pj.plan.units || 0, supplied: true, base: 4.2, reputation: 1.5 });

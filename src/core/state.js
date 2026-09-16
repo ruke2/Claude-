@@ -99,11 +99,28 @@ function populateCity(cells, rng, rivals) {
   }
 }
 
-export function makeBuilding(rng, { use, floors, d, owner, grade = 'standard', year = 2026, name = null }) {
+export function makeBuilding(rng, { use, floors, d, owner, grade = 'standard', year = 2026, name = null, stack = null }) {
   const fl = Math.max(1, Math.round(floors));
   const u = USES[use];
   const fh = use === 'logi' ? 7.2 : use === 'retail' ? 5.4 : use === 'office' ? 4.1 : 3.25;
+  // 高層の建物は低層部に商業や別用途が入っているのが普通
+  let st = stack;
+  if (!st) {
+    if (use === 'mixed' && fl >= 12) {
+      const podium = Math.min(5, Math.max(2, Math.round(fl * 0.12)));
+      const top = Math.max(3, Math.round((fl - podium) * 0.34));
+      st = [{ use: 'retail', floors: podium }, { use: 'office', floors: fl - podium - top }, { use: 'resi', floors: top }];
+    } else if (fl >= 15 && (use === 'office' || use === 'resi' || use === 'rental' || use === 'hotel') && rng.chance(0.55)) {
+      const podium = Math.min(4, Math.max(2, Math.round(fl * 0.1)));
+      st = [{ use: 'retail', floors: podium }, { use, floors: fl - podium }];
+    }
+  }
+  if (st) {
+    let acc = 0;
+    for (const seg of st) { seg.from = acc + 1; seg.to = acc + seg.floors; acc += seg.floors; }
+  }
   return {
+    stack: st,
     use, floors: fl, grade, owner,
     facade: rng.pick(use === 'logi' ? ['panel', 'panel', 'grid'] : use === 'house' ? ['brick', 'panel', 'stone'] : FACADES),
     height: fl * fh,

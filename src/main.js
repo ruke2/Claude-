@@ -482,11 +482,12 @@ function handleAction(act, id) {
 // ------------------------------------------------------------
 //  アクション
 // ------------------------------------------------------------
-function startProject(cell, use, grade, brandId) {
+function startProject(cell, use, grade, brandId, stack) {
   const err = canStart(G, cell);
   if (err) return toast(err, 'bad');
   const rng = new RNG(G.rngState ^ (G.week * 31337));
-  const pj = simStart(G, cell, use, grade, rng, G.news, brandId);
+  const pj = simStart(G, cell, use, grade, rng, G.news, brandId, stack);
+  if (!pj) return toast('この構成では計画を作れない', 'bad');
   G.rngState = rng.s;
   R.invalidate();
   toast(`「${pj.name}」に着工した`, 'good');

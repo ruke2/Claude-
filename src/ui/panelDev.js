@@ -4,8 +4,8 @@
 import { money, num, pct } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
-import { feasibility, canStart } from '../sim/project.js';
-import { landAppraisal } from '../sim/valuation.js';
+import { feasibility, feasibilityStack, canStart } from '../sim/project.js';
+import { landAppraisal, maxFloorsFor, STACK_RULE } from '../sim/valuation.js';
 import { weeksLabel } from '../core/time.js';
 import { brandsFor, brandEffect, BRAND_CATEGORIES } from '../sim/brands.js';
 import { orgPower, projectCapacity } from '../sim/hr.js';
@@ -79,6 +79,30 @@ export function bestPlan(g, c) {
   return best;
 }
 
+/** 地区の適性から複合構成を提案する */
+export function recommendStack(g, cell) {
+  const d = DISTRICTS[cell.d];
+  const max = maxFloorsFor(g, cell, [{ use: 'office', floors: 10 }]);
+  const order = ['retail', 'office', 'hotel', 'resi', 'rental'];
+  const picks = order.filter(u => (d.fit[u] ?? 0) >= 0.55);
+  if (!picks.includes('retail')) picks.unshift('retail');
+  const st = [];
+  let left = Math.max(4, max);
+  const podium = Math.max(2, Math.min(4, Math.round(left * 0.12)));
+  st.push({ use: 'retail', floors: podium });
+  left -= podium;
+  const rest = picks.filter(u => u !== 'retail');
+  if (!rest.length) { st.push({ use: 'office', floors: left }); return st; }
+  const weights = rest.map(u => (d.fit[u] ?? 0.3));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  rest.forEach((u, i) => {
+    const f = i === rest.length - 1 ? left : Math.max(2, Math.round(left * weights[i] / sum));
+    st.push({ use: u, floors: Math.max(1, f) });
+    left -= f;
+  });
+  return st.filter(x => x.floors > 0);
+}
+
 // ------------------------------------------------------------
 //  企画モーダル
 // ------------------------------------------------------------
@@ -86,6 +110,7 @@ export function openPlan(g, cell, ctx) {
   const d = DISTRICTS[cell.d];
   const rec = bestPlan(g, cell);
   let use = rec.use, grade = rec.grade, brandId = null;
+  let stack = recommendStack(g, cell);
 
   openModal(`事業計画 — ${d.name} ${num(cell.area)}坪`, build(), []);
   bind();
@@ -93,8 +118,10 @@ export function openPlan(g, cell, ctx) {
   function build() {
     const avail = brandsFor(g, use);
     if (brandId && !avail.some(b => b.id === brandId)) brandId = null;
-    const plan = feasibility(g, cell, use, grade, brandId);
+    const isMixed = use === 'mixed';
+    const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId) : feasibility(g, cell, use, grade, brandId);
     const bf = brandEffect(g, brandId);
+    if (!plan) return '<div class="empty">構成を1つ以上指定すること</div>';
     const err = canStart(g, cell);
     const equity = Math.max(0, plan.buildCost - Math.max(0, g.cash - 500));
     const risks = (cell.risks || []).filter(r => r.bad);
@@ -128,6 +155,8 @@ export function openPlan(g, cell, ctx) {
           : 'ブランドを冠すると単価と契約速度が上がり、供給実績がブランドを育てる。')
         : `この用途（${USES[use].name}）に使えるブランドがない。ブランドタブから立ち上げられる。`}</div>
     </div>
+
+    ${isMixed ? stackEditor(plan) : ''}
 
     ${risks.length || goods.length ? `<div class="sec">
       <div class="sec-t"><span>この土地の条件</span></div>
@@ -171,8 +200,48 @@ export function openPlan(g, cell, ctx) {
     </div>
 
     ${err ? `<div class="card" style="border-color:rgba(255,107,122,.4)"><div class="card-s" style="color:var(--red)">${err}</div></div>` : ''}
+    ${isMixed && plan.over ? `<div class="card" style="border-color:rgba(255,107,122,.5)"><div class="card-s" style="color:var(--red)">容積率を超過している。延床${num(plan.gfa)}坪に対し、この敷地で建てられるのは${num(plan.maxGfa)}坪までである。階数を減らすこと。</div></div>` : ''}
     <div class="btnrow">
-      <button class="btn primary wide" data-start="1" ${err ? 'disabled' : ''}>この計画で着工する</button>
+      <button class="btn primary wide" data-start="1" ${err || (isMixed && plan.over) ? 'disabled' : ''}>この計画で着工する</button>
+    </div>`;
+  }
+
+  function stackEditor(plan) {
+    const maxF = maxFloorsFor(g, cell, stack);
+    const ratio = plan.gfa / Math.max(1, plan.maxGfa);
+    const rows = plan.stack.slice().reverse().map((seg) => {
+      const idx = stack.findIndex(x => x.use === seg.use && x.floors === seg.floors && x.from === undefined) >= 0 ? -1 : -1;
+      const realIdx = plan.stack.indexOf(seg);
+      const R = STACK_RULE[seg.use] || {};
+      return `<div class="card" style="padding:9px 11px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <select class="segUse" data-i="${realIdx}" style="flex:1;min-width:116px;padding:5px 7px;border-radius:6px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink);font-size:12px">
+            ${['retail', 'office', 'hotel', 'resi', 'rental', 'logi'].map(u => `<option value="${u}" ${u === seg.use ? 'selected' : ''}>${USES[u].icon} ${USES[u].name}</option>`).join('')}
+          </select>
+          <button class="btn sm" data-seg="minus" data-i="${realIdx}">−</button>
+          <span style="min-width:44px;text-align:center;font-family:Oswald,sans-serif;font-size:15px">${seg.floors}F</span>
+          <button class="btn sm" data-seg="plus" data-i="${realIdx}">＋</button>
+          <button class="btn sm danger" data-seg="del" data-i="${realIdx}">×</button>
+        </div>
+        <div class="kv" style="margin-top:5px">
+          <span class="k">${seg.from}〜${seg.to}階　${R.label || ''}</span>
+          <span class="v">${seg.model === 'sale'
+        ? `分譲 ${money(seg.revenue)}（坪${(seg.price * 100).toFixed(0)}万円）`
+        : `NOI ${money(seg.noi)}／年`}　<span style="color:${seg.floorMul >= 1 ? 'var(--green)' : seg.floorMul >= 0.85 ? 'var(--ink-dim)' : 'var(--red)'}">×${seg.floorMul.toFixed(2)}</span></span>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="sec">
+      <div class="sec-t"><span>フロア構成</span><span class="note">下から積み上げる</span></div>
+      <div class="kv"><span class="k">容積消化</span><span class="v ${plan.over ? 'down' : ''}">${num(plan.gfa)}坪 / ${num(plan.maxGfa)}坪（${pct(ratio, 0)}）</span></div>
+      ${bar(Math.min(1, ratio), plan.over ? 'red' : 'gold')}
+      <div class="kv"><span class="k">総階数</span><span class="v">${plan.floors}階（この敷地の上限 約${maxF}階）</span></div>
+      <div class="kv"><span class="k">基準階の床面積</span><span class="v">${num(plan.plate)}坪</span></div>
+      <div style="margin-top:10px">${rows}</div>
+      <div class="btnrow"><button class="btn sm" data-seg="add">＋ 構成を追加する</button>
+        <button class="btn sm ghost" data-seg="auto">推奨構成に戻す</button></div>
+      <div class="hint">商業は低層、住宅は上層に置くと収益が伸びる。配置が悪いと補正が1.00を下回り、同じ床でも稼げなくなる。</div>
     </div>`;
   }
 
@@ -180,13 +249,28 @@ export function openPlan(g, cell, ctx) {
 
   function bind() {
     const body = document.getElementById('modalBody');
+    body.querySelectorAll('.segUse').forEach(el => el.onchange = e => {
+      const i = +e.target.dataset.i;
+      if (stack[i]) { stack[i].use = e.target.value; refresh(); }
+    });
+    body.querySelectorAll('[data-seg]').forEach(el => el.onclick = () => {
+      const act = el.dataset.seg, i = +el.dataset.i;
+      if (act === 'add') stack.push({ use: 'office', floors: 3 });
+      else if (act === 'auto') stack = recommendStack(g, cell);
+      else if (stack[i]) {
+        if (act === 'plus') stack[i].floors++;
+        else if (act === 'minus') stack[i].floors = Math.max(1, stack[i].floors - 1);
+        else if (act === 'del' && stack.length > 1) stack.splice(i, 1);
+      }
+      refresh();
+    });
     const su = body.querySelector('#selUse'), sg = body.querySelector('#selGrade');
     if (su) su.onchange = e => { use = e.target.value; refresh(); };
     if (sg) sg.onchange = e => { grade = e.target.value; refresh(); };
     const sb = body.querySelector('#selBrand');
     if (sb) sb.onchange = e => { brandId = e.target.value || null; refresh(); };
     const st = body.querySelector('[data-start]');
-    if (st) st.onclick = () => { ctx.startProject(cell, use, grade, brandId); closeModal(); };
+    if (st) st.onclick = () => { ctx.startProject(cell, use, grade, brandId, use === 'mixed' ? stack : null); closeModal(); };
   }
 }
 

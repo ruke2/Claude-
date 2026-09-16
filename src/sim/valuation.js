@@ -102,6 +102,148 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   return out;
 }
 
+// ------------------------------------------------------------
+//  フロアスタック（複合開発）
+// ------------------------------------------------------------
+/** 用途ごとの適正な階層帯 */
+export const STACK_RULE = {
+  retail: { label: '低層', best: [1, 6], desc: '商業は歩行者が上がってこられる低層階でこそ力を発揮する。' },
+  office: { label: '低〜中層', best: [1, 44], desc: 'オフィスは階層をあまり選ばない。基準階が広いほど効率がよい。' },
+  hotel: { label: '中〜高層', best: [5, 60], desc: 'ホテルは眺望と静粛性が価値になるため、低層階では単価が落ちる。' },
+  resi: { label: '高層', best: [7, 70], desc: '分譲住宅は上層階ほど高く売れる。低層階は価格が伸びない。' },
+  rental: { label: '中〜高層', best: [5, 70], desc: '賃貸住宅も上層階のほうが賃料が取れる。' },
+  logi: { label: '低層', best: [1, 5], desc: '物流は荷捌きの都合で低層に限られ、複合には向かない。' },
+  house: { label: '不可', best: [1, 2], desc: '戸建は複合建物には組み込めない。' },
+  mixed: { label: '—', best: [1, 70], desc: '' },
+};
+
+/** セグメントの階層による収益補正 */
+export function stackFloorMul(use, from, to, total) {
+  const R = STACK_RULE[use] || STACK_RULE.office;
+  const mid = (from + to) / 2;
+  let m = 1;
+  if (use === 'retail') m = from <= 3 ? 1.00 : from <= 6 ? 0.88 : 0.50;
+  else if (use === 'hotel') m = from >= 5 ? 0.97 + Math.min(0.08, (mid / Math.max(1, total)) * 0.10) : 0.82;
+  else if (use === 'resi' || use === 'rental') {
+    const h = mid / Math.max(1, total);
+    m = 0.82 + h * 0.32;
+    if (from <= 3) m *= 0.9;
+  } else if (use === 'office') m = 0.95 + Math.min(0.06, (mid / Math.max(1, total)) * 0.08);
+  else if (use === 'logi') m = from <= 3 ? 0.9 : 0.5;
+  else if (use === 'house') m = 0.45;
+  return m;
+}
+
+/** 複合開発の事業収支を組む
+ *  stack: [{ use, floors }] を下から順に積む
+ */
+export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
+  const d = DISTRICTS[c.d];
+  const G = GRADES[gradeId];
+  const p = orgPower(g);
+  const bf = brandEffect(g, opt.brandId);
+  const clean = (stack || []).filter(x => x && x.floors > 0);
+  if (!clean.length) return null;
+
+  // 建築面積は用途構成の加重平均
+  const totalFloors = clean.reduce((a, x) => a + x.floors, 0);
+  const cover = clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / totalFloors;
+  const plate = c.area * cover * (opt.coverMul ?? 1);      // 基準階の床面積（坪）
+
+  const fitAvg = clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / totalFloors;
+  const mixedBonus = 1.18;                                  // 総合設計制度の容積割増
+  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
+  const maxGfa = c.area * (c.far / 100) * farUse;
+  const gfa = plate * totalFloors;
+
+  const heightM = clean.reduce((a, x) => a + FLOOR_H[x.use] * x.floors, 0);
+  const brandMul = 1 + (g.company.brand - 40) / 420;
+
+  const segs = [];
+  let cursor = 1, saleRevenue = 0, saleArea = 0, units = 0, noi = 0, nra = 0, grossRent = 0, build = 0;
+
+  for (const seg of clean) {
+    const from = cursor, to = cursor + seg.floors - 1;
+    cursor = to + 1;
+    const U = USES[seg.use];
+    const area = plate * seg.floors;
+    const fit = d.fit[seg.use] ?? 0.3;
+    const fitMul = 0.74 + fit * 0.28;
+    const fmul = stackFloorMul(seg.use, from, to, totalFloors);
+    const usable = area * U.efficiency;
+
+    // 建設費（複合は構造が複雑になるため割増）
+    const highRise = 1 + Math.max(0, to - 28) * 0.0045;
+    const costCut = 1 - subEffect(g, 'costCut') - clamp((p.cons.quality - 55) / 100 * 0.10, -0.05, 0.10);
+    const segBuild = area * U.build * 1.08 * g.market.costIdx * G.costMul * highRise * costCut;
+    build += segBuild;
+
+    const rec = { ...seg, from, to, area: Math.round(area), usable: Math.round(usable), floorMul: fmul, build: Math.round(segBuild * 1.085) };
+
+    if (U.model === 'sale') {
+      const unitPrice = d.priceResi * G.priceMul * g.market.priceIdx
+        * (0.88 + (g.market.demand[seg.use] ?? 1) * 0.16) * (0.9 + c.station * 0.2)
+        * brandMul * fitMul * fmul * bf.price * (seg.use === 'house' ? 0.95 : 1);
+      rec.model = 'sale';
+      rec.price = Math.round(unitPrice * 1000) / 1000;
+      rec.revenue = Math.round(usable * unitPrice);
+      rec.units = Math.max(1, Math.round(usable / 26));
+      saleRevenue += rec.revenue; saleArea += usable; units += rec.units;
+    } else {
+      const rentKey = { office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi', rental: 'rentResi', resi: 'rentResi' }[seg.use] || 'rentOffice';
+      const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
+      const rent = baseRent * G.priceMul * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2)
+        * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
+      rec.model = 'lease';
+      rec.rent = Math.round(rent);
+      rec.grossRent = Math.round(usable * rent * 12 / 1e6);
+      rec.noi = Math.round(rec.grossRent * 0.76 * 0.95);
+      nra += usable; grossRent += rec.grossRent; noi += rec.noi;
+    }
+    segs.push(rec);
+  }
+
+  const softCost = build * 0.085;
+  const buildCost = Math.round(build + softCost);
+  const sizePenalty = Math.floor(totalFloors / 14) * 6 + (gfa > 20000 ? 8 : 0) + 12;
+  const speedUp = subEffect(g, 'speed') + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
+  const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp)));
+
+  const capRate = clamp(d.capRate + 0.0025 + g.market.capShift - subEffect(g, 'exitPremium') * 0.05, 0.024, 0.09);
+  const assetValue = noi > 0 ? Math.round(noi / capRate) : 0;
+
+  const out = {
+    stack: segs, gfa: Math.round(gfa), maxGfa: Math.round(maxGfa), plate: Math.round(plate),
+    floors: totalFloors, heightM: Math.round(heightM * 10) / 10,
+    farUse, over: gfa > maxGfa * 1.001,
+    buildCost, weeks, use: 'mixed', grade: gradeId, brandId: opt.brandId || null,
+    saleRevenue: Math.round(saleRevenue), saleArea: Math.round(saleArea), units,
+    nra: Math.round(nra), grossRent, noi, capRate, assetValue,
+    sellable: Math.round(saleArea + nra),
+  };
+  out.landCost = opt.landCost ?? landAppraisal(g, c);
+  out.totalCost = out.landCost + out.buildCost;
+  out.grossValue = out.saleRevenue + out.assetValue;
+  out.profit = out.grossValue - out.totalCost - out.saleRevenue * 0.04;
+  out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
+  out.yieldOnCost = noi ? noi / Math.max(1, out.totalCost) : null;
+  out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * 0.04);
+  return out;
+}
+
+/** 容積率から積める最大階数を求める */
+export function maxFloorsFor(g, c, stack) {
+  const clean = (stack || []).filter(x => x && x.floors > 0);
+  const p = orgPower(g);
+  const d = DISTRICTS[c.d];
+  const tf = clean.reduce((a, x) => a + x.floors, 0) || 1;
+  const cover = clean.length ? clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / tf : 0.4;
+  const fitAvg = clean.length ? clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / tf : 0.5;
+  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * 1.18;
+  const plate = c.area * cover;
+  return Math.max(1, Math.floor(c.area * (c.far / 100) * farUse / Math.max(1, plate)));
+}
+
 /** 子会社・買収による効果を合算 */
 export function subEffect(g, key) {
   let v = 0;
