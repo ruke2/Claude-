@@ -37,7 +37,7 @@ function buildMap(rng) {
         const dd = DISTRICTS[d];
         const r1 = hash2(x, y, 1), r2 = hash2(x, y, 2), r3 = hash2(x, y, 3);
         // 面積：地区ごとの区画粒度
-        const areaBase = { T: 1900, B: 1650, A: 420, K: 380, N: 640, J: 2600 }[d];
+        const areaBase = { T: 1900, B: 1650, A: 420, K: 380, N: 640, J: 2600, I: 1500, S: 900 }[d];
         cell.area = Math.round(areaBase * (0.6 + r1 * 0.95) / 10) * 10;
         cell.far = Math.round((dd.farRange[0] + r2 * (dd.farRange[1] - dd.farRange[0])) / 50) * 50;
         // 駅距離スコア：地区の駅力 ± ばらつき
@@ -54,11 +54,11 @@ function buildMap(rng) {
 function bldgName(rng, use, d) {
   const dd = DISTRICTS[d];
   if (use === 'office' || use === 'mixed') {
-    return rng.pick(['常盤', '汐見', '青葉', '神楽', '北野', '城東', dd.short, '中央', '新都', '湊']) + rng.pick(OFFICE_SUFFIX);
+    return rng.pick(['常盤', '汐見', '青葉', '神楽', '北野', '城東', '港南', '桜川', dd.short, '中央', '新都', '湊']) + rng.pick(OFFICE_SUFFIX);
   }
   if (use === 'logi') return `${dd.short}ロジスティクスセンター${rng.pick(['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'])}`;
-  if (use === 'hotel') return rng.pick(['ホテル', 'グランドホテル', 'ステイ']) + rng.pick(['湊都', '常盤', '神楽', '汐見', 'ベイ']);
-  if (use === 'retail') return rng.pick(['モール', 'プラザ', 'アベニュー', 'マルシェ']) + rng.pick(['湊', '汐見', '神楽', '北野']);
+  if (use === 'hotel') return rng.pick(['ホテル', 'グランドホテル', 'ステイ', 'ザ・']) + rng.pick(['湊都', '常盤', '神楽', '汐見', 'ベイ', '港南']);
+  if (use === 'retail') return rng.pick(['モール', 'プラザ', 'アベニュー', 'マルシェ']) + rng.pick(['湊', '汐見', '神楽', '北野', '桜川']);
   if (use === 'house') return `${dd.short}${rng.pick(['タウン', 'ヒルズ', 'ガーデンズ'])}`;
   return rng.pick(BRAND_PREFIX) + dd.short + rng.pick(BRAND_CORE);
 }
@@ -67,6 +67,7 @@ function bldgName(rng, use, d) {
 function populateCity(cells, rng, rivals) {
   const HEIGHT = {
     T: [14, 54], B: [6, 44], A: [2, 5], K: [3, 13], N: [3, 15], J: [1, 5],
+    I: [8, 40], S: [3, 18],
   };
   const USE_POOL = {
     T: ['office', 'office', 'office', 'mixed', 'retail', 'hotel', 'rental'],
@@ -75,6 +76,8 @@ function populateCity(cells, rng, rivals) {
     K: ['retail', 'hotel', 'office', 'rental', 'retail'],
     N: ['house', 'resi', 'rental', 'retail', 'house'],
     J: ['logi', 'logi', 'logi', 'house', 'retail'],
+    I: ['office', 'hotel', 'office', 'mixed', 'retail', 'rental'],
+    S: ['office', 'rental', 'retail', 'resi', 'office'],
   };
   for (const c of cells) {
     if (c.terrain !== TERRAIN.LOT || !c.d) continue;

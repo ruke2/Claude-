@@ -7,14 +7,14 @@ import { TIMES, WEATHERS, timeOfMonth, hsl, shade } from './palette.js';
 import { TILE_W, TILE_H, Z_UNIT, toScreen, fromScreen, depthKey, diamond, rotate } from './iso.js';
 import { renderBuilding } from './buildings.js';
 
-export const ZOOM_STEPS = [0.42, 0.55, 0.7, 0.88, 1.1, 1.38];
+export const ZOOM_STEPS = [0.30, 0.40, 0.52, 0.66, 0.84, 1.06, 1.34];
 
 export class CityRenderer {
   constructor(canvas, game) {
     this.cv = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.g = game;
-    this.cam = { x: 0, y: 0, zoomIdx: 2, rot: 0 };
+    this.cam = { x: 0, y: 0, zoomIdx: 1, rot: 0 };
     this.time = timeOfMonth(game.month || 1);
     this.weather = WEATHERS.clear;
     this.layer = 'normal';        // normal | owner | value

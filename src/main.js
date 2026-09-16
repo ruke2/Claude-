@@ -206,7 +206,7 @@ function bindInput() {
     if (v === 'zoomin') R.zoomBy(1);
     if (v === 'zoomout') R.zoomBy(-1);
     if (v === 'rotate') R.rotateBy(1);
-    if (v === 'reset') { R.cam.zoomIdx = 3; R.cam.rot = 0; R.invalidate(); R.center(); }
+    if (v === 'reset') { R.cam.zoomIdx = 1; R.cam.rot = 0; R.invalidate(); R.center(); }
     if (v === 'layer') {
       R.layer = R.layer === 'normal' ? 'owner' : R.layer === 'owner' ? 'value' : 'normal';
       toast({ normal: '通常表示', owner: '所有者の色分け表示', value: '地価ヒートマップ表示' }[R.layer]);
