@@ -1,0 +1,286 @@
+// ============================================================
+//  財務 — 四半期決算・BS・資金調達・株価
+// ============================================================
+import { clamp, clamp01 } from '../core/format.js';
+import { blankPL } from '../core/state.js';
+import { orgPower, personnelCost } from './hr.js';
+import { holdingCost } from './land.js';
+import { landAppraisal, assetValue } from './valuation.js';
+import { TERRAIN } from '../data/city.js';
+
+export const RATINGS = [
+  { id: 'AAA', min: 0.50, spread: 0.0020, label: '最上級。調達コストは業界最安水準。' },
+  { id: 'AA',  min: 0.40, spread: 0.0034, label: '極めて高い信用力。' },
+  { id: 'A',   min: 0.30, spread: 0.0058, label: '良好な信用力。大型調達も問題ない。' },
+  { id: 'BBB', min: 0.20, spread: 0.0092, label: '投資適格の下限。銀行は慎重になる。' },
+  { id: 'BB',  min: 0.12, spread: 0.0162, label: '投機的水準。金利が重い。' },
+  { id: 'B',   min: -9,   spread: 0.0270, label: '危険水域。新規調達は極めて難しい。' },
+];
+
+export function ratingOf(g) {
+  const bs = buildBS(g);
+  const er = bs.total > 0 ? bs.equity / bs.total : 0;
+  const profitable = g.finance.history.slice(-4).filter(h => h.pl.net > 0).length;
+  let r = RATINGS.find(x => er >= x.min) || RATINGS[RATINGS.length - 1];
+  if (profitable === 0 && g.finance.history.length >= 4) {
+    const i = RATINGS.indexOf(r);
+    r = RATINGS[Math.min(RATINGS.length - 1, i + 1)];
+  }
+  return r;
+}
+
+export function effectiveRate(g) {
+  const od = overdraft(g);
+  const penalty = g.debt > 0 ? (od / g.debt) * 0.035 : 0;
+  return g.market.rate + ratingOf(g).spread + penalty;
+}
+
+/** 借入可能上限（コーポレート枠＋不動産担保によるプロジェクト枠） */
+export function debtCapacity(g) {
+  const p = orgPower(g);
+  const lev = 1.05 + clamp(p.fin.quality / 90, 0, 1.0) + (g.company.listed ? 0.5 : 0);
+  const bs = buildBS(g);
+  const ltv = 0.62 + clamp(p.fin.quality / 620, 0, 0.1);
+  const collateral = (bs.inventory + bs.land + bs.cip + bs.rental) * ltv + bs.hq * 0.45;
+  return Math.round(Math.max(0, bs.equity * lev + collateral));
+}
+
+/** 借入枠を超えた分（当座借越）— 高い金利がかかる */
+export function overdraft(g) {
+  return Math.max(0, g.debt - debtCapacity(g));
+}
+
+/** 貸借対照表を組み立てる */
+export function buildBS(g) {
+  let inventory = 0;
+  for (const inv of g.inventory) inventory += inv.cost * (1 - inv.soldRatio);
+  let land = 0;
+  for (const c of g.cells) {
+    if (c.owner === 'player' && !c.projectId && !c.assetId && !c.invId && !c.isHQ) land += (c.bookValue ?? c.lastPaid ?? 0);
+  }
+  let cip = 0;
+  for (const p of g.projects) cip += p.spent + p.landCost;
+  let rental = 0;
+  for (const a of g.assets) rental += a.bookLand + a.bookBuild;
+  const subs = g.subsidiaries.reduce((s, x) => s + (x.bookValue || 0), 0);
+  const total = g.cash + inventory + land + cip + rental + g.hqBook + g.goodwill + subs;
+  return {
+    cash: g.cash, inventory: Math.round(inventory), land: Math.round(land), cip: Math.round(cip),
+    rental: Math.round(rental), hq: g.hqBook, goodwill: g.goodwill, subs,
+    total: Math.round(total), debt: g.debt, equity: Math.round(total - g.debt),
+  };
+}
+
+/** 保有不動産の含み益 */
+export function unrealizedGain(g) {
+  let mv = 0, bv = 0;
+  for (const a of g.assets) { mv += assetValue(g, a); bv += a.bookLand + a.bookBuild; }
+  for (const c of g.cells) {
+    if (c.owner === 'player' && !c.projectId && !c.assetId && !c.invId && !c.isHQ) {
+      mv += landAppraisal(g, c); bv += (c.bookValue ?? c.lastPaid ?? 0);
+    }
+  }
+  return { mv: Math.round(mv), bv: Math.round(bv), gain: Math.round(mv - bv) };
+}
+
+/** 借入 */
+export function borrow(g, amount, news) {
+  const cap = debtCapacity(g);
+  const room = Math.max(0, cap - g.debt);
+  const amt = Math.min(amount, room);
+  if (amt <= 0) return 0;
+  g.debt += amt; g.cash += amt;
+  news && news.push({ icon: '🏦', type: 'fin', text: `${Math.round(amt / 100).toLocaleString()}億円を借り入れた（金利 ${(effectiveRate(g) * 100).toFixed(2)}%）。` });
+  return amt;
+}
+
+export function repay(g, amount, news) {
+  const amt = Math.min(amount, g.debt, Math.max(0, g.cash));
+  if (amt <= 0) return 0;
+  g.debt -= amt; g.cash -= amt;
+  news && news.push({ icon: '🏦', type: 'fin', text: `借入金${Math.round(amt / 100).toLocaleString()}億円を返済した。` });
+  return amt;
+}
+
+/** 上場の可否 */
+export function ipoStatus(g) {
+  if (g.company.listed) return { ok: false, reason: '上場済み' };
+  const bs = buildBS(g);
+  const h = g.finance.history;
+  const profits = h.slice(-8).filter(x => x.pl.net > 0).length;
+  const reqs = [
+    { label: '純資産 300億円以上', ok: bs.equity >= 30000, now: `${Math.round(bs.equity / 100)}億円` },
+    { label: '直近8四半期のうち6期以上が黒字', ok: profits >= 6, now: `${profits}期` },
+    { label: '竣工実績 3件以上', ok: g.kpi.builtCount >= 3, now: `${g.kpi.builtCount}件` },
+    { label: '従業員 60名以上', ok: g.staff.length >= 60, now: `${g.staff.length}名` },
+  ];
+  return { ok: reqs.every(r => r.ok), reqs };
+}
+
+export function doIPO(g, news) {
+  const bs = buildBS(g);
+  const newShares = Math.round(g.company.shares * 0.28);
+  const price = sharePrice(g) * 0.88;
+  const raise = Math.round(price * newShares / 1e6);
+  g.company.shares += newShares;
+  g.company.listed = true;
+  g.cash += raise;
+  g.company.brand = clamp(g.company.brand + 8, 0, 100);
+  news && news.push({ icon: '🔔', type: 'fin', text: `東証プライム市場に新規上場。公募${(newShares / 10000).toFixed(0)}万株で${Math.round(raise / 100).toLocaleString()}億円を調達した。` });
+  return raise;
+}
+
+/** 公募増資 */
+export function issueShares(g, ratio, news) {
+  const newShares = Math.round(g.company.shares * ratio);
+  const price = sharePrice(g) * 0.92;
+  const raise = Math.round(price * newShares / 1e6);
+  g.company.shares += newShares;
+  g.cash += raise;
+  news && news.push({ icon: '📑', type: 'fin', text: `公募増資により${Math.round(raise / 100).toLocaleString()}億円を調達した（希薄化 ${(ratio * 100).toFixed(0)}%）。` });
+  return raise;
+}
+
+/** 1株あたり株価（円） */
+export function sharePrice(g) {
+  const bs = buildBS(g);
+  const h = g.finance.history.slice(-4);
+  const annualNet = h.length ? h.reduce((a, x) => a + x.pl.net, 0) * (4 / h.length) : 0;
+  const growth = growthRate(g);
+  const per = clamp(11 + growth * 55 + g.company.brand / 11, 7, 30);
+  const eps = annualNet * 1e6 / g.company.shares;
+  const bps = bs.equity * 1e6 / g.company.shares;
+  const ug = unrealizedGain(g).gain * 1e6 / g.company.shares;
+  const byEarn = eps * per;
+  const byAsset = (bps + ug * 0.5) * clamp(0.65 + g.company.brand / 200, 0.6, 1.25);
+  return Math.max(30, Math.round(byEarn * 0.58 + byAsset * 0.42));
+}
+
+export function marketCap(g) { return Math.round(sharePrice(g) * g.company.shares / 1e6); }
+
+/** 直近の売上成長率（年率） */
+export function growthRate(g) {
+  const h = g.finance.history;
+  if (h.length < 8) return 0.08;
+  const recent = h.slice(-4).reduce((a, x) => a + x.pl.revenue, 0);
+  const prev = h.slice(-8, -4).reduce((a, x) => a + x.pl.revenue, 0);
+  if (prev <= 0) return 0.3;
+  return clamp((recent - prev) / prev, -0.5, 1.2);
+}
+
+// ------------------------------------------------------------
+//  四半期決算
+// ------------------------------------------------------------
+export function closeQuarter(g, rng, news) {
+  const acc = g.finance.quarterAcc;
+  const p = orgPower(g);
+
+  // --- 販管費 ---
+  const personnel = personnelCost(g);
+  const fixed = 120 + g.assets.length * 12 + g.inventory.length * 8 + g.projects.length * 16
+    + g.subsidiaries.reduce((s, x) => s + x.upkeep / 4, 0);
+  const ad = Math.round(acc.revSale * 0.028 + g.inventory.length * 22);
+  const dxCut = g.hrPolicy.programs.dx ? 0.94 : 1;
+  const sga = Math.round((personnel + fixed + ad) * dxCut);
+  acc.personnel = Math.round(personnel);
+  acc.sga = sga;
+  g.cash -= sga;
+
+  // --- 用地の保有コスト ---
+  let hold = 0;
+  for (const c of g.cells) {
+    if (c.owner === 'player' && !c.assetId && !c.invId && !c.isHQ) hold += holdingCost(g, c);
+  }
+  hold = Math.round(hold);
+  acc.cogsOther += hold;
+  g.cash -= hold;
+
+  // --- 支払利息 ---
+  let emergency = 0;
+  const rate = effectiveRate(g);
+  const interest = Math.round(g.debt * rate / 4);
+  acc.interest = interest;
+  g.cash -= interest;
+
+  // --- PL確定 ---
+  const revenue = acc.revSale + acc.revLease + acc.revFee + acc.revOther;
+  const cogs = acc.cogsSale + acc.cogsLease + acc.cogsOther;
+  const gross = revenue - cogs;
+  const op = gross - sga;
+  const nonop = -interest;
+  const ordinary = op + nonop;
+  const extra = acc.gainSale - acc.impairment + acc.extraordinary;
+  const pretax = ordinary + extra;
+  const tax = pretax > 0 ? Math.round(pretax * 0.305) : 0;
+  acc.tax = tax;
+  g.cash -= tax;
+  const net = pretax - tax;
+
+  // --- 資金不足なら自動で借り入れる ---
+  if (g.cash < 0) {
+    const need = Math.ceil(-g.cash / 100) * 100 + 150;
+    const room = Math.max(0, debtCapacity(g) - g.debt);
+    const normal = Math.min(need, room);
+    if (normal > 0) { g.debt += normal; g.cash += normal; }
+    const short = need - normal;
+    if (short > 0) {
+      // 枠を超える当座借越。ペナルティ金利がかかり、続けば破綻する
+      g.debt += short; g.cash += short;
+      g.crisis = (g.crisis || 0) + 1;
+      news.push({
+        icon: '🚨', type: 'fin',
+        text: `借入枠を${Math.round(short / 100).toLocaleString()}億円超過して当座借越を実行した。ペナルティ金利がかかっている（${g.crisis}期連続）。`,
+      });
+    } else {
+      g.crisis = 0;
+      news.push({ icon: '🏦', type: 'fin', text: `運転資金として${Math.round(normal / 100).toLocaleString()}億円を緊急調達した。` });
+    }
+    emergency = need;
+  } else if (g.crisis && overdraft(g) <= 0) g.crisis = 0;
+
+
+  const pl = {
+    revenue, revSale: acc.revSale, revLease: acc.revLease, revFee: acc.revFee,
+    cogs, cogsSale: acc.cogsSale, cogsLease: acc.cogsLease, cogsOther: acc.cogsOther,
+    gross, sga, personnel: acc.personnel, op, interest, ordinary,
+    gainSale: acc.gainSale, impairment: acc.impairment, extra, pretax, tax, net,
+    landSpend: acc.landSpend, buildSpend: acc.buildSpend, emergency,
+  };
+  const bs = buildBS(g);
+  g.equity = bs.equity;
+  g.finance.pl = pl; g.finance.bs = bs;
+  g.finance.history.push({ year: g.year, q: g.quarter, turn: g.turn, pl, bs, rating: ratingOf(g).id, price: g.company.listed ? sharePrice(g) : 0 });
+  if (g.finance.history.length > 200) g.finance.history.shift();
+  g.kpi.cumRevenue += revenue; g.kpi.cumProfit += net;
+  g.kpi.bestQuarter = Math.max(g.kpi.bestQuarter, net);
+  g.finance.quarterAcc = blankPL();
+  return pl;
+}
+
+/** 直近4四半期合計（年換算の実績） */
+export function ttm(g) {
+  const h = g.finance.history.slice(-4);
+  const z = { revenue: 0, op: 0, ordinary: 0, net: 0, revSale: 0, revLease: 0, revFee: 0 };
+  for (const x of h) for (const k in z) z[k] += x.pl[k] || 0;
+  return z;
+}
+
+/** 主要経営指標 */
+export function kpis(g) {
+  const t = ttm(g);
+  const bs = g.finance.bs || buildBS(g);
+  return {
+    revenue: t.revenue, op: t.op, net: t.net,
+    opMargin: t.revenue > 0 ? t.op / t.revenue : 0,
+    roe: bs.equity > 0 ? t.net / bs.equity : 0,
+    roa: bs.total > 0 ? t.net / bs.total : 0,
+    equityRatio: bs.total > 0 ? bs.equity / bs.total : 0,
+    de: bs.equity > 0 ? g.debt / bs.equity : 0,
+    eps: t.net * 1e6 / g.company.shares,
+    bps: bs.equity * 1e6 / g.company.shares,
+    price: sharePrice(g), cap: marketCap(g),
+    rating: ratingOf(g), rate: effectiveRate(g),
+    capacity: debtCapacity(g), room: Math.max(0, debtCapacity(g) - g.debt),
+    unrealized: unrealizedGain(g),
+  };
+}
