@@ -95,7 +95,7 @@ export function stepAssets(g, rng, news) {
     const noiY = currentNOI(g, a);
     a.noi = noiY;
     const grossQ = Math.round(a.nra * a.rent * 12 / 1e6 * a.occupancy / 4);
-    const opexQ = Math.round(grossQ * 0.27);
+    const opexQ = Math.round(grossQ * 0.24);
     const deprQ = Math.round(a.bookBuild / 200);      // 50年定額
     a.bookBuild = Math.max(0, a.bookBuild - deprQ);
     a.cumNoi += grossQ - opexQ;

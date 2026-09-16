@@ -86,8 +86,8 @@ export function nextTurn(g) {
   g.rngState = rng.s;
   if (g.finance.bs.equity <= 0) {
     g.gameOver = { type: 'bankrupt', title: '債務超過', text: '純資産がマイナスとなり、会社は事業の継続が不可能になった。' };
-  } else if ((g.crisis || 0) >= 3) {
-    g.gameOver = { type: 'default', title: '資金ショート', text: '3四半期連続で資金繰りがつかず、支払不能に陥った。' };
+  } else if ((g.crisis || 0) >= 4) {
+    g.gameOver = { type: 'default', title: '資金ショート', text: '4四半期連続で借入枠を超過したまま資金繰りがつかず、支払不能に陥った。' };
   }
   g.pendingReport = report;
   return report;

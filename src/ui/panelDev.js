@@ -34,7 +34,10 @@ export function render(g, ctx) {
       ${pj.delay ? `<div class="kv"><span class="k">工期</span><span class="v ${pj.delay > 0 ? 'down' : 'up'}">${pj.delay > 0 ? `${pj.delay}期 遅延` : `${-pj.delay}期 前倒し`}</span></div>` : ''}
       ${pj.saleArea ? `<div class="kv"><span class="k">事前契約率（青田売り）</span><span class="v">${(pj.preContract * 100).toFixed(0)}%</span></div>${bar(pj.preContract)}` : ''}
       ${pj.events.length ? `<div class="hint">${pj.events.slice(-2).map(e => `${e.icon} ${e.text}`).join('<br>')}</div>` : ''}
-      ${pj.saleArea ? `<div class="btnrow"><button class="btn sm" data-act="dev.price" data-id="${pj.id}">販売価格を調整（現在 坪${(pj.salePrice * 100).toFixed(0)}万円）</button></div>` : ''}
+      <div class="btnrow">
+        <button class="btn sm" data-act="focus" data-id="${pj.cellId}">📍 地図で見る</button>
+        ${pj.saleArea ? `<button class="btn sm" data-act="dev.price" data-id="${pj.id}">販売価格を調整（坪${(pj.salePrice * 100).toFixed(0)}万円）</button>` : ''}
+      </div>
     </div>`;
   }).join('') : empty('進行中の開発案件はない');
 
@@ -45,7 +48,7 @@ export function render(g, ctx) {
       <div class="card-t"><span class="card-n">${d.name}　${num(c.area)}坪</span>${chip('企画待ち', 'amber')}</div>
       <div class="card-s">容積率 ${c.far}%／推奨 ${USES[best.use].name}・${GRADES[best.grade].name}<br>
         想定事業利益 <b class="${best.profit >= 0 ? 'up' : 'down'}">${money(best.profit, { sign: true })}</b>（利益率 ${pct(best.margin)}）</div>
-      <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業計画を作る</button></div>
+      <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業計画を作る</button><button class="btn sm" data-act="focus" data-id="${c.id}">📍 地図で見る</button></div>
     </div>`;
   }).join('') : empty('企画待ちの用地はない。用地タブから土地を仕入れること。');
 

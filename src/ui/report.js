@@ -1,7 +1,7 @@
 // ============================================================
 //  四半期レポート
 // ============================================================
-import { money, num, pct, dcls } from '../core/format.js';
+import { money, moneyHTML, num, pct, dcls } from '../core/format.js';
 import { mini, kv, chip, section, empty } from './dom.js';
 import { SEASON } from '../core/format.js';
 import { DISTRICTS, USES } from '../data/city.js';
@@ -52,16 +52,16 @@ export function buildReport(g, rep) {
 
   return `
   <div class="rep-hero">
-    ${mini('売上高', money(pl.revenue, { unit: false }), prev ? `前期比 ${money(d(pl.revenue, prev.pl.revenue), { sign: true })}` : '億円')}
-    ${mini('営業利益', money(pl.op, { unit: false }), prev ? `前期比 ${money(d(pl.op, prev.pl.op), { sign: true })}` : '', pl.op >= 0 ? 'var(--green)' : 'var(--red)')}
-    ${mini('当期純利益', money(pl.net, { unit: false }), '', pl.net >= 0 ? 'var(--green)' : 'var(--red)')}
-    ${mini('純資産', money(g.finance.bs.equity, { unit: false }), `自己資本比率 ${pct(rep.kpi.equityRatio, 0)}`)}
+    ${mini('売上高', moneyHTML(pl.revenue), prev ? `前期比 ${money(d(pl.revenue, prev.pl.revenue), { sign: true })}` : '')}
+    ${mini('営業利益', moneyHTML(pl.op), prev ? `前期比 ${money(d(pl.op, prev.pl.op), { sign: true })}` : '', pl.op >= 0 ? 'var(--green)' : 'var(--red)')}
+    ${mini('当期純利益', moneyHTML(pl.net), pl.tax ? `法人税等 ${money(pl.tax)}` : '', pl.net >= 0 ? 'var(--green)' : 'var(--red)')}
+    ${mini('純資産', moneyHTML(g.finance.bs.equity), `自己資本比率 ${pct(rep.kpi.equityRatio, 0)}`)}
   </div>
 
   <div class="grid3" style="margin-bottom:18px">
     ${mini('市況局面', rep.phase.name, `センチメント ${(g.market.sentiment * 100).toFixed(0)}`)}
     ${mini('業界順位', rank ? `${rank.rank}位` : '—', '売上高ベース')}
-    ${mini('現預金', money(g.cash, { unit: false }), `有利子負債 ${money(g.debt)}`)}
+    ${mini('現預金', moneyHTML(g.cash), `有利子負債 ${money(g.debt)}`)}
   </div>
 
   ${rep.shocks.length ? `<div class="sec">

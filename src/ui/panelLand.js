@@ -54,7 +54,7 @@ export function render(g, ctx) {
         保有コスト ${money(holdingCost(g, c))}／四半期
         ${(c.risks || []).filter(r => r.bad).length ? `<br><span style="color:var(--red)">未解消の課題：${(c.risks || []).filter(r => r.bad).map(r => r.name).join('・')}</span>` : ''}
       </div>
-      <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業化を検討する</button></div>
+      <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業化を検討する</button><button class="btn sm" data-act="focus" data-id="${c.id}">📍 地図で見る</button></div>
     </div>`;
   }).join('') : empty('未着工の保有地はない');
 

@@ -83,7 +83,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
     out.rent = Math.round(rent);                             // 円/坪/月
     out.nra = Math.round(sellable * leaseShare);
     out.grossRent = Math.round(out.nra * rent * 12 / 1e6);    // 百万円/年
-    out.noi = Math.round(out.grossRent * 0.73 * 0.95);   // 標準稼働率95%前提
+    out.noi = Math.round(out.grossRent * 0.76 * 0.95);   // 標準稼働率95%前提
     out.capRate = clamp(d.capRate + (CAP_SPREAD[useId] ?? 0) + g.market.capShift + (fit < 0.5 ? 0.006 : 0) - subEffect(g, 'exitPremium') * 0.05, 0.024, 0.09);
     out.assetValue = Math.round(out.noi / out.capRate);
   }
@@ -119,6 +119,6 @@ export function assetValue(g, a) {
 export function currentNOI(g, a) {
   const dem = g.market.demand[a.use] ?? 1;
   const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
-  const opex = 0.27 - subEffect(g, 'feeRate') * 2;
-  return Math.round(gross * (1 - clamp(opex, 0.18, 0.32)) * (a.use === 'hotel' ? (0.7 + dem * 0.35) : 1));
+  const opex = 0.24 - subEffect(g, 'feeRate') * 2;
+  return Math.round(gross * (1 - clamp(opex, 0.16, 0.30)) * (a.use === 'hotel' ? (0.7 + dem * 0.35) : 1));
 }

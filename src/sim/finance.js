@@ -12,9 +12,9 @@ export const RATINGS = [
   { id: 'AAA', min: 0.50, spread: 0.0020, label: '最上級。調達コストは業界最安水準。' },
   { id: 'AA',  min: 0.40, spread: 0.0034, label: '極めて高い信用力。' },
   { id: 'A',   min: 0.30, spread: 0.0058, label: '良好な信用力。大型調達も問題ない。' },
-  { id: 'BBB', min: 0.20, spread: 0.0092, label: '投資適格の下限。銀行は慎重になる。' },
+  { id: 'BBB', min: 0.20, spread: 0.0082, label: '投資適格の下限。銀行は慎重になる。' },
   { id: 'BB',  min: 0.12, spread: 0.0162, label: '投機的水準。金利が重い。' },
-  { id: 'B',   min: -9,   spread: 0.0270, label: '危険水域。新規調達は極めて難しい。' },
+  { id: 'B',   min: -9,   spread: 0.0190, label: '危険水域。新規調達は極めて難しい。' },
 ];
 
 export function ratingOf(g) {
@@ -177,7 +177,7 @@ export function closeQuarter(g, rng, news) {
 
   // --- 販管費 ---
   const personnel = personnelCost(g);
-  const fixed = 120 + g.assets.length * 12 + g.inventory.length * 8 + g.projects.length * 16
+  const fixed = 88 + g.assets.length * 12 + g.inventory.length * 8 + g.projects.length * 16
     + g.subsidiaries.reduce((s, x) => s + x.upkeep / 4, 0);
   const ad = Math.round(acc.revSale * 0.028 + g.inventory.length * 22);
   const dxCut = g.hrPolicy.programs.dx ? 0.94 : 1;
@@ -198,9 +198,21 @@ export function closeQuarter(g, rng, news) {
   // --- 支払利息 ---
   let emergency = 0;
   const rate = effectiveRate(g);
-  const interest = Math.round(g.debt * rate / 4);
+  const interestAll = Math.round(g.debt * rate / 4);
+  g.cash -= interestAll;
+  // 建設中の案件に対応する借入金利は取得原価に算入する（支払利息からは除く）
+  const bsNow = buildBS(g);
+  const cipRatio = bsNow.total > 0 ? Math.min(0.45, bsNow.cip / bsNow.total) : 0;
+  const capitalized = Math.round(interestAll * cipRatio);
+  if (capitalized > 0 && g.projects.length) {
+    const totalCip = g.projects.reduce((a, p) => a + p.spent + p.landCost, 0) || 1;
+    for (const p of g.projects) {
+      p.spent += Math.round(capitalized * (p.spent + p.landCost) / totalCip);
+    }
+  }
+  const interest = interestAll - capitalized;
   acc.interest = interest;
-  g.cash -= interest;
+  acc.capitalizedInterest = capitalized;
 
   // --- PL確定 ---
   const revenue = acc.revSale + acc.revLease + acc.revFee + acc.revOther;
@@ -218,7 +230,9 @@ export function closeQuarter(g, rng, news) {
 
   // --- 資金不足なら自動で借り入れる ---
   if (g.cash < 0) {
-    const need = Math.ceil(-g.cash / 100) * 100 + 150;
+    // 不足分に加えて当面の運転資金を確保する
+    const burn = Math.max(300, Math.round((acc.sga + interest) * 1.2));
+    const need = Math.ceil((-g.cash + burn) / 100) * 100;
     const room = Math.max(0, debtCapacity(g) - g.debt);
     const normal = Math.min(need, room);
     if (normal > 0) { g.debt += normal; g.cash += normal; }

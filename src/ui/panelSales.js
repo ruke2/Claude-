@@ -31,7 +31,7 @@ export function render(g, ctx) {
       <div class="kv"><span class="k">完売見込み</span><span class="v ${qLeft > 8 ? 'down' : ''}">${qLeft > 40 ? '不明' : `あと約${qLeft}期`}</span></div>
       ${inv.impaired ? `<div class="kv"><span class="k">評価損累計</span><span class="v down">${money(inv.impaired)}</span></div>` : ''}
       ${inv.quartersOnSale >= 8 && inv.soldRatio < 0.8 ? `<div class="hint" style="color:var(--amber)">販売が長期化している。値下げを検討しなければ評価損が発生する。</div>` : ''}
-      <div class="btnrow"><button class="btn sm" data-act="sales.price" data-id="${inv.id}">価格を改定する</button></div>
+      <div class="btnrow"><button class="btn sm" data-act="focus" data-id="${inv.cellId}">📍</button><button class="btn sm" data-act="sales.price" data-id="${inv.id}">価格を改定する</button></div>
     </div>`;
   }).join('') : empty('分譲在庫はない');
 

@@ -4,6 +4,7 @@
 import { createGame, cellById } from './core/state.js';
 import { money, num, pct, dcls, arrow, SEASON } from './core/format.js';
 import { CityRenderer, ZOOM_STEPS } from './render/city.js';
+import { toScreen } from './render/iso.js';
 import { WEATHERS, timeOfQuarter } from './render/palette.js';
 import { hash2 } from './core/rng.js';
 import { DISTRICTS, USES, TERRAIN, GRADES } from './data/city.js';
@@ -41,8 +42,19 @@ let currentPanel = null;
 let lastT = 0;
 const ctx = {
   refresh, rivalKey: 'rev', hrSort: 'ability',
-  startProject, acquireNow,
+  startProject, acquireNow, focusCell,
 };
+
+/** 指定した区画を画面中央に寄せる */
+function focusCell(c) {
+  if (!c || !R) return;
+  const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, R.cam.rot, R.zoom);
+  R.cam.x = -p.x;
+  R.cam.y = -p.y + R.h * 0.16;
+  R.selected = c;
+  R.hover = c;
+  updateHover(c);
+}
 
 // ------------------------------------------------------------
 //  タイトル画面
@@ -307,12 +319,17 @@ function handleAction(act, id) {
   switch (act) {
     case 'land.detail': {
       const l = G.listings.find(x => x.id === id);
-      if (l) Land.openDetail(G, l, ctx);
+      if (l) { focusCell(cellById(G, l.cellId)); Land.openDetail(G, l, ctx); }
+      break;
+    }
+    case 'focus': {
+      const c = cellById(G, id);
+      if (c) { focusCell(c); closePanel(); toast('地図の中央に移動した'); }
       break;
     }
     case 'dev.plan': {
       const c = cellById(G, id);
-      if (c) Dev.openPlan(G, c, ctx);
+      if (c) { focusCell(c); Dev.openPlan(G, c, ctx); }
       break;
     }
     case 'dev.price': {

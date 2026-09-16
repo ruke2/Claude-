@@ -190,11 +190,11 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
   const staff = [];
   const initialOrg = [
     { dept: 'corp', rank: 7, n: 1 }, { dept: 'land', rank: 4, n: 1 }, { dept: 'sales', rank: 4, n: 1 },
-    { dept: 'land', rank: 2, n: 3 }, { dept: 'plan', rank: 2, n: 2 }, { dept: 'cons', rank: 3, n: 1 },
-    { dept: 'cons', rank: 1, n: 3 }, { dept: 'sales', rank: 1, n: 4 }, { dept: 'lease', rank: 2, n: 2 },
-    { dept: 'fin', rank: 3, n: 1 }, { dept: 'fin', rank: 0, n: 2 }, { dept: 'hr', rank: 2, n: 2 },
-    { dept: 'plan', rank: 0, n: 3 }, { dept: 'land', rank: 0, n: 3 }, { dept: 'sales', rank: 0, n: 4 },
-    { dept: 'corp', rank: 3, n: 1 }, { dept: 'lease', rank: 0, n: 2 },
+    { dept: 'land', rank: 2, n: 2 }, { dept: 'plan', rank: 2, n: 2 }, { dept: 'cons', rank: 3, n: 1 },
+    { dept: 'cons', rank: 1, n: 2 }, { dept: 'sales', rank: 1, n: 3 }, { dept: 'lease', rank: 2, n: 1 },
+    { dept: 'fin', rank: 3, n: 1 }, { dept: 'fin', rank: 0, n: 1 }, { dept: 'hr', rank: 2, n: 1 },
+    { dept: 'plan', rank: 0, n: 2 }, { dept: 'land', rank: 0, n: 2 }, { dept: 'sales', rank: 0, n: 3 },
+    { dept: 'corp', rank: 3, n: 1 }, { dept: 'lease', rank: 0, n: 1 },
   ];
   for (const o of initialOrg) {
     for (let i = 0; i < o.n; i++) {

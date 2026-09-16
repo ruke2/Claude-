@@ -8,6 +8,7 @@ export function money(mm, opt = {}) {
   const { sign = false, unit = true } = opt;
   if (mm === undefined || mm === null || Number.isNaN(mm)) return '—';
   const abs = Math.abs(mm);
+  if (abs < 0.5) return unit ? '0億円' : '0';
   const s = mm < 0 ? '△' : (sign && mm > 0 ? '+' : '');
   let v, u;
   if (abs >= 1000000) { v = (abs / 1000000).toFixed(2); u = '兆円'; }
@@ -15,6 +16,14 @@ export function money(mm, opt = {}) {
   else if (abs >= 100) { v = (abs / 100).toFixed(1); u = '億円'; }
   else { v = Math.round(abs).toLocaleString('ja-JP'); u = '百万円'; }
   return s + v + (unit ? u : '');
+}
+
+/** 百万円 → 数値と単位を分けたHTML（大きな数字の表示用） */
+export function moneyHTML(mm) {
+  const s = money(mm);
+  const m = s.match(/^(△?\+?[\d,.]+)(.*)$/);
+  if (!m) return s;
+  return `${m[1]}<small style="font-size:.5em;margin-left:.15em;opacity:.7">${m[2]}</small>`;
 }
 
 /** 百万円 → 億円の数値のみ */

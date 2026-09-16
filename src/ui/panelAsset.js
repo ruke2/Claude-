@@ -37,6 +37,7 @@ export function render(g, ctx) {
       <div class="kv"><span class="k">含み損益</span><span class="v ${v - b >= 0 ? 'up' : 'down'}">${money(v - b, { sign: true })}</span></div>
       <div class="kv"><span class="k">利回り（NOI÷簿価）</span><span class="v">${pct(n / Math.max(1, b))}</span></div>
       <div class="btnrow">
+        <button class="btn sm" data-act="focus" data-id="${a.cellId}">📍</button>
         <button class="btn sm" data-act="asset.rent" data-id="${a.id}">賃料を改定する</button>
         <button class="btn sm danger" data-act="asset.sell" data-id="${a.id}">売却する</button>
       </div>
