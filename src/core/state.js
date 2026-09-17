@@ -19,6 +19,34 @@ export const DIFFICULTY = {
 let _uid = 1;
 export const uid = (p = 'x') => `${p}${(_uid++).toString(36)}`;
 
+/**
+ * 読み込んだセーブに含まれる通し番号より必ず大きい番号から採番し直す。
+ * これを忘れると、続きから始めたときに新しい案件が既存の案件と同じIDになり、
+ * 別物を掴んでしまう。セーブを読み込んだ直後に必ず呼ぶこと。
+ */
+export function syncUid(g) {
+  let max = 0;
+  const scan = arr => {
+    if (!Array.isArray(arr)) return;
+    for (const o of arr) {
+      const m = /^[A-Za-z]+([0-9a-z]+)$/.exec(o && o.id || '');
+      if (!m) continue;                      // 区画ID（p3_7 など）はここに来ない
+      const n = parseInt(m[1], 36);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+  };
+  scan(g.staff); scan(g.projects); scan(g.inventory); scan(g.assets);
+  scan(g.listings); scan(g.subsidiaries); scan(g.maTargets);
+  scan(g.acquisitions); scan(g.brands);
+  const ng = g.recruit && g.recruit.ng;
+  if (ng) { scan(ng.pool); scan(ng.offers); scan(ng.incoming); }
+  const pools = g.recruit && g.recruit.mid && g.recruit.mid.pools;
+  if (pools) for (const k of Object.keys(pools)) scan(pools[k]);
+  for (const r of g.rivals || []) scan(r.projects);
+  if (max >= _uid) _uid = max + 1;
+  return _uid;
+}
+
 // ------------------------------------------------------------
 //  マップ生成
 // ------------------------------------------------------------

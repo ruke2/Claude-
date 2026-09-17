@@ -1898,6 +1898,38 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   };
   var _uid = 1;
   var uid = (p = "x") => `${p}${(_uid++).toString(36)}`;
+  function syncUid(g) {
+    let max = 0;
+    const scan = (arr) => {
+      if (!Array.isArray(arr)) return;
+      for (const o of arr) {
+        const m = /^[A-Za-z]+([0-9a-z]+)$/.exec(o && o.id || "");
+        if (!m) continue;
+        const n = parseInt(m[1], 36);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    };
+    scan(g.staff);
+    scan(g.projects);
+    scan(g.inventory);
+    scan(g.assets);
+    scan(g.listings);
+    scan(g.subsidiaries);
+    scan(g.maTargets);
+    scan(g.acquisitions);
+    scan(g.brands);
+    const ng = g.recruit && g.recruit.ng;
+    if (ng) {
+      scan(ng.pool);
+      scan(ng.offers);
+      scan(ng.incoming);
+    }
+    const pools = g.recruit && g.recruit.mid && g.recruit.mid.pools;
+    if (pools) for (const k of Object.keys(pools)) scan(pools[k]);
+    for (const r of g.rivals || []) scan(r.projects);
+    if (max >= _uid) _uid = max + 1;
+    return _uid;
+  }
   function buildMap(rng) {
     const cells = [];
     for (let y = 0; y < MAP_H; y++) {
@@ -2253,11 +2285,19 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
 
   // src/core/save.js
-  var SLOTS = ["auto", "slot1", "slot2", "slot3"];
-  var SLOT_LABEL = { auto: "\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6", slot1: "\u30B9\u30ED\u30C3\u30C8 1", slot2: "\u30B9\u30ED\u30C3\u30C8 2", slot3: "\u30B9\u30ED\u30C3\u30C8 3" };
-  var KEY = (k) => `skyline_v3_${k}`;
+  var PREFIX = "skyline_v3_";
   var META = "skyline_v3_meta";
-  var SAVE_VERSION = 3;
+  var KEY = (k) => PREFIX + k;
+  var SLOTS = ["auto", "slot1", "slot2", "slot3"];
+  var BACKUP = "autoPrev";
+  var SLOT_LABEL = {
+    auto: "\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6",
+    slot1: "\u30B9\u30ED\u30C3\u30C8 1",
+    slot2: "\u30B9\u30ED\u30C3\u30C8 2",
+    slot3: "\u30B9\u30ED\u30C3\u30C8 3",
+    autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
+  };
+  var SAVE_VERSION = 4;
   function serialize(g) {
     const { pendingReport, quarterNews, candidates, ...rest } = g;
     return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest });
@@ -2271,8 +2311,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       weekOfMonth: g.weekOfMonth,
       week: g.week,
       equity: bs ? bs.equity : g.equity,
-      assets: g.assets.length,
-      staff: g.staff.length,
+      assets: (g.assets || []).length,
+      staff: (g.staff || []).length,
       difficulty: g.difficulty,
       savedAt: Date.now()
     };
@@ -2290,13 +2330,136 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     } catch (e) {
     }
   }
+  var _tpl = null;
+  function template() {
+    if (!_tpl) _tpl = createGame({ companyName: "\u3072\u306A\u578B", difficulty: "normal", seed: 1 });
+    return _tpl;
+  }
+  var isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  var clone = (v) => v === void 0 ? v : JSON.parse(JSON.stringify(v));
+  function fill(target, src, depth = 0, skip = null) {
+    if (depth > 6) return;
+    for (const k of Object.keys(src)) {
+      if (skip && skip.has(k)) continue;
+      const sv = src[k];
+      if (target[k] === void 0) {
+        target[k] = clone(sv);
+      } else if (isObj(sv) && isObj(target[k])) {
+        fill(target[k], sv, depth + 1);
+      } else if (Array.isArray(sv) && Array.isArray(target[k]) && isObj(sv[0])) {
+        for (const item of target[k]) if (isObj(item)) fill(item, sv[0], depth + 1);
+      }
+    }
+  }
+  var SKIP_TOP = /* @__PURE__ */ new Set(["cells"]);
+  function migrate(g) {
+    if (!g || !Array.isArray(g.cells) || !g.cells.length || !g.company) return null;
+    try {
+      const tpl = template();
+      if (g.cells.length === tpl.cells.length) {
+        for (let i = 0; i < g.cells.length; i++) {
+          if (isObj(g.cells[i]) && isObj(tpl.cells[i])) fill(g.cells[i], tpl.cells[i]);
+        }
+      }
+      fill(g, tpl, 0, SKIP_TOP);
+      if (typeof g.week === "number") syncCalendar(g);
+      g.pendingReport = null;
+      delete g.quarterNews;
+      delete g.candidates;
+      syncUid(g);
+      return g;
+    } catch (e) {
+      return null;
+    }
+  }
+  function rawRead(slot) {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(KEY(slot));
+    } catch (e) {
+      return null;
+    }
+    if (!raw) raw = scanLegacy(slot);
+    if (!raw) return null;
+    try {
+      const obj = JSON.parse(raw);
+      const g = obj && obj.g ? obj.g : obj;
+      return g && g.cells ? g : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function scanLegacy(slot) {
+    let best = null, bestAt = -1;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || k === KEY(slot)) continue;
+        if (!new RegExp(`^skyline_v\\d+_${slot}$`).test(k)) continue;
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        let at = 0;
+        try {
+          at = JSON.parse(raw).savedAt || 0;
+        } catch (e) {
+        }
+        if (at >= bestAt) {
+          bestAt = at;
+          best = raw;
+        }
+      }
+    } catch (e) {
+      return null;
+    }
+    return best;
+  }
   function listSaves() {
     const meta = readMeta();
-    return SLOTS.map((id) => ({ id, label: SLOT_LABEL[id], meta: meta[id] || null }));
+    let dirty = false;
+    const out = SLOTS.map((id) => {
+      let m = meta[id] || null;
+      if (!m) {
+        const g = rawRead(id);
+        if (g) {
+          m = metaOf(g);
+          meta[id] = m;
+          dirty = true;
+        }
+      }
+      return { id, label: SLOT_LABEL[id], meta: m };
+    });
+    if (dirty) writeMeta(meta);
+    return out;
+  }
+  function backupSave() {
+    const meta = readMeta();
+    let m = meta[BACKUP] || null;
+    if (!m) {
+      const g = rawRead(BACKUP);
+      if (!g) return null;
+      m = metaOf(g);
+      meta[BACKUP] = m;
+      writeMeta(meta);
+    }
+    return { id: BACKUP, label: SLOT_LABEL[BACKUP], meta: m };
   }
   function saveTo(slot, g) {
     try {
       const text = serialize(g);
+      if (slot === "auto") {
+        try {
+          const prev = localStorage.getItem(KEY("auto"));
+          if (prev) {
+            localStorage.setItem(KEY(BACKUP), prev);
+            const meta0 = readMeta();
+            if (meta0.auto) {
+              meta0[BACKUP] = meta0.auto;
+              writeMeta(meta0);
+            }
+          }
+        } catch (e) {
+        }
+      }
       localStorage.setItem(KEY(slot), text);
       const meta = readMeta();
       meta[slot] = metaOf(g);
@@ -2304,19 +2467,26 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       return { ok: true, size: text.length };
     } catch (e) {
       const full = /quota|exceeded/i.test(String(e && e.message));
-      return { ok: false, message: full ? "\u4FDD\u5B58\u9818\u57DF\u304C\u8DB3\u308A\u306A\u3044\u3002\u4E0D\u8981\u306A\u30B9\u30ED\u30C3\u30C8\u3092\u524A\u9664\u3059\u308B\u3053\u3068\u3002" : "\u4FDD\u5B58\u3067\u304D\u306A\u304B\u3063\u305F\u3002" };
+      if (full && slot !== BACKUP) {
+        try {
+          localStorage.removeItem(KEY(BACKUP));
+          localStorage.setItem(KEY(slot), serialize(g));
+          const meta = readMeta();
+          meta[slot] = metaOf(g);
+          delete meta[BACKUP];
+          writeMeta(meta);
+          return { ok: true, size: 0, note: "\u7A7A\u304D\u5BB9\u91CF\u304C\u8DB3\u308A\u306A\u3044\u305F\u3081\u3001\u9000\u907F\u5206\u3092\u6D88\u3057\u305F" };
+        } catch (e2) {
+        }
+      }
+      return {
+        ok: false,
+        message: full ? "\u4FDD\u5B58\u9818\u57DF\u304C\u8DB3\u308A\u306A\u3044\u3002\u4E0D\u8981\u306A\u30B9\u30ED\u30C3\u30C8\u3092\u524A\u9664\u3059\u308B\u304B\u3001\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3059\u3053\u3068\u3002" : "\u3053\u306E\u74B0\u5883\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044\uFF08\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u306E\u53EF\u80FD\u6027\u304C\u3042\u308B\uFF09\u3002"
+      };
     }
   }
   function loadFrom(slot) {
-    try {
-      const raw = localStorage.getItem(KEY(slot));
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      if (!obj || !obj.g || !obj.g.cells) return null;
-      return obj.g;
-    } catch (e) {
-      return null;
-    }
+    return migrate(rawRead(slot));
   }
   function deleteSlot(slot) {
     try {
@@ -2332,25 +2502,45 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   function exportText(g) {
     return serialize(g);
   }
+  function exportName(g) {
+    const p = (n) => String(n).padStart(2, "0");
+    return `skyline-${g.year}-${p(g.month)}-w${g.weekOfMonth}.json`;
+  }
   function importText(text) {
     try {
-      const obj = JSON.parse(text.trim());
-      const g = obj && obj.g ? obj.g : obj;
-      if (!g || !g.cells || !g.cells.length) return null;
-      return g;
+      const obj = JSON.parse(String(text).trim());
+      return migrate(obj && obj.g ? obj.g : obj);
     } catch (e) {
       return null;
     }
   }
   function totalSize() {
     let n = 0;
-    for (const s of SLOTS) {
+    for (const s of SLOTS.concat(BACKUP)) {
       try {
         n += (localStorage.getItem(KEY(s)) || "").length;
       } catch (e) {
       }
     }
     return Math.round(n / 1024);
+  }
+  function storageAvailable() {
+    try {
+      localStorage.setItem("skyline_probe", "1");
+      localStorage.removeItem("skyline_probe");
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function requestPersistence() {
+    try {
+      if (navigator.storage && navigator.storage.persist) {
+        return navigator.storage.persist().catch(() => false);
+      }
+    } catch (e) {
+    }
+    return Promise.resolve(false);
   }
 
   // src/render/palette.js
@@ -6583,7 +6773,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     toastTimer = setTimeout(() => el.remove(), 3400);
   }
   function spark(values, opt = {}) {
-    const { w = 260, hgt = 46, color = "#2a7fd0", fill = true, zero = false } = opt;
+    const { w = 260, hgt = 46, color = "#2a7fd0", fill: fill2 = true, zero = false } = opt;
     if (!values || values.length < 2) return "";
     const min = Math.min(...values, zero ? 0 : Infinity);
     const max = Math.max(...values, zero ? 0 : -Infinity);
@@ -6593,7 +6783,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const y = hgt - (v - min) / rng * (hgt - 6) - 3;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
-    const area = fill ? `<polygon points="0,${hgt} ${pts.join(" ")} ${w},${hgt}" fill="url(#sg)" opacity=".22"/>` : "";
+    const area = fill2 ? `<polygon points="0,${hgt} ${pts.join(" ")} ${w},${hgt}" fill="url(#sg)" opacity=".22"/>` : "";
     const zeroLine = min < 0 && max > 0 ? `<line x1="0" x2="${w}" y1="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" y2="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" stroke="rgba(22,32,47,.2)" stroke-dasharray="3 3"/>` : "";
     return `<svg class="spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
     <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
@@ -9791,49 +9981,118 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <span style="color:var(--ink-dim);font-size:11px">\u7D14\u8CC7\u7523 ${money(m.equity)}\uFF0F\u7269\u4EF6 ${m.assets}\u4EF6\uFF0F\u793E\u54E1 ${m.staff}\u540D\u3000\u4FDD\u5B58 ${stamp}</span>`;
   }
   function openSaveMenu() {
+    const canSave = storageAvailable();
+    const bak = backupSave();
+    const slotCard = (s, recovery) => `
+    <div class="card">
+      <div class="card-t"><span class="card-n">${s.label}</span>${s.id === "auto" ? chip("\u81EA\u52D5", "cyan") : recovery ? chip("\u5FA9\u65E7\u7528", "amber") : ""}</div>
+      <div class="card-s">${fmtSaveMeta(s.meta)}</div>
+      <div class="btnrow">
+        ${!recovery && s.id !== "auto" ? `<button class="btn sm primary" data-sv="${s.id}">\u3053\u3053\u306B\u4FDD\u5B58\u3059\u308B</button>` : ""}
+        <button class="btn sm" data-ld="${s.id}" ${s.meta ? "" : "disabled"}>\u8AAD\u307F\u8FBC\u3080</button>
+        ${!recovery && s.meta && s.id !== "auto" ? `<button class="btn sm danger" data-dl="${s.id}">\u524A\u9664</button>` : ""}
+      </div>
+    </div>`;
     const render11 = () => `
-    <div class="hint" style="margin-bottom:10px">\u9032\u884C\u4E2D\u306E\u30B2\u30FC\u30E0\u3092\u4FDD\u5B58\u3059\u308B\u3002\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6\u306F\u9031\u3092\u9032\u3081\u308B\u305F\u3073\u306B\u81EA\u52D5\u3067\u66F4\u65B0\u3055\u308C\u308B\u3002</div>
-    ${listSaves().map((s) => `
-      <div class="card">
-        <div class="card-t"><span class="card-n">${s.label}</span>${s.id === "auto" ? chip("\u81EA\u52D5", "cyan") : ""}</div>
-        <div class="card-s">${fmtSaveMeta(s.meta)}</div>
-        <div class="btnrow">
-          ${s.id !== "auto" ? `<button class="btn sm primary" data-sv="${s.id}">\u3053\u3053\u306B\u4FDD\u5B58\u3059\u308B</button>` : ""}
-          <button class="btn sm" data-ld="${s.id}" ${s.meta ? "" : "disabled"}>\u8AAD\u307F\u8FBC\u3080</button>
-          ${s.meta && s.id !== "auto" ? `<button class="btn sm danger" data-dl="${s.id}">\u524A\u9664</button>` : ""}
-        </div>
-      </div>`).join("")}
+    ${canSave ? "" : `<div class="card" style="border-color:rgba(196,52,74,.35);background:var(--red-soft)">
+      <div class="card-t"><span class="card-n">\u26A0 \u3053\u306E\u753B\u9762\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044</span></div>
+      <div class="card-s">\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u304B\u3001\u30D6\u30E9\u30A6\u30B6\u306E\u8A2D\u5B9A\u3067\u30C7\u30FC\u30BF\u306E\u4FDD\u5B58\u304C\u6B62\u3081\u3089\u308C\u3066\u3044\u308B\u3002
+      \u666E\u901A\u306E\u30BF\u30D6\u3067\u958B\u304D\u76F4\u3059\u3053\u3068\u3002\u3044\u307E\u306E\u9032\u884C\u306F\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u305B\u3070\u6B8B\u305B\u308B\u3002</div>
+    </div>`}
+    <div class="hint" style="margin-bottom:10px">\u9032\u884C\u4E2D\u306E\u30B2\u30FC\u30E0\u3092\u4FDD\u5B58\u3059\u308B\u3002\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6\u306F\u9031\u3092\u9032\u3081\u308B\u305F\u3073\u306B\u81EA\u52D5\u3067\u66F4\u65B0\u3055\u308C\u308B\u3002
+    \u30BB\u30FC\u30D6\u306F\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u306E\u4E2D\u306B\u6B8B\u308B\u306E\u3067\u3001\u30B2\u30FC\u30E0\u3092\u66F4\u65B0\u3057\u3066\u3082\u6D88\u3048\u306A\u3044\u3002</div>
+    ${listSaves().map((s) => slotCard(s, false)).join("")}
+    ${bak ? `<div class="sec" style="margin-top:4px">
+      <div class="sec-t"><span>\u5FA9\u65E7</span></div>
+      <div class="hint" style="margin-bottom:8px">\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6\u304C\u4E0A\u66F8\u304D\u3055\u308C\u308B\u76F4\u524D\u306E\u72B6\u614B\u30921\u3064\u3060\u3051\u6B8B\u3057\u3066\u3044\u308B\u3002
+      \u3046\u3063\u304B\u308A\u9032\u3081\u3059\u304E\u305F\u3068\u304D\u306F\u3053\u3053\u304B\u3089\u623B\u305B\u308B\u3002</div>
+      ${slotCard(bak, true)}
+    </div>` : ""}
+
     <div class="sec">
-      <div class="sec-t"><span>\u30C6\u30AD\u30B9\u30C8\u3067\u6301\u3061\u51FA\u3059</span><span class="note">\u4F7F\u7528\u4E2D ${totalSize()}KB</span></div>
-      <div class="hint">\u30BB\u30FC\u30D6\u30C7\u30FC\u30BF\u3092\u6587\u5B57\u5217\u3068\u3057\u3066\u66F8\u304D\u51FA\u3057\uFF0F\u8AAD\u307F\u8FBC\u307F\u3067\u304D\u308B\u3002\u5225\u306E\u30D6\u30E9\u30A6\u30B6\u306B\u79FB\u3059\u3068\u304D\u306B\u4F7F\u3046\u3002</div>
+      <div class="sec-t"><span>\u30D5\u30A1\u30A4\u30EB\u306B\u6B8B\u3059</span><span class="note">\u4F7F\u7528\u4E2D ${totalSize()}KB</span></div>
+      <div class="hint">\u30D6\u30E9\u30A6\u30B6\u306E\u30C7\u30FC\u30BF\u3092\u6D88\u3057\u305F\u308A\u3001\u6A5F\u7A2E\u3092\u5909\u3048\u305F\u308A\u3059\u308B\u3068\u4E2D\u306E\u30BB\u30FC\u30D6\u306F\u5931\u308F\u308C\u308B\u3002
+      \u5927\u4E8B\u306A\u9032\u884C\u306F\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3057\u3066\u304A\u304F\u3053\u3068\u3002</div>
+      <div class="btnrow">
+        <button class="btn sm primary" data-file-ex="1">\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3059</button>
+        <button class="btn sm" data-file-im="1">\u30D5\u30A1\u30A4\u30EB\u304B\u3089\u8AAD\u307F\u8FBC\u3080</button>
+      </div>
+      <input type="file" id="saveFile" accept=".json,application/json" style="display:none">
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u6587\u5B57\u5217\u3067\u6301\u3061\u51FA\u3059</span></div>
+      <div class="hint">\u5225\u306E\u30D6\u30E9\u30A6\u30B6\u306B\u624B\u3067\u79FB\u3057\u305F\u3044\u3068\u304D\u306B\u4F7F\u3046\u3002</div>
       <div class="btnrow">
         <button class="btn sm" data-ex="1">\u66F8\u304D\u51FA\u3059</button>
         <button class="btn sm" data-im="1">\u8AAD\u307F\u8FBC\u3080</button>
       </div>
       <textarea id="saveText" style="width:100%;height:96px;margin-top:8px;display:none;border-radius:8px;
         background:var(--field-bg);border:1px solid var(--line);color:var(--ink);font-size:11px;padding:8px"></textarea>
+    </div>
+
+    <div class="hint" style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line-soft)">
+      iPhone \u306E Safari \u306F\u30017\u65E5\u9593\u305D\u306E\u30B5\u30A4\u30C8\u3092\u958B\u304B\u306A\u3044\u3067\u3044\u308B\u3068\u4FDD\u5B58\u30C7\u30FC\u30BF\u3092\u6D88\u3059\u3053\u3068\u304C\u3042\u308B\u3002
+      \u30DB\u30FC\u30E0\u753B\u9762\u306B\u8FFD\u52A0\u3057\u3066\u3001\u305D\u3053\u304B\u3089\u904A\u3079\u3070\u3053\u306E\u5BFE\u8C61\u304B\u3089\u5916\u308C\u308B\u3002
     </div>`;
     openModal("\u30BB\u30FC\u30D6\uFF0F\u30ED\u30FC\u30C9", render11(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
     const bind = () => {
       const body = $("#modalBody");
+      const redraw = () => {
+        body.innerHTML = render11();
+        bind();
+      };
       body.querySelectorAll("[data-sv]").forEach((b) => b.onclick = () => {
         const r = saveTo(b.dataset.sv, G);
         toast(r.ok ? `${SLOT_LABEL[b.dataset.sv]}\u306B\u4FDD\u5B58\u3057\u305F\uFF08${Math.round(r.size / 1024)}KB\uFF09` : r.message, r.ok ? "good" : "bad");
-        body.innerHTML = render11();
-        bind();
+        redraw();
       });
       body.querySelectorAll("[data-ld]").forEach((b) => b.onclick = () => {
         const g = loadFrom(b.dataset.ld);
-        if (!g) return toast("\u8AAD\u307F\u8FBC\u3081\u306A\u304B\u3063\u305F", "bad");
+        if (!g) return toast("\u3053\u306E\u30BB\u30FC\u30D6\u306F\u8AAD\u307F\u8FBC\u3081\u306A\u304B\u3063\u305F", "bad");
         closeModal();
         applyLoaded(g);
       });
       body.querySelectorAll("[data-dl]").forEach((b) => b.onclick = () => {
         deleteSlot(b.dataset.dl);
         toast("\u524A\u9664\u3057\u305F");
-        body.innerHTML = render11();
-        bind();
+        redraw();
       });
+      const fx = body.querySelector("[data-file-ex]");
+      if (fx) fx.onclick = () => {
+        try {
+          const blob = new Blob([exportText(G)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = exportName(G);
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 4e3);
+          toast("\u30BB\u30FC\u30D6\u30C7\u30FC\u30BF\u3092\u66F8\u304D\u51FA\u3057\u305F", "good");
+        } catch (e) {
+          toast("\u66F8\u304D\u51FA\u305B\u306A\u304B\u3063\u305F", "bad");
+        }
+      };
+      const fi = body.querySelector("[data-file-im]");
+      const fin = body.querySelector("#saveFile");
+      if (fi && fin) {
+        fi.onclick = () => fin.click();
+        fin.onchange = () => {
+          const f = fin.files && fin.files[0];
+          if (!f) return;
+          const rd = new FileReader();
+          rd.onload = () => {
+            const g = importText(rd.result);
+            if (!g) return toast("\u3053\u306E\u30D5\u30A1\u30A4\u30EB\u306F\u8AAD\u307F\u53D6\u308C\u306A\u304B\u3063\u305F", "bad");
+            closeModal();
+            applyLoaded(g);
+          };
+          rd.onerror = () => toast("\u30D5\u30A1\u30A4\u30EB\u3092\u958B\u3051\u306A\u304B\u3063\u305F", "bad");
+          rd.readAsText(f);
+        };
+      }
       const ta = body.querySelector("#saveText");
       const ex = body.querySelector("[data-ex]");
       if (ex) ex.onclick = () => {
@@ -9882,6 +10141,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       });
     });
   }
+  requestPersistence();
   titleAnim();
   (function buildTitleSaves() {
     const box = document.getElementById("titleSaves");

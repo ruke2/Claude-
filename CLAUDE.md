@@ -38,7 +38,23 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - 内部の金額単位は**百万円**。表示は `src/core/format.js` の `money()` で億円・兆円に変換する
 - 1ターン = 1週。13週で四半期決算。カレンダーは `src/core/time.js`
 - 乱数はシード付き（`src/core/rng.js`）。`g.rngState` を毎ターン更新する
-- セーブは `src/core/save.js`（localStorage、4スロット）。`pendingReport` など一時データは保存しない
+- セーブは `src/core/save.js`（localStorage、4スロット＋オートセーブの退避1つ）。
+  `pendingReport` など一時データは保存しない
+
+## セーブを壊さないための決めごと
+
+**`src/core/save.js` の `PREFIX` と `META` は絶対に変えない。**
+変えるとユーザーのセーブが二度と見つからなくなる。
+
+- ゲームの状態に項目を足すのは自由。読み込み時に `migrate()` が
+  新しいゲームをひな型にして、足りない項目を補う（既存の値には触らない）
+- 区画（`g.cells`）は同じ位置どうしで突き合わせる。1つのひな型でまとめて埋めると
+  道路や海に敷地面積が付いてしまう
+- **地図の大きさ（`MAP_W` / `MAP_H`）や区画の並びを変えるときは別途対応が必要。**
+  区画数が変わると突き合わせができない
+- ID（`uid()`）は読み込み時に `syncUid()` で振り直す。これを外すと、
+  続きから始めたときに新しい案件が既存の案件と同じIDになる
+- 保存する形を変えたときは `SAVE_VERSION` を上げ、`migrate()` に処理を足す
 
 ## スマートフォン対応
 

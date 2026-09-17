@@ -4,7 +4,8 @@
 import { createGame, cellById } from './core/state.js';
 import { money, num, pct, dcls, arrow } from './core/format.js';
 import { dateLabel, dateLabelOf, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
-import { SLOTS, SLOT_LABEL, listSaves, saveTo, loadFrom, deleteSlot, latestSave, exportText, importText, totalSize } from './core/save.js';
+import { SLOTS, SLOT_LABEL, BACKUP, listSaves, backupSave, saveTo, loadFrom, deleteSlot, latestSave,
+  exportText, exportName, importText, totalSize, storageAvailable, requestPersistence } from './core/save.js';
 import { CityRenderer, ZOOM_STEPS } from './render/city.js';
 import { toScreen } from './render/iso.js';
 import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
@@ -819,48 +820,120 @@ function fmtSaveMeta(m) {
 }
 
 function openSaveMenu() {
+  const canSave = storageAvailable();
+  const bak = backupSave();
+
+  const slotCard = (s, recovery) => `
+    <div class="card">
+      <div class="card-t"><span class="card-n">${s.label}</span>${
+        s.id === 'auto' ? chip('自動', 'cyan') : recovery ? chip('復旧用', 'amber') : ''}</div>
+      <div class="card-s">${fmtSaveMeta(s.meta)}</div>
+      <div class="btnrow">
+        ${!recovery && s.id !== 'auto' ? `<button class="btn sm primary" data-sv="${s.id}">ここに保存する</button>` : ''}
+        <button class="btn sm" data-ld="${s.id}" ${s.meta ? '' : 'disabled'}>読み込む</button>
+        ${!recovery && s.meta && s.id !== 'auto' ? `<button class="btn sm danger" data-dl="${s.id}">削除</button>` : ''}
+      </div>
+    </div>`;
+
   const render = () => `
-    <div class="hint" style="margin-bottom:10px">進行中のゲームを保存する。オートセーブは週を進めるたびに自動で更新される。</div>
-    ${listSaves().map(s => `
-      <div class="card">
-        <div class="card-t"><span class="card-n">${s.label}</span>${s.id === 'auto' ? chip('自動', 'cyan') : ''}</div>
-        <div class="card-s">${fmtSaveMeta(s.meta)}</div>
-        <div class="btnrow">
-          ${s.id !== 'auto' ? `<button class="btn sm primary" data-sv="${s.id}">ここに保存する</button>` : ''}
-          <button class="btn sm" data-ld="${s.id}" ${s.meta ? '' : 'disabled'}>読み込む</button>
-          ${s.meta && s.id !== 'auto' ? `<button class="btn sm danger" data-dl="${s.id}">削除</button>` : ''}
-        </div>
-      </div>`).join('')}
+    ${canSave ? '' : `<div class="card" style="border-color:rgba(196,52,74,.35);background:var(--red-soft)">
+      <div class="card-t"><span class="card-n">⚠ この画面では保存できない</span></div>
+      <div class="card-s">プライベートモードか、ブラウザの設定でデータの保存が止められている。
+      普通のタブで開き直すこと。いまの進行はファイルに書き出せば残せる。</div>
+    </div>`}
+    <div class="hint" style="margin-bottom:10px">進行中のゲームを保存する。オートセーブは週を進めるたびに自動で更新される。
+    セーブはこのブラウザの中に残るので、ゲームを更新しても消えない。</div>
+    ${listSaves().map(s => slotCard(s, false)).join('')}
+    ${bak ? `<div class="sec" style="margin-top:4px">
+      <div class="sec-t"><span>復旧</span></div>
+      <div class="hint" style="margin-bottom:8px">オートセーブが上書きされる直前の状態を1つだけ残している。
+      うっかり進めすぎたときはここから戻せる。</div>
+      ${slotCard(bak, true)}
+    </div>` : ''}
+
     <div class="sec">
-      <div class="sec-t"><span>テキストで持ち出す</span><span class="note">使用中 ${totalSize()}KB</span></div>
-      <div class="hint">セーブデータを文字列として書き出し／読み込みできる。別のブラウザに移すときに使う。</div>
+      <div class="sec-t"><span>ファイルに残す</span><span class="note">使用中 ${totalSize()}KB</span></div>
+      <div class="hint">ブラウザのデータを消したり、機種を変えたりすると中のセーブは失われる。
+      大事な進行はファイルに書き出しておくこと。</div>
+      <div class="btnrow">
+        <button class="btn sm primary" data-file-ex="1">ファイルに書き出す</button>
+        <button class="btn sm" data-file-im="1">ファイルから読み込む</button>
+      </div>
+      <input type="file" id="saveFile" accept=".json,application/json" style="display:none">
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>文字列で持ち出す</span></div>
+      <div class="hint">別のブラウザに手で移したいときに使う。</div>
       <div class="btnrow">
         <button class="btn sm" data-ex="1">書き出す</button>
         <button class="btn sm" data-im="1">読み込む</button>
       </div>
       <textarea id="saveText" style="width:100%;height:96px;margin-top:8px;display:none;border-radius:8px;
         background:var(--field-bg);border:1px solid var(--line);color:var(--ink);font-size:11px;padding:8px"></textarea>
+    </div>
+
+    <div class="hint" style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line-soft)">
+      iPhone の Safari は、7日間そのサイトを開かないでいると保存データを消すことがある。
+      ホーム画面に追加して、そこから遊べばこの対象から外れる。
     </div>`;
 
   openModal('セーブ／ロード', render(), [{ label: '閉じる', cls: 'ghost' }]);
+
   const bind = () => {
     const body = $('#modalBody');
+    const redraw = () => { body.innerHTML = render(); bind(); };
+
     body.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => {
       const r = saveTo(b.dataset.sv, G);
       toast(r.ok ? `${SLOT_LABEL[b.dataset.sv]}に保存した（${Math.round(r.size / 1024)}KB）` : r.message, r.ok ? 'good' : 'bad');
-      body.innerHTML = render(); bind();
+      redraw();
     });
     body.querySelectorAll('[data-ld]').forEach(b => b.onclick = () => {
       const g = loadFrom(b.dataset.ld);
-      if (!g) return toast('読み込めなかった', 'bad');
+      if (!g) return toast('このセーブは読み込めなかった', 'bad');
       closeModal();
       applyLoaded(g);
     });
     body.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => {
       deleteSlot(b.dataset.dl);
       toast('削除した');
-      body.innerHTML = render(); bind();
+      redraw();
     });
+
+    // ---- ファイル ----
+    const fx = body.querySelector('[data-file-ex]');
+    if (fx) fx.onclick = () => {
+      try {
+        const blob = new Blob([exportText(G)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = exportName(G);
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        toast('セーブデータを書き出した', 'good');
+      } catch (e) { toast('書き出せなかった', 'bad'); }
+    };
+    const fi = body.querySelector('[data-file-im]');
+    const fin = body.querySelector('#saveFile');
+    if (fi && fin) {
+      fi.onclick = () => fin.click();
+      fin.onchange = () => {
+        const f = fin.files && fin.files[0];
+        if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => {
+          const g = importText(rd.result);
+          if (!g) return toast('このファイルは読み取れなかった', 'bad');
+          closeModal();
+          applyLoaded(g);
+        };
+        rd.onerror = () => toast('ファイルを開けなかった', 'bad');
+        rd.readAsText(f);
+      };
+    }
+
+    // ---- 文字列 ----
     const ta = body.querySelector('#saveText');
     const ex = body.querySelector('[data-ex]');
     if (ex) ex.onclick = () => {
@@ -909,6 +982,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register(new URL('./sw.js', location.href)).catch(() => {});
   });
 }
+
+// ブラウザにデータを消さないよう申請しておく（断られても実害はない）
+requestPersistence();
 
 titleAnim();
 (function buildTitleSaves() {
