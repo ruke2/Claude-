@@ -20,24 +20,41 @@ export const NG_SCHEDULE = {
 };
 
 /** 大学（すべて架空）。tier が高いほど地力と潜在能力に優れる */
+/**
+ * 出身大学。実在の大学をもじった架空の校名で、実在の大学とは関係がない。
+ * tier が素質の分布を、w が母集団での多さを決める。
+ */
 export const UNIVERSITIES = [
-  { id: 'minato',   name: '湊都大学',       short: '湊都大',   tier: 'S', w: 3.0 },
-  { id: 'sakura',   name: '桜川大学',       short: '桜川大',   tier: 'S', w: 2.4 },
-  { id: 'tokiwaT',  name: '常盤工科大学',   short: '常盤工大', tier: 'S', w: 2.2 },
-  { id: 'aoba',     name: '青葉学院大学',   short: '青葉学院', tier: 'A', w: 5.0 },
-  { id: 'kagura',   name: '神楽坂大学',     short: '神楽坂大', tier: 'A', w: 4.6 },
-  { id: 'minatoC',  name: '湊都市立大学',   short: '市立大',   tier: 'A', w: 3.6 },
-  { id: 'jonan',    name: '城南大学',       short: '城南大',   tier: 'A', w: 3.4 },
-  { id: 'kitano',   name: '北野大学',       short: '北野大',   tier: 'B', w: 7.5 },
-  { id: 'shiomi',   name: '汐見国際大学',   short: '汐見国際', tier: 'B', w: 6.8 },
-  { id: 'toyo',     name: '東洋文化大学',   short: '東洋文化', tier: 'B', w: 6.5 },
-  { id: 'minatoK',  name: '湊工業大学',     short: '湊工大',   tier: 'B', w: 6.0 },
-  { id: 'sakuraok', name: '桜丘大学',       short: '桜丘大',   tier: 'B', w: 5.8 },
-  { id: 'joto',     name: '城東経済大学',   short: '城東経済', tier: 'C', w: 9.0 },
-  { id: 'konan',    name: '港南商科大学',   short: '港南商科', tier: 'C', w: 8.5 },
-  { id: 'midori',   name: '緑川大学',       short: '緑川大',   tier: 'C', w: 8.0 },
-  { id: 'shinto',   name: '新都学院大学',   short: '新都学院', tier: 'C', w: 7.6 },
-  { id: 'sengoku',  name: '千石大学',       short: '千石大',   tier: 'C', w: 7.2 },
+  // --- S：最難関 ---
+  { id: 'toutei',   name: '東帝大学',         short: '東帝大',     tier: 'S', w: 1.6 },
+  { id: 'kyoraku',  name: '京洛大学',         short: '京洛大',     tier: 'S', w: 1.3 },
+  { id: 'tomon',    name: '稲門大学',         short: '稲門大',     tier: 'S', w: 2.2 },
+  { id: 'mita',     name: '三田義塾大学',     short: '三田義塾',   tier: 'S', w: 2.0 },
+  { id: 'josui',    name: '如水大学',         short: '如水大',     tier: 'S', w: 1.0 },
+  { id: 'ookayama', name: '大岡山工科大学',   short: '大岡山工大', tier: 'S', w: 1.1 },
+  // --- A：難関 ---
+  { id: 'naniwa',   name: '浪華大学',         short: '浪華大',     tier: 'A', w: 2.2 },
+  { id: 'morito',   name: '杜都大学',         short: '杜都大',     tier: 'A', w: 2.0 },
+  { id: 'owari',    name: '尾張大学',         short: '尾張大',     tier: 'A', w: 2.0 },
+  { id: 'rokko',    name: '六甲大学',         short: '六甲大',     tier: 'A', w: 1.9 },
+  { id: 'meiou',    name: '明應大学',         short: '明應大',     tier: 'A', w: 4.4 },
+  { id: 'seinan',   name: '青南学院大学',     short: '青南学院',   tier: 'A', w: 3.8 },
+  { id: 'chuou',    name: '中桜大学',         short: '中桜大',     tier: 'A', w: 3.6 },
+  // --- B：中堅 ---
+  { id: 'hosho',    name: '法承大学',         short: '法承大',     tier: 'B', w: 5.4 },
+  { id: 'ikebukuro', name: '池袋学院大学',    short: '池袋学院',   tier: 'B', w: 4.8 },
+  { id: 'kinugasa', name: '衣笠館大学',       short: '衣笠館大',   tier: 'B', w: 4.6 },
+  { id: 'kansaig',  name: '関西学舎大学',     short: '関西学舎',   tier: 'B', w: 4.2 },
+  { id: 'nitto',    name: '日東大学',         short: '日東大',     tier: 'B', w: 7.0 },
+  { id: 'shibahama', name: '芝浜工業大学',    short: '芝浜工大',   tier: 'B', w: 3.8 },
+  { id: 'toyo',     name: '東洋文華大学',     short: '東洋文華',   tier: 'B', w: 5.0 },
+  // --- C：一般 ---
+  { id: 'teito',    name: '帝都大学',         short: '帝都大',     tier: 'C', w: 7.4 },
+  { id: 'daitobun', name: '大東文成大学',     short: '大東文成',   tier: 'C', w: 7.0 },
+  { id: 'kokushi',  name: '国士洛大学',       short: '国士洛大',   tier: 'C', w: 6.6 },
+  { id: 'johoku',   name: '城北商科大学',     short: '城北商科',   tier: 'C', w: 6.2 },
+  { id: 'tokaiyo',  name: '東海洋大学',       short: '東海洋大',   tier: 'C', w: 7.2 },
+  { id: 'midori',   name: '緑川学院大学',     short: '緑川学院',   tier: 'C', w: 5.8 },
 ];
 
 /** 大学の格ごとの素質 */

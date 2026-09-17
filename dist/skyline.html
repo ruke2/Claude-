@@ -1124,6 +1124,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var DISTRICTS = {
     T: {
       id: "T",
+      lotSize: 1900,
       name: "\u5E38\u76E4\u30D3\u30B8\u30CD\u30B9\u5730\u533A",
       short: "\u5E38\u76E4",
       kana: "TOKIWA CBD",
@@ -1137,6 +1138,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 34e3,
       rentResi: 22700,
       rentHotel: 52e3,
+      rentLogi: 7800,
       priceResi: 5.8,
       // 分譲 百万円/専有坪
       capRate: 0.036,
@@ -1144,11 +1146,15 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       station: 0.98,
       // 駅力 0-1
       fit: { office: 1, retail: 0.86, resi: 0.62, rental: 0.58, hotel: 0.84, logi: 0.1, house: 0.05, mixed: 0.96 },
+      height: [14, 54],
+      // 既存の建物の階数レンジ
+      usePool: ["office", "office", "office", "mixed", "retail", "hotel", "rental"],
       hue: 208,
       elev: 2
     },
     B: {
       id: "B",
+      lotSize: 1650,
       name: "\u6C50\u898B\u30D9\u30A4\u30D5\u30ED\u30F3\u30C8",
       short: "\u6C50\u898B",
       kana: "SHIOMI BAY",
@@ -1159,15 +1165,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 26e3,
       rentResi: 17800,
       rentHotel: 4e4,
+      rentLogi: 6200,
       priceResi: 4.3,
       capRate: 0.042,
       station: 0.76,
       fit: { office: 0.7, retail: 0.88, resi: 1, rental: 0.92, hotel: 0.8, logi: 0.28, house: 0.2, mixed: 0.92 },
+      height: [6, 44],
+      // 既存の建物の階数レンジ
+      usePool: ["resi", "rental", "resi", "retail", "office", "hotel", "mixed"],
       hue: 194,
       elev: 0
     },
     A: {
       id: "A",
+      lotSize: 420,
       name: "\u9752\u8449\u53F0\u30EC\u30B8\u30C7\u30F3\u30B9",
       short: "\u9752\u8449\u53F0",
       kana: "AOBADAI",
@@ -1178,15 +1189,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 15e3,
       rentResi: 16200,
       rentHotel: 22e3,
+      rentLogi: 4200,
       priceResi: 4,
       capRate: 0.044,
       station: 0.58,
       fit: { office: 0.22, retail: 0.34, resi: 0.92, rental: 0.74, hotel: 0.3, logi: 0.05, house: 1, mixed: 0.4 },
+      height: [2, 5],
+      // 既存の建物の階数レンジ
+      usePool: ["house", "house", "resi", "rental"],
       hue: 138,
       elev: 3
     },
     K: {
       id: "K",
+      lotSize: 380,
       name: "\u795E\u697D\u5742\u65E7\u5E02\u8857",
       short: "\u795E\u697D\u5742",
       kana: "KAGURAZAKA",
@@ -1197,15 +1213,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 31e3,
       rentResi: 18400,
       rentHotel: 48e3,
+      rentLogi: 5200,
       priceResi: 4.5,
       capRate: 0.041,
       station: 0.84,
       fit: { office: 0.62, retail: 1, resi: 0.7, rental: 0.76, hotel: 0.98, logi: 0.08, house: 0.24, mixed: 0.8 },
+      height: [3, 13],
+      // 既存の建物の階数レンジ
+      usePool: ["retail", "hotel", "office", "rental", "retail"],
       hue: 28,
       elev: 1
     },
     N: {
       id: "N",
+      lotSize: 640,
       name: "\u5317\u91CE\u30CB\u30E5\u30FC\u30BF\u30A6\u30F3",
       short: "\u5317\u91CE",
       kana: "KITANO NT",
@@ -1216,15 +1237,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 13e3,
       rentResi: 11300,
       rentHotel: 17e3,
+      rentLogi: 4600,
       priceResi: 2.3,
       capRate: 0.052,
       station: 0.42,
       fit: { office: 0.2, retail: 0.52, resi: 0.86, rental: 0.82, hotel: 0.22, logi: 0.36, house: 0.94, mixed: 0.44 },
+      height: [3, 15],
+      // 既存の建物の階数レンジ
+      usePool: ["house", "resi", "rental", "retail", "house"],
       hue: 96,
       elev: 1
     },
     I: {
       id: "I",
+      lotSize: 1500,
       name: "\u6E2F\u5357\u30A4\u30F3\u30BF\u30FC\u30CA\u30B7\u30E7\u30CA\u30EB",
       short: "\u6E2F\u5357",
       kana: "KONAN INTL",
@@ -1235,15 +1261,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 28e3,
       rentResi: 19500,
       rentHotel: 42e3,
+      rentLogi: 6800,
       priceResi: 5,
       capRate: 0.038,
       station: 0.88,
       fit: { office: 0.92, retail: 0.78, resi: 0.74, rental: 0.7, hotel: 1, logi: 0.12, house: 0.1, mixed: 0.9 },
+      height: [8, 40],
+      // 既存の建物の階数レンジ
+      usePool: ["office", "hotel", "office", "mixed", "retail", "rental"],
       hue: 252,
       elev: 1
     },
     S: {
       id: "S",
+      lotSize: 900,
       name: "\u685C\u5DDD\u30A4\u30CE\u30D9\u30FC\u30B7\u30E7\u30F3",
       short: "\u685C\u5DDD",
       kana: "SAKURAGAWA",
@@ -1254,15 +1285,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rentRetail: 19500,
       rentResi: 15200,
       rentHotel: 18e3,
+      rentLogi: 5e3,
       priceResi: 3.5,
       capRate: 0.042,
       station: 0.66,
       fit: { office: 0.88, retail: 0.62, resi: 0.78, rental: 0.9, hotel: 0.42, logi: 0.3, house: 0.62, mixed: 0.7 },
+      height: [3, 18],
+      // 既存の建物の階数レンジ
+      usePool: ["office", "rental", "retail", "resi", "office"],
       hue: 168,
       elev: 1
     },
     J: {
       id: "J",
+      lotSize: 2600,
       name: "\u57CE\u6771\u30ED\u30B8\u30B9\u30C6\u30A3\u30AF\u30B9",
       short: "\u57CE\u6771",
       kana: "JOTO LOGI",
@@ -1278,37 +1314,145 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       capRate: 0.042,
       station: 0.3,
       fit: { office: 0.16, retail: 0.3, resi: 0.4, rental: 0.38, hotel: 0.12, logi: 1, house: 0.44, mixed: 0.3 },
+      height: [1, 5],
+      // 既存の建物の階数レンジ
+      usePool: ["logi", "logi", "logi", "house", "retail"],
       hue: 44,
+      elev: 0
+    },
+    // ---- ここから拡張された地区 ----
+    F: {
+      id: "F",
+      lotSize: 360,
+      name: "\u85E4\u30F6\u4E18\u30AC\u30FC\u30C7\u30F3\u30D2\u30EB",
+      short: "\u85E4\u30F6\u4E18",
+      kana: "FUJIGAOKA",
+      desc: "\u5E02\u5185\u3067\u3082\u3063\u3068\u3082\u5730\u4FA1\u306E\u9AD8\u3044\u4F4E\u5C64\u4F4F\u5B85\u8857\u3002\u53B3\u3057\u3044\u9AD8\u3055\u5236\u9650\u3068\u666F\u89B3\u5354\u5B9A\u304C\u3042\u308A\u3001\u6238\u5EFA\u3068\u4F4E\u5C64\u306E\u9AD8\u7D1A\u5206\u8B72\u3057\u304B\u6210\u308A\u7ACB\u305F\u306A\u3044\u304C\u3001\u5358\u4FA1\u306F\u5E02\u5185\u968F\u4E00\u3067\u3042\u308B\u3002",
+      landPrice: 5.9,
+      farRange: [100, 200],
+      rentOffice: 12e3,
+      rentRetail: 16500,
+      rentResi: 24500,
+      rentHotel: 27e3,
+      rentLogi: 4e3,
+      priceResi: 7.4,
+      capRate: 0.037,
+      station: 0.5,
+      fit: { office: 0.16, retail: 0.3, resi: 0.74, rental: 0.58, hotel: 0.26, logi: 0.04, house: 1, mixed: 0.3 },
+      height: [2, 5],
+      // 既存の建物の階数レンジ
+      usePool: ["house", "house", "house", "resi", "rental"],
+      hue: 334,
+      elev: 4
+    },
+    M: {
+      id: "M",
+      lotSize: 1200,
+      name: "\u5357\u96F2\u30E1\u30C7\u30A3\u30AB\u30EB\u30FB\u30EA\u30B5\u30FC\u30C1\u30D1\u30FC\u30AF",
+      short: "\u5357\u96F2",
+      kana: "NAGUMO MRP",
+      desc: "\u5927\u5B66\u75C5\u9662\u3068\u88FD\u85AC\u30FB\u533B\u7642\u6A5F\u5668\u306E\u7814\u7A76\u62E0\u70B9\u304C\u96C6\u307E\u308B\u7279\u533A\u3002\u7814\u7A76\u958B\u767A\u578B\u30AA\u30D5\u30A3\u30B9\u3068\u3001\u7814\u7A76\u8005\u5411\u3051\u306E\u8CC3\u8CB8\u30EC\u30B8\u30C7\u30F3\u30B9\u3001\u60A3\u8005\u5BB6\u65CF\u306E\u9577\u671F\u6EDE\u5728\u30DB\u30C6\u30EB\u306B\u9700\u8981\u304C\u3042\u308B\u3002",
+      landPrice: 4.9,
+      farRange: [400, 800],
+      rentOffice: 27500,
+      rentRetail: 18e3,
+      rentResi: 14800,
+      rentHotel: 31e3,
+      rentLogi: 5400,
+      priceResi: 3.9,
+      capRate: 0.04,
+      station: 0.72,
+      fit: { office: 0.94, retail: 0.5, resi: 0.66, rental: 0.9, hotel: 0.7, logi: 0.18, house: 0.3, mixed: 0.78 },
+      height: [4, 22],
+      // 既存の建物の階数レンジ
+      usePool: ["office", "office", "rental", "hotel", "retail", "resi"],
+      hue: 176,
+      elev: 1
+    },
+    E: {
+      id: "E",
+      lotSize: 2200,
+      name: "\u6E4A\u90FD\u30A8\u30A2\u30DD\u30FC\u30C8\u30B7\u30C6\u30A3",
+      short: "\u7A7A\u6E2F",
+      kana: "AIRPORT CITY",
+      desc: "\u6E4A\u90FD\u7A7A\u6E2F\u306B\u96A3\u63A5\u3059\u308B\u57CB\u7ACB\u5730\u3002\u9023\u7D61\u6A4B\u3067\u672C\u571F\u3068\u3064\u306A\u304C\u308B\u3002\u822A\u7A7A\u6CD5\u306E\u9AD8\u3055\u5236\u9650\u304C\u3042\u3063\u3066\u9AD8\u5C64\u306F\u5EFA\u3066\u3089\u308C\u306A\u3044\u304C\u3001\u533A\u753B\u306F\u5E02\u5185\u6700\u5927\u3067\u3001\u822A\u7A7A\u8CA8\u7269\u306E\u7269\u6D41\u65BD\u8A2D\u3068\u4E57\u7D99\u5BA2\u5411\u3051\u306E\u30DB\u30C6\u30EB\u304C\u4E3B\u5F79\u306B\u306A\u308B\u3002",
+      landPrice: 0.85,
+      farRange: [200, 400],
+      rentOffice: 18e3,
+      rentRetail: 13e3,
+      rentResi: 9500,
+      rentHotel: 23500,
+      rentLogi: 5600,
+      priceResi: 2.2,
+      capRate: 0.044,
+      station: 0.62,
+      fit: { office: 0.6, retail: 0.48, resi: 0.28, rental: 0.34, hotel: 0.96, logi: 0.94, house: 0.1, mixed: 0.62 },
+      height: [2, 16],
+      // 既存の建物の階数レンジ
+      usePool: ["hotel", "logi", "logi", "office", "retail", "mixed"],
+      hue: 268,
+      elev: 0
+    },
+    W: {
+      id: "W",
+      lotSize: 300,
+      name: "\u82E5\u8449\u753A\uFF08\u5BFE\u5CB8\u306E\u65E7\u5E02\u8857\uFF09",
+      short: "\u82E5\u8449\u753A",
+      kana: "WAKABACHO",
+      desc: "\u6E4A\u5DDD\u306E\u5BFE\u5CB8\u306B\u6B8B\u308B\u53E4\u3044\u5546\u5E97\u8857\u3068\u9577\u5C4B\u306E\u8857\u3002\u533A\u753B\u306F\u5C0F\u3055\u304F\u5730\u4FA1\u3082\u5B89\u3044\u3002\u5C0F\u3076\u308A\u306A\u8CC3\u8CB8\u30EC\u30B8\u30C7\u30F3\u30B9\u3068\u8FD1\u96A3\u578B\u5546\u696D\u3092\u6570\u3067\u7A4D\u307F\u4E0A\u3052\u308B\u3001\u99C6\u3051\u51FA\u3057\u306E\u30C7\u30D9\u30ED\u30C3\u30D1\u30FC\u5411\u3051\u306E\u571F\u5730\u3067\u3042\u308B\u3002",
+      landPrice: 1.05,
+      farRange: [200, 500],
+      rentOffice: 14e3,
+      rentRetail: 2e4,
+      rentResi: 13200,
+      rentHotel: 2e4,
+      rentLogi: 4400,
+      priceResi: 2.75,
+      capRate: 0.05,
+      station: 0.56,
+      fit: { office: 0.34, retail: 0.76, resi: 0.78, rental: 0.88, hotel: 0.36, logi: 0.4, house: 0.34, mixed: 0.62 },
+      height: [2, 10],
+      // 既存の建物の階数レンジ
+      usePool: ["retail", "rental", "rental", "resi", "house", "office"],
+      hue: 62,
       elev: 0
     }
   };
-  var MAP_W = 24;
-  var MAP_H = 24;
+  var MAP_W = 32;
+  var MAP_H = 32;
   var MAP_ROWS = [
-    "AAA.AAA.NNN.N#N.SSS.SSS.",
-    "A#A.AAA.NNN.NNN.SSS.SSS.",
-    "AAA.AAA.NNN.NNN.SSS.S^S.",
-    "========================",
-    "AAA.AAA.N^N.NNN.SSS.SSS.",
-    "AAA.A^A.NNN.NNN.SSS.SSS.",
-    "AAA.AAA.NNN.NNN.S#S.SSS.",
-    "........................",
-    "KKK.KKK.TTT.TTT.JJJ.JJJ.",
-    "KKK.KKK.T#T.TTT.JJJ.JJJ.",
-    "KK#.KKK.TTT.TTT.JJJ.JJJ.",
-    "========================",
-    "KKK.KKK.TTT.TTT.JJJ.J#J.",
-    "KKK.KKK.TTT.TT#.JJJ.JJJ.",
-    "KKK.KK^.TTT.TTT.JJJ.JJJ.",
-    "........................",
-    "III.III.BBB.BBB.BBB.JJJ.",
-    "I#I.III.BBB.BBB.BBB.JJJ.",
-    "III.III.BBB.BBB.BB#.JJJ~",
-    "===========~~~~=======~~",
-    "~II.BBB.BBB~~~~.BBB.~~~~",
-    "~~I.BBB.BB#~~~~.BB~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~"
+    "AAA.AAA.NNN.N#N.SSS.SSS.FFF.FFF.",
+    "A#A.AAA.NNN.NNN.SSS.SSS.FFF.F#F.",
+    "AAA.AAA.NNN.NNN.SSS.S^S.FF^.FFF.",
+    "================================",
+    "AAA.AAA.N^N.NNN.SSS.SSS.FFF.FFF.",
+    "AAA.A^A.NNN.NNN.SSS.SSS.F#F.FFF.",
+    "AAA.AAA.NNN.NNN.S#S.SSS.FFF.FF^.",
+    "................................",
+    "KKK.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.",
+    "KKK.KKK.T#T.TTT.JJJ.JJJ.MMM.M#M.",
+    "KK#.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.",
+    "================================",
+    "KKK.KKK.TTT.TTT.JJJ.J#J.MMM.MMM.",
+    "KKK.KKK.TTT.TT#.JJJ.JJJ.M#M.MMM.",
+    "KKK.KK^.TTT.TTT.JJJ.JJJ.MMM.MMM.",
+    "................................",
+    "III.III.BBB.BBB.BBB.JJJ.EEE.EEE.",
+    "I#I.III.BBB.BBB.BBB.JJJ.EEE.EEE.",
+    "III.III.BBB.BBB.BB#.JJJ~EEE.E#E.",
+    "===========~~~~=======~~========",
+    "~II.BBB.BBB~~~~.BBB.~~~~EEE.EEE.",
+    "~~I.BBB.BB#~~~~.BB~~~~~~EEE.EE^.",
+    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+    "~~~~~~~~~~~~~~~~~~~~~~~~========",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.",
+    "W#W.WWW.WWW.WWW.~~~~~~~~EEE.E#E.",
+    "WWW.WWW.WW^.WWW.~~~~~~~~EEE.EEE.",
+    "================~~~~~~~~========",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.",
+    "WWW.W#W.WWW.W^W.~~~~~~~~E^E.EEE.",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE."
   ];
   var TERRAIN = { ROAD: "road", AVENUE: "avenue", WATER: "water", PARK: "park", GREEN: "green", LOT: "lot" };
   function terrainOf(ch) {
@@ -1975,8 +2119,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         if (terrain === TERRAIN.LOT && d) {
           const dd = DISTRICTS[d];
           const r1 = hash2(x, y, 1), r2 = hash2(x, y, 2), r3 = hash2(x, y, 3);
-          const areaBase = { T: 1900, B: 1650, A: 420, K: 380, N: 640, J: 2600, I: 1500, S: 900 }[d];
-          cell.area = Math.round(areaBase * (0.6 + r1 * 0.95) / 10) * 10;
+          cell.area = Math.round(dd.lotSize * (0.6 + r1 * 0.95) / 10) * 10;
           cell.far = Math.round((dd.farRange[0] + r2 * (dd.farRange[1] - dd.farRange[0])) / 50) * 50;
           cell.station = clamp01(dd.station * (0.78 + r3 * 0.34));
           cell.baseValue = cell.area * dd.landPrice * (0.72 + cell.station * 0.5) * (0.7 + cell.far / dd.farRange[1] * 0.55);
@@ -1998,34 +2141,15 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return rng.pick(BRAND_PREFIX) + dd.short + rng.pick(BRAND_CORE);
   }
   function populateCity(cells, rng, rivals) {
-    const HEIGHT = {
-      T: [14, 54],
-      B: [6, 44],
-      A: [2, 5],
-      K: [3, 13],
-      N: [3, 15],
-      J: [1, 5],
-      I: [8, 40],
-      S: [3, 18]
-    };
-    const USE_POOL = {
-      T: ["office", "office", "office", "mixed", "retail", "hotel", "rental"],
-      B: ["resi", "rental", "resi", "retail", "office", "hotel", "mixed"],
-      A: ["house", "house", "resi", "rental"],
-      K: ["retail", "hotel", "office", "rental", "retail"],
-      N: ["house", "resi", "rental", "retail", "house"],
-      J: ["logi", "logi", "logi", "house", "retail"],
-      I: ["office", "hotel", "office", "mixed", "retail", "rental"],
-      S: ["office", "rental", "retail", "resi", "office"]
-    };
     for (const c of cells) {
       if (c.terrain !== TERRAIN.LOT || !c.d) continue;
       if (rng.chance(0.13)) {
         c.vacant = true;
         continue;
       }
-      const use = rng.pick(USE_POOL[c.d]);
-      const [lo, hi] = HEIGHT[c.d];
+      const dd = DISTRICTS[c.d];
+      const use = rng.pick(dd.usePool);
+      const [lo, hi] = dd.height;
       let floors = rng.int(lo, hi);
       if (use === "logi") floors = rng.int(1, 5);
       if (use === "house") floors = rng.int(2, 3);
@@ -2116,11 +2240,24 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return s;
   }
   function baseSalaryFor(s, gap = 1) {
-    const r = RANKS[s.rank];
+    return salaryFrom(RANKS[s.rank].baseSalary, s, gap);
+  }
+  function rankPayOf(g, rank) {
+    const rp = g && g.hrPolicy && g.hrPolicy.rankPay;
+    const v = rp && rp[rank];
+    return typeof v === "number" && isFinite(v) ? v : RANKS[rank].baseSalary;
+  }
+  function stdSalary(g, s, gap = 1) {
+    return salaryFrom(rankPayOf(g, s.rank), s, gap);
+  }
+  function salaryFrom(base, s, gap) {
     const ab = avgAbility(s);
     const abilPart = (ab / 100 - 0.55) * 0.32 * gap;
     const tenurePart = Math.min(s.tenure, 25) * 0.06 * (2 - gap);
-    return Math.round((r.baseSalary * (1.04 + abilPart) + tenurePart) * 10) / 10;
+    return Math.round((base * (1.04 + abilPart) + tenurePart) * 10) / 10;
+  }
+  function defaultRankPay() {
+    return RANKS.map((r) => r.baseSalary);
   }
   function avgAbility(s) {
     return ABILITY_IDS.reduce((a, k) => a + s.abil[k], 0) / ABILITY_IDS.length;
@@ -2228,7 +2365,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       acquisitions: [],
       rivals,
       hrPolicy: {
+        // 役職ごとの基準年収（百万円）。人事タブでいつでも改定できる
+        rankPay: defaultRankPay(),
         salaryMul: 1,
+        // 旧版との互換用。いまは rankPay が給与テーブルを決める
         programs: { training: false, welfare: false, dx: false, brandpr: false },
         evalStrict: 0.5
       },
@@ -2372,15 +2512,21 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
   }
   var SKIP_TOP = /* @__PURE__ */ new Set(["cells"]);
+  var STEPS = [
+    // 給与を「全体の係数」から「役職ごとの基準額」に変えた
+    (g) => {
+      const pol = g.hrPolicy;
+      if (!pol || Array.isArray(pol.rankPay)) return;
+      const mul = typeof pol.salaryMul === "number" ? pol.salaryMul : 1;
+      pol.rankPay = RANKS.map((r) => Math.round(r.baseSalary * mul * 10) / 10);
+    }
+  ];
   function migrate(g) {
     if (!g || !Array.isArray(g.cells) || !g.cells.length || !g.company) return null;
     try {
+      for (const step of STEPS) step(g);
       const tpl = template();
-      if (g.cells.length === tpl.cells.length) {
-        for (let i = 0; i < g.cells.length; i++) {
-          if (isObj(g.cells[i]) && isObj(tpl.cells[i])) fill(g.cells[i], tpl.cells[i]);
-        }
-      }
+      remapCells(g, tpl);
       fill(g, tpl, 0, SKIP_TOP);
       if (typeof g.week === "number") syncCalendar(g);
       g.pendingReport = null;
@@ -2391,6 +2537,27 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     } catch (e) {
       return null;
     }
+  }
+  function remapCells(g, tpl) {
+    if (g.cells.length === tpl.cells.length) {
+      for (let i = 0; i < g.cells.length; i++) {
+        if (isObj(g.cells[i]) && isObj(tpl.cells[i])) fill(g.cells[i], tpl.cells[i]);
+      }
+      return;
+    }
+    const byId = /* @__PURE__ */ new Map();
+    for (const c of g.cells) if (isObj(c) && c.id) byId.set(c.id, c);
+    let kept = 0;
+    g.cells = tpl.cells.map((nc) => {
+      const oc = byId.get(nc.id);
+      if (oc && oc.terrain === nc.terrain && (oc.d ?? null) === (nc.d ?? null)) {
+        fill(oc, nc);
+        kept++;
+        return oc;
+      }
+      return clone(nc);
+    });
+    g.mapGrew = { keptCells: kept, totalCells: g.cells.length };
   }
   function rawRead(slot) {
     let raw = null;
@@ -3273,9 +3440,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.dpr = dpr;
       this.skyline = null;
+      this._ground = null;
+      this._groundOff = false;
     }
     invalidate() {
       this.cache.clear();
+      this._ground = null;
+      this._groundOff = false;
+      this._order = null;
     }
     setMonth(m) {
       const t = timeOfMonth(m);
@@ -3784,6 +3956,94 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       return s;
     }
     // --------------------------------------------------------
+    //  地面のキャッシュ
+    // --------------------------------------------------------
+    /** 奥から手前へ並べた区画。回転が変わらなければ使い回せる */
+    drawOrder() {
+      if (this._order && this._orderRot === this.cam.rot) return this._order;
+      const g = this.g;
+      const arr = [];
+      for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+        const c = g.cells[y * MAP_W + x];
+        if (c) arr.push({ c, k: depthKey(x, y, this.cam.rot) });
+      }
+      arr.sort((a, b) => a.k - b.k);
+      this._order = arr;
+      this._orderRot = this.cam.rot;
+      return arr;
+    }
+    /** 地面の内容が変わったことを知らせる */
+    dirtyGround() {
+      this._ground = null;
+    }
+    /**
+     * 地面の見た目に関わる状態の指紋。
+     * 建物の有無・更地・着工中、所有者表示のときは所有者も見る。
+     * これが変わらないかぎり焼き直さない。
+     */
+    groundSig() {
+      const owner = this.layer === "owner";
+      let n = 5381;
+      for (const c of this.g.cells) {
+        let v = (c.building ? 1 : 0) | (c.vacant ? 2 : 0) | (c.projectId ? 4 : 0);
+        if (owner && c.owner) v += c.owner.length * 8 + c.owner.charCodeAt(0);
+        n = n * 33 + v | 0;
+      }
+      return n;
+    }
+    /**
+     * マップ全体の地面を1枚の画像に焼く。
+     * 大きくなりすぎるときは null を返し、呼び出し側は1枚ずつ描く。
+     */
+    groundLayer(order) {
+      const z = this.zoom;
+      const key = `${this.cam.zoomIdx}|${this.cam.rot}|${this.time.key}|${this.layer}|${this.groundSig()}`;
+      if (this._ground && this._ground.key === key) return this._ground;
+      if (this._groundOff) return null;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [gx, gy] of [[-1, -1], [MAP_W, -1], [MAP_W, MAP_H], [-1, MAP_H]]) {
+        const p = toScreen(gx, gy, 0, this.cam.rot, z);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.y > y1) y1 = p.y;
+      }
+      const pad = TILE_W * z;
+      x0 -= pad;
+      x1 += pad;
+      y0 -= 7 * 6 * Z_UNIT * z + pad;
+      y1 += pad;
+      const cw = Math.ceil(x1 - x0), ch = Math.ceil(y1 - y0);
+      const dpr = this.dpr;
+      if (cw * ch * dpr * dpr > 5e6) {
+        this._groundOff = true;
+        return null;
+      }
+      this._groundOff = false;
+      const cv = this._ground && this._ground.canvas || document.createElement("canvas");
+      const pw = Math.max(1, Math.round(cw * dpr)), phh = Math.max(1, Math.round(ch * dpr));
+      if (cv.width !== pw || cv.height !== phh) {
+        cv.width = pw;
+        cv.height = phh;
+      }
+      const c2 = cv.getContext("2d");
+      c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c2.clearRect(0, 0, cw, ch);
+      c2.translate(-x0, -y0);
+      const prev = this.ctx;
+      this.ctx = c2;
+      try {
+        for (const { c } of order) {
+          const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+          this.drawTile(c, p.x, p.y);
+        }
+      } finally {
+        this.ctx = prev;
+      }
+      this._ground = { key, canvas: cv, x: x0, y: y0, w: cw, h: ch };
+      return this._ground;
+    }
+    // --------------------------------------------------------
     //  メイン描画
     // --------------------------------------------------------
     draw(dt) {
@@ -3797,21 +4057,21 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       this.drawSky();
       ctx2.translate(w / 2 + this.cam.x, h / 2 + this.cam.y);
       this.drawIslandBase();
-      const order = [];
-      for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-        const c = g.cells[y * MAP_W + x];
-        order.push({ c, k: depthKey(x, y, this.cam.rot) });
-      }
-      order.sort((a, b) => a.k - b.k);
+      const order = this.drawOrder();
       const margin = 260 * z + 400;
-      for (const { c } of order) {
-        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
-        const px = p.x, py = p.y;
-        const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
-        if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
-        this.drawTile(c, px, py);
+      const ground = this.groundLayer(order);
+      if (ground) {
+        ctx2.drawImage(ground.canvas, ground.x, ground.y, ground.w, ground.h);
+      } else {
+        for (const { c } of order) {
+          const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+          const px = p.x, py = p.y;
+          const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
+          if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
+          this.drawTile(c, px, py);
+        }
       }
-      if (T.shadow > 0.05) {
+      if (T.shadow > 0.05 && z >= 0.4) {
         ctx2.save();
         ctx2.globalAlpha = T.shadow * (1 - W.cloud * 0.55);
         ctx2.fillStyle = "#05080f";
@@ -3837,10 +4097,15 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       }
       ctx2.restore();
       this.drawWeather();
-      const vg = ctx2.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.34, w / 2, h / 2, Math.max(w, h) * 0.78);
-      vg.addColorStop(0, "rgba(0,0,0,0)");
-      vg.addColorStop(1, "rgba(0,0,0,0.42)");
-      ctx2.fillStyle = vg;
+      if (!this._vignette || this._vigW !== w || this._vigH !== h) {
+        const vg = ctx2.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.34, w / 2, h / 2, Math.max(w, h) * 0.78);
+        vg.addColorStop(0, "rgba(0,0,0,0)");
+        vg.addColorStop(1, "rgba(0,0,0,0.42)");
+        this._vignette = vg;
+        this._vigW = w;
+        this._vigH = h;
+      }
+      ctx2.fillStyle = this._vignette;
       ctx2.fillRect(0, 0, w, h);
       if (T.glow > 0.6) {
         ctx2.save();
@@ -4348,8 +4613,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return personnelCost(g) * WEEKS_PER_YEAR;
   }
   function salaryFairness(g, s) {
-    const std = baseSalaryFor(s) * g.hrPolicy.salaryMul;
-    return s.salary / Math.max(0.1, std);
+    return s.salary / Math.max(0.1, baseSalaryFor(s));
   }
   function payIndex(g) {
     if (!g.staff.length) return 1;
@@ -4404,7 +4668,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       let promoted = 0;
       for (const s of g.staff) {
         s.age += 1;
-        const std = baseSalaryFor(s) * pol.salaryMul;
+        const std = stdSalary(g, s);
         s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
       }
       for (let r = RANKS.length - 2; r >= 1; r--) {
@@ -4417,7 +4681,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
           const s = cands[i];
           if (!s) break;
           s.rank = r;
-          s.salary = Math.max(s.salary, baseSalaryFor(s) * pol.salaryMul);
+          s.salary = Math.max(s.salary, stdSalary(g, s));
           s.morale = clamp01(s.morale + 0.14);
           promoted++;
           if (r >= 5) news.push({ icon: "\u2B06", type: "hr", major: true, text: `${s.name}\u304C${rank.name}\u306B\u6607\u683C\u3057\u305F\u3002` });
@@ -4428,7 +4692,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if (!g.staff.some((s) => s.rank === 7) && g.staff.length) {
       const next = g.staff.slice().sort((a, b) => avgAbility(b) + b.abil.lead - (avgAbility(a) + a.abil.lead))[0];
       next.rank = 7;
-      next.salary = baseSalaryFor(next);
+      next.salary = stdSalary(g, next);
       news.push({ icon: "\u{1F451}", type: "hr", major: true, text: `${next.name}\u304C\u65B0\u793E\u9577\u306B\u5C31\u4EFB\u3057\u305F\u3002` });
     }
   }
@@ -6086,23 +6350,36 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     // 翌年4月第1週 入社
   };
   var UNIVERSITIES = [
-    { id: "minato", name: "\u6E4A\u90FD\u5927\u5B66", short: "\u6E4A\u90FD\u5927", tier: "S", w: 3 },
-    { id: "sakura", name: "\u685C\u5DDD\u5927\u5B66", short: "\u685C\u5DDD\u5927", tier: "S", w: 2.4 },
-    { id: "tokiwaT", name: "\u5E38\u76E4\u5DE5\u79D1\u5927\u5B66", short: "\u5E38\u76E4\u5DE5\u5927", tier: "S", w: 2.2 },
-    { id: "aoba", name: "\u9752\u8449\u5B66\u9662\u5927\u5B66", short: "\u9752\u8449\u5B66\u9662", tier: "A", w: 5 },
-    { id: "kagura", name: "\u795E\u697D\u5742\u5927\u5B66", short: "\u795E\u697D\u5742\u5927", tier: "A", w: 4.6 },
-    { id: "minatoC", name: "\u6E4A\u90FD\u5E02\u7ACB\u5927\u5B66", short: "\u5E02\u7ACB\u5927", tier: "A", w: 3.6 },
-    { id: "jonan", name: "\u57CE\u5357\u5927\u5B66", short: "\u57CE\u5357\u5927", tier: "A", w: 3.4 },
-    { id: "kitano", name: "\u5317\u91CE\u5927\u5B66", short: "\u5317\u91CE\u5927", tier: "B", w: 7.5 },
-    { id: "shiomi", name: "\u6C50\u898B\u56FD\u969B\u5927\u5B66", short: "\u6C50\u898B\u56FD\u969B", tier: "B", w: 6.8 },
-    { id: "toyo", name: "\u6771\u6D0B\u6587\u5316\u5927\u5B66", short: "\u6771\u6D0B\u6587\u5316", tier: "B", w: 6.5 },
-    { id: "minatoK", name: "\u6E4A\u5DE5\u696D\u5927\u5B66", short: "\u6E4A\u5DE5\u5927", tier: "B", w: 6 },
-    { id: "sakuraok", name: "\u685C\u4E18\u5927\u5B66", short: "\u685C\u4E18\u5927", tier: "B", w: 5.8 },
-    { id: "joto", name: "\u57CE\u6771\u7D4C\u6E08\u5927\u5B66", short: "\u57CE\u6771\u7D4C\u6E08", tier: "C", w: 9 },
-    { id: "konan", name: "\u6E2F\u5357\u5546\u79D1\u5927\u5B66", short: "\u6E2F\u5357\u5546\u79D1", tier: "C", w: 8.5 },
-    { id: "midori", name: "\u7DD1\u5DDD\u5927\u5B66", short: "\u7DD1\u5DDD\u5927", tier: "C", w: 8 },
-    { id: "shinto", name: "\u65B0\u90FD\u5B66\u9662\u5927\u5B66", short: "\u65B0\u90FD\u5B66\u9662", tier: "C", w: 7.6 },
-    { id: "sengoku", name: "\u5343\u77F3\u5927\u5B66", short: "\u5343\u77F3\u5927", tier: "C", w: 7.2 }
+    // --- S：最難関 ---
+    { id: "toutei", name: "\u6771\u5E1D\u5927\u5B66", short: "\u6771\u5E1D\u5927", tier: "S", w: 1.6 },
+    { id: "kyoraku", name: "\u4EAC\u6D1B\u5927\u5B66", short: "\u4EAC\u6D1B\u5927", tier: "S", w: 1.3 },
+    { id: "tomon", name: "\u7A32\u9580\u5927\u5B66", short: "\u7A32\u9580\u5927", tier: "S", w: 2.2 },
+    { id: "mita", name: "\u4E09\u7530\u7FA9\u587E\u5927\u5B66", short: "\u4E09\u7530\u7FA9\u587E", tier: "S", w: 2 },
+    { id: "josui", name: "\u5982\u6C34\u5927\u5B66", short: "\u5982\u6C34\u5927", tier: "S", w: 1 },
+    { id: "ookayama", name: "\u5927\u5CA1\u5C71\u5DE5\u79D1\u5927\u5B66", short: "\u5927\u5CA1\u5C71\u5DE5\u5927", tier: "S", w: 1.1 },
+    // --- A：難関 ---
+    { id: "naniwa", name: "\u6D6A\u83EF\u5927\u5B66", short: "\u6D6A\u83EF\u5927", tier: "A", w: 2.2 },
+    { id: "morito", name: "\u675C\u90FD\u5927\u5B66", short: "\u675C\u90FD\u5927", tier: "A", w: 2 },
+    { id: "owari", name: "\u5C3E\u5F35\u5927\u5B66", short: "\u5C3E\u5F35\u5927", tier: "A", w: 2 },
+    { id: "rokko", name: "\u516D\u7532\u5927\u5B66", short: "\u516D\u7532\u5927", tier: "A", w: 1.9 },
+    { id: "meiou", name: "\u660E\u61C9\u5927\u5B66", short: "\u660E\u61C9\u5927", tier: "A", w: 4.4 },
+    { id: "seinan", name: "\u9752\u5357\u5B66\u9662\u5927\u5B66", short: "\u9752\u5357\u5B66\u9662", tier: "A", w: 3.8 },
+    { id: "chuou", name: "\u4E2D\u685C\u5927\u5B66", short: "\u4E2D\u685C\u5927", tier: "A", w: 3.6 },
+    // --- B：中堅 ---
+    { id: "hosho", name: "\u6CD5\u627F\u5927\u5B66", short: "\u6CD5\u627F\u5927", tier: "B", w: 5.4 },
+    { id: "ikebukuro", name: "\u6C60\u888B\u5B66\u9662\u5927\u5B66", short: "\u6C60\u888B\u5B66\u9662", tier: "B", w: 4.8 },
+    { id: "kinugasa", name: "\u8863\u7B20\u9928\u5927\u5B66", short: "\u8863\u7B20\u9928\u5927", tier: "B", w: 4.6 },
+    { id: "kansaig", name: "\u95A2\u897F\u5B66\u820E\u5927\u5B66", short: "\u95A2\u897F\u5B66\u820E", tier: "B", w: 4.2 },
+    { id: "nitto", name: "\u65E5\u6771\u5927\u5B66", short: "\u65E5\u6771\u5927", tier: "B", w: 7 },
+    { id: "shibahama", name: "\u829D\u6D5C\u5DE5\u696D\u5927\u5B66", short: "\u829D\u6D5C\u5DE5\u5927", tier: "B", w: 3.8 },
+    { id: "toyo", name: "\u6771\u6D0B\u6587\u83EF\u5927\u5B66", short: "\u6771\u6D0B\u6587\u83EF", tier: "B", w: 5 },
+    // --- C：一般 ---
+    { id: "teito", name: "\u5E1D\u90FD\u5927\u5B66", short: "\u5E1D\u90FD\u5927", tier: "C", w: 7.4 },
+    { id: "daitobun", name: "\u5927\u6771\u6587\u6210\u5927\u5B66", short: "\u5927\u6771\u6587\u6210", tier: "C", w: 7 },
+    { id: "kokushi", name: "\u56FD\u58EB\u6D1B\u5927\u5B66", short: "\u56FD\u58EB\u6D1B\u5927", tier: "C", w: 6.6 },
+    { id: "johoku", name: "\u57CE\u5317\u5546\u79D1\u5927\u5B66", short: "\u57CE\u5317\u5546\u79D1", tier: "C", w: 6.2 },
+    { id: "tokaiyo", name: "\u6771\u6D77\u6D0B\u5927\u5B66", short: "\u6771\u6D77\u6D0B\u5927", tier: "C", w: 7.2 },
+    { id: "midori", name: "\u7DD1\u5DDD\u5B66\u9662\u5927\u5B66", short: "\u7DD1\u5DDD\u5B66\u9662", tier: "C", w: 5.8 }
   ];
   var TIERS = {
     S: { id: "S", label: "\u6700\u96E3\u95A2", abil: [34, 52], pot: [78, 97], expect: 1.16, rivalPull: 0.88 },
@@ -8037,18 +8314,24 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 
   ${recruitSection(g)}
 
-  ${section("\u5831\u916C\u5236\u5EA6", `\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u4FC2\u6570 ${g.hrPolicy.salaryMul.toFixed(2)}`, `
+  ${section("\u5831\u916C\u5236\u5EA6", `\u5E02\u5834\u6BD4 ${pct(payIndex(g), 0)}`, `
     <div class="card">
       <table class="tbl">
-        <tr><th>\u5F79\u8077</th><th>\u4EBA\u6570</th><th>\u6A19\u6E96\u5E74\u53CE</th><th>\u6607\u683C\u8981\u4EF6</th></tr>
+        <tr><th>\u5F79\u8077</th><th>\u4EBA\u6570</th><th>\u81EA\u793E\u306E\u57FA\u6E96</th><th>\u696D\u754C\u6A19\u6E96</th><th>\u5DEE</th><th>\u6607\u683C\u8981\u4EF6</th></tr>
         ${RANKS.map((r) => {
       const n = active.filter((s) => s.rank === r.id).length;
+      const mine = rankPayOf(g, r.id), mkt = r.baseSalary;
+      const d = mine / mkt - 1;
       return `<tr><td>${r.name}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ""}</td>
-          <td>${man(r.baseSalary * g.hrPolicy.salaryMul)}</td>
+          <td><b>${man(mine)}</b></td>
+          <td>${man(mkt)}</td>
+          <td class="${Math.abs(d) < 5e-3 ? "flat" : d > 0 ? "up" : "down"}">${Math.abs(d) < 5e-3 ? "\u2014" : (d > 0 ? "+" : "") + (d * 100).toFixed(0) + "%"}</td>
           <td>${r.minAbility ? `\u80FD\u529B ${r.minAbility}\u4EE5\u4E0A` : "\u2014"}</td></tr>`;
     }).join("")}
       </table>
-      <div class="btnrow"><button class="btn sm" data-act="hr.salary">\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u3092\u6539\u5B9A\u3059\u308B</button></div>
+      <div class="hint">\u5B9F\u969B\u306E\u5E74\u53CE\u306F\u3001\u3053\u306E\u57FA\u6E96\u984D\u306B\u672C\u4EBA\u306E\u80FD\u529B\u3068\u52E4\u7D9A\u5E74\u6570\u3092\u4E0A\u4E57\u305B\u3057\u3066\u6C7A\u307E\u308B\u3002
+      \u696D\u754C\u6A19\u6E96\u3092\u4E0B\u56DE\u308B\u3068\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u304C\u843D\u3061\u3001\u96E2\u8077\u3068\u5F15\u304D\u629C\u304D\u304C\u5897\u3048\u308B\u3002</div>
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.salary">\u5F79\u8077\u3054\u3068\u306E\u5E74\u53CE\u3092\u6539\u5B9A\u3059\u308B</button></div>
     </div>
   `)}
 
@@ -8203,7 +8486,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <div class="field"><label>\u5E74\u53CE\uFF08\u4E07\u5186\uFF09</label>
         <input type="number" id="inpSal" value="${Math.round(s.salary * 100)}" step="10">
       </div>
-      <div class="hint">\u6A19\u6E96\u5E74\u53CE\u306F ${man(baseSalaryFor(s) * g.hrPolicy.salaryMul)}\u3002\u3053\u308C\u3092\u4E0B\u56DE\u308B\u3068\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u304C\u4E0B\u304C\u308B\u3002</div>
+      <div class="hint">\u81EA\u793E\u306E\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u3067\u306F ${man(stdSalary(g, s))}\u3001\u696D\u754C\u6A19\u6E96\u306F ${man(baseSalaryFor(s))}\u3002
+      \u696D\u754C\u6A19\u6E96\u3092\u4E0B\u56DE\u308B\u3068\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u304C\u4E0B\u304C\u308B\u3002</div>
     </div>
   `, [
       { label: "\u9589\u3058\u308B", cls: "ghost" },
@@ -8226,7 +8510,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         disabled: !canPromote,
         onClick: () => {
           s.rank++;
-          s.salary = Math.max(s.salary, baseSalaryFor(s) * g.hrPolicy.salaryMul);
+          s.salary = Math.max(s.salary, stdSalary(g, s));
           s.morale = Math.min(1, s.morale + 0.16);
           toast(`${s.name}\u3092${RANKS[s.rank].name}\u306B\u6607\u683C\u3055\u305B\u305F`, "good");
           ctx2.refresh();
@@ -8579,39 +8863,89 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
   }
   function openSalaryPolicy(g, ctx2) {
-    openModal("\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u306E\u6539\u5B9A", `
-    <div class="card">
-      ${kv("\u73FE\u5728\u306E\u4FC2\u6570", g.hrPolicy.salaryMul.toFixed(2))}
-      ${kv("\u5E74\u9593\u4EBA\u4EF6\u8CBB", money(Math.round(personnelCost(g) * 4)))}
-      ${kv("\u5E02\u5834\u6BD4\u306E\u7D66\u4E0E\u6C34\u6E96", pct(payIndex(g), 0))}
+    let draft = RANKS.map((r) => Math.round(rankPayOf(g, r.id) * 100));
+    const rows = () => RANKS.map((r) => {
+      const n = g.staff.filter((s) => s.rank === r.id).length;
+      const mkt = Math.round(r.baseSalary * 100);
+      const d = draft[r.id] / mkt - 1;
+      return `<tr>
+      <td>${r.name}</td>
+      <td>${n}\u540D</td>
+      <td style="width:118px"><input type="number" class="payin" data-r="${r.id}"
+        value="${draft[r.id]}" min="0" max="20000" step="10"
+        style="width:100%;padding:6px 7px;border-radius:6px;background:var(--field-bg);
+        border:1px solid var(--line);color:var(--ink);text-align:right;font-variant-numeric:tabular-nums"></td>
+      <td>${num(mkt)}</td>
+      <td class="${Math.abs(d) < 5e-3 ? "flat" : d > 0 ? "up" : "down"}">${Math.abs(d) < 5e-3 ? "\u2014" : (d > 0 ? "+" : "") + (d * 100).toFixed(0) + "%"}</td>
+    </tr>`;
+    }).join("");
+    const body = () => `
+    <div class="hint" style="margin-bottom:10px">\u5F79\u8077\u3054\u3068\u306E\u57FA\u6E96\u5E74\u53CE\u3092\u6C7A\u3081\u308B\u3002\u5B9F\u969B\u306E\u5E74\u53CE\u306F\u3001\u3053\u3053\u306B\u672C\u4EBA\u306E\u80FD\u529B\u3068\u52E4\u7D9A\u5E74\u6570\u3092\u4E0A\u4E57\u305B\u3057\u305F\u984D\u306B\u306A\u308B\u3002
+    \u6539\u5B9A\u306F\u6BCE\u5E74\u306E\u5B9A\u671F\u6607\u7D66\u3067\u5C11\u3057\u305A\u3064\u53CD\u6620\u3055\u308C\u308B\u3002</div>
+    <table class="tbl">
+      <tr><th>\u5F79\u8077</th><th>\u4EBA\u6570</th><th>\u57FA\u6E96\u5E74\u53CE\uFF08\u4E07\u5186\uFF09</th><th>\u696D\u754C\u6A19\u6E96</th><th>\u5DEE</th></tr>
+      ${rows()}
+    </table>
+    <div class="btnrow">
+      <button class="btn sm" data-adj="1.05">\u5168\u4F53\u3092 +5%</button>
+      <button class="btn sm" data-adj="0.95">\u5168\u4F53\u3092 \u22125%</button>
+      <button class="btn sm" data-reset="1">\u696D\u754C\u6A19\u6E96\u306B\u623B\u3059</button>
     </div>
-    <div class="field" style="margin-top:12px">
-      <label>\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u4FC2\u6570\uFF081.00 = \u696D\u754C\u6A19\u6E96\uFF09</label>
-      <input type="range" id="rngS" min="0.75" max="1.45" step="0.01" value="${g.hrPolicy.salaryMul}">
-      <div id="sInfo" class="hint"></div>
+    <div class="card" style="margin-top:12px">
+      <div id="payInfo"></div>
     </div>
-    <div class="hint">\u4FC2\u6570\u3092\u4E0A\u3052\u308B\u3068\u6BCE\u5E74\u306E\u5B9A\u671F\u6607\u7D66\u3067\u5168\u793E\u54E1\u306E\u5E74\u53CE\u304C\u4E0A\u304C\u308A\u3001\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u3068\u5B9A\u7740\u7387\u304C\u6539\u5584\u3059\u308B\u3002\u4E0B\u3052\u308C\u3070\u4EBA\u4EF6\u8CBB\u306F\u6E1B\u308B\u304C\u3001\u512A\u79C0\u306A\u4EBA\u6750\u304B\u3089\u629C\u3051\u3066\u3044\u304F\u3002</div>
-  `, [
+    <div class="hint">\u696D\u754C\u6A19\u6E96\u3092\u5927\u304D\u304F\u4E0B\u56DE\u308B\u5F79\u8077\u304B\u3089\u306F\u4EBA\u304C\u629C\u3051\u3066\u3044\u304F\u3002\u9006\u306B\u4E0A\u3052\u3059\u304E\u308B\u3068\u4EBA\u4EF6\u8CBB\u304C\u5229\u76CA\u3092\u5727\u8FEB\u3059\u308B\u3002
+    \u5F79\u8077\u3054\u3068\u306B\u5DEE\u3092\u3064\u3051\u308C\u3070\u3001\u305F\u3068\u3048\u3070\u7BA1\u7406\u8077\u3092\u539A\u304F\u3057\u3066\u73FE\u5834\u3092\u7D5E\u308B\u3068\u3044\u3063\u305F\u8A2D\u8A08\u3082\u3067\u304D\u308B\u3002</div>`;
+    openModal("\u5F79\u8077\u3054\u3068\u306E\u5E74\u53CE", body(), [
       { label: "\u30AD\u30E3\u30F3\u30BB\u30EB", cls: "ghost" },
       {
         label: "\u6539\u5B9A\u3059\u308B",
         cls: "primary",
         onClick: () => {
-          g.hrPolicy.salaryMul = +document.getElementById("rngS").value;
-          toast(`\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u4FC2\u6570\u3092${g.hrPolicy.salaryMul.toFixed(2)}\u306B\u6539\u5B9A\u3057\u305F`);
+          g.hrPolicy.rankPay = draft.map((v) => Math.round(v) / 100);
+          toast("\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u3092\u6539\u5B9A\u3057\u305F", "good");
           ctx2.refresh();
         }
       }
     ]);
-    const rg = document.getElementById("rngS"), info = document.getElementById("sInfo");
     const sync = () => {
-      const v = +rg.value;
+      const info = document.getElementById("payInfo");
+      if (!info) return;
       const cur = g.staff.reduce((a, s) => a + s.salary, 0);
-      const next = g.staff.reduce((a, s) => a + Math.max(s.salary * 0.62 + baseSalaryFor(s) * v * 0.38, 0), 0);
-      info.innerHTML = `\u4FC2\u6570 <b>${v.toFixed(2)}</b>\u3000\u6B21\u56DE\u6607\u7D66\u5F8C\u306E\u5E74\u9593\u4EBA\u4EF6\u8CBB \u7D04${money(Math.round(next * 1.16))}\uFF08\u73FE\u5728 ${money(Math.round(cur * 1.16))}\uFF09`;
+      const after = g.staff.reduce((a, s) => {
+        const std = stdSalary({ hrPolicy: { rankPay: draft.map((v) => v / 100) } }, s);
+        return a + Math.max(0, s.salary * 0.62 + std * 0.38);
+      }, 0);
+      const mkt = g.staff.length ? g.staff.reduce((a, s) => a + (s.salary * 0.62 + stdSalary({ hrPolicy: { rankPay: draft.map((v) => v / 100) } }, s) * 0.38) / Math.max(0.1, baseSalaryFor(s)), 0) / g.staff.length : 1;
+      info.innerHTML = `
+      <div class="kv"><span class="k">\u3044\u307E\u306E\u5E74\u9593\u4EBA\u4EF6\u8CBB</span><span class="v">${money(Math.round(cur * 1.16))}</span></div>
+      <div class="kv"><span class="k">\u6B21\u56DE\u6607\u7D66\u5F8C\uFF08\u898B\u8FBC\u307F\uFF09</span><span class="v ${after > cur ? "down" : after < cur ? "up" : ""}">${money(Math.round(after * 1.16))}</span></div>
+      <div class="kv"><span class="k">\u6539\u5B9A\u5F8C\u306E\u5E02\u5834\u6BD4</span><span class="v ${mkt < 0.95 ? "down" : mkt > 1.05 ? "up" : ""}">${pct(mkt, 0)}</span></div>`;
     };
-    rg.oninput = sync;
-    sync();
+    const bind = () => {
+      const b = document.getElementById("modalBody");
+      b.querySelectorAll(".payin").forEach((el) => {
+        el.oninput = () => {
+          const v = Math.max(0, Math.min(2e4, Math.round(+el.value || 0)));
+          draft[+el.dataset.r] = v;
+          sync();
+        };
+      });
+      b.querySelectorAll("[data-adj]").forEach((el) => el.onclick = () => {
+        const k = +el.dataset.adj;
+        draft = draft.map((v) => Math.max(0, Math.round(v * k / 10) * 10));
+        b.innerHTML = body();
+        bind();
+      });
+      const rs = b.querySelector("[data-reset]");
+      if (rs) rs.onclick = () => {
+        draft = defaultRankPay().map((v) => Math.round(v * 100));
+        b.innerHTML = body();
+        bind();
+      };
+      sync();
+    };
+    bind();
   }
 
   // src/ui/panelMA.js
@@ -8837,6 +9171,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const lotsByRival = {};
     for (const c of g.cells) if (c.owner && c.owner !== "other" && c.owner !== "player") lotsByRival[c.owner] = (lotsByRival[c.owner] || 0) + 1;
     const myLots = g.cells.filter((c) => c.owner === "player").length;
+    const totalLots = Math.max(1, g.cells.filter((c) => c.terrain === TERRAIN.LOT).length);
     return `
   ${section("\u696D\u754C\u30E9\u30F3\u30AD\u30F3\u30B0", `${KEYS.find((x) => x.k === key).n}\u9806`, `
     <div class="btnrow" style="margin-bottom:9px">
@@ -8849,11 +9184,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   ${section("\u6E4A\u90FD\u5E02\u306E\u571F\u5730\u6240\u6709", "\u4FDD\u6709\u533A\u753B\u6570", `
     <table class="tbl">
       <tr><th>\u4F01\u696D</th><th>\u4FDD\u6709\u533A\u753B</th><th>\u30B7\u30A7\u30A2</th></tr>
-      <tr class="me"><td><span style="color:#e3b558">\u25A0</span> ${g.company.name}</td><td>${myLots}</td><td>${pct(myLots / 120, 1)}</td></tr>
+      <tr class="me"><td><span style="color:#e3b558">\u25A0</span> ${g.company.name}</td><td>${myLots}</td><td>${pct(myLots / totalLots, 1)}</td></tr>
       ${g.rivals.slice().sort((a, b) => (lotsByRival[b.id] || 0) - (lotsByRival[a.id] || 0)).map((r) => `
-        <tr><td><span style="color:${r.color}">\u25A0</span> ${r.name}</td><td>${lotsByRival[r.id] || 0}</td><td>${pct((lotsByRival[r.id] || 0) / 120, 1)}</td></tr>`).join("")}
+        <tr><td><span style="color:${r.color}">\u25A0</span> ${r.name}</td><td>${lotsByRival[r.id] || 0}</td><td>${pct((lotsByRival[r.id] || 0) / totalLots, 1)}</td></tr>`).join("")}
     </table>
-    <div class="hint">\u90FD\u5E02\u30D3\u30E5\u30FC\u306E\u8868\u793A\u30EC\u30A4\u30E4\u30FC\u3092\u5207\u308A\u66FF\u3048\u308B\u3068\u3001\u6240\u6709\u8005\u3054\u3068\u306E\u8272\u5206\u3051\u3092\u78BA\u8A8D\u3067\u304D\u308B\u3002</div>
+    <div class="hint">\u5E02\u5185\u306E\u5B85\u5730\u306F\u5168${num(totalLots)}\u533A\u753B\u3002\u90FD\u5E02\u30D3\u30E5\u30FC\u306E\u8868\u793A\u30EC\u30A4\u30E4\u30FC\u3092\u5207\u308A\u66FF\u3048\u308B\u3068\u3001\u6240\u6709\u8005\u3054\u3068\u306E\u8272\u5206\u3051\u3092\u78BA\u8A8D\u3067\u304D\u308B\u3002</div>
   `)}
 
   ${g.takeoverOffer ? section("\u8CB7\u53CE\u63D0\u6848", "", `
@@ -8868,7 +9203,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   `;
   }
   function openDetail2(g, id, ctx2) {
-    if (id === "player") return;
+    if (id === "player") return openSelf(g, ctx2);
     const r = g.rivals.find((x) => x.id === id);
     if (!r) return;
     const hist = r.history.slice(-16);
@@ -8904,6 +9239,68 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ${focus.map(([u, v]) => `<div class="kv"><span class="k">${USES[u] ? USES[u].name : u}</span><span class="v">${(v * 100).toFixed(0)}</span></div>${bar(v)}`).join("")}</div>
     </div>
     <div class="hint">\u3053\u306E\u4F1A\u793E\u306F\u6700\u4F4E\u53D6\u5F15\u898F\u6A21 ${money(Math.round(r.rev * 62e-4))} \u4EE5\u4E0A\u306E\u6848\u4EF6\u306B\u3057\u304B\u624B\u3092\u51FA\u3055\u306A\u3044\u3002\u5C0F\u578B\u6848\u4EF6\u306F\u3053\u3046\u3057\u305F\u5927\u624B\u3068\u7AF6\u5408\u305B\u305A\u306B\u53D6\u5F97\u3067\u304D\u308B\u3002</div>
+  `, [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
+  }
+  function openSelf(g, ctx2) {
+    const t = ttm(g);
+    const bs = buildBS(g);
+    const k = kpis(g);
+    const color = "#e3b558";
+    const hist = (g.finance.history || []).slice(-16);
+    const lots = g.cells.filter((c) => c.owner === "player").length;
+    const list = ranking(g, "rev");
+    const me = list.find((x) => x.isPlayer);
+    const focus = {};
+    const add = (use, v) => {
+      if (use) focus[use] = (focus[use] || 0) + v;
+    };
+    for (const a of g.assets) add(a.use, a.nra || 0);
+    for (const i of g.inventory) add(i.use, i.area || 0);
+    for (const pj of g.projects) add(pj.use, pj.gfa || 0);
+    const focusMax = Math.max(1, ...Object.values(focus));
+    const focusList = Object.entries(focus).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const culture = AXES.map((a) => {
+      const v = (g.culture || {})[a.id] ?? 0.5;
+      return `<div class="kv"><span class="k">${a.name}</span><span class="v">${v >= 0.66 ? a.high : v <= 0.34 ? a.low : "\u3069\u3061\u3089\u3067\u3082\u306A\u3044"}</span></div>${bar(v, "violet")}`;
+    }).join("");
+    openModal(`${g.company.name}\uFF08\u5F53\u793E\uFF09`, `
+    <div class="card" style="border-color:${color}88;background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n" style="color:var(--gold-2)">${g.company.name}</span>${chip(g.company.listed ? "\u4E0A\u5834" : "\u975E\u4E0A\u5834", "grey")}</div>
+      <div class="card-s"><b>${g.year}\u5E74 ${g.month}\u6708 \u7B2C${g.weekOfMonth}\u9031\u76EE\u6642\u70B9\uFF0F${g.company.founded}\u5E74\u5275\u696D</b><br><br>
+        \u6E4A\u90FD\u5E02\u3092\u5730\u76E4\u3068\u3059\u308B\u4E0D\u52D5\u7523\u30C7\u30D9\u30ED\u30C3\u30D1\u30FC\u3002\u58F2\u4E0A\u9AD8\u3067\u696D\u754C ${me ? me.rank : "\u2014"}\u4F4D / ${list.length}\u793E\u3002
+        \u793E\u98A8\u306F\u300C${cultureLabel(g)}\u300D\u3002</div>
+    </div>
+    <div class="grid4" style="margin:12px 0">
+      ${mini("\u58F2\u4E0A\u9AD8", money(t.revenue, { unit: false }), "\u5104\u5186")}
+      ${mini("\u55B6\u696D\u5229\u76CA", money(t.op, { unit: false }), t.revenue > 0 ? pct(t.op / t.revenue, 1) : "\u5104\u5186")}
+      ${mini("\u7D14\u5229\u76CA", money(t.net, { unit: false }), "\u5104\u5186")}
+      ${mini("\u5F93\u696D\u54E1", num(g.staff.length), "\u540D")}
+    </div>
+    ${hist.length > 2 ? `<div>${spark(hist.map((x) => x.pl.revenue), { color })}</div><div class="hint">\u58F2\u4E0A\u9AD8\u306E\u63A8\u79FB\uFF08\u76F4\u8FD1${hist.length}\u56DB\u534A\u671F\uFF09</div>` : ""}
+    <div class="sec">
+      <div class="sec-t"><span>\u8CA1\u52D9</span><span class="note">\u683C\u4ED8 ${g.company.creditRating}</span></div>
+      ${kv("\u7DCF\u8CC7\u7523", money(bs.total))}
+      ${kv("\u7D14\u8CC7\u7523", money(bs.equity))}
+      ${kv("\u6709\u5229\u5B50\u8CA0\u50B5", money(g.debt))}
+      ${kv("\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387", pct(bs.equity / Math.max(1, bs.total)))}
+      ${kv("ROE", pct(k.roe))}
+      ${g.company.listed ? kv("\u6642\u4FA1\u7DCF\u984D", money(Math.round(marketCap(g)))) : ""}
+      ${g.company.listed ? kv("\u682A\u4FA1", num(Math.round(sharePrice(g))) + "\u5186") : ""}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u4E8B\u696D\u30D7\u30ED\u30D5\u30A1\u30A4\u30EB</span></div>
+      ${kv("\u30D6\u30E9\u30F3\u30C9\u529B", `${stars(g.company.brand)} ${g.company.brand.toFixed(0)}`)}
+      ${kv("\u6E4A\u90FD\u5E02\u306E\u4FDD\u6709\u533A\u753B", lots + "\u533A\u753B")}
+      ${kv("\u7D2F\u8A08\u306E\u7AE3\u5DE5\u68DF\u6570", num(g.kpi.builtCount) + "\u68DF")}
+      ${kv("\u7D2F\u8A08\u306E\u5F15\u6E21\u6238\u6570", num(g.kpi.soldUnits) + "\u6238")}
+      ${focusList.length ? `<div style="margin-top:8px"><div class="sec-t" style="border:none;padding:0"><span>\u6CE8\u529B\u30A2\u30BB\u30C3\u30C8</span></div>
+        ${focusList.map(([u, v]) => `<div class="kv"><span class="k">${USES[u] ? USES[u].name : u}</span><span class="v">${(v / focusMax * 100).toFixed(0)}</span></div>${bar(v / focusMax)}`).join("")}
+      </div>` : '<div class="hint">\u307E\u3060\u4FDD\u6709\u30FB\u958B\u767A\u4E2D\u306E\u7269\u4EF6\u304C\u306A\u3044\u305F\u3081\u3001\u6CE8\u529B\u30A2\u30BB\u30C3\u30C8\u306F\u5B9A\u307E\u3063\u3066\u3044\u306A\u3044\u3002</div>'}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u4F01\u696D\u30AB\u30EB\u30C1\u30E3\u30FC</span><span class="note">\u4EBA\u4E8B\u30BF\u30D6\u3067\u5909\u66F4\u3067\u304D\u308B</span></div>
+      ${culture}
+    </div>
   `, [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
   }
 

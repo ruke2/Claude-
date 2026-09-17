@@ -7,7 +7,8 @@
 //    キーを変えると、それまでのセーブが二度と見つからなくなる。
 //    データの形を変えたときは SAVE_VERSION を上げて migrate() で吸収する。
 // ============================================================
-import { createGame, syncUid } from './state.js';
+import { createGame, syncUid, defaultRankPay } from './state.js';
+import { RANKS } from '../data/hrdata.js';
 import { syncCalendar } from './time.js';
 
 const PREFIX = 'skyline_v3_';          // ← 変更禁止
@@ -84,19 +85,27 @@ function fill(target, src, depth = 0, skip = null) {
 
 const SKIP_TOP = new Set(['cells']);
 
+/**
+ * 形が変わったところを、ひな型で埋める前に手当てする。
+ * 新しい版を出すたびにここへ足していく。古い順に並べること。
+ */
+const STEPS = [
+  // 給与を「全体の係数」から「役職ごとの基準額」に変えた
+  g => {
+    const pol = g.hrPolicy;
+    if (!pol || Array.isArray(pol.rankPay)) return;
+    const mul = typeof pol.salaryMul === 'number' ? pol.salaryMul : 1;
+    pol.rankPay = RANKS.map(r => Math.round(r.baseSalary * mul * 10) / 10);
+  },
+];
+
 /** 読み込んだ状態を、いまのゲームで動く形に整える。壊れていれば null */
 export function migrate(g) {
   if (!g || !Array.isArray(g.cells) || !g.cells.length || !g.company) return null;
   try {
+    for (const step of STEPS) step(g);
     const tpl = template();
-    // 区画は同じ地図から作られるので、同じ位置どうしで突き合わせる。
-    // まとめて1つのひな型で埋めると、道路や海に敷地面積が付いてしまう。
-    // （地図の大きさを変えたときは、ここでは補えないので個別に対応すること）
-    if (g.cells.length === tpl.cells.length) {
-      for (let i = 0; i < g.cells.length; i++) {
-        if (isObj(g.cells[i]) && isObj(tpl.cells[i])) fill(g.cells[i], tpl.cells[i]);
-      }
-    }
+    remapCells(g, tpl);
     fill(g, tpl, 0, SKIP_TOP);
     // 週から年月を引き直す（カレンダーの決め方が変わっても破綻しない）
     if (typeof g.week === 'number') syncCalendar(g);
@@ -110,6 +119,37 @@ export function migrate(g) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * 区画をいまの地図に合わせる。
+ * 区画IDは `p<x>_<y>` なので、位置が同じものどうしを突き合わせられる。
+ * 地図を広げても、元からあった場所の所有者・建物・進行中の案件はそのまま残る。
+ */
+function remapCells(g, tpl) {
+  // 数が同じなら並びも同じ。そのまま項目だけ補う
+  // （1つのひな型でまとめて埋めると、道路や海に敷地面積が付いてしまうので位置ごとに見る）
+  if (g.cells.length === tpl.cells.length) {
+    for (let i = 0; i < g.cells.length; i++) {
+      if (isObj(g.cells[i]) && isObj(tpl.cells[i])) fill(g.cells[i], tpl.cells[i]);
+    }
+    return;
+  }
+  // 数が変わった＝地図を広げた。IDで突き合わせて、合う区画は古いものを使う
+  const byId = new Map();
+  for (const c of g.cells) if (isObj(c) && c.id) byId.set(c.id, c);
+  let kept = 0;
+  g.cells = tpl.cells.map(nc => {
+    const oc = byId.get(nc.id);
+    // 地形と地区が一致するときだけ引き継ぐ。変わっていたら新しい区画にする
+    if (oc && oc.terrain === nc.terrain && (oc.d ?? null) === (nc.d ?? null)) {
+      fill(oc, nc);
+      kept++;
+      return oc;
+    }
+    return clone(nc);
+  });
+  g.mapGrew = { keptCells: kept, totalCells: g.cells.length };
 }
 
 // ------------------------------------------------------------

@@ -48,11 +48,16 @@ export class CityRenderer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.dpr = dpr;
     this.skyline = null;
+    this._ground = null;
+    this._groundOff = false;
   }
 
   invalidate() {
     // 一度に全棟を描き直すと重いので、フレームごとに少しずつ作り替える
     this.cache.clear();
+    this._ground = null;
+    this._groundOff = false;
+    this._order = null;      // セーブを読み込むと区画そのものが入れ替わる
   }
 
   setMonth(m) {
@@ -534,6 +539,94 @@ export class CityRenderer {
   }
 
   // --------------------------------------------------------
+  //  地面のキャッシュ
+  // --------------------------------------------------------
+
+  /** 奥から手前へ並べた区画。回転が変わらなければ使い回せる */
+  drawOrder() {
+    if (this._order && this._orderRot === this.cam.rot) return this._order;
+    const g = this.g;
+    const arr = [];
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      const c = g.cells[y * MAP_W + x];
+      if (c) arr.push({ c, k: depthKey(x, y, this.cam.rot) });
+    }
+    arr.sort((a, b) => a.k - b.k);
+    this._order = arr; this._orderRot = this.cam.rot;
+    return arr;
+  }
+
+  /** 地面の内容が変わったことを知らせる */
+  dirtyGround() { this._ground = null; }
+
+  /**
+   * 地面の見た目に関わる状態の指紋。
+   * 建物の有無・更地・着工中、所有者表示のときは所有者も見る。
+   * これが変わらないかぎり焼き直さない。
+   */
+  groundSig() {
+    const owner = this.layer === 'owner';
+    let n = 5381;
+    for (const c of this.g.cells) {
+      let v = (c.building ? 1 : 0) | (c.vacant ? 2 : 0) | (c.projectId ? 4 : 0);
+      if (owner && c.owner) v += c.owner.length * 8 + c.owner.charCodeAt(0);
+      n = (n * 33 + v) | 0;
+    }
+    return n;
+  }
+
+  /**
+   * マップ全体の地面を1枚の画像に焼く。
+   * 大きくなりすぎるときは null を返し、呼び出し側は1枚ずつ描く。
+   */
+  groundLayer(order) {
+    const z = this.zoom;
+    const key = `${this.cam.zoomIdx}|${this.cam.rot}|${this.time.key}|${this.layer}|${this.groundSig()}`;
+    if (this._ground && this._ground.key === key) return this._ground;
+    if (this._groundOff) return null;
+
+    // マップ四隅から必要な範囲を求める（起伏と島の厚みぶんの余白を足す）
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [gx, gy] of [[-1, -1], [MAP_W, -1], [MAP_W, MAP_H], [-1, MAP_H]]) {
+      const p = toScreen(gx, gy, 0, this.cam.rot, z);
+      if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+      if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+    }
+    const pad = TILE_W * z;
+    x0 -= pad; x1 += pad;
+    y0 -= 7 * 6 * Z_UNIT * z + pad;     // 最大標高ぶん上に伸ばす
+    y1 += pad;
+    const cw = Math.ceil(x1 - x0), ch = Math.ceil(y1 - y0);
+    const dpr = this.dpr;   // 本体と同じ解像度で焼くと、貼るときに拡大縮小が入らない
+    // 大きすぎるときは諦める。拡大時は画面外が切り捨てられるので1枚ずつでも軽い。
+    // 上限は端末のメモリを食いつぶさないための歯止め（5e6px ≒ 20MB）
+    if (cw * ch * dpr * dpr > 5e6) { this._groundOff = true; return null; }
+    this._groundOff = false;
+
+    const cv = (this._ground && this._ground.canvas) || document.createElement('canvas');
+    const pw = Math.max(1, Math.round(cw * dpr)), phh = Math.max(1, Math.round(ch * dpr));
+    if (cv.width !== pw || cv.height !== phh) { cv.width = pw; cv.height = phh; }
+    const c2 = cv.getContext('2d');
+    c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c2.clearRect(0, 0, cw, ch);
+    c2.translate(-x0, -y0);
+
+    // drawTile は this.ctx を見るので、一時的に差し替える
+    const prev = this.ctx;
+    this.ctx = c2;
+    try {
+      for (const { c } of order) {
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        this.drawTile(c, p.x, p.y);
+      }
+    } finally {
+      this.ctx = prev;
+    }
+    this._ground = { key, canvas: cv, x: x0, y: y0, w: cw, h: ch };
+    return this._ground;
+  }
+
+  // --------------------------------------------------------
   //  メイン描画
   // --------------------------------------------------------
   draw(dt) {
@@ -549,25 +642,28 @@ export class CityRenderer {
     ctx.translate(w / 2 + this.cam.x, h / 2 + this.cam.y);
     this.drawIslandBase();
 
-    // 描画順（奥→手前）
-    const order = [];
-    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
-      const c = g.cells[y * MAP_W + x];
-      order.push({ c, k: depthKey(x, y, this.cam.rot) });
-    }
-    order.sort((a, b) => a.k - b.k);
-
+    const order = this.drawOrder();
     const margin = 260 * z + 400;
-    for (const { c } of order) {
-      const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
-      const px = p.x, py = p.y;
-      const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
-      if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
-      this.drawTile(c, px, py);
+
+    // 地面（道路・公園・水面・区画の下地）
+    // 全景では1000枚以上のタイルを毎フレーム描くことになるので、
+    // 一度オフスクリーンに焼いて貼り付ける
+    const ground = this.groundLayer(order);
+    if (ground) {
+      ctx.drawImage(ground.canvas, ground.x, ground.y, ground.w, ground.h);
+    } else {
+      for (const { c } of order) {
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const px = p.x, py = p.y;
+        const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
+        if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
+        this.drawTile(c, px, py);
+      }
     }
 
     // 建物が地面に落とす影（建物本体より先にまとめて描く）
-    if (T.shadow > 0.05) {
+    // 引きの画では点ほどの大きさにしかならないので省く
+    if (T.shadow > 0.05 && z >= 0.40) {
       ctx.save();
       ctx.globalAlpha = T.shadow * (1 - W.cloud * 0.55);
       ctx.fillStyle = '#05080f';
@@ -598,10 +694,13 @@ export class CityRenderer {
 
     // 天候エフェクト
     this.drawWeather();
-    // ビネット
-    const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.34, w / 2, h / 2, Math.max(w, h) * 0.78);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.42)');
-    ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+    // ビネット（画面サイズが変わらないかぎり作り直さない）
+    if (!this._vignette || this._vigW !== w || this._vigH !== h) {
+      const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.34, w / 2, h / 2, Math.max(w, h) * 0.78);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.42)');
+      this._vignette = vg; this._vigW = w; this._vigH = h;
+    }
+    ctx.fillStyle = this._vignette; ctx.fillRect(0, 0, w, h);
     // 夜のグロー
     if (T.glow > 0.6) {
       ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.16;

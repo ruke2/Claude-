@@ -3,7 +3,7 @@
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
-import { makeStaff, baseSalaryFor, avgAbility, uid } from '../core/state.js';
+import { makeStaff, baseSalaryFor, stdSalary, rankPayOf, avgAbility, uid } from '../core/state.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR, isYearStart, isAprilFirstWeek } from '../core/time.js';
 import { cultureEffects } from './culture.js';
 
@@ -67,10 +67,13 @@ export function personnelCost(g) {
 /** 年額の人件費（表示用） */
 export function personnelCostYear(g) { return personnelCost(g) * WEEKS_PER_YEAR; }
 
-/** 社員が感じる給与の妥当性（1.0で適正） */
+/**
+ * 社員が感じる給与の妥当性（1.0で適正）。
+ * 比べる相手は自社の給与テーブルではなく**業界標準**である。
+ * 自社の表を基準にすると、表ごと下げれば不満が出ないことになってしまう。
+ */
 export function salaryFairness(g, s) {
-  const std = baseSalaryFor(s) * g.hrPolicy.salaryMul;
-  return s.salary / Math.max(0.1, std);
+  return s.salary / Math.max(0.1, baseSalaryFor(s));
 }
 
 /** 市場水準に対する自社の給与競争力 */
@@ -141,7 +144,7 @@ export function stepHR(g, rng, news) {
     let promoted = 0;
     for (const s of g.staff) {
       s.age += 1;
-      const std = baseSalaryFor(s) * pol.salaryMul;
+      const std = stdSalary(g, s);
       s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
     }
     for (let r = RANKS.length - 2; r >= 1; r--) {
@@ -154,7 +157,7 @@ export function stepHR(g, rng, news) {
       const n = Math.min(room, Math.ceil(cands.length * (0.13 + pol.evalStrict * 0.12 + ce.promoteBoost * 0.14)));
       for (let i = 0; i < n; i++) {
         const s = cands[i]; if (!s) break;
-        s.rank = r; s.salary = Math.max(s.salary, baseSalaryFor(s) * pol.salaryMul);
+        s.rank = r; s.salary = Math.max(s.salary, stdSalary(g, s));
         s.morale = clamp01(s.morale + 0.14); promoted++;
         if (r >= 5) news.push({ icon: '⬆', type: 'hr', major: true, text: `${s.name}が${rank.name}に昇格した。` });
       }
@@ -165,7 +168,7 @@ export function stepHR(g, rng, news) {
   // --- 社長が不在なら後継者を立てる ---
   if (!g.staff.some(s => s.rank === 7) && g.staff.length) {
     const next = g.staff.slice().sort((a, b) => (avgAbility(b) + b.abil.lead) - (avgAbility(a) + a.abil.lead))[0];
-    next.rank = 7; next.salary = baseSalaryFor(next);
+    next.rank = 7; next.salary = stdSalary(g, next);
     news.push({ icon: '👑', type: 'hr', major: true, text: `${next.name}が新社長に就任した。` });
   }
 }
@@ -186,7 +189,7 @@ export function generateCandidates(g, rng, channel, n = 5) {
       dept: rng.pick(DEPT_IDS),
     });
     s.rank = clamp(Math.floor((avgAbility(s) - 42) / 11), 0, 5);
-    s.salary = Math.round(baseSalaryFor(s) * (channel === 'headhunt' ? 1.42 : 1.12) * 10) / 10;
+    s.salary = Math.round(stdSalary(g, s) * (channel === 'headhunt' ? 1.42 : 1.12) * 10) / 10;
     s.hireCost = Math.round(ch.costPerHead * (0.6 + avgAbility(s) / 70) * 10) / 10;
     s.prevCompany = rng.pick(g.rivals).name;
     out.push(s);

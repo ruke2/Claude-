@@ -8,7 +8,7 @@ import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salary
 import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp, allocateQuota } from '../sim/recruit.js';
 import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
-import { avgAbility, baseSalaryFor } from '../core/state.js';
+import { avgAbility, baseSalaryFor, stdSalary, rankPayOf, defaultRankPay } from '../core/state.js';
 import { RNG } from '../core/rng.js';
 
 export const title = '人事・組織';
@@ -82,18 +82,24 @@ export function render(g, ctx) {
 
   ${recruitSection(g)}
 
-  ${section('報酬制度', `給与テーブル係数 ${g.hrPolicy.salaryMul.toFixed(2)}`, `
+  ${section('報酬制度', `市場比 ${pct(payIndex(g), 0)}`, `
     <div class="card">
       <table class="tbl">
-        <tr><th>役職</th><th>人数</th><th>標準年収</th><th>昇格要件</th></tr>
+        <tr><th>役職</th><th>人数</th><th>自社の基準</th><th>業界標準</th><th>差</th><th>昇格要件</th></tr>
         ${RANKS.map(r => {
     const n = active.filter(s => s.rank === r.id).length;
+    const mine = rankPayOf(g, r.id), mkt = r.baseSalary;
+    const d = mine / mkt - 1;
     return `<tr><td>${r.name}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ''}</td>
-          <td>${man(r.baseSalary * g.hrPolicy.salaryMul)}</td>
+          <td><b>${man(mine)}</b></td>
+          <td>${man(mkt)}</td>
+          <td class="${Math.abs(d) < 0.005 ? 'flat' : d > 0 ? 'up' : 'down'}">${Math.abs(d) < 0.005 ? '—' : (d > 0 ? '+' : '') + (d * 100).toFixed(0) + '%'}</td>
           <td>${r.minAbility ? `能力 ${r.minAbility}以上` : '—'}</td></tr>`;
   }).join('')}
       </table>
-      <div class="btnrow"><button class="btn sm" data-act="hr.salary">給与テーブルを改定する</button></div>
+      <div class="hint">実際の年収は、この基準額に本人の能力と勤続年数を上乗せして決まる。
+      業界標準を下回るとモチベーションが落ち、離職と引き抜きが増える。</div>
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.salary">役職ごとの年収を改定する</button></div>
     </div>
   `)}
 
@@ -263,7 +269,8 @@ export function openStaff(g, s, ctx) {
       <div class="field"><label>年収（万円）</label>
         <input type="number" id="inpSal" value="${Math.round(s.salary * 100)}" step="10">
       </div>
-      <div class="hint">標準年収は ${man(baseSalaryFor(s) * g.hrPolicy.salaryMul)}。これを下回るとモチベーションが下がる。</div>
+      <div class="hint">自社の給与テーブルでは ${man(stdSalary(g, s))}、業界標準は ${man(baseSalaryFor(s))}。
+      業界標準を下回るとモチベーションが下がる。</div>
     </div>
   `, [
     { label: '閉じる', cls: 'ghost' },
@@ -280,7 +287,7 @@ export function openStaff(g, s, ctx) {
     {
       label: canPromote ? `${nextRank.name}に昇格` : '昇格要件を満たさない', cls: 'primary', disabled: !canPromote,
       onClick: () => {
-        s.rank++; s.salary = Math.max(s.salary, baseSalaryFor(s) * g.hrPolicy.salaryMul);
+        s.rank++; s.salary = Math.max(s.salary, stdSalary(g, s));
         s.morale = Math.min(1, s.morale + 0.16);
         toast(`${s.name}を${RANKS[s.rank].name}に昇格させた`, 'good');
         ctx.refresh();
@@ -624,34 +631,93 @@ export function openCulture(g, ctx) {
 }
 
 export function openSalaryPolicy(g, ctx) {
-  openModal('給与テーブルの改定', `
-    <div class="card">
-      ${kv('現在の係数', g.hrPolicy.salaryMul.toFixed(2))}
-      ${kv('年間人件費', money(Math.round(personnelCost(g) * 4)))}
-      ${kv('市場比の給与水準', pct(payIndex(g), 0))}
+  // 編集中の値（万円）。改定を押すまでゲーム側には反映しない
+  let draft = RANKS.map(r => Math.round(rankPayOf(g, r.id) * 100));
+
+  const rows = () => RANKS.map(r => {
+    const n = g.staff.filter(s => s.rank === r.id).length;
+    const mkt = Math.round(r.baseSalary * 100);
+    const d = draft[r.id] / mkt - 1;
+    return `<tr>
+      <td>${r.name}</td>
+      <td>${n}名</td>
+      <td style="width:118px"><input type="number" class="payin" data-r="${r.id}"
+        value="${draft[r.id]}" min="0" max="20000" step="10"
+        style="width:100%;padding:6px 7px;border-radius:6px;background:var(--field-bg);
+        border:1px solid var(--line);color:var(--ink);text-align:right;font-variant-numeric:tabular-nums"></td>
+      <td>${num(mkt)}</td>
+      <td class="${Math.abs(d) < 0.005 ? 'flat' : d > 0 ? 'up' : 'down'}">${
+      Math.abs(d) < 0.005 ? '—' : (d > 0 ? '+' : '') + (d * 100).toFixed(0) + '%'}</td>
+    </tr>`;
+  }).join('');
+
+  const body = () => `
+    <div class="hint" style="margin-bottom:10px">役職ごとの基準年収を決める。実際の年収は、ここに本人の能力と勤続年数を上乗せした額になる。
+    改定は毎年の定期昇給で少しずつ反映される。</div>
+    <table class="tbl">
+      <tr><th>役職</th><th>人数</th><th>基準年収（万円）</th><th>業界標準</th><th>差</th></tr>
+      ${rows()}
+    </table>
+    <div class="btnrow">
+      <button class="btn sm" data-adj="1.05">全体を +5%</button>
+      <button class="btn sm" data-adj="0.95">全体を −5%</button>
+      <button class="btn sm" data-reset="1">業界標準に戻す</button>
     </div>
-    <div class="field" style="margin-top:12px">
-      <label>給与テーブル係数（1.00 = 業界標準）</label>
-      <input type="range" id="rngS" min="0.75" max="1.45" step="0.01" value="${g.hrPolicy.salaryMul}">
-      <div id="sInfo" class="hint"></div>
+    <div class="card" style="margin-top:12px">
+      <div id="payInfo"></div>
     </div>
-    <div class="hint">係数を上げると毎年の定期昇給で全社員の年収が上がり、モチベーションと定着率が改善する。下げれば人件費は減るが、優秀な人材から抜けていく。</div>
-  `, [
+    <div class="hint">業界標準を大きく下回る役職からは人が抜けていく。逆に上げすぎると人件費が利益を圧迫する。
+    役職ごとに差をつければ、たとえば管理職を厚くして現場を絞るといった設計もできる。</div>`;
+
+  openModal('役職ごとの年収', body(), [
     { label: 'キャンセル', cls: 'ghost' },
     {
       label: '改定する', cls: 'primary', onClick: () => {
-        g.hrPolicy.salaryMul = +document.getElementById('rngS').value;
-        toast(`給与テーブル係数を${g.hrPolicy.salaryMul.toFixed(2)}に改定した`);
+        g.hrPolicy.rankPay = draft.map(v => Math.round(v) / 100);
+        toast('給与テーブルを改定した', 'good');
         ctx.refresh();
       }
     },
   ]);
-  const rg = document.getElementById('rngS'), info = document.getElementById('sInfo');
+
   const sync = () => {
-    const v = +rg.value;
+    const info = document.getElementById('payInfo');
+    if (!info) return;
     const cur = g.staff.reduce((a, s) => a + s.salary, 0);
-    const next = g.staff.reduce((a, s) => a + Math.max(s.salary * 0.62 + baseSalaryFor(s) * v * 0.38, 0), 0);
-    info.innerHTML = `係数 <b>${v.toFixed(2)}</b>　次回昇給後の年間人件費 約${money(Math.round(next * 1.16))}（現在 ${money(Math.round(cur * 1.16))}）`;
+    // 次の定期昇給では、いまの年収と新しい基準額を 62:38 で混ぜた額になる
+    const after = g.staff.reduce((a, s) => {
+      const std = stdSalary({ hrPolicy: { rankPay: draft.map(v => v / 100) } }, s);
+      return a + Math.max(0, s.salary * 0.62 + std * 0.38);
+    }, 0);
+    const mkt = g.staff.length
+      ? g.staff.reduce((a, s) => a + (s.salary * 0.62 + stdSalary({ hrPolicy: { rankPay: draft.map(v => v / 100) } }, s) * 0.38) / Math.max(0.1, baseSalaryFor(s)), 0) / g.staff.length
+      : 1;
+    info.innerHTML = `
+      <div class="kv"><span class="k">いまの年間人件費</span><span class="v">${money(Math.round(cur * 1.16))}</span></div>
+      <div class="kv"><span class="k">次回昇給後（見込み）</span><span class="v ${after > cur ? 'down' : after < cur ? 'up' : ''}">${money(Math.round(after * 1.16))}</span></div>
+      <div class="kv"><span class="k">改定後の市場比</span><span class="v ${mkt < 0.95 ? 'down' : mkt > 1.05 ? 'up' : ''}">${pct(mkt, 0)}</span></div>`;
   };
-  rg.oninput = sync; sync();
+
+  const bind = () => {
+    const b = document.getElementById('modalBody');
+    b.querySelectorAll('.payin').forEach(el => {
+      el.oninput = () => {
+        const v = Math.max(0, Math.min(20000, Math.round(+el.value || 0)));
+        draft[+el.dataset.r] = v;
+        sync();
+      };
+    });
+    b.querySelectorAll('[data-adj]').forEach(el => el.onclick = () => {
+      const k = +el.dataset.adj;
+      draft = draft.map(v => Math.max(0, Math.round(v * k / 10) * 10));
+      b.innerHTML = body(); bind();
+    });
+    const rs = b.querySelector('[data-reset]');
+    if (rs) rs.onclick = () => {
+      draft = defaultRankPay().map(v => Math.round(v * 100));
+      b.innerHTML = body(); bind();
+    };
+    sync();
+  };
+  bind();
 }

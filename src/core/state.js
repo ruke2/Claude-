@@ -66,8 +66,7 @@ function buildMap(rng) {
         const dd = DISTRICTS[d];
         const r1 = hash2(x, y, 1), r2 = hash2(x, y, 2), r3 = hash2(x, y, 3);
         // 面積：地区ごとの区画粒度
-        const areaBase = { T: 1900, B: 1650, A: 420, K: 380, N: 640, J: 2600, I: 1500, S: 900 }[d];
-        cell.area = Math.round(areaBase * (0.6 + r1 * 0.95) / 10) * 10;
+        cell.area = Math.round(dd.lotSize * (0.6 + r1 * 0.95) / 10) * 10;
         cell.far = Math.round((dd.farRange[0] + r2 * (dd.farRange[1] - dd.farRange[0])) / 50) * 50;
         // 駅距離スコア：地区の駅力 ± ばらつき
         cell.station = clamp01(dd.station * (0.78 + r3 * 0.34));
@@ -94,26 +93,13 @@ function bldgName(rng, use, d) {
 
 /** 初期の既存街並みを生成する */
 function populateCity(cells, rng, rivals) {
-  const HEIGHT = {
-    T: [14, 54], B: [6, 44], A: [2, 5], K: [3, 13], N: [3, 15], J: [1, 5],
-    I: [8, 40], S: [3, 18],
-  };
-  const USE_POOL = {
-    T: ['office', 'office', 'office', 'mixed', 'retail', 'hotel', 'rental'],
-    B: ['resi', 'rental', 'resi', 'retail', 'office', 'hotel', 'mixed'],
-    A: ['house', 'house', 'resi', 'rental'],
-    K: ['retail', 'hotel', 'office', 'rental', 'retail'],
-    N: ['house', 'resi', 'rental', 'retail', 'house'],
-    J: ['logi', 'logi', 'logi', 'house', 'retail'],
-    I: ['office', 'hotel', 'office', 'mixed', 'retail', 'rental'],
-    S: ['office', 'rental', 'retail', 'resi', 'office'],
-  };
   for (const c of cells) {
     if (c.terrain !== TERRAIN.LOT || !c.d) continue;
     // 1割強は空地（＝将来の売り出し候補）として残す
     if (rng.chance(0.13)) { c.vacant = true; continue; }
-    const use = rng.pick(USE_POOL[c.d]);
-    const [lo, hi] = HEIGHT[c.d];
+    const dd = DISTRICTS[c.d];
+    const use = rng.pick(dd.usePool);
+    const [lo, hi] = dd.height;
     let floors = rng.int(lo, hi);
     if (use === 'logi') floors = rng.int(1, 5);
     if (use === 'house') floors = rng.int(2, 3);
@@ -193,14 +179,33 @@ export function makeStaff(rng, opt = {}) {
   return s;
 }
 
-/** 役職・能力から標準年収を求める（百万円） */
+/** 業界標準の年収（百万円）。他社と比べるときの物差しになる */
 export function baseSalaryFor(s, gap = 1) {
-  const r = RANKS[s.rank];
+  return salaryFrom(RANKS[s.rank].baseSalary, s, gap);
+}
+
+/** 自社の給与テーブルにおける、その役職の基準額（百万円） */
+export function rankPayOf(g, rank) {
+  const rp = g && g.hrPolicy && g.hrPolicy.rankPay;
+  const v = rp && rp[rank];
+  return typeof v === 'number' && isFinite(v) ? v : RANKS[rank].baseSalary;
+}
+
+/** 自社の給与テーブルに基づく標準年収（百万円） */
+export function stdSalary(g, s, gap = 1) {
+  return salaryFrom(rankPayOf(g, s.rank), s, gap);
+}
+
+/** 役職の基準額に、能力と勤続を上乗せする */
+function salaryFrom(base, s, gap) {
   const ab = avgAbility(s);
   const abilPart = (ab / 100 - 0.55) * 0.32 * gap;
   const tenurePart = Math.min(s.tenure, 25) * 0.06 * (2 - gap);
-  return Math.round((r.baseSalary * (1.04 + abilPart) + tenurePart) * 10) / 10;
+  return Math.round((base * (1.04 + abilPart) + tenurePart) * 10) / 10;
 }
+
+/** 給与テーブルの初期値（業界標準と同じ） */
+export function defaultRankPay() { return RANKS.map(r => r.baseSalary); }
 
 export function avgAbility(s) {
   return ABILITY_IDS.reduce((a, k) => a + s.abil[k], 0) / ABILITY_IDS.length;
@@ -290,7 +295,9 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     acquisitions: [],
     rivals,
     hrPolicy: {
-      salaryMul: 1.0,
+      // 役職ごとの基準年収（百万円）。人事タブでいつでも改定できる
+      rankPay: defaultRankPay(),
+      salaryMul: 1.0,        // 旧版との互換用。いまは rankPay が給与テーブルを決める
       programs: { training: false, welfare: false, dx: false, brandpr: false },
       evalStrict: 0.5,
     },
