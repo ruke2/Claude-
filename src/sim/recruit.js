@@ -7,6 +7,8 @@ import { uid, makeStaff, baseSalaryFor, avgAbility } from '../core/state.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN } from '../data/hrdata.js';
 import { orgPower, payIndex } from './hr.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
+import { cultureEffects, cultureMatch, randomPreference } from './culture.js';
+import { ttm } from './finance.js';
 
 /** 新卒採用の年間スケジュール（週番号は年初からの通算） */
 export const NG_SCHEDULE = {
@@ -112,23 +114,33 @@ export function initRecruit(g) {
 // ------------------------------------------------------------
 //  新卒
 // ------------------------------------------------------------
-/** 採用力（応募が集まるかどうか） */
+/** 採用力（応募が集まるかどうか）。内訳も返す */
 export function employerAppeal(g) {
   const p = orgPower(g);
   const r = g.recruit.ng;
+  const ce = cultureEffects(g);
   const invest = (r.invest.seminar + r.invest.ad * 0.8 + r.invest.intern * 1.1 + r.invest.recruiter * 0.9);
+  const t = ttm(g);
+
+  // 企業規模による知名度。売上が伸びれば学生に名前が届くようになる
+  const revScore = clamp01(Math.log10(Math.max(1, t.revenue / 50)) / 2.6);
+  const sizeScore = clamp01(Math.log10(Math.max(1, g.staff.length / 18)) / 1.8);
+  const parts = {
+    base: 0.08,
+    scale: revScore * 0.26,
+    size: sizeScore * 0.13,
+    brand: g.company.brand / 340,
+    listed: g.company.listed ? 0.07 : 0,
+    hr: p.hr.quality / 560,
+    invest: Math.sqrt(invest) / 135,
+    salary: (r.salary - 5.2) * 0.05,
+    programs: (g.hrPolicy.programs.brandpr ? 0.09 : 0) + (g.hrPolicy.programs.welfare ? 0.04 : 0),
+    culture: ce.appealShift,
+  };
+  const score = clamp01(Object.values(parts).reduce((a, b) => a + b, 0));
   return {
-    brand: g.company.brand,
-    hr: p.hr.quality,
-    pay: payIndex(g),
-    invest,
-    score: clamp01(
-      0.16 + g.company.brand / 220 + p.hr.quality / 420
-      + Math.sqrt(invest) / 70
-      + (r.salary - 5.2) * 0.055
-      + (g.hrPolicy.programs.brandpr ? 0.10 : 0)
-      + (g.hrPolicy.programs.welfare ? 0.05 : 0)
-    ),
+    brand: g.company.brand, hr: p.hr.quality, pay: payIndex(g), invest,
+    revenue: t.revenue, parts, score,
   };
 }
 
@@ -152,6 +164,8 @@ function makeGrad(g, rng, appeal) {
   const pot = Math.round(rng.range(T.pot[0], T.pot[1]));
   const trueAbil = ABILITY_IDS.reduce((a, k) => a + abil[k], 0) / ABILITY_IDS.length;
   const fitDept = DEPT_IDS.filter(d => DEPTS[d].key === spec);
+  const pref = randomPreference(rng);
+  const cultureFit = cultureMatch(g, pref);
   return {
     id: uid('g'), name: name(rng), age: rng.int(22, 24),
     uni: uni.id, uniName: uni.name, uniShort: uni.short, tier: uni.tier,
@@ -159,7 +173,9 @@ function makeGrad(g, rng, appeal) {
     abil, potential: pot, trueAbil, spec,
     dept: fitDept.length ? rng.pick(fitDept) : rng.pick(DEPT_IDS),
     wishDept: fitDept.length ? rng.pick(fitDept) : rng.pick(DEPT_IDS),
-    interest: clamp01(rng.range(0.25, 0.62) + appeal.score * 0.45 + (g.recruit.ng.invest.intern > 200 ? 0.12 : 0)),
+    pref, cultureFit,
+    interest: clamp01(rng.range(0.22, 0.56) + appeal.score * 0.42
+      + (g.recruit.ng.invest.intern > 200 ? 0.10 : 0) + (cultureFit - 0.5) * 0.34),
     rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull),
     stage: 0,
     status: 'entry',
@@ -254,7 +270,8 @@ export function stepRecruit(g, rng, news) {
     r.phase = 'waiting';
     let ok = 0, ng = 0;
     for (const c of r.offers.slice()) {
-      const hold = clamp01(c.interest * 0.85 + (r.salary - c.expected) * 0.18 + (c.followed ? 0.18 : 0) + (r.invest.recruiter / 700) * 0.1);
+      const hold = clamp01(c.interest * 0.82 + (r.salary - c.expected) * 0.18 + (c.followed ? 0.18 : 0)
+        + (r.invest.recruiter / 700) * 0.1 + ((c.cultureFit ?? 0.5) - 0.5) * 0.22);
       if (rng.chance(hold)) { c.status = 'accepted'; ok++; }
       else {
         c.status = 'declined'; ng++;
@@ -275,13 +292,13 @@ export function stepRecruit(g, rng, news) {
     if (r.phase === 'waiting') { r.offers = []; r.pool = []; r.phase = 'idle'; }
     r.incoming = [];
     if (list.length) {
-      const slots = { ...(r.deptPlan || {}) };
+      const slots = allocateQuota(r.deptPlan, list.length);
       const placed = {};
       list.sort((a, b) => b.trueAbil - a.trueAbil);
       for (const c of list) {
-        const pref = DEPT_IDS.slice().sort((x, y) => (c.abil[DEPTS[y].key] - c.abil[DEPTS[x].key]));
-        let dept = pref.find(d => (slots[d] || 0) > 0);
-        if (!dept) dept = c.wishDept || pref[0];
+        const order = DEPT_IDS.slice().sort((x, y) => (c.abil[DEPTS[y].key] - c.abil[DEPTS[x].key]));
+        let dept = order.find(d => (slots[d] || 0) > 0);
+        if (!dept) dept = c.wishDept || order[0];
         else slots[dept]--;
         const s = makeStaff(rng, { dept, rank: 0, age: c.age, loyalty: 0.74, channel: 'newgrad' });
         s.name = c.name;
@@ -315,6 +332,41 @@ export function stepRecruit(g, rng, news) {
   }
 }
 
+/**
+ * 受入希望人数の比率で実際の配属数を按分する。
+ * 入社数が計画より少なくても多くても、希望比率を保ったまま四捨五入して割り振る。
+ */
+export function allocateQuota(deptPlan, n) {
+  const plan = deptPlan || {};
+  const total = DEPT_IDS.reduce((a, d) => a + (plan[d] || 0), 0);
+  const quota = {};
+  if (!total || !n) { for (const d of DEPT_IDS) quota[d] = 0; return quota; }
+  const raw = {};
+  let assigned = 0;
+  for (const d of DEPT_IDS) {
+    raw[d] = (plan[d] || 0) / total * n;
+    quota[d] = Math.round(raw[d]);
+    assigned += quota[d];
+  }
+  // 四捨五入の誤差を、端数の大きい（小さい）部署から調整する
+  let diff = n - assigned;
+  const order = DEPT_IDS.filter(d => (plan[d] || 0) > 0)
+    .sort((a, b) => (raw[b] - quota[b]) - (raw[a] - quota[a]));
+  let i = 0, guard = 0;
+  while (diff !== 0 && order.length && guard++ < 999) {
+    const d = diff > 0 ? order[i % order.length] : order[order.length - 1 - (i % order.length)];
+    if (diff > 0) { quota[d]++; diff--; }
+    else if (quota[d] > 0) { quota[d]--; diff++; }
+    i++;
+  }
+  return quota;
+}
+
+/** 配属の予定表（UI表示用） */
+export function plannedAllocation(g, n) {
+  return allocateQuota(g.recruit.ng.deptPlan, n);
+}
+
 /** 中途候補者を生成 */
 export function generateMidPool(g, rng, channelId) {
   const ch = MID_CHANNELS[channelId];
@@ -344,6 +396,9 @@ export function generateMidPool(g, rng, channelId) {
       ? `${rng.pick(g.staff.length ? g.staff : [{ name: '社員' }]).name}の紹介`
       : rng.pick(g.rivals).name;
     s.channelId = channelId;
+    s.pref = randomPreference(rng);
+    s.cultureFit = cultureMatch(g, s.pref);
+    s.loyalty = clamp01(s.loyalty + (s.cultureFit - 0.5) * 0.3);
     s.available = 3 + rng.int(0, 4);      // 何週で他社に決まるか
     out.push(s);
   }

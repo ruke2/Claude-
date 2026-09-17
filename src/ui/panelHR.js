@@ -5,7 +5,8 @@ import { money, num, pct, man, clamp } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
 import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salaryFairness, projectCapacity } from '../sim/hr.js';
-import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp } from '../sim/recruit.js';
+import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp, allocateQuota } from '../sim/recruit.js';
+import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor } from '../core/state.js';
 import { RNG } from '../core/rng.js';
@@ -75,6 +76,8 @@ export function render(g, ctx) {
     <div class="hint">同時に進められる開発案件は ${projectCapacity(g)} 件（建設管理部と商品企画部の陣容で決まる）。</div>
   `)}
 
+  ${cultureSection(g)}
+
   ${section('組織図', '課長以上は個人を表示', `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
@@ -106,6 +109,44 @@ export function render(g, ctx) {
     ${listTable(g, active, ctx.hrSort || 'ability')}
   `)}
   `;
+}
+
+/** 企業文化セクション */
+function cultureSection(g) {
+  const c = g.culture;
+  const ce = cultureEffects(g);
+  const align = cultureAlignment(g);
+  const moving = AXIS_IDS.some(a => Math.abs((c.target[a] ?? 0.5) - c[a]) > 0.01);
+  return section('企業文化', cultureLabel(g), `
+    <div class="card" style="border-color:rgba(26,79,156,.25)">
+      <div class="card-t"><span class="card-n">🧭 ${cultureLabel(g)}</span>
+        ${chip(moving ? `浸透中 ${(align * 100).toFixed(0)}%` : '浸透済み', moving ? 'amber' : 'green')}</div>
+      <div class="card-s">組織の性格は、採用での学生との相性、社員の定着と成長、工期と原価、竣工品質にまで影響する。</div>
+      ${AXES.map(a => {
+    const v = c[a.id], t = c.target[a.id] ?? v;
+    return `<div style="margin-top:9px">
+          <div class="kv"><span class="k">${a.name}</span>
+            <span class="v" style="font-size:11px">${a.low} ←→ ${a.high}</span></div>
+          <div style="position:relative">
+            ${bar(v, v > 0.5 ? 'gold' : '')}
+            ${Math.abs(t - v) > 0.01 ? `<div style="position:absolute;top:0;left:${(t * 100).toFixed(0)}%;width:2px;height:7px;background:var(--red)"></div>` : ''}
+          </div>
+          <div class="hint" style="margin-top:0">${v >= 0.62 ? a.highDesc : v <= 0.38 ? a.lowDesc : '中庸。どちらの長所も短所も薄い。'}</div>
+        </div>`;
+  }).join('')}
+      <div class="grid3" style="margin-top:12px">
+        ${mini('成長速度', '×' + ce.growthMul.toFixed(2))}
+        ${mini('定着', '×' + (2 - ce.leaveMul).toFixed(2), '高いほど辞めにくい')}
+        ${mini('処理能力', '×' + ce.capacityMul.toFixed(2))}
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        ${mini('工期', '×' + ce.speedMul.toFixed(2), '高いほど速い')}
+        ${mini('原価の安定', '×' + (2 - ce.costRisk).toFixed(2))}
+        ${mini('竣工品質', '×' + ce.qualityMul.toFixed(2))}
+      </div>
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.culture">方針を見直す</button></div>
+    </div>
+  `);
 }
 
 /** 採用セクション */
@@ -300,46 +341,65 @@ export function openNewGrad(g, ctx) {
     const invTotal = RECRUIT_INVEST.reduce((a, x) => a + r.invest[x.id], 0);
 
     // --- 計画・投資 ---
+    const lockSalary = r.phase === 'waiting';
+    const canAddInvest = r.phase === 'attract' || r.phase === 'screening';
+    const quota = allocateQuota(r.deptPlan, r.plan);
     const planUI = `
       <div class="sec">
-        <div class="sec-t"><span>採用計画</span><span class="note">${r.phase === 'idle' ? '募集開始前は自由に変更できる' : '募集開始後は変更できない'}</span></div>
-        <div class="field"><label>計画人数</label>
-          <input type="number" id="inpPlan" value="${r.plan}" min="0" max="150" ${r.phase !== 'idle' ? 'disabled' : ''}></div>
-        <div class="field"><label>初任給（万円）</label>
-          <input type="number" id="inpSal" value="${Math.round(r.salary * 100)}" min="380" max="1200" step="10" ${r.phase !== 'idle' ? 'disabled' : ''}></div>
-        <div class="hint">初任給が業界水準（約540万円）を上回ると、応募と内定承諾の両方に効く。</div>
+        <div class="sec-t"><span>採用計画</span><span class="note">${lockSalary ? '内定式後は初任給を変更できない' : 'いつでも変更できる'}</span></div>
+        <div class="grid2">
+          <div class="field"><label>計画人数</label>
+            <input type="number" id="inpPlan" value="${r.plan}" min="0" max="150"></div>
+          <div class="field"><label>初任給（万円）</label>
+            <input type="number" id="inpSal" value="${Math.round(r.salary * 100)}" min="380" max="1200" step="10" ${lockSalary ? 'disabled' : ''}></div>
+        </div>
+        <div class="hint">初任給が業界水準（約540万円）を上回ると、応募と内定承諾の両方に効く。${r.phase === 'offer' ? '内定出し中に引き上げれば、承諾率が上がる。' : ''}</div>
+        <div class="btnrow"><button class="btn sm primary" data-save="1">計画を更新する</button></div>
       </div>
       <div class="sec">
-        <div class="sec-t"><span>配属計画</span><span class="note">合計 ${Object.values(r.deptPlan || {}).reduce((a, b) => a + b, 0)}名</span></div>
+        <div class="sec-t"><span>部署別の受入希望</span><span class="note">合計 ${DEPT_IDS.reduce((a, d) => a + ((r.deptPlan || {})[d] || 0), 0)}名</span></div>
         <div class="grid2">
           ${DEPT_IDS.map(dk => `
             <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
               <span style="flex:1;font-size:11.5px">${DEPTS[dk].icon} ${DEPTS[dk].name}</span>
               <button class="btn sm" data-dp="minus" data-d="${dk}">−</button>
-              <span style="min-width:26px;text-align:center;font-family:Oswald,sans-serif">${(r.deptPlan || {})[dk] || 0}</span>
+              <span style="min-width:24px;text-align:center;font-family:Oswald,sans-serif">${(r.deptPlan || {})[dk] || 0}</span>
               <button class="btn sm" data-dp="plus" data-d="${dk}">＋</button>
+              <span style="min-width:52px;text-align:right;font-size:10.5px;color:var(--ink-mute)">→ ${quota[dk] || 0}名</span>
             </div>`).join('')}
         </div>
-        <div class="hint">入社時はこの枠に沿って配属する。枠を超えた分や枠が空いている場合は、本人の適性と希望に従って配属される。希望と違う部署に配属された新入社員はモチベーションがやや下がる。</div>
+        <div class="hint">右側は、計画どおり${r.plan}名が入社した場合の配属数である。実際の入社数が前後しても、この希望比率のまま按分して配属する（端数は四捨五入）。</div>
       </div>
       <div class="sec">
         <div class="sec-t"><span>採用活動への投資</span><span class="note">年間 ${money(invTotal)}</span></div>
         ${RECRUIT_INVEST.map(x => `
           <div class="field">
             <label>${x.icon} ${x.name}　<b style="color:var(--gold)">${money(r.invest[x.id])}</b></label>
-            <input type="range" class="invRange" data-inv="${x.id}" min="0" max="${x.max}" step="20" value="${r.invest[x.id]}" ${r.phase !== 'idle' ? 'disabled' : ''}>
+            <input type="range" class="invRange" data-inv="${x.id}" min="0" max="${x.max}" step="20" value="${r.invest[x.id]}">
             <div class="hint">${x.desc}</div>
           </div>`).join('')}
+        ${canAddInvest ? `<div class="card" style="border-color:rgba(176,120,26,.3)">
+          <div class="card-s">募集期間中に投資を増やすと、その差額を追加で支出して母集団と志望度を押し上げられる。</div>
+          <div class="btnrow"><button class="btn sm primary" data-addinv="1">増やした分を追加投資する</button></div>
+        </div>` : ''}
         <div class="card">
           ${kv('想定エントリー数', Math.round(r.plan * (1.6 + ap.score * 5.2)) + '名')}
           ${kv('採用力', (ap.score * 100).toFixed(0) + ' / 100')}
           ${kv('現預金', money(g.cash))}
-          <div class="hint">投資額は募集開始（3月第1週）に一括で計上される。</div>
+          <div class="hint">投資額は募集開始（3月第1週目）に一括で計上される。</div>
         </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>採用力の内訳</span></div>
+        ${[['scale', '事業規模（売上高）'], ['size', '従業員数'], ['brand', '企業ブランド'], ['listed', '上場'],
+        ['hr', '人事総務部の力'], ['invest', '採用活動への投資'], ['salary', '初任給'], ['programs', '人事制度'], ['culture', '企業文化']]
+        .map(([k, n]) => `<div class="kv"><span class="k">${n}</span><span class="v">${((ap.parts[k] || 0) * 100).toFixed(0)}</span></div>
+          ${bar((ap.parts[k] || 0) / 0.3)}`).join('')}
+        <div class="hint">売上高が伸びて会社が知られるようになると、学生の応募は自然に増える。上位校の学生が集まるかどうかもここで決まる。</div>
       </div>`;
 
     if (r.phase === 'idle') {
-      return `<div class="hint" style="margin-bottom:12px">${r.year}年度の採用計画を立てる。3月第1週に募集が始まり、6月に選考、7月に内定出し、10月に内定式、翌4月に入社という流れである。</div>
+      return `<div class="hint" style="margin-bottom:12px">${r.year}年度の採用計画を立てる。3月第1週目に募集が始まり、6月に選考、7月に内定出し、10月に内定式、翌4月に入社という流れである。</div>
         ${planUI}
         <div class="btnrow"><button class="btn primary wide" data-save="1">計画を確定する</button></div>`;
     }
@@ -357,9 +417,10 @@ export function openNewGrad(g, ctx) {
         </div>
         <div class="hint">${byTier}</div>
         <div class="hint">${topUni}</div>
-        <div class="hint">6月第1週から選考が始まる。それまでは学生の志望度が動くだけである。</div>
+        <div class="hint">6月第1週目から選考が始まる。それまでは学生の志望度が動くだけである。</div>
         <div class="sec"><div class="sec-t"><span>志望度の高い学生</span></div>
-        ${top.map(c => candCard(c, 'view')).join('')}</div>`;
+        ${top.map(c => candCard(c, 'view')).join('')}</div>
+        ${planUI}`;
     }
 
     if (r.phase === 'screening') {
@@ -370,8 +431,9 @@ export function openNewGrad(g, ctx) {
           ${mini('計画', r.plan + '名')}
           ${mini('見極め精度', (55 + orgPower(g).hr.quality / 2.4).toFixed(0) + '%')}
         </div>
-        <div class="hint">7月第1週から内定を出せる。面接を重ねるほど推定の幅が狭まる。</div>
-        ${list.slice(0, 20).map(c => candCard(c, 'view')).join('')}`;
+        <div class="hint">7月第1週目から内定を出せる。面接を重ねるほど推定の幅が狭まる。</div>
+        ${list.slice(0, 20).map(c => candCard(c, 'view')).join('')}
+        ${planUI}`;
     }
 
     if (r.phase === 'offer') {
@@ -388,7 +450,8 @@ export function openNewGrad(g, ctx) {
         ${r.offers.length ? `<div class="sec"><div class="sec-t"><span>内定を出した学生</span></div>
           ${r.offers.map(c => candCard(c, 'offered')).join('')}</div>` : ''}
         <div class="sec"><div class="sec-t"><span>面接通過者</span></div>
-          ${list.length ? list.slice(0, 24).map(c => candCard(c, 'offer')).join('') : empty('候補者がいない')}</div>`;
+          ${list.length ? list.slice(0, 24).map(c => candCard(c, 'offer')).join('') : empty('候補者がいない')}</div>
+        ${planUI}`;
     }
 
     // waiting
@@ -399,8 +462,9 @@ export function openNewGrad(g, ctx) {
         ${mini('辞退', r.declined + '名')}
         ${mini('計画', r.plan + '名', `充足率 ${Math.round(acc.length / Math.max(1, r.plan) * 100)}%`)}
       </div>
-      <div class="hint">4月第1週に入社する。</div>
-      ${acc.map(c => candCard(c, 'view')).join('')}`;
+      <div class="hint">4月第1週目に入社する。配属予定：${DEPT_IDS.filter(d => allocateQuota(r.deptPlan, acc.length)[d] > 0).map(d => `${DEPTS[d].short} ${allocateQuota(r.deptPlan, acc.length)[d]}名`).join('・') || '—'}</div>
+      ${acc.map(c => candCard(c, 'view')).join('')}
+      ${planUI}`;
   }
 
   function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); ctx.refresh(); }
@@ -422,8 +486,30 @@ export function openNewGrad(g, ctx) {
     const save = body.querySelector('[data-save]');
     if (save) save.onclick = () => {
       r.plan = Math.max(0, Math.round(+body.querySelector('#inpPlan').value));
-      r.salary = Math.max(3.8, (+body.querySelector('#inpSal').value) / 100);
-      toast('採用計画を確定した'); refresh();
+      const sal = body.querySelector('#inpSal');
+      if (sal && !sal.disabled) {
+        const nv = Math.max(3.8, (+sal.value) / 100);
+        if (nv > r.salary && r.offers.length) {
+          for (const c of r.offers) c.interest = Math.min(1, c.interest + (nv - r.salary) * 0.12);
+        }
+        r.salary = nv;
+      }
+      toast('採用計画を更新した'); refresh();
+    };
+    const addInv = body.querySelector('[data-addinv]');
+    if (addInv) addInv.onclick = () => {
+      const now = RECRUIT_INVEST.reduce((a, x) => a + r.invest[x.id], 0);
+      const extra = Math.max(0, now - (r.spent || 0));
+      if (extra <= 0) return toast('追加分がない。スライダーを動かしてから実行すること', 'bad');
+      if (g.cash < extra) return toast('資金が不足している', 'bad');
+      g.cash -= extra;
+      g.finance.quarterAcc.sga += extra;
+      r.spent = (r.spent || 0) + extra;
+      // 追加投資は母集団と志望度に効く
+      const boost = Math.min(0.14, extra / 2400);
+      for (const c of r.pool) c.interest = Math.min(1, c.interest + boost);
+      toast(`${money(extra)}を追加投資した`, 'good');
+      ctx.refresh(); refresh();
     };
     body.querySelectorAll('[data-offer]').forEach(b => b.onclick = () => {
       const c = r.pool.find(x => x.id === b.dataset.offer);
@@ -486,6 +572,54 @@ export function openMid(g, channelId, ctx) {
       ctx.refresh();
       document.getElementById('modalBody').innerHTML = build(); bind();
     });
+  }
+}
+
+export function openCulture(g, ctx) {
+  const c = g.culture;
+  const draft = {};
+  for (const a of AXIS_IDS) draft[a] = c.target[a] ?? c[a];
+
+  openModal('企業文化の方針', build(), []);
+  bind();
+
+  function build() {
+    const cost = changeCost(g, draft);
+    return `
+    <div class="hint" style="margin-bottom:12px">方針を変えても組織はすぐには変わらない。数年かけて少しずつ浸透する。急な転換は現場を混乱させ、一時的に士気が下がる。</div>
+    ${AXES.map(a => `
+      <div class="sec">
+        <div class="sec-t"><span>${a.name}</span><span class="note">${(draft[a.id] * 100).toFixed(0)}</span></div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="font-size:11px;color:var(--ink-dim);min-width:70px;text-align:right">${a.low}</span>
+          <input type="range" class="cax" data-a="${a.id}" min="0" max="1" step="0.05" value="${draft[a.id]}" style="flex:1">
+          <span style="font-size:11px;color:var(--ink-dim);min-width:70px">${a.high}</span>
+        </div>
+        <div class="hint">${draft[a.id] >= 0.62 ? a.highDesc : draft[a.id] <= 0.38 ? a.lowDesc : '中庸。どちらの長所も短所も薄い。'}</div>
+      </div>`).join('')}
+    <div class="card">
+      ${kv('現在の方針', cultureLabel(g))}
+      ${kv('組織変革コスト', money(cost))}
+      ${kv('現預金', money(g.cash))}
+      <div class="hint">コストは変更幅と社員数に比例する。会社が大きくなるほど、方針転換は重くなる。</div>
+    </div>
+    <div class="btnrow">
+      <button class="btn primary wide" data-apply="1" ${g.cash < cost || cost === 0 ? 'disabled' : ''}>この方針に変える</button>
+    </div>`;
+  }
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('.cax').forEach(el => el.oninput = e => {
+      draft[e.target.dataset.a] = +e.target.value;
+      refresh();
+    });
+    const ap = body.querySelector('[data-apply]');
+    if (ap) ap.onclick = () => {
+      setCulture(g, draft, g.news);
+      toast('企業文化の方針を変更した', 'good');
+      ctx.refresh(); closeModal();
+    };
   }
 }
 

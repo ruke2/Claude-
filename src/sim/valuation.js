@@ -6,6 +6,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { brandEffect } from './brands.js';
+import { cultureEffects } from './culture.js';
 
 /** 用途別の建築面積率（敷地に対する各階の床の割合） */
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
@@ -57,8 +58,9 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
 
   // --- 工期（週） ---
   const sizePenalty = Math.floor(floors / 14) * 6 + (gfa > 20000 ? 8 : 0);
+  const ce = cultureEffects(g);
   const speedUp = subEffect(g, 'speed') + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-  const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp)));
+  const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
 
   // --- 収入 ---
   const brandMul = 1 + (g.company.brand - 40) / 420;
@@ -206,8 +208,9 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
   const softCost = build * 0.085;
   const buildCost = Math.round(build + softCost);
   const sizePenalty = Math.floor(totalFloors / 14) * 6 + (gfa > 20000 ? 8 : 0) + 12;
+  const ceS = cultureEffects(g);
   const speedUp = subEffect(g, 'speed') + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-  const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp)));
+  const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp) / ceS.speedMul));
 
   const capRate = clamp(d.capRate + 0.0025 + g.market.capShift - subEffect(g, 'exitPremium') * 0.05, 0.024, 0.09);
   const assetValue = noi > 0 ? Math.round(noi / capRate) : 0;

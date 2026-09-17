@@ -5,6 +5,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
 import { makeStaff, baseSalaryFor, avgAbility, uid } from '../core/state.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR, isYearStart, isAprilFirstWeek } from '../core/time.js';
+import { cultureEffects } from './culture.js';
 
 /** 部署ごとの「質」と「量」を集計する */
 export function orgPower(g) {
@@ -38,6 +39,12 @@ export function orgPower(g) {
     if (a.kind === 'pm') out.lease.quality *= 1.06;
   }
   if (g.hrPolicy.programs.dx) for (const d of DEPT_IDS) out[d].capacity *= 1.12;
+  // 企業カルチャーによる補正
+  const ce = cultureEffects(g);
+  for (const d of DEPT_IDS) {
+    out[d].capacity *= ce.capacityMul;
+    out[d].quality *= (0.97 + (g.culture ? g.culture.team : 0.5) * 0.06);
+  }
   out.total = g.staff.filter(s => !s.subsidiary).length;
   out.avgSalary = g.staff.length ? g.staff.reduce((a, s) => a + s.salary, 0) / g.staff.length : 0;
   return out;
@@ -82,6 +89,7 @@ export function stepHR(g, rng, news) {
   const trainMul = pol.programs.training ? 1.35 : 1.0;
   const welfare = pol.programs.welfare ? 1 : 0;
   const W = WEEKS_PER_QUARTER;
+  const ce = cultureEffects(g);
   const leavers = [];
 
   for (const s of g.staff) {
@@ -91,7 +99,7 @@ export function stepHR(g, rng, news) {
       const room = s.potential - s.abil[k];
       if (room > 0) {
         const isMain = DEPTS[s.dept].key === k;
-        const gain = (room / 100) * youth * trainMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05 / W;
+        const gain = (room / 100) * youth * trainMul * ce.growthMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05 / W;
         s.abil[k] = clamp(s.abil[k] + gain, 0, 99);
       } else if (s.age > 48 && rng.chance(0.1 / W)) {
         s.abil[k] = clamp(s.abil[k] - rng.range(0, 0.4), 0, 99);
@@ -101,7 +109,7 @@ export function stepHR(g, rng, news) {
 
     // --- モチベーション ---
     const fair = salaryFairness(g, s);
-    let dm = (fair - 1) * 0.10 + welfare * 0.028 - 0.012;
+    let dm = (fair - 1) * 0.10 + welfare * 0.028 - 0.012 + ce.moraleShift;
     if (s.rank >= 3) dm += 0.012;
     if (g.market.sentiment > 0.65) dm += 0.008;
     if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
@@ -115,6 +123,10 @@ export function stepHR(g, rng, news) {
     if (pol.programs.welfare) risk *= 0.7;
     if (s.age > 60) risk += 0.16;
     if (avgAbility(s) > 76 && s.rank < 3) risk += 0.02;      // 高能力者の抜擢待ち
+    // 成果主義なら優秀な人材は残り、伸び悩む社員は去る。年功序列はその逆
+    const rel = (avgAbility(s) - 55) / 45;
+    risk *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
+    risk *= ce.leaveMul;
     if (rng.chance(clamp01(risk) / W)) leavers.push(s);
   }
 
@@ -139,7 +151,7 @@ export function stepHR(g, rng, news) {
       const cands = g.staff
         .filter(s => s.rank === r - 1 && avgAbility(s) >= rank.minAbility && s.tenure >= 2)
         .sort((a, b) => (avgAbility(b) + b.abil.lead * 0.4) - (avgAbility(a) + a.abil.lead * 0.4));
-      const n = Math.min(room, Math.ceil(cands.length * (0.16 + pol.evalStrict * 0.14)));
+      const n = Math.min(room, Math.ceil(cands.length * (0.13 + pol.evalStrict * 0.12 + ce.promoteBoost * 0.14)));
       for (let i = 0; i < n; i++) {
         const s = cands[i]; if (!s) break;
         s.rank = r; s.salary = Math.max(s.salary, baseSalaryFor(s) * pol.salaryMul);

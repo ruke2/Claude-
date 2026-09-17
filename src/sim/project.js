@@ -10,6 +10,7 @@ import { orgPower, projectCapacity } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 import { BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
 import { brandEffect, growBrand, getBrand } from './brands.js';
+import { cultureEffects } from './culture.js';
 
 /** 複合開発（フロアスタック）の事業計画 */
 export function feasibilityStack(g, cell, stack, gradeId, brandId) {
@@ -115,6 +116,7 @@ const BUILD_EVENTS = [
 export function stepProjects(g, rng, news) {
   const p = orgPower(g);
   const done = [];
+  const ce = cultureEffects(g);
   for (const pj of g.projects) {
     if (pj.status !== 'construction') continue;
     pj.elapsed += 1;
@@ -129,8 +131,8 @@ export function stepProjects(g, rng, news) {
 
     // 工事イベント
     for (const ev of BUILD_EVENTS) {
-      let pr = ev.p;
-      if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6);
+      let pr = ev.p * ce.eventSwing;
+      if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk;
       else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6);
       if (g.subsidiaries.some(s => s.type === 'construction')) pr *= ev.bad ? 0.78 : 1.18;
       if (rng.chance(pr / Math.max(1, total * 0.55 / WEEKS_PER_QUARTER))) {
@@ -178,7 +180,11 @@ function completeProject(g, pj, rng, news) {
   if (pj.stack) cell.building.stack = pj.stack.map(x => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
   g.kpi.builtCount++;
   g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12000 ? 1.6 : 1), 0, 100);
-  if (pj.brandId) growBrand(g, pj.brandId, { area: pj.gfa, units: pj.plan.units || 0, supplied: true, base: 4.2, reputation: 1.5 });
+  const ceq = cultureEffects(g);
+  if (pj.brandId) growBrand(g, pj.brandId, {
+    area: pj.gfa, units: pj.plan.units || 0, supplied: true,
+    base: 4.2 * ceq.qualityMul, reputation: 1.5 * ceq.qualityMul,
+  });
 
   const cost = pj.landCost + pj.spent;
   // --- 分譲部分 ---

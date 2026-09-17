@@ -11,6 +11,7 @@ import { stepInventory, stepAssets } from './sales.js';
 import { stepMA, generateTargets } from './ma.js';
 import { stepHR } from './hr.js';
 import { stepBrands } from './brands.js';
+import { stepCulture } from './culture.js';
 import { stepRecruit } from './recruit.js';
 import { stepRivalsWeekly, stepRivalsQuarter, ranking } from './rivals.js';
 import { weeklyCosts, closeQuarter, kpis } from './finance.js';
@@ -78,6 +79,7 @@ export function nextWeek(g) {
   stepHR(g, rng, news);
   stepRecruit(g, rng, news);
   stepBrands(g, rng, news);
+  stepCulture(g, rng, news);
 
   // 7. 競合
   stepRivalsWeekly(g, rng, news);

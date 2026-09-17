@@ -395,6 +395,7 @@ function handleAction(act, id) {
     }
     case 'hr.mid': HR.openMid(G, id, ctx); break;
     case 'hr.salary': HR.openSalaryPolicy(G, ctx); break;
+    case 'hr.culture': HR.openCulture(G, ctx); break;
     case 'hr.newgrad': HR.openNewGrad(G, ctx); break;
     case 'hr.list': ctx.hrSort = id; refresh(); break;
     case 'hr.dept': {

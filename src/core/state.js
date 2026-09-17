@@ -5,6 +5,7 @@
 import { RNG, hash2 } from './rng.js';
 import { clamp, clamp01 } from './format.js';
 import { syncCalendar } from './time.js';
+import { initCulture } from '../sim/culture.js';
 import { DISTRICTS, MAP_ROWS, MAP_W, MAP_H, TERRAIN, terrainOf, elevationAt, USES, FACADES } from '../data/city.js';
 import { RIVAL_DEFS } from '../data/companies.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN, BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
@@ -165,10 +166,12 @@ export function makeStaff(rng, opt = {}) {
 }
 
 /** 役職・能力から標準年収を求める（百万円） */
-export function baseSalaryFor(s) {
+export function baseSalaryFor(s, gap = 1) {
   const r = RANKS[s.rank];
   const ab = avgAbility(s);
-  return Math.round((r.baseSalary * (0.86 + ab / 100 * 0.32) + Math.min(s.tenure, 25) * 0.06) * 10) / 10;
+  const abilPart = (ab / 100 - 0.55) * 0.32 * gap;
+  const tenurePart = Math.min(s.tenure, 25) * 0.06 * (2 - gap);
+  return Math.round((r.baseSalary * (1.04 + abilPart) + tenurePart) * 10) / 10;
 }
 
 export function avgAbility(s) {
@@ -268,12 +271,15 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
       ng: {
         phase: 'idle', year: 2027, plan: 8, salary: 5.4,
         invest: { seminar: 120, intern: 0, ad: 80, recruiter: 0 },
-        screenPolicy: 0.5, pool: [], offers: [], hired: 0, declined: 0, spent: 0, log: [],
+        deptPlan: { land: 2, plan: 1, cons: 1, sales: 2, lease: 1, fin: 1, hr: 0, corp: 0 },
+        screenPolicy: 0.5, pool: [], offers: [], incoming: [], hired: 0, declined: 0, spent: 0, log: [],
       },
       mid: { pools: {}, refreshed: {} },
     },
     // 自社ブランド
     brands: [],
+    // 企業カルチャー
+    culture: initCulture(),
     market: {
       cycle: rng.range(0.15, 0.4),
       priceIdx: 1.0, costIdx: 1.0, rate: diff.rate,
