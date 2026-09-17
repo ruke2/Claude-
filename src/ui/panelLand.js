@@ -1,7 +1,7 @@
 // ============================================================
 //  用地パネル — 売却情報・デューデリジェンス・入札
 // ============================================================
-import { money, num, pct, clamp } from '../core/format.js';
+import { money, moneyHTML, num, pct, clamp } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES, TERRAIN } from '../data/city.js';
 import { LISTING_KINDS, ddCost, runDueDiligence, ACQ_FEE, holdingCostQ } from '../sim/land.js';
@@ -103,7 +103,7 @@ export function openDetail(g, listing, ctx) {
     <div class="grid3" style="margin-bottom:14px">
       ${mini('売出価格', money(listing.askPrice, { unit: false }), '億円')}
       ${mini('当社査定', money(listing.appraisal, { unit: false }), '億円')}
-      ${mini('取得諸費用', money(Math.round(listing.askPrice * ACQ_FEE), { unit: false }), `売買価格の${(ACQ_FEE * 100).toFixed(1)}%`)}
+      ${mini('取得諸費用', moneyHTML(Math.round(listing.askPrice * ACQ_FEE)), `売買価格の${(ACQ_FEE * 100).toFixed(1)}%`)}
     </div>
 
     <div class="card">
@@ -144,10 +144,10 @@ export function openDetail(g, listing, ctx) {
     <div class="sec">
       <div class="sec-t"><span>事業収支シミュレーション</span></div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <select id="selUse" style="flex:1;min-width:140px;padding:7px;border-radius:7px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink)">
+        <select id="selUse" class="selin" style="min-width:140px">
           ${Object.values(USES).map(u => `<option value="${u.id}" ${u.id === use ? 'selected' : ''}>${u.name}（適合 ${(d.fit[u.id] ?? 0.3).toFixed(2)}）</option>`).join('')}
         </select>
-        <select id="selGrade" style="flex:1;min-width:120px;padding:7px;border-radius:7px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink)">
+        <select id="selGrade" class="selin" style="min-width:120px">
           ${Object.values(GRADES).map(x => `<option value="${x.id}" ${x.id === grade ? 'selected' : ''}>${x.name}</option>`).join('')}
         </select>
       </div>

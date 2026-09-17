@@ -37,18 +37,23 @@
   --shadow-lg:0 10px 26px rgba(22,32,47,.14), 0 30px 70px rgba(22,32,47,.18);
   --r:10px;
   --fs:14px;
+
+  --topH:58px;          /* ヘッダー高さ */
+  --botH:30px;          /* 画面下部（ティッカー／タブバー）の高さ */
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{
   background:var(--bg);color:var(--ink);
   font-family:"Noto Sans JP",system-ui,-apple-system,sans-serif;
   font-size:var(--fs);line-height:1.6;
   -webkit-font-smoothing:antialiased;
   user-select:none;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
 }
 .hidden{display:none !important}
-button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none;touch-action:manipulation}
 input,select,textarea{font-family:inherit;font-size:13px}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -56,12 +61,12 @@ input,select,textarea{font-family:inherit;font-size:13px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(22,32,47,.3);background-clip:content-box}
 
 /* ---------- canvas ---------- */
-#city{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;z-index:0}
+#city{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;z-index:0;touch-action:none}
 #city.dragging{cursor:grabbing}
 
 #cityHud{
   position:fixed;left:82px;z-index:6;pointer-events:none;
-  bottom:calc(46px + env(safe-area-inset-bottom,0px));
+  bottom:calc(var(--botH) + 16px + env(safe-area-inset-bottom,0px));
   font-size:12px;letter-spacing:.02em;
 }
 .cityhud-line{
@@ -73,7 +78,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 .cityhud-line.dim{color:var(--ink-dim);font-weight:500;margin-top:5px;max-width:520px}
 
 #viewControls{position:fixed;right:18px;z-index:8;display:flex;gap:6px;
-  bottom:calc(46px + env(safe-area-inset-bottom,0px))}
+  bottom:calc(var(--botH) + 16px + env(safe-area-inset-bottom,0px))}
 .vbtn{
   width:36px;height:36px;border-radius:9px;background:var(--glass);
   border:1px solid var(--line);color:var(--ink-dim);font-size:15px;
@@ -85,7 +90,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- topbar ---------- */
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:20;
-  height:calc(58px + env(safe-area-inset-top,0px));
+  height:calc(var(--topH) + env(safe-area-inset-top,0px));
   padding:env(safe-area-inset-top,0px) 14px 0;
   display:flex;align-items:center;gap:16px;
   background:rgba(255,255,255,.94);
@@ -134,8 +139,8 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- side tabs ---------- */
 #sidetabs{
   position:fixed;left:0;width:64px;z-index:19;
-  top:calc(58px + env(safe-area-inset-top,0px));
-  bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  top:calc(var(--topH) + env(safe-area-inset-top,0px));
+  bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   display:flex;flex-direction:column;gap:2px;padding:10px 6px;
   background:rgba(255,255,255,.9);border-right:1px solid var(--line);
   backdrop-filter:blur(14px);
@@ -158,8 +163,8 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- panel ---------- */
 #panel{
   position:fixed;left:64px;width:min(580px,54vw);z-index:18;
-  top:calc(58px + env(safe-area-inset-top,0px));
-  bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  top:calc(var(--topH) + env(safe-area-inset-top,0px));
+  bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   background:var(--glass-2);backdrop-filter:blur(20px);
   border-right:1px solid var(--line);
   display:flex;flex-direction:column;
@@ -180,7 +185,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- week feed ---------- */
 #feed{
   position:fixed;right:18px;z-index:7;width:320px;max-width:calc(100vw - 36px);
-  bottom:calc(94px + env(safe-area-inset-bottom,0px));
+  bottom:calc(var(--botH) + 64px + env(safe-area-inset-bottom,0px));
   background:var(--glass);backdrop-filter:blur(14px);
   border:1px solid var(--line);border-radius:12px;overflow:hidden;
   box-shadow:var(--shadow-md);
@@ -212,7 +217,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- ticker ---------- */
 #ticker{
   position:fixed;left:0;right:0;bottom:0;z-index:21;
-  height:calc(30px + env(safe-area-inset-bottom,0px));
+  height:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:var(--surface);border-top:1px solid var(--line);
   overflow:hidden;display:flex;align-items:center;
@@ -413,7 +418,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 /* ---------- misc ---------- */
 .spark{display:block;width:100%;height:46px}
 .toast{
-  position:fixed;left:50%;bottom:calc(52px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;
+  position:fixed;left:50%;bottom:calc(var(--botH) + 22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;
   background:var(--surface);border:1px solid var(--accent);border-radius:10px;
   padding:11px 20px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
   animation:toastIn .24s cubic-bezier(.2,.9,.3,1);max-width:min(560px,90vw);
@@ -423,13 +428,220 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 @keyframes toastIn{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 
 @media(max-width:1180px){ #feed{width:256px} }
-@media(max-width:900px){
+/* ---- タブレット（821〜900px） ---- */
+@media(max-width:900px) and (min-width:821px){
   #panel{width:100%;left:0;padding-left:64px}
   .stat-strip{display:none}
   #feed{display:none}
   .btn-next small{display:none}
   .btn-next{min-width:40px;padding:9px 10px}
   .grid4{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ============================================================
+   スマートフォン（〜820px）
+   - 左の縦タブ → 画面下のタブバー
+   - パネル → 全画面のボトムシート
+   - ティッカーは非表示、統計はヘッダー下段に横スクロールで残す
+   ============================================================ */
+@media(max-width:820px){
+  :root{ --topH:84px; --botH:58px; }
+
+  /* ---- ヘッダー ---- */
+  #topbar{
+    padding:env(safe-area-inset-top,0px) 10px 30px;
+    gap:8px;
+  }
+  .brandbox{min-width:0;gap:7px;flex:0 0 auto}
+  .brand-text{display:none}
+  .brand-mark{width:30px;height:30px;font-size:13px;border-radius:7px}
+
+  .stat-strip{
+    position:absolute;left:0;right:0;bottom:0;height:30px;
+    display:flex;flex:0 0 auto;align-items:center;
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    border-top:1px solid var(--line-soft);
+    padding:0 10px;scrollbar-width:none;
+  }
+  .stat-strip::-webkit-scrollbar{display:none}
+  .stat{padding:1px 10px;flex:0 0 auto}
+  .stat-k{font-size:8.5px;letter-spacing:.08em}
+  .stat-v{font-size:14px;line-height:1.15}
+  .stat-v small{font-size:9px}
+
+  .turnbox{margin-left:auto;gap:8px;flex:0 0 auto}
+  .turn-date{line-height:1.15}
+  #hdrDate{font-size:12.5px}
+  .turn-season{font-size:9px;letter-spacing:.04em}
+  .turn-btns{gap:4px}
+  .btn-next{min-width:34px;padding:9px 5px;font-size:13px;border-radius:8px}
+  .btn-next small{display:none}
+  .btn-next:hover{transform:none}
+
+  /* ---- 下部タブバー ---- */
+  #sidetabs{
+    top:auto;left:0;right:0;width:auto;z-index:22;
+    bottom:0;height:calc(var(--botH) + env(safe-area-inset-bottom,0px));
+    flex-direction:row;align-items:stretch;gap:3px;
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));
+    border-right:none;border-top:1px solid var(--line);
+    background:rgba(255,255,255,.96);
+    box-shadow:0 -2px 14px rgba(22,32,47,.07);
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  #sidetabs::-webkit-scrollbar{display:none}
+  .tab{height:auto;min-width:56px;flex:0 0 auto;border-radius:8px;gap:1px;padding:0 4px}
+  .tab i{font-size:17px}
+  .tab span{font-size:9.5px}
+  .tab .badge{top:0;right:2px}
+
+  /* ---- パネル ---- */
+  #panel{
+    left:0;right:0;width:auto;padding-left:0;
+    border-right:none;border-top:1px solid var(--line);
+    box-shadow:0 -8px 34px rgba(22,32,47,.16);
+    animation:sheetIn .2s cubic-bezier(.2,.9,.3,1);
+  }
+  .panel-head{padding:11px 8px 11px 14px}
+  .panel-head h2{font-size:14px}
+  #panelClose{font-size:17px;padding:7px 13px}
+  .panel-body{padding:13px 14px 44px}
+
+  /* ---- 都市ビュー ---- */
+  #ticker{display:none}
+  #cityHud{
+    left:10px;right:auto;bottom:auto;
+    top:calc(var(--topH) + env(safe-area-inset-top,0px) + 10px);
+  }
+  #hudHover{display:none}
+  .cityhud-line{font-size:11px;padding:4px 9px}
+  #viewControls{
+    right:8px;bottom:auto;flex-direction:column;gap:6px;
+    top:calc(var(--topH) + env(safe-area-inset-top,0px) + 10px);
+  }
+  .vbtn{width:40px;height:40px;font-size:17px}
+  .vbtn:hover{color:var(--ink-dim);border-color:var(--line);background:var(--glass)}
+
+  /* ---- 週次フィード（下部のシート） ---- */
+  #feed{
+    display:block;left:8px;right:8px;width:auto;max-width:none;
+    bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px) + 8px);
+  }
+  .feed-head{padding:0 6px 0 12px;font-size:10.5px;min-height:42px;cursor:pointer}
+  #feedToggle{font-size:14px;min-width:42px;min-height:42px;display:grid;place-items:center}
+  .feed-body{max-height:34vh}
+  .feed-item{font-size:11.5px;padding:6px 12px}
+
+  /* ---- モーダル・決算レポート ---- */
+  #modalWrap,#reportWrap{padding:0;place-items:end stretch}
+  #modal,#report{
+    width:100%;max-width:none;max-height:92vh;
+    border-radius:15px 15px 0 0;
+    animation:sheetIn .2s cubic-bezier(.2,.9,.3,1);
+  }
+  .modal-head,.report-head{padding:14px 16px}
+  .modal-head h3{font-size:14px}
+  .modal-body{padding:14px 16px}
+  .modal-foot{
+    padding:11px 16px calc(11px + env(safe-area-inset-bottom,0px));
+    gap:7px;justify-content:stretch;
+  }
+  .modal-foot .btn{flex:1 1 0;min-width:0;text-align:center}
+  .report-head{padding:16px 16px 12px}
+  .report-head h2{font-size:18px}
+  .report-body{padding:15px 16px}
+  .report-foot{padding:13px 16px calc(13px + env(safe-area-inset-bottom,0px))}
+  .rep-hero{grid-template-columns:repeat(2,1fr);gap:8px}
+  .rep-hero .mini-v{font-size:20px}
+
+  /* ---- 中身 ---- */
+  .grid3,.grid4{grid-template-columns:repeat(2,1fr)}
+  /* 項目名と値が横に並ぶブロックは、狭い画面では1列にする */
+  .grid2:has(> .kv),.grid2:has(> div > .kv),
+  .grid3:has(> .kv),.grid4:has(> .kv){grid-template-columns:1fr;gap:0}
+  .kv{font-size:12px;gap:14px}
+  .mini-v{font-size:17px}
+  .card{padding:12px 13px}
+  .card.click:hover{transform:none;border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .btn{padding:10px 14px;font-size:13px}
+  .btn.sm{padding:8px 12px;font-size:12px}
+  .btn.huge{padding:15px 24px;font-size:15px;width:100%}
+  .btnrow{gap:8px}
+  .org-node{min-width:88px;padding:6px 9px}
+  .org-node .on-n{font-size:11px}
+  .toast{font-size:12.5px;padding:10px 16px}
+
+  /* 表は折り返さず、横にスワイプして読む */
+  table.tbl{
+    display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    white-space:nowrap;font-size:11.5px;
+    background:transparent;border-radius:0;
+  }
+  table.tbl th{background:var(--surface-2)}
+  table.tbl td{background:var(--surface)}
+  table.tbl th,table.tbl td{padding:7px 8px}
+  .panel-body,.modal-body,.report-body{overflow-x:hidden}
+
+  /* 入力欄は16px未満だと iOS が自動でズームしてしまう */
+  input,select,textarea,
+  .field input[type=text],.field input[type=number],.field select,
+  .title-form input,.title-form select{font-size:16px}
+  .field input[type=text],.field input[type=number],.field select{padding:10px 11px}
+
+  /* ---- タイトル画面 ---- */
+  #titleScreen{
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 14px calc(env(safe-area-inset-bottom,0px) + 14px);
+  }
+  .title-inner{
+    width:100%;max-width:none;max-height:100%;border-radius:14px;
+    padding:24px 18px;
+  }
+  .title-kicker{font-size:10px;letter-spacing:.3em}
+  .title-logo{font-size:32px;margin-bottom:12px}
+  .title-lead{font-size:11.5px;line-height:1.95;margin-bottom:18px;text-align:justify}
+  .title-lead br{display:none}
+  .title-form{flex-direction:column;gap:10px}
+  .title-form label{width:100%}
+  .title-form input,.title-form select{min-width:0;width:100%}
+  .title-credit{margin-top:14px;font-size:10px}
+}
+@keyframes sheetIn{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+
+/* 横向きで画面が低いとき（スマホ横持ち） */
+@media(max-width:900px) and (max-height:520px){
+  :root{ --topH:50px; --botH:46px; }
+  #topbar{padding-bottom:0}
+  .stat-strip{display:none}
+  .tab{min-width:52px}
+  .tab i{font-size:15px}
+  .tab span{font-size:9px}
+  .title-lead{display:none}
+  .title-logo{font-size:26px}
+  #feed{display:none}
+}
+
+/* パネル・モーダル内のセレクトボックス */
+.selin{
+  flex:1;padding:8px 10px;border-radius:7px;
+  background:var(--field-bg);border:1px solid var(--line);color:var(--ink);
+}
+.selin:focus{outline:none;border-color:var(--accent);background:#fff}
+
+/* 手順リスト（導入・ヘルプ） */
+.steps{list-style:none;counter-reset:step;padding:0;margin:2px 0}
+.steps li{
+  counter-increment:step;position:relative;
+  padding:7px 0 7px 30px;font-size:12.5px;line-height:1.75;
+  border-bottom:1px solid var(--line-soft);
+}
+.steps li:last-child{border-bottom:none}
+.steps li::before{
+  content:counter(step);position:absolute;left:0;top:9px;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  font-family:Oswald,sans-serif;font-size:11px;font-weight:600;
+  display:grid;place-items:center;
 }
 
 </style>
@@ -2814,6 +3026,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 
   // src/render/city.js
   var ZOOM_STEPS = [0.3, 0.4, 0.52, 0.66, 0.84, 1.06, 1.34];
+  var COARSE = typeof matchMedia === "function" && matchMedia("(pointer:coarse)").matches;
+  var SPRITE_BUDGET = COARSE ? 8 : 18;
   var CityRenderer = class {
     constructor(canvas, game) {
       this.cv = canvas;
@@ -2838,9 +3052,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       return ZOOM_STEPS[this.cam.zoomIdx];
     }
     resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.w = this.cv.clientWidth;
       this.h = this.cv.clientHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const MAX_PIX = 26e5;
+      const area = Math.max(1, this.w * this.h);
+      if (area * dpr * dpr > MAX_PIX) dpr = Math.max(1, Math.sqrt(MAX_PIX / area));
       this.cv.width = Math.floor(this.w * dpr);
       this.cv.height = Math.floor(this.h * dpr);
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2865,6 +3082,19 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const p = toScreen(MAP_W / 2, MAP_H / 2, 0, this.cam.rot, this.zoom);
       this.cam.x = -p.x;
       this.cam.y = -p.y + this.h * 0.14;
+    }
+    // 画面にマップ全体がだいたい収まる倍率に合わせる（小さい画面向け）
+    fit() {
+      const wSpan = (MAP_W + MAP_H) * (TILE_W / 2);
+      const hSpan = (MAP_W + MAP_H) * (TILE_H / 2);
+      let idx = 0;
+      for (let i = 0; i < ZOOM_STEPS.length; i++) {
+        const z = ZOOM_STEPS[i];
+        if (wSpan * z <= this.w * 1.06 && hSpan * z <= this.h * 0.78) idx = i;
+      }
+      this.cam.zoomIdx = idx;
+      this.invalidate();
+      this.center();
     }
     zoomBy(d, ax, ay) {
       const ni = Math.max(0, Math.min(ZOOM_STEPS.length - 1, this.cam.zoomIdx + d));
@@ -3349,7 +3579,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     draw(dt) {
       const __t0 = performance.now();
       this.t += dt;
-      this.budget = 18;
+      this.budget = SPRITE_BUDGET;
       this.pulse = (Math.sin(this.t * 3) + 1) / 2;
       const { ctx: ctx2, w, h } = this;
       const g = this.g, z = this.zoom, T = this.time, W = this.weather;
@@ -6617,7 +6847,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="grid3" style="margin-bottom:14px">
       ${mini("\u58F2\u51FA\u4FA1\u683C", money(listing.askPrice, { unit: false }), "\u5104\u5186")}
       ${mini("\u5F53\u793E\u67FB\u5B9A", money(listing.appraisal, { unit: false }), "\u5104\u5186")}
-      ${mini("\u53D6\u5F97\u8AF8\u8CBB\u7528", money(Math.round(listing.askPrice * ACQ_FEE), { unit: false }), `\u58F2\u8CB7\u4FA1\u683C\u306E${(ACQ_FEE * 100).toFixed(1)}%`)}
+      ${mini("\u53D6\u5F97\u8AF8\u8CBB\u7528", moneyHTML(Math.round(listing.askPrice * ACQ_FEE)), `\u58F2\u8CB7\u4FA1\u683C\u306E${(ACQ_FEE * 100).toFixed(1)}%`)}
     </div>
 
     <div class="card">
@@ -6657,10 +6887,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="sec">
       <div class="sec-t"><span>\u4E8B\u696D\u53CE\u652F\u30B7\u30DF\u30E5\u30EC\u30FC\u30B7\u30E7\u30F3</span></div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <select id="selUse" style="flex:1;min-width:140px;padding:7px;border-radius:7px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink)">
+        <select id="selUse" class="selin" style="min-width:140px">
           ${Object.values(USES).map((u) => `<option value="${u.id}" ${u.id === use ? "selected" : ""}>${u.name}\uFF08\u9069\u5408 ${(d.fit[u.id] ?? 0.3).toFixed(2)}\uFF09</option>`).join("")}
         </select>
-        <select id="selGrade" style="flex:1;min-width:120px;padding:7px;border-radius:7px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink)">
+        <select id="selGrade" class="selin" style="min-width:120px">
           ${Object.values(GRADES).map((x) => `<option value="${x.id}" ${x.id === grade ? "selected" : ""}>${x.name}</option>`).join("")}
         </select>
       </div>
@@ -7001,7 +7231,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         const R2 = STACK_RULE[seg.use] || {};
         return `<div class="card" style="padding:9px 11px;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-          <select class="segUse" data-i="${realIdx}" style="flex:1;min-width:116px;padding:5px 7px;border-radius:6px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink);font-size:12px">
+          <select class="segUse selin" data-i="${realIdx}" style="min-width:116px">
             ${["retail", "office", "hotel", "resi", "rental", "logi"].map((u) => `<option value="${u}" ${u === seg.use ? "selected" : ""}>${USES[u].icon} ${USES[u].name}</option>`).join("")}
           </select>
           <button class="btn sm" data-seg="minus" data-i="${realIdx}">\u2212</button>
@@ -8806,6 +9036,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     draw();
     return () => cancelAnimationFrame(raf);
   }
+  var IS_SMALL = typeof matchMedia === "function" && (matchMedia("(max-width:820px)").matches || matchMedia("(pointer:coarse)").matches);
   function startGame(saved) {
     if (saved) {
       G = saved;
@@ -8825,8 +9056,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     R = new CityRenderer(cv, G);
     R.setMonth(G.month);
     R.setWeather(G.weather || "clear");
-    R.center();
+    if (IS_SMALL) R.fit();
+    else R.center();
     window.R = R;
+    if (IS_SMALL) {
+      $("#feed").classList.add("collapsed");
+      $("#feedToggle").textContent = "\u25B8";
+    }
     $("#titleScreen").classList.add("out");
     setTimeout(() => $("#titleScreen").remove(), 800);
     bindInput();
@@ -8844,53 +9080,129 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
   function bindInput() {
     const cv = $("#city");
+    const pts = /* @__PURE__ */ new Map();
     let drag = null;
+    let pinch = null;
+    const pos = (e) => ({ x: e.clientX, y: e.clientY });
+    const slop = (e) => e.pointerType === "touch" ? 14 : 6;
+    const two = () => {
+      const v = [...pts.values()];
+      return [v[0], v[1]];
+    };
+    const startDragFrom = (id, p) => {
+      drag = { id, x: p.x, y: p.y, cx: R.cam.x, cy: R.cam.y, moved: 0 };
+    };
     cv.addEventListener("pointerdown", (e) => {
-      drag = { x: e.clientX, y: e.clientY, cx: R.cam.x, cy: R.cam.y, moved: 0 };
-      cv.setPointerCapture(e.pointerId);
-      cv.classList.add("dragging");
+      pts.set(e.pointerId, pos(e));
+      try {
+        cv.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+      if (pts.size >= 2) {
+        const [a, b] = two();
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+        drag = null;
+        cv.classList.remove("dragging");
+      } else {
+        startDragFrom(e.pointerId, pos(e));
+        cv.classList.add("dragging");
+      }
     });
     cv.addEventListener("pointermove", (e) => {
-      if (drag) {
+      if (pts.has(e.pointerId)) pts.set(e.pointerId, pos(e));
+      if (pinch && pts.size >= 2) {
+        const [a, b] = two();
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        if (d > pinch.d * 1.28) {
+          R.zoomBy(1, mx, my);
+          pinch.d = d;
+        } else if (d < pinch.d * 0.78) {
+          R.zoomBy(-1, mx, my);
+          pinch.d = d;
+        }
+        return;
+      }
+      if (drag && e.pointerId === drag.id) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
         drag.moved += Math.abs(dx) + Math.abs(dy);
         R.cam.x = drag.cx + dx;
         R.cam.y = drag.cy + dy;
-      } else {
+      } else if (!drag && !pinch && e.pointerType !== "touch") {
         const c = R.pick(e.clientX, e.clientY);
         R.hover = c;
         updateHover(c);
       }
     });
-    cv.addEventListener("pointerup", (e) => {
-      const wasDrag = drag && drag.moved > 6;
-      cv.classList.remove("dragging");
-      drag = null;
-      if (!wasDrag) {
-        const c = R.pick(e.clientX, e.clientY);
-        R.selected = c;
-        if (c) onCellClick(c);
+    const endPointer = (e, tap) => {
+      const d = drag;
+      const wasPinch = !!pinch;
+      pts.delete(e.pointerId);
+      try {
+        cv.releasePointerCapture(e.pointerId);
+      } catch (_) {
       }
-    });
-    cv.addEventListener("pointerleave", () => {
+      if (pts.size < 2) pinch = null;
+      if (d && d.id === e.pointerId) {
+        drag = null;
+        cv.classList.remove("dragging");
+        if (pts.size === 1) {
+          const id = [...pts.keys()][0];
+          startDragFrom(id, pts.get(id));
+          drag.moved = 999;
+          cv.classList.add("dragging");
+        }
+      } else if (pts.size === 1 && !drag) {
+        const id = [...pts.keys()][0];
+        startDragFrom(id, pts.get(id));
+        drag.moved = 999;
+        cv.classList.add("dragging");
+      }
+      if (!tap || wasPinch || pts.size > 0) return;
+      if (d && d.moved > slop(e)) return;
+      const c = R.pick(e.clientX, e.clientY);
+      R.selected = c;
+      if (e.pointerType === "touch") {
+        R.hover = c;
+        updateHover(c);
+      }
+      if (c) onCellClick(c);
+    };
+    cv.addEventListener("pointerup", (e) => endPointer(e, true));
+    cv.addEventListener("pointercancel", (e) => endPointer(e, false));
+    cv.addEventListener("pointerleave", (e) => {
+      if (e.pointerType === "touch") return;
+      pts.delete(e.pointerId);
       drag = null;
+      pinch = null;
       cv.classList.remove("dragging");
     });
     cv.addEventListener("wheel", (e) => {
       e.preventDefault();
       R.zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
     }, { passive: false });
-    window.addEventListener("resize", () => R.resize());
+    cv.addEventListener("gesturestart", (e) => e.preventDefault());
+    cv.addEventListener("dblclick", (e) => e.preventDefault());
+    let rzT = 0;
+    const onResize = () => {
+      clearTimeout(rzT);
+      rzT = setTimeout(() => R.resize(), 120);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
     document.querySelectorAll(".vbtn").forEach((b) => b.onclick = () => {
       const v = b.dataset.view;
       if (v === "zoomin") R.zoomBy(1);
       if (v === "zoomout") R.zoomBy(-1);
       if (v === "rotate") R.rotateBy(1);
       if (v === "reset") {
-        R.cam.zoomIdx = 1;
         R.cam.rot = 0;
-        R.invalidate();
-        R.center();
+        if (IS_SMALL) R.fit();
+        else {
+          R.cam.zoomIdx = 1;
+          R.invalidate();
+          R.center();
+        }
       }
       if (v === "layer") {
         R.layer = R.layer === "normal" ? "owner" : R.layer === "owner" ? "value" : "normal";
@@ -8907,11 +9219,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     $("#btnMonth").onclick = () => advance(4);
     $("#btnQuarter").onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
     $("#btnMenu").onclick = openSaveMenu;
-    $("#feedToggle").onclick = () => {
+    const toggleFeed = () => {
       const f = $("#feed");
       f.classList.toggle("collapsed");
       $("#feedToggle").textContent = f.classList.contains("collapsed") ? "\u25B8" : "\u25BE";
     };
+    document.querySelector(".feed-head").onclick = toggleFeed;
     $("#reportOk").onclick = () => {
       $("#reportWrap").classList.add("hidden");
       afterReport();
@@ -9394,11 +9707,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     </div>
     <div class="sec">
       <div class="sec-t"><span>\u307E\u305A\u4F55\u3092\u3059\u308B\u304B</span></div>
-      ${kv("\u2460", "\u5DE6\u306E\u300C\u7528\u5730\u300D\u30BF\u30D6\u3067\u58F2\u5374\u60C5\u5831\u3092\u78BA\u8A8D\u3059\u308B")}
-      ${kv("\u2461", "\u4E8B\u696D\u53CE\u652F\u3092\u898B\u3066\u3001\u5229\u76CA\u306E\u51FA\u308B\u571F\u5730\u306B\u5165\u672D\u3059\u308B")}
-      ${kv("\u2462", "\u53D6\u5F97\u3057\u305F\u3089\u300C\u958B\u767A\u300D\u30BF\u30D6\u3067\u7528\u9014\u3068\u30B0\u30EC\u30FC\u30C9\u3092\u6C7A\u3081\u3066\u7740\u5DE5\u3059\u308B")}
-      ${kv("\u2463", "\u7AE3\u5DE5\u3057\u305F\u3089\u5206\u8B72\u306F\u58F2\u308A\u3001\u8CC3\u8CB8\u306F\u904B\u7528\u3059\u308B")}
-      ${kv("\u2464", "\u300C\u6B21\u306E\u56DB\u534A\u671F\u300D\u3067\u6642\u9593\u3092\u9032\u3081\u308B\uFF08\u30B9\u30DA\u30FC\u30B9\u30AD\u30FC\uFF09")}
+      <ol class="steps">
+        <li>${IS_SMALL ? "\u4E0B\u306E" : "\u5DE6\u306E"}\u300C\u7528\u5730\u300D\u30BF\u30D6\u3067\u58F2\u5374\u60C5\u5831\u3092\u78BA\u8A8D\u3059\u308B</li>
+        <li>\u4E8B\u696D\u53CE\u652F\u3092\u898B\u3066\u3001\u5229\u76CA\u306E\u51FA\u308B\u571F\u5730\u306B\u5165\u672D\u3059\u308B</li>
+        <li>\u53D6\u5F97\u3057\u305F\u3089\u300C\u958B\u767A\u300D\u30BF\u30D6\u3067\u7528\u9014\u3068\u30B0\u30EC\u30FC\u30C9\u3092\u6C7A\u3081\u3066\u7740\u5DE5\u3059\u308B</li>
+        <li>\u7AE3\u5DE5\u3057\u305F\u3089\u5206\u8B72\u306F\u58F2\u308A\u3001\u8CC3\u8CB8\u306F\u904B\u7528\u3059\u308B</li>
+        <li>\u53F3\u4E0A\u306E \u25B6 \u3067\u6642\u9593\u3092\u9032\u3081\u308B${IS_SMALL ? "" : "\uFF08\u30B9\u30DA\u30FC\u30B9\u30AD\u30FC\uFF09"}</li>
+      </ol>
     </div>
     <div class="hint">\u5730\u533A\u3054\u3068\u306B\u9069\u3057\u305F\u7528\u9014\u304C\u3042\u308B\u3002\u5408\u308F\u306A\u3044\u7528\u9014\u3067\u5EFA\u3066\u308B\u3068\u5FC5\u305A\u640D\u3092\u3059\u308B\u3002\u4E8B\u696D\u8A08\u753B\u306E\u753B\u9762\u3067\u5229\u76CA\u7387\u3092\u78BA\u8A8D\u3059\u308B\u3053\u3068\u3002</div>
   `, [{ label: "\u7D4C\u55B6\u3092\u59CB\u3081\u308B", cls: "primary" }]);
@@ -9553,12 +9868,19 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     R.invalidate();
     R.setMonth(G.month);
     R.setWeather(G.weather || "clear");
-    R.center();
+    if (IS_SMALL) R.fit();
+    else R.center();
     closePanel();
     updateHeader();
     updateTicker();
     refresh();
     toast(`${G.year}\u5E74 ${G.month}\u6708 \u7B2C${G.weekOfMonth}\u9031\u76EE\u304B\u3089\u518D\u958B\u3059\u308B`, "good");
+  }
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register(new URL("./sw.js", location.href)).catch(() => {
+      });
+    });
   }
   titleAnim();
   (function buildTitleSaves() {

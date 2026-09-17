@@ -15,10 +15,13 @@ GitHub Pages の設定は「Deploy from a branch」／ブランチ `claude/devel
 
 ```bash
 node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/artifact.html
+                   # あわせて dist/manifest.webmanifest, dist/sw.js, dist/icons/ も配る
 ```
 
 **これを忘れると `dist/skyline.html` が古いままになり、公開ページに変更が反映されない。**
 `src/` や `styles/main.css`、`index.html` を触ったら必ず実行する。
+
+アイコンを描き直したときだけ `node scripts/make-icons.mjs` を先に実行する。
 
 ## 構成
 
@@ -27,6 +30,8 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - `build.mjs` — esbuild で1ファイルに束ねる
 - `dist/skyline.html` — サーバー不要で開ける単一HTML
 - `dist/artifact.html` — Artifact 公開用（外側のタグなし）
+- `manifest.webmanifest` / `sw.js` / `assets/icons/` — ホーム画面に追加して遊ぶための一式
+- `scripts/make-icons.mjs` — アイコンPNGの生成（zlibだけで書き出す）
 
 ## ゲームの基本設計
 
@@ -34,6 +39,18 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - 1ターン = 1週。13週で四半期決算。カレンダーは `src/core/time.js`
 - 乱数はシード付き（`src/core/rng.js`）。`g.rngState` を毎ターン更新する
 - セーブは `src/core/save.js`（localStorage、4スロット）。`pendingReport` など一時データは保存しない
+
+## スマートフォン対応
+
+- CSS の分岐は `styles/main.css` 末尾の `@media(max-width:820px)`。
+  レイアウト寸法は `--topH`（ヘッダー高）と `--botH`（画面下部の高さ）の2変数で決まる
+- 狭い画面では、左の縦タブが画面下のタブバーに、パネルが全画面のシートになる
+- 画面が狭いかどうかの判定は `src/main.js` の `IS_SMALL`。CSS の 820px と合わせること
+- 指の操作は `bindInput()` 内。1本指＝カメラ移動、2本指＝ピンチで段階ズーム。
+  `#city` には `touch-action:none` が必要（外すとブラウザ側のスクロールに取られる）
+- 入力欄の文字サイズは16px。これを下回ると iOS がフォーカス時に勝手にズームする
+- `manifest.webmanifest` と `sw.js` により、ホーム画面に追加すると全画面で起動し、
+  一度読み込めば電波がなくても遊べる
 
 ## 動作確認
 

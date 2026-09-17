@@ -1,0 +1,19 @@
+{
+  "name": "摩天楼の設計図",
+  "short_name": "摩天楼",
+  "description": "湊都市を舞台にした不動産デベロッパー経営シミュレーション。用地取得から企画・建設・販売・組織づくりまでを指揮する。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a1420",
+  "theme_color": "#17457f",
+  "categories": ["games", "business"],
+  "icons": [
+    { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -9,6 +9,10 @@ import { renderBuilding } from './buildings.js';
 
 export const ZOOM_STEPS = [0.30, 0.40, 0.52, 0.66, 0.84, 1.06, 1.34];
 
+// スマートフォンは描画性能が低いので、1フレームで作り直す建物数を減らす
+const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches;
+const SPRITE_BUDGET = COARSE ? 8 : 18;
+
 export class CityRenderer {
   constructor(canvas, game) {
     this.cv = canvas;
@@ -33,8 +37,12 @@ export class CityRenderer {
   get zoom() { return ZOOM_STEPS[this.cam.zoomIdx]; }
 
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.w = this.cv.clientWidth; this.h = this.cv.clientHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // 端末によっては dpr が3以上ある。描画するピクセル数に上限を設ける
+    const MAX_PIX = 2.6e6;
+    const area = Math.max(1, this.w * this.h);
+    if (area * dpr * dpr > MAX_PIX) dpr = Math.max(1, Math.sqrt(MAX_PIX / area));
     this.cv.width = Math.floor(this.w * dpr);
     this.cv.height = Math.floor(this.h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -58,6 +66,20 @@ export class CityRenderer {
     const p = toScreen(MAP_W / 2, MAP_H / 2, 0, this.cam.rot, this.zoom);
     this.cam.x = -p.x;
     this.cam.y = -p.y + this.h * 0.14;
+  }
+
+  // 画面にマップ全体がだいたい収まる倍率に合わせる（小さい画面向け）
+  fit() {
+    const wSpan = (MAP_W + MAP_H) * (TILE_W / 2);
+    const hSpan = (MAP_W + MAP_H) * (TILE_H / 2);
+    let idx = 0;
+    for (let i = 0; i < ZOOM_STEPS.length; i++) {
+      const z = ZOOM_STEPS[i];
+      if (wSpan * z <= this.w * 1.06 && hSpan * z <= this.h * 0.78) idx = i;
+    }
+    this.cam.zoomIdx = idx;
+    this.invalidate();
+    this.center();
   }
 
   zoomBy(d, ax, ay) {
@@ -517,7 +539,7 @@ export class CityRenderer {
   draw(dt) {
     const __t0 = performance.now();
     this.t += dt;
-    this.budget = 18;          // 1フレームで作り直す建物数の上限
+    this.budget = SPRITE_BUDGET;   // 1フレームで作り直す建物数の上限
     this.pulse = (Math.sin(this.t * 3) + 1) / 2;
     const { ctx, w, h } = this;
     const g = this.g, z = this.zoom, T = this.time, W = this.weather;

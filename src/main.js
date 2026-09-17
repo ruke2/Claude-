@@ -118,6 +118,10 @@ function titleAnim() {
   return () => cancelAnimationFrame(raf);
 }
 
+// 画面が狭い端末（スマートフォン）かどうか。CSS の 820px と合わせている
+const IS_SMALL = typeof matchMedia === 'function'
+  && (matchMedia('(max-width:820px)').matches || matchMedia('(pointer:coarse)').matches);
+
 // ------------------------------------------------------------
 //  ゲーム開始
 // ------------------------------------------------------------
@@ -141,8 +145,14 @@ function startGame(saved) {
   R = new CityRenderer(cv, G);
   R.setMonth(G.month);
   R.setWeather(G.weather || 'clear');
-  R.center();
+  if (IS_SMALL) R.fit(); else R.center();
   window.R = R;
+
+  // 画面が狭いときは週次フィードを畳んでおく（見出しをタップで開く）
+  if (IS_SMALL) {
+    $('#feed').classList.add('collapsed');
+    $('#feedToggle').textContent = '▸';
+  }
 
   $('#titleScreen').classList.add('out');
   setTimeout(() => $('#titleScreen').remove(), 800);
@@ -166,48 +176,116 @@ function loop(ts) {
 // ------------------------------------------------------------
 function bindInput() {
   const cv = $('#city');
-  let drag = null;
+  const pts = new Map();     // 画面に触れている指（マウスなら1つ）
+  let drag = null;           // 1本指のドラッグ＝カメラ移動
+  let pinch = null;          // 2本指のピンチ＝拡大縮小
+
+  const pos = e => ({ x: e.clientX, y: e.clientY });
+  const slop = e => (e.pointerType === 'touch' ? 14 : 6);   // タップとみなす許容移動量
+  const two = () => { const v = [...pts.values()]; return [v[0], v[1]]; };
+
+  const startDragFrom = (id, p) => {
+    drag = { id, x: p.x, y: p.y, cx: R.cam.x, cy: R.cam.y, moved: 0 };
+  };
 
   cv.addEventListener('pointerdown', e => {
-    drag = { x: e.clientX, y: e.clientY, cx: R.cam.x, cy: R.cam.y, moved: 0 };
-    cv.setPointerCapture(e.pointerId);
-    cv.classList.add('dragging');
+    pts.set(e.pointerId, pos(e));
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size >= 2) {
+      const [a, b] = two();
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) };
+      drag = null;
+      cv.classList.remove('dragging');
+    } else {
+      startDragFrom(e.pointerId, pos(e));
+      cv.classList.add('dragging');
+    }
   });
+
   cv.addEventListener('pointermove', e => {
-    if (drag) {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, pos(e));
+
+    if (pinch && pts.size >= 2) {
+      const [a, b] = two();
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      // ズームは段階式なので、一定の比率を超えたら1段動かして基準を取り直す
+      if (d > pinch.d * 1.28) { R.zoomBy(1, mx, my); pinch.d = d; }
+      else if (d < pinch.d * 0.78) { R.zoomBy(-1, mx, my); pinch.d = d; }
+      return;
+    }
+
+    if (drag && e.pointerId === drag.id) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.moved += Math.abs(dx) + Math.abs(dy);
       R.cam.x = drag.cx + dx; R.cam.y = drag.cy + dy;
-    } else {
+    } else if (!drag && !pinch && e.pointerType !== 'touch') {
       const c = R.pick(e.clientX, e.clientY);
       R.hover = c;
       updateHover(c);
     }
   });
-  cv.addEventListener('pointerup', e => {
-    const wasDrag = drag && drag.moved > 6;
-    cv.classList.remove('dragging');
-    drag = null;
-    if (!wasDrag) {
-      const c = R.pick(e.clientX, e.clientY);
-      R.selected = c;
-      if (c) onCellClick(c);
+
+  const endPointer = (e, tap) => {
+    const d = drag;
+    const wasPinch = !!pinch;
+    pts.delete(e.pointerId);
+    try { cv.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size < 2) pinch = null;
+
+    if (d && d.id === e.pointerId) {
+      drag = null;
+      cv.classList.remove('dragging');
+      // ピンチのあと1本だけ残ったら、その指でカメラ移動を続ける
+      if (pts.size === 1) {
+        const id = [...pts.keys()][0];
+        startDragFrom(id, pts.get(id));
+        drag.moved = 999;                    // 続きなのでタップ扱いにはしない
+        cv.classList.add('dragging');
+      }
+    } else if (pts.size === 1 && !drag) {
+      const id = [...pts.keys()][0];
+      startDragFrom(id, pts.get(id));
+      drag.moved = 999;
+      cv.classList.add('dragging');
     }
+
+    if (!tap || wasPinch || pts.size > 0) return;
+    if (d && d.moved > slop(e)) return;
+    const c = R.pick(e.clientX, e.clientY);
+    R.selected = c;
+    if (e.pointerType === 'touch') { R.hover = c; updateHover(c); }
+    if (c) onCellClick(c);
+  };
+
+  cv.addEventListener('pointerup', e => endPointer(e, true));
+  cv.addEventListener('pointercancel', e => endPointer(e, false));
+  cv.addEventListener('pointerleave', e => {
+    if (e.pointerType === 'touch') return;      // 指はキャプチャ中なので無視
+    pts.delete(e.pointerId);
+    drag = null; pinch = null;
+    cv.classList.remove('dragging');
   });
-  cv.addEventListener('pointerleave', () => { drag = null; cv.classList.remove('dragging'); });
   cv.addEventListener('wheel', e => {
     e.preventDefault();
     R.zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
   }, { passive: false });
+  // iOS Safari のダブルタップ拡大とピンチ拡大を止める
+  cv.addEventListener('gesturestart', e => e.preventDefault());
+  cv.addEventListener('dblclick', e => e.preventDefault());
 
-  window.addEventListener('resize', () => R.resize());
+  // スマホはアドレスバーの出入りで resize が連発するのでまとめて処理する
+  let rzT = 0;
+  const onResize = () => { clearTimeout(rzT); rzT = setTimeout(() => R.resize(), 120); };
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
 
   document.querySelectorAll('.vbtn').forEach(b => b.onclick = () => {
     const v = b.dataset.view;
     if (v === 'zoomin') R.zoomBy(1);
     if (v === 'zoomout') R.zoomBy(-1);
     if (v === 'rotate') R.rotateBy(1);
-    if (v === 'reset') { R.cam.zoomIdx = 1; R.cam.rot = 0; R.invalidate(); R.center(); }
+    if (v === 'reset') { R.cam.rot = 0; if (IS_SMALL) R.fit(); else { R.cam.zoomIdx = 1; R.invalidate(); R.center(); } }
     if (v === 'layer') {
       R.layer = R.layer === 'normal' ? 'owner' : R.layer === 'owner' ? 'value' : 'normal';
       toast({ normal: '通常表示', owner: '所有者の色分け表示', value: '地価ヒートマップ表示' }[R.layer]);
@@ -222,11 +300,13 @@ function bindInput() {
   $('#btnMonth').onclick = () => advance(4);
   $('#btnQuarter').onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
   $('#btnMenu').onclick = openSaveMenu;
-  $('#feedToggle').onclick = () => {
+  const toggleFeed = () => {
     const f = $('#feed');
     f.classList.toggle('collapsed');
     $('#feedToggle').textContent = f.classList.contains('collapsed') ? '▸' : '▾';
   };
+  // 指で押しやすいよう、見出しのどこを押しても開閉する
+  document.querySelector('.feed-head').onclick = toggleFeed;
   $('#reportOk').onclick = () => { $('#reportWrap').classList.add('hidden'); afterReport(); };
 
   $('#panelBody').addEventListener('click', onPanelClick);
@@ -643,11 +723,13 @@ function showIntro() {
     </div>
     <div class="sec">
       <div class="sec-t"><span>まず何をするか</span></div>
-      ${kv('①', '左の「用地」タブで売却情報を確認する')}
-      ${kv('②', '事業収支を見て、利益の出る土地に入札する')}
-      ${kv('③', '取得したら「開発」タブで用途とグレードを決めて着工する')}
-      ${kv('④', '竣工したら分譲は売り、賃貸は運用する')}
-      ${kv('⑤', '「次の四半期」で時間を進める（スペースキー）')}
+      <ol class="steps">
+        <li>${IS_SMALL ? '下の' : '左の'}「用地」タブで売却情報を確認する</li>
+        <li>事業収支を見て、利益の出る土地に入札する</li>
+        <li>取得したら「開発」タブで用途とグレードを決めて着工する</li>
+        <li>竣工したら分譲は売り、賃貸は運用する</li>
+        <li>右上の ▶ で時間を進める${IS_SMALL ? '' : '（スペースキー）'}</li>
+      </ol>
     </div>
     <div class="hint">地区ごとに適した用途がある。合わない用途で建てると必ず損をする。事業計画の画面で利益率を確認すること。</div>
   `, [{ label: '経営を始める', cls: 'primary' }]);
@@ -809,7 +891,7 @@ function applyLoaded(g) {
   R.invalidate();
   R.setMonth(G.month);
   R.setWeather(G.weather || 'clear');
-  R.center();
+  if (IS_SMALL) R.fit(); else R.center();
   closePanel();
   updateHeader(); updateTicker(); refresh();
   toast(`${G.year}年 ${G.month}月 第${G.weekOfMonth}週目から再開する`, 'good');
@@ -818,6 +900,16 @@ function applyLoaded(g) {
 // ------------------------------------------------------------
 //  起動
 // ------------------------------------------------------------
+
+// ホーム画面に追加したあともオフラインで遊べるようにする。
+// GitHub Pages 以外（file:// や Artifact）では単に何も起きない
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    // ページと同じ場所に置いた sw.js を使う（dist/ にも同じものを配っている）
+    navigator.serviceWorker.register(new URL('./sw.js', location.href)).catch(() => {});
+  });
+}
+
 titleAnim();
 (function buildTitleSaves() {
   const box = document.getElementById('titleSaves');

@@ -215,7 +215,7 @@ export function openPlan(g, cell, ctx) {
       const R = STACK_RULE[seg.use] || {};
       return `<div class="card" style="padding:9px 11px;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-          <select class="segUse" data-i="${realIdx}" style="flex:1;min-width:116px;padding:5px 7px;border-radius:6px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink);font-size:12px">
+          <select class="segUse selin" data-i="${realIdx}" style="min-width:116px">
             ${['retail', 'office', 'hotel', 'resi', 'rental', 'logi'].map(u => `<option value="${u}" ${u === seg.use ? 'selected' : ''}>${USES[u].icon} ${USES[u].name}</option>`).join('')}
           </select>
           <button class="btn sm" data-seg="minus" data-i="${realIdx}">−</button>

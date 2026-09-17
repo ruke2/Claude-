@@ -35,18 +35,23 @@
   --shadow-lg:0 10px 26px rgba(22,32,47,.14), 0 30px 70px rgba(22,32,47,.18);
   --r:10px;
   --fs:14px;
+
+  --topH:58px;          /* ヘッダー高さ */
+  --botH:30px;          /* 画面下部（ティッカー／タブバー）の高さ */
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{
   background:var(--bg);color:var(--ink);
   font-family:"Noto Sans JP",system-ui,-apple-system,sans-serif;
   font-size:var(--fs);line-height:1.6;
   -webkit-font-smoothing:antialiased;
   user-select:none;
+  -webkit-text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
 }
 .hidden{display:none !important}
-button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none;touch-action:manipulation}
 input,select,textarea{font-family:inherit;font-size:13px}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -54,12 +59,12 @@ input,select,textarea{font-family:inherit;font-size:13px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(22,32,47,.3);background-clip:content-box}
 
 /* ---------- canvas ---------- */
-#city{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;z-index:0}
+#city{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;z-index:0;touch-action:none}
 #city.dragging{cursor:grabbing}
 
 #cityHud{
   position:fixed;left:82px;z-index:6;pointer-events:none;
-  bottom:calc(46px + env(safe-area-inset-bottom,0px));
+  bottom:calc(var(--botH) + 16px + env(safe-area-inset-bottom,0px));
   font-size:12px;letter-spacing:.02em;
 }
 .cityhud-line{
@@ -71,7 +76,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 .cityhud-line.dim{color:var(--ink-dim);font-weight:500;margin-top:5px;max-width:520px}
 
 #viewControls{position:fixed;right:18px;z-index:8;display:flex;gap:6px;
-  bottom:calc(46px + env(safe-area-inset-bottom,0px))}
+  bottom:calc(var(--botH) + 16px + env(safe-area-inset-bottom,0px))}
 .vbtn{
   width:36px;height:36px;border-radius:9px;background:var(--glass);
   border:1px solid var(--line);color:var(--ink-dim);font-size:15px;
@@ -83,7 +88,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- topbar ---------- */
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:20;
-  height:calc(58px + env(safe-area-inset-top,0px));
+  height:calc(var(--topH) + env(safe-area-inset-top,0px));
   padding:env(safe-area-inset-top,0px) 14px 0;
   display:flex;align-items:center;gap:16px;
   background:rgba(255,255,255,.94);
@@ -132,8 +137,8 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- side tabs ---------- */
 #sidetabs{
   position:fixed;left:0;width:64px;z-index:19;
-  top:calc(58px + env(safe-area-inset-top,0px));
-  bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  top:calc(var(--topH) + env(safe-area-inset-top,0px));
+  bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   display:flex;flex-direction:column;gap:2px;padding:10px 6px;
   background:rgba(255,255,255,.9);border-right:1px solid var(--line);
   backdrop-filter:blur(14px);
@@ -156,8 +161,8 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- panel ---------- */
 #panel{
   position:fixed;left:64px;width:min(580px,54vw);z-index:18;
-  top:calc(58px + env(safe-area-inset-top,0px));
-  bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  top:calc(var(--topH) + env(safe-area-inset-top,0px));
+  bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   background:var(--glass-2);backdrop-filter:blur(20px);
   border-right:1px solid var(--line);
   display:flex;flex-direction:column;
@@ -178,7 +183,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- week feed ---------- */
 #feed{
   position:fixed;right:18px;z-index:7;width:320px;max-width:calc(100vw - 36px);
-  bottom:calc(94px + env(safe-area-inset-bottom,0px));
+  bottom:calc(var(--botH) + 64px + env(safe-area-inset-bottom,0px));
   background:var(--glass);backdrop-filter:blur(14px);
   border:1px solid var(--line);border-radius:12px;overflow:hidden;
   box-shadow:var(--shadow-md);
@@ -210,7 +215,7 @@ input,select,textarea{font-family:inherit;font-size:13px}
 /* ---------- ticker ---------- */
 #ticker{
   position:fixed;left:0;right:0;bottom:0;z-index:21;
-  height:calc(30px + env(safe-area-inset-bottom,0px));
+  height:calc(var(--botH) + env(safe-area-inset-bottom,0px));
   padding-bottom:env(safe-area-inset-bottom,0px);
   background:var(--surface);border-top:1px solid var(--line);
   overflow:hidden;display:flex;align-items:center;
@@ -411,7 +416,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 /* ---------- misc ---------- */
 .spark{display:block;width:100%;height:46px}
 .toast{
-  position:fixed;left:50%;bottom:calc(52px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;
+  position:fixed;left:50%;bottom:calc(var(--botH) + 22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;
   background:var(--surface);border:1px solid var(--accent);border-radius:10px;
   padding:11px 20px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
   animation:toastIn .24s cubic-bezier(.2,.9,.3,1);max-width:min(560px,90vw);
@@ -421,11 +426,218 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 @keyframes toastIn{from{transform:translate(-50%,12px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 
 @media(max-width:1180px){ #feed{width:256px} }
-@media(max-width:900px){
+/* ---- タブレット（821〜900px） ---- */
+@media(max-width:900px) and (min-width:821px){
   #panel{width:100%;left:0;padding-left:64px}
   .stat-strip{display:none}
   #feed{display:none}
   .btn-next small{display:none}
   .btn-next{min-width:40px;padding:9px 10px}
   .grid4{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ============================================================
+   スマートフォン（〜820px）
+   - 左の縦タブ → 画面下のタブバー
+   - パネル → 全画面のボトムシート
+   - ティッカーは非表示、統計はヘッダー下段に横スクロールで残す
+   ============================================================ */
+@media(max-width:820px){
+  :root{ --topH:84px; --botH:58px; }
+
+  /* ---- ヘッダー ---- */
+  #topbar{
+    padding:env(safe-area-inset-top,0px) 10px 30px;
+    gap:8px;
+  }
+  .brandbox{min-width:0;gap:7px;flex:0 0 auto}
+  .brand-text{display:none}
+  .brand-mark{width:30px;height:30px;font-size:13px;border-radius:7px}
+
+  .stat-strip{
+    position:absolute;left:0;right:0;bottom:0;height:30px;
+    display:flex;flex:0 0 auto;align-items:center;
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    border-top:1px solid var(--line-soft);
+    padding:0 10px;scrollbar-width:none;
+  }
+  .stat-strip::-webkit-scrollbar{display:none}
+  .stat{padding:1px 10px;flex:0 0 auto}
+  .stat-k{font-size:8.5px;letter-spacing:.08em}
+  .stat-v{font-size:14px;line-height:1.15}
+  .stat-v small{font-size:9px}
+
+  .turnbox{margin-left:auto;gap:8px;flex:0 0 auto}
+  .turn-date{line-height:1.15}
+  #hdrDate{font-size:12.5px}
+  .turn-season{font-size:9px;letter-spacing:.04em}
+  .turn-btns{gap:4px}
+  .btn-next{min-width:34px;padding:9px 5px;font-size:13px;border-radius:8px}
+  .btn-next small{display:none}
+  .btn-next:hover{transform:none}
+
+  /* ---- 下部タブバー ---- */
+  #sidetabs{
+    top:auto;left:0;right:0;width:auto;z-index:22;
+    bottom:0;height:calc(var(--botH) + env(safe-area-inset-bottom,0px));
+    flex-direction:row;align-items:stretch;gap:3px;
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));
+    border-right:none;border-top:1px solid var(--line);
+    background:rgba(255,255,255,.96);
+    box-shadow:0 -2px 14px rgba(22,32,47,.07);
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  #sidetabs::-webkit-scrollbar{display:none}
+  .tab{height:auto;min-width:56px;flex:0 0 auto;border-radius:8px;gap:1px;padding:0 4px}
+  .tab i{font-size:17px}
+  .tab span{font-size:9.5px}
+  .tab .badge{top:0;right:2px}
+
+  /* ---- パネル ---- */
+  #panel{
+    left:0;right:0;width:auto;padding-left:0;
+    border-right:none;border-top:1px solid var(--line);
+    box-shadow:0 -8px 34px rgba(22,32,47,.16);
+    animation:sheetIn .2s cubic-bezier(.2,.9,.3,1);
+  }
+  .panel-head{padding:11px 8px 11px 14px}
+  .panel-head h2{font-size:14px}
+  #panelClose{font-size:17px;padding:7px 13px}
+  .panel-body{padding:13px 14px 44px}
+
+  /* ---- 都市ビュー ---- */
+  #ticker{display:none}
+  #cityHud{
+    left:10px;right:auto;bottom:auto;
+    top:calc(var(--topH) + env(safe-area-inset-top,0px) + 10px);
+  }
+  #hudHover{display:none}
+  .cityhud-line{font-size:11px;padding:4px 9px}
+  #viewControls{
+    right:8px;bottom:auto;flex-direction:column;gap:6px;
+    top:calc(var(--topH) + env(safe-area-inset-top,0px) + 10px);
+  }
+  .vbtn{width:40px;height:40px;font-size:17px}
+  .vbtn:hover{color:var(--ink-dim);border-color:var(--line);background:var(--glass)}
+
+  /* ---- 週次フィード（下部のシート） ---- */
+  #feed{
+    display:block;left:8px;right:8px;width:auto;max-width:none;
+    bottom:calc(var(--botH) + env(safe-area-inset-bottom,0px) + 8px);
+  }
+  .feed-head{padding:0 6px 0 12px;font-size:10.5px;min-height:42px;cursor:pointer}
+  #feedToggle{font-size:14px;min-width:42px;min-height:42px;display:grid;place-items:center}
+  .feed-body{max-height:34vh}
+  .feed-item{font-size:11.5px;padding:6px 12px}
+
+  /* ---- モーダル・決算レポート ---- */
+  #modalWrap,#reportWrap{padding:0;place-items:end stretch}
+  #modal,#report{
+    width:100%;max-width:none;max-height:92vh;
+    border-radius:15px 15px 0 0;
+    animation:sheetIn .2s cubic-bezier(.2,.9,.3,1);
+  }
+  .modal-head,.report-head{padding:14px 16px}
+  .modal-head h3{font-size:14px}
+  .modal-body{padding:14px 16px}
+  .modal-foot{
+    padding:11px 16px calc(11px + env(safe-area-inset-bottom,0px));
+    gap:7px;justify-content:stretch;
+  }
+  .modal-foot .btn{flex:1 1 0;min-width:0;text-align:center}
+  .report-head{padding:16px 16px 12px}
+  .report-head h2{font-size:18px}
+  .report-body{padding:15px 16px}
+  .report-foot{padding:13px 16px calc(13px + env(safe-area-inset-bottom,0px))}
+  .rep-hero{grid-template-columns:repeat(2,1fr);gap:8px}
+  .rep-hero .mini-v{font-size:20px}
+
+  /* ---- 中身 ---- */
+  .grid3,.grid4{grid-template-columns:repeat(2,1fr)}
+  /* 項目名と値が横に並ぶブロックは、狭い画面では1列にする */
+  .grid2:has(> .kv),.grid2:has(> div > .kv),
+  .grid3:has(> .kv),.grid4:has(> .kv){grid-template-columns:1fr;gap:0}
+  .kv{font-size:12px;gap:14px}
+  .mini-v{font-size:17px}
+  .card{padding:12px 13px}
+  .card.click:hover{transform:none;border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .btn{padding:10px 14px;font-size:13px}
+  .btn.sm{padding:8px 12px;font-size:12px}
+  .btn.huge{padding:15px 24px;font-size:15px;width:100%}
+  .btnrow{gap:8px}
+  .org-node{min-width:88px;padding:6px 9px}
+  .org-node .on-n{font-size:11px}
+  .toast{font-size:12.5px;padding:10px 16px}
+
+  /* 表は折り返さず、横にスワイプして読む */
+  table.tbl{
+    display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    white-space:nowrap;font-size:11.5px;
+    background:transparent;border-radius:0;
+  }
+  table.tbl th{background:var(--surface-2)}
+  table.tbl td{background:var(--surface)}
+  table.tbl th,table.tbl td{padding:7px 8px}
+  .panel-body,.modal-body,.report-body{overflow-x:hidden}
+
+  /* 入力欄は16px未満だと iOS が自動でズームしてしまう */
+  input,select,textarea,
+  .field input[type=text],.field input[type=number],.field select,
+  .title-form input,.title-form select{font-size:16px}
+  .field input[type=text],.field input[type=number],.field select{padding:10px 11px}
+
+  /* ---- タイトル画面 ---- */
+  #titleScreen{
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 14px calc(env(safe-area-inset-bottom,0px) + 14px);
+  }
+  .title-inner{
+    width:100%;max-width:none;max-height:100%;border-radius:14px;
+    padding:24px 18px;
+  }
+  .title-kicker{font-size:10px;letter-spacing:.3em}
+  .title-logo{font-size:32px;margin-bottom:12px}
+  .title-lead{font-size:11.5px;line-height:1.95;margin-bottom:18px;text-align:justify}
+  .title-lead br{display:none}
+  .title-form{flex-direction:column;gap:10px}
+  .title-form label{width:100%}
+  .title-form input,.title-form select{min-width:0;width:100%}
+  .title-credit{margin-top:14px;font-size:10px}
+}
+@keyframes sheetIn{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
+
+/* 横向きで画面が低いとき（スマホ横持ち） */
+@media(max-width:900px) and (max-height:520px){
+  :root{ --topH:50px; --botH:46px; }
+  #topbar{padding-bottom:0}
+  .stat-strip{display:none}
+  .tab{min-width:52px}
+  .tab i{font-size:15px}
+  .tab span{font-size:9px}
+  .title-lead{display:none}
+  .title-logo{font-size:26px}
+  #feed{display:none}
+}
+
+/* パネル・モーダル内のセレクトボックス */
+.selin{
+  flex:1;padding:8px 10px;border-radius:7px;
+  background:var(--field-bg);border:1px solid var(--line);color:var(--ink);
+}
+.selin:focus{outline:none;border-color:var(--accent);background:#fff}
+
+/* 手順リスト（導入・ヘルプ） */
+.steps{list-style:none;counter-reset:step;padding:0;margin:2px 0}
+.steps li{
+  counter-increment:step;position:relative;
+  padding:7px 0 7px 30px;font-size:12.5px;line-height:1.75;
+  border-bottom:1px solid var(--line-soft);
+}
+.steps li:last-child{border-bottom:none}
+.steps li::before{
+  content:counter(step);position:absolute;left:0;top:9px;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  font-family:Oswald,sans-serif;font-size:11px;font-weight:600;
+  display:grid;place-items:center;
 }
