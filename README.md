@@ -3,12 +3,24 @@
 架空都市「湊都（みなと）市」を舞台にした、不動産デベロッパーの経営シミュレーションゲーム。
 用地の仕入れから複合施設のフロア構成、ブランドづくり、販売・賃貸運用、資金調達、人事、M&A までを一貫して扱う。
 
-ビルド不要。`index.html` をブラウザで開けば動く（ES Modules / Canvas 2D、外部ライブラリなし）。
+## 遊ぶ
+
+**`dist/skyline.html` をダウンロードしてブラウザで開くだけ**で動く。
+サーバーもインストールも不要で、1ファイルに全部入っている（約470KB、外部ライブラリなし）。
+
+GitHub Pages を有効にすれば `https://<ユーザー名>.github.io/<リポジトリ名>/dist/skyline.html` でも遊べる。
+
+### 開発するとき
+
+ソースは ES Modules に分かれている。こちらは `file://` では動かないので HTTP で開く。
 
 ```bash
-# ローカルで動かす（ES Modules のため file:// ではなく HTTP で開くこと）
 python3 -m http.server 8000
 # → http://localhost:8000/index.html
+
+# ソースを編集したら、1ファイル版を作り直す
+npm install      # 初回のみ（esbuild）
+node build.mjs   # → dist/skyline.html と dist/artifact.html
 ```
 
 ---
