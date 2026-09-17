@@ -43,7 +43,17 @@ export function isYearStart(g) { return g.weekOfYear === 0; }
 export function isAprilFirstWeek(g) { return g.weekOfYear === MONTH_START[3]; }
 
 /** 表示用 */
-export function dateLabel(g) { return `${g.year}年 ${g.month}月 第${g.weekOfMonth}週`; }
+export function dateLabel(g) { return `${g.year}年 ${g.month}月 第${g.weekOfMonth}週目`; }
+/** 通算週から日付ラベルを作る */
+export function dateLabelOf(week) {
+  const c = calendar(week);
+  return `${c.year}年 ${c.month}月 第${c.weekOfMonth}週目`;
+}
+/** 年月のみ */
+export function monthLabelOf(week) {
+  const c = calendar(week);
+  return `${c.year}年 ${c.month}月`;
+}
 export function shortDate(g) { return `${String(g.year).slice(2)}/${String(g.month).padStart(2, '0')}·W${g.weekOfMonth}`; }
 
 /** 週数を「◯年◯ヶ月」「◯週」の読みやすい表記に */

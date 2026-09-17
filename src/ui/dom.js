@@ -41,7 +41,7 @@ export function toast(msg, kind = '') {
 
 /** 小さなスパークライン */
 export function spark(values, opt = {}) {
-  const { w = 260, hgt = 46, color = '#54d6ff', fill = true, zero = false } = opt;
+  const { w = 260, hgt = 46, color = '#2a7fd0', fill = true, zero = false } = opt;
   if (!values || values.length < 2) return '';
   const min = Math.min(...values, zero ? 0 : Infinity);
   const max = Math.max(...values, zero ? 0 : -Infinity);
@@ -51,9 +51,9 @@ export function spark(values, opt = {}) {
     const y = hgt - ((v - min) / rng) * (hgt - 6) - 3;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  const area = fill ? `<polygon points="0,${hgt} ${pts.join(' ')} ${w},${hgt}" fill="url(#sg)" opacity=".28"/>` : '';
+  const area = fill ? `<polygon points="0,${hgt} ${pts.join(' ')} ${w},${hgt}" fill="url(#sg)" opacity=".22"/>` : '';
   const zeroLine = (min < 0 && max > 0)
-    ? `<line x1="0" x2="${w}" y1="${(hgt - ((0 - min) / rng) * (hgt - 6) - 3).toFixed(1)}" y2="${(hgt - ((0 - min) / rng) * (hgt - 6) - 3).toFixed(1)}" stroke="rgba(255,255,255,.18)" stroke-dasharray="3 3"/>` : '';
+    ? `<line x1="0" x2="${w}" y1="${(hgt - ((0 - min) / rng) * (hgt - 6) - 3).toFixed(1)}" y2="${(hgt - ((0 - min) / rng) * (hgt - 6) - 3).toFixed(1)}" stroke="rgba(22,32,47,.2)" stroke-dasharray="3 3"/>` : '';
   return `<svg class="spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
     <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/>

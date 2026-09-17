@@ -3,7 +3,8 @@
 // ============================================================
 import { createGame, cellById } from './core/state.js';
 import { money, num, pct, dcls, arrow } from './core/format.js';
-import { dateLabel, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
+import { dateLabel, dateLabelOf, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
+import { SLOTS, SLOT_LABEL, listSaves, saveTo, loadFrom, deleteSlot, latestSave, exportText, importText, totalSize } from './core/save.js';
 import { CityRenderer, ZOOM_STEPS } from './render/city.js';
 import { toScreen } from './render/iso.js';
 import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
@@ -37,7 +38,7 @@ import * as Brand from './ui/panelBrand.js';
 import { buildReport } from './ui/report.js';
 
 const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival };
-const SAVE_KEY = 'skyline-dev-v2';
+
 
 let G = null, R = null;
 let currentPanel = null;
@@ -220,6 +221,7 @@ function bindInput() {
   $('#btnWeek').onclick = () => advance(1);
   $('#btnMonth').onclick = () => advance(4);
   $('#btnQuarter').onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
+  $('#btnMenu').onclick = openSaveMenu;
   $('#feedToggle').onclick = () => {
     const f = $('#feed');
     f.classList.toggle('collapsed');
@@ -240,6 +242,7 @@ function bindInput() {
     if (e.key === '-') R.zoomBy(-1);
     const map = { 1: 'dash', 2: 'land', 3: 'dev', 4: 'sales', 5: 'asset', 6: 'fin', 7: 'hr', 8: 'brand', 9: 'ma', 0: 'rival' };
     if (map[e.key]) openPanel(map[e.key]);
+    if (e.key === 's' || e.key === 'S') openSaveMenu();
   });
 
   window.addEventListener('beforeunload', save);
@@ -542,7 +545,7 @@ function presentResults(reports) {
   const last = reports[reports.length - 1];
   const bids = reports.flatMap(r => r.bids.filter(b => b.listing.bid));
   if (last.quarterEnd) {
-    $('#reportTitle').textContent = `${G.year}年 Q${G.quarter}　決算報告`;
+    $('#reportTitle').textContent = `${G.year}年 第${G.quarter}四半期　決算報告`;
     $('#reportBody').innerHTML = buildReport(G, last, reports);
     $('#reportWrap').classList.remove('hidden');
     return;
@@ -592,7 +595,7 @@ function pushFeed(reports) {
   for (const r of reports) {
     if (!r.news.length) continue;
     const cal = `${r.week % 52 === 0 ? '' : ''}`;
-    blocks.push(`<div class="feed-week">${G.year}年 ${monthOfWeek(r.week)}</div>`
+    blocks.push(`<div class="feed-week">${monthOfWeek(r.week)}</div>`
       + r.news.map(n => `<div class="feed-item ${n.major ? 'major' : ''}">
           <span class="fi">${n.icon}</span><span class="ft">${n.text}</span></div>`).join(''));
   }
@@ -603,13 +606,7 @@ function pushFeed(reports) {
   body.scrollTop = 0;
   $('#feedTitle').textContent = reports.length > 1 ? `直近${reports.length}週の動き` : '今週の動き';
 }
-function monthOfWeek(week) {
-  const MS = [0, 5, 9, 13, 18, 22, 26, 31, 35, 39, 44, 48];
-  const woy = week % 52;
-  let m = 0;
-  for (let i = 0; i < 12; i++) if (woy >= MS[i]) m = i;
-  return `${m + 1}月 第${woy - MS[m] + 1}週`;
-}
+function monthOfWeek(week) { return dateLabelOf(week); }
 
 function afterReport() {
   refresh();
@@ -634,7 +631,7 @@ function showGameOver() {
       ${kv('従業員数', G.staff.length + '名')}
       ${kv('企業ブランド', G.company.brand.toFixed(0))}
     </div>
-  `, [{ label: '最初からやり直す', cls: 'primary', onClick: () => { localStorage.removeItem(SAVE_KEY); location.reload(); } }]);
+  `, [{ label: '最初からやり直す', cls: 'primary', onClick: () => location.reload() }]);
 }
 
 function showIntro() {
@@ -665,7 +662,7 @@ function updateHeader() {
   const prev = h.length >= 2 ? h[h.length - 2] : null;
   $('#hdrCompany').textContent = G.company.name;
   $('#hdrDate').textContent = dateLabel(G);
-  $('#hdrSeason').textContent = `${seasonOfMonth(G.month)}・${timeOfMonth(G.month).label}　Q${G.quarter} 第${G.weekOfQuarter + 1}週`;
+  $('#hdrSeason').textContent = `${seasonOfMonth(G.month)}・${timeOfMonth(G.month).label}　第${G.quarter}四半期 ${G.weekOfQuarter + 1}/13週`;
   const items = [
     { k: '現預金', v: money(G.cash, { unit: false }), u: '億円', d: null },
     { k: '有利子負債', v: money(G.debt, { unit: false }), u: '億円' },
@@ -723,33 +720,117 @@ function updateTicker() {
 }
 
 // ------------------------------------------------------------
-//  セーブ
+//  セーブ／ロード
 // ------------------------------------------------------------
 function save() {
   if (!G || G.gameOver) return;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); } catch (e) { /* 容量超過などは無視 */ }
+  saveTo('auto', G);
 }
-function loadSave() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const g = JSON.parse(raw);
-    return (g && g.cells && g.cells.length) ? g : null;
-  } catch (e) { return null; }
+
+function fmtSaveMeta(m) {
+  if (!m) return '<span style="color:var(--ink-mute)">空き</span>';
+  const d = new Date(m.savedAt);
+  const stamp = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `<b>${m.company}</b>　${m.year}年 ${m.month}月 第${m.weekOfMonth}週目<br>
+    <span style="color:var(--ink-dim);font-size:11px">純資産 ${money(m.equity)}／物件 ${m.assets}件／社員 ${m.staff}名　保存 ${stamp}</span>`;
+}
+
+function openSaveMenu() {
+  const render = () => `
+    <div class="hint" style="margin-bottom:10px">進行中のゲームを保存する。オートセーブは週を進めるたびに自動で更新される。</div>
+    ${listSaves().map(s => `
+      <div class="card">
+        <div class="card-t"><span class="card-n">${s.label}</span>${s.id === 'auto' ? chip('自動', 'cyan') : ''}</div>
+        <div class="card-s">${fmtSaveMeta(s.meta)}</div>
+        <div class="btnrow">
+          ${s.id !== 'auto' ? `<button class="btn sm primary" data-sv="${s.id}">ここに保存する</button>` : ''}
+          <button class="btn sm" data-ld="${s.id}" ${s.meta ? '' : 'disabled'}>読み込む</button>
+          ${s.meta && s.id !== 'auto' ? `<button class="btn sm danger" data-dl="${s.id}">削除</button>` : ''}
+        </div>
+      </div>`).join('')}
+    <div class="sec">
+      <div class="sec-t"><span>テキストで持ち出す</span><span class="note">使用中 ${totalSize()}KB</span></div>
+      <div class="hint">セーブデータを文字列として書き出し／読み込みできる。別のブラウザに移すときに使う。</div>
+      <div class="btnrow">
+        <button class="btn sm" data-ex="1">書き出す</button>
+        <button class="btn sm" data-im="1">読み込む</button>
+      </div>
+      <textarea id="saveText" style="width:100%;height:96px;margin-top:8px;display:none;border-radius:8px;
+        background:var(--field-bg);border:1px solid var(--line);color:var(--ink);font-size:11px;padding:8px"></textarea>
+    </div>`;
+
+  openModal('セーブ／ロード', render(), [{ label: '閉じる', cls: 'ghost' }]);
+  const bind = () => {
+    const body = $('#modalBody');
+    body.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => {
+      const r = saveTo(b.dataset.sv, G);
+      toast(r.ok ? `${SLOT_LABEL[b.dataset.sv]}に保存した（${Math.round(r.size / 1024)}KB）` : r.message, r.ok ? 'good' : 'bad');
+      body.innerHTML = render(); bind();
+    });
+    body.querySelectorAll('[data-ld]').forEach(b => b.onclick = () => {
+      const g = loadFrom(b.dataset.ld);
+      if (!g) return toast('読み込めなかった', 'bad');
+      closeModal();
+      applyLoaded(g);
+    });
+    body.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => {
+      deleteSlot(b.dataset.dl);
+      toast('削除した');
+      body.innerHTML = render(); bind();
+    });
+    const ta = body.querySelector('#saveText');
+    const ex = body.querySelector('[data-ex]');
+    if (ex) ex.onclick = () => {
+      ta.style.display = 'block';
+      ta.value = exportText(G);
+      ta.select();
+      toast('この文字列をコピーして保管すること');
+    };
+    const im = body.querySelector('[data-im]');
+    if (im) im.onclick = () => {
+      if (ta.style.display === 'none') { ta.style.display = 'block'; ta.value = ''; ta.placeholder = 'ここにセーブデータを貼り付けて、もう一度この操作を行う'; ta.focus(); return; }
+      const g = importText(ta.value);
+      if (!g) return toast('データを読み取れなかった', 'bad');
+      closeModal();
+      applyLoaded(g);
+    };
+  };
+  bind();
+}
+
+/** 読み込んだ状態を画面に反映する */
+function applyLoaded(g) {
+  G = g;
+  window.G = G;
+  syncCalendar(G);
+  G.pendingReport = null;
+  R.g = G;
+  R.invalidate();
+  R.setMonth(G.month);
+  R.setWeather(G.weather || 'clear');
+  R.center();
+  closePanel();
+  updateHeader(); updateTicker(); refresh();
+  toast(`${G.year}年 ${G.month}月 第${G.weekOfMonth}週目から再開する`, 'good');
 }
 
 // ------------------------------------------------------------
 //  起動
 // ------------------------------------------------------------
 titleAnim();
-const saved = loadSave();
-if (saved) {
-  const form = document.querySelector('.title-form');
-  const btn = document.createElement('button');
-  btn.className = 'btn wide';
-  btn.style.marginTop = '10px';
-  btn.textContent = `前回の続きから（${saved.company.name}／${saved.year}年Q${saved.quarter}）`;
-  btn.onclick = () => startGame(saved);
-  form.parentElement.insertBefore(btn, document.querySelector('.title-credit'));
-}
-$('#btnStart').onclick = () => { localStorage.removeItem(SAVE_KEY); startGame(null); };
+(function buildTitleSaves() {
+  const box = document.getElementById('titleSaves');
+  const list = listSaves().filter(s => s.meta);
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="title-saves-t">保存されたゲーム</div>` + list.map(s => `
+    <button class="title-save" data-slot="${s.id}">
+      <span class="ts-l">${s.label}</span>
+      <span class="ts-m"><b>${s.meta.company}</b>　${s.meta.year}年 ${s.meta.month}月 第${s.meta.weekOfMonth}週目</span>
+      <span class="ts-r">続きから ▶</span>
+    </button>`).join('');
+  box.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
+    const g = loadFrom(b.dataset.slot);
+    if (g) startGame(g);
+  });
+})();
+document.getElementById('btnStart').onclick = () => startGame(null);

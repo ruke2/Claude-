@@ -17,12 +17,47 @@ export const NG_SCHEDULE = {
   join: 13,       // 翌年4月第1週 入社
 };
 
-/** 出身校のランク */
-export const SCHOOLS = [
-  { id: 'S', name: '最難関大', w: 6, abil: [34, 52], pot: [78, 97], expect: 1.16, pick: 0.42 },
-  { id: 'A', name: '難関大', w: 16, abil: [28, 47], pot: [68, 90], expect: 1.08, pick: 0.58 },
-  { id: 'B', name: '中堅大', w: 34, abil: [24, 43], pot: [58, 82], expect: 1.00, pick: 0.74 },
-  { id: 'C', name: '一般大', w: 44, abil: [20, 39], pot: [48, 74], expect: 0.94, pick: 0.86 },
+/** 大学（すべて架空）。tier が高いほど地力と潜在能力に優れる */
+export const UNIVERSITIES = [
+  { id: 'minato',   name: '湊都大学',       short: '湊都大',   tier: 'S', w: 3.0 },
+  { id: 'sakura',   name: '桜川大学',       short: '桜川大',   tier: 'S', w: 2.4 },
+  { id: 'tokiwaT',  name: '常盤工科大学',   short: '常盤工大', tier: 'S', w: 2.2 },
+  { id: 'aoba',     name: '青葉学院大学',   short: '青葉学院', tier: 'A', w: 5.0 },
+  { id: 'kagura',   name: '神楽坂大学',     short: '神楽坂大', tier: 'A', w: 4.6 },
+  { id: 'minatoC',  name: '湊都市立大学',   short: '市立大',   tier: 'A', w: 3.6 },
+  { id: 'jonan',    name: '城南大学',       short: '城南大',   tier: 'A', w: 3.4 },
+  { id: 'kitano',   name: '北野大学',       short: '北野大',   tier: 'B', w: 7.5 },
+  { id: 'shiomi',   name: '汐見国際大学',   short: '汐見国際', tier: 'B', w: 6.8 },
+  { id: 'toyo',     name: '東洋文化大学',   short: '東洋文化', tier: 'B', w: 6.5 },
+  { id: 'minatoK',  name: '湊工業大学',     short: '湊工大',   tier: 'B', w: 6.0 },
+  { id: 'sakuraok', name: '桜丘大学',       short: '桜丘大',   tier: 'B', w: 5.8 },
+  { id: 'joto',     name: '城東経済大学',   short: '城東経済', tier: 'C', w: 9.0 },
+  { id: 'konan',    name: '港南商科大学',   short: '港南商科', tier: 'C', w: 8.5 },
+  { id: 'midori',   name: '緑川大学',       short: '緑川大',   tier: 'C', w: 8.0 },
+  { id: 'shinto',   name: '新都学院大学',   short: '新都学院', tier: 'C', w: 7.6 },
+  { id: 'sengoku',  name: '千石大学',       short: '千石大',   tier: 'C', w: 7.2 },
+];
+
+/** 大学の格ごとの素質 */
+export const TIERS = {
+  S: { id: 'S', label: '最難関', abil: [34, 52], pot: [78, 97], expect: 1.16, rivalPull: 0.88 },
+  A: { id: 'A', label: '難関',   abil: [28, 47], pot: [68, 90], expect: 1.08, rivalPull: 0.72 },
+  B: { id: 'B', label: '中堅',   abil: [24, 43], pot: [58, 82], expect: 1.00, rivalPull: 0.54 },
+  C: { id: 'C', label: '一般',   abil: [20, 39], pot: [48, 74], expect: 0.94, rivalPull: 0.38 },
+};
+
+/** 学部。伸びやすい能力が変わる */
+export const FACULTIES = [
+  { id: 'arch',  name: '建築学科',     key: 'plan',  w: 12, note: '意匠設計と商品企画に強い' },
+  { id: 'civil', name: '土木工学科',   key: 'cons',  w: 9,  note: '施工管理と工程管理に強い' },
+  { id: 'urban', name: '都市工学科',   key: 'plan',  w: 7,  note: '再開発と都市計画に強い' },
+  { id: 'law',   name: '法学部',       key: 'land',  w: 13, note: '権利調整と地権者交渉に強い' },
+  { id: 'econ',  name: '経済学部',     key: 'fin',   w: 15, note: '投資判断と資金調達に強い' },
+  { id: 'comm',  name: '商学部',       key: 'fin',   w: 11, note: '会計と与信管理に強い' },
+  { id: 'mgmt',  name: '経営学部',     key: 'lead',  w: 10, note: '組織運営と事業管理に強い' },
+  { id: 'soc',   name: '社会学部',     key: 'sales', w: 10, note: '市場調査と販売に強い' },
+  { id: 'lit',   name: '文学部',       key: 'sales', w: 8,  note: '対人折衝と広報に強い' },
+  { id: 'sci',   name: '理工学部',     key: 'cons',  w: 8,  note: '構造と設備の知識に強い' },
 ];
 
 /** 採用活動への投資メニュー（年間予算・百万円） */
@@ -66,7 +101,8 @@ export function initRecruit(g) {
       phase: 'idle', year: g.year + 1, plan: 8, salary: 5.4,
       invest: { seminar: 120, intern: 0, ad: 80, recruiter: 0 },
       screenPolicy: 0.5,
-      pool: [], offers: [], hired: 0, declined: 0, spent: 0,
+      deptPlan: { land: 2, plan: 1, cons: 1, sales: 2, lease: 1, fin: 1, hr: 0, corp: 0 },
+      pool: [], offers: [], incoming: [], hired: 0, declined: 0, spent: 0,
       log: [],
     },
     mid: { pools: {}, refreshed: {} },
@@ -103,21 +139,29 @@ export function estimate(c, stage, hrQuality) {
 }
 
 function makeGrad(g, rng, appeal) {
-  const sc = rng.weighted(SCHOOLS.map(s => ({ ...s, w: s.w * (1 + (s.id === 'S' || s.id === 'A' ? appeal.score * 1.8 : 0)) })));
+  // 採用力が高いほど上位校の学生が集まる
+  const uni = rng.weighted(UNIVERSITIES.map(u => ({
+    ...u, w: u.w * (1 + ((u.tier === 'S' || u.tier === 'A') ? appeal.score * 2.0 : 0)),
+  })));
+  const T = TIERS[uni.tier];
+  const fac = rng.weighted(FACULTIES);
   const abil = {};
-  const base = rng.range(sc.abil[0], sc.abil[1]);
-  const spec = rng.pick(ABILITY_IDS);
-  for (const k of ABILITY_IDS) abil[k] = Math.round(clamp(rng.normal(base * (k === spec ? 1.2 : 0.88), 7), 6, 92));
-  const pot = Math.round(rng.range(sc.pot[0], sc.pot[1]));
+  const base = rng.range(T.abil[0], T.abil[1]);
+  const spec = fac.key;
+  for (const k of ABILITY_IDS) abil[k] = Math.round(clamp(rng.normal(base * (k === spec ? 1.26 : 0.88), 7), 6, 92));
+  const pot = Math.round(rng.range(T.pot[0], T.pot[1]));
   const trueAbil = ABILITY_IDS.reduce((a, k) => a + abil[k], 0) / ABILITY_IDS.length;
+  const fitDept = DEPT_IDS.filter(d => DEPTS[d].key === spec);
   return {
     id: uid('g'), name: name(rng), age: rng.int(22, 24),
-    school: sc.id, schoolName: sc.name,
-    abil, potential: pot, trueAbil,
-    spec, dept: DEPTS[Object.keys(DEPTS).find(d => DEPTS[d].key === spec)] ? Object.keys(DEPTS).find(d => DEPTS[d].key === spec) : rng.pick(DEPT_IDS),
+    uni: uni.id, uniName: uni.name, uniShort: uni.short, tier: uni.tier,
+    faculty: fac.id, facultyName: fac.name, facultyNote: fac.note,
+    abil, potential: pot, trueAbil, spec,
+    dept: fitDept.length ? rng.pick(fitDept) : rng.pick(DEPT_IDS),
+    wishDept: fitDept.length ? rng.pick(fitDept) : rng.pick(DEPT_IDS),
     interest: clamp01(rng.range(0.25, 0.62) + appeal.score * 0.45 + (g.recruit.ng.invest.intern > 200 ? 0.12 : 0)),
-    rivalAppeal: clamp01(rng.range(0.35, 0.85) * sc.expect),
-    stage: 0,           // 0=エントリー 1=書類通過 2=面接通過 3=内定
+    rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull),
+    stage: 0,
     status: 'entry',
     expected: Math.round((5.0 + (pot / 100) * 1.6) * 10) / 10,
   };
@@ -133,6 +177,8 @@ export function stepRecruit(g, rng, news) {
 
   // --- 3月：エントリー受付開始 ---
   if (woy === NG_SCHEDULE.open) {
+    // 前年度に内定を承諾した学生は入社待ちとして持ち越す
+    r.incoming = (r.incoming || []).concat(r.offers.filter(c => c.status === 'accepted'));
     r.phase = 'attract';
     r.year = g.year + 1;
     r.pool = []; r.offers = []; r.declined = 0; r.spent = 0;
@@ -218,32 +264,45 @@ export function stepRecruit(g, rng, news) {
     }
     news.push({
       icon: '🎊', type: 'hr', major: true,
-      text: `${r.year}年度の内定式を行った。承諾${ok}名／辞退${ng}名（計画${r.plan}名に対し充足率 ${Math.round(ok / Math.max(1, r.plan) * 100)}%）。`,
+      text: `${r.year}年度の内定式を行った。承諾${ok}名／辞退${ng}名（計画${r.plan}名に対し充足率 ${Math.round(ok / Math.max(1, r.plan) * 100)}%）。来年4月に入社する。`,
     });
     r.log.push({ week: g.week, text: `内定承諾${ok}名・辞退${ng}名` });
   }
 
-  // --- 4月：入社 ---
-  if (woy === NG_SCHEDULE.join && r.phase === 'waiting') {
-    let n = 0;
-    for (const c of r.offers) {
-      if (c.status !== 'accepted') continue;
-      const s = makeStaff(rng, { dept: c.dept, rank: 0, age: c.age, loyalty: 0.74, channel: 'newgrad' });
-      s.name = c.name;
-      s.abil = { ...c.abil };
-      s.potential = c.potential;
-      s.tenure = 0;
-      s.joined = { year: g.year, week: g.week };
-      s.school = c.school;
-      s.salary = Math.round(r.salary * 10) / 10;
-      s.morale = clamp01(0.72 + c.interest * 0.22);
-      g.staff.push(s);
-      n++;
+  // --- 4月：入社（配属枠に従って各部署へ） ---
+  if (woy === NG_SCHEDULE.join) {
+    const list = (r.incoming || []).concat(r.phase === 'waiting' ? r.offers.filter(c => c.status === 'accepted') : []);
+    if (r.phase === 'waiting') { r.offers = []; r.pool = []; r.phase = 'idle'; }
+    r.incoming = [];
+    if (list.length) {
+      const slots = { ...(r.deptPlan || {}) };
+      const placed = {};
+      list.sort((a, b) => b.trueAbil - a.trueAbil);
+      for (const c of list) {
+        const pref = DEPT_IDS.slice().sort((x, y) => (c.abil[DEPTS[y].key] - c.abil[DEPTS[x].key]));
+        let dept = pref.find(d => (slots[d] || 0) > 0);
+        if (!dept) dept = c.wishDept || pref[0];
+        else slots[dept]--;
+        const s = makeStaff(rng, { dept, rank: 0, age: c.age, loyalty: 0.74, channel: 'newgrad' });
+        s.name = c.name;
+        s.abil = { ...c.abil };
+        s.potential = c.potential;
+        s.tenure = 0;
+        s.joined = { year: g.year, week: g.week };
+        s.uni = c.uni; s.uniName = c.uniName; s.uniShort = c.uniShort;
+        s.faculty = c.faculty; s.facultyName = c.facultyName;
+        s.salary = Math.round(r.salary * 10) / 10;
+        s.morale = clamp01(0.72 + c.interest * 0.22) * (dept === c.wishDept ? 1 : 0.92);
+        g.staff.push(s);
+        placed[dept] = (placed[dept] || 0) + 1;
+      }
+      r.hired = list.length;
+      const detail = Object.entries(placed).map(([d, n]) => `${DEPTS[d].short}${n}`).join('・');
+      news.push({ icon: '🌸', type: 'hr', major: true, text: `${g.year}年度の新入社員${list.length}名が入社した（配属：${detail}）。` });
+    } else if (r.phase === 'idle') {
+      r.hired = 0;
+      news.push({ icon: '⚠', type: 'hr', major: true, text: `今年度の新卒入社はゼロだった。採用活動への投資と初任給、内定出しの人数を見直すこと。` });
     }
-    r.hired = n;
-    r.offers = []; r.pool = []; r.phase = 'idle';
-    if (n) news.push({ icon: '🌸', type: 'hr', major: true, text: `${g.year}年度の新入社員${n}名が入社した。` });
-    else news.push({ icon: '⚠', type: 'hr', major: true, text: `今年度の新卒入社はゼロだった。採用活動への投資と初任給を見直すこと。` });
   }
 
   // --- 中途：候補者プールの更新 ---

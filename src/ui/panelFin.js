@@ -63,7 +63,7 @@ export function render(g, ctx) {
     <table class="tbl">
       <tr><th>期</th><th>売上高</th><th>営業利益</th><th>純利益</th><th>純資産</th><th>格付</th></tr>
       ${hist.slice().reverse().map(x => `<tr>
-        <td>${x.year}Q${x.q}</td><td>${money(x.pl.revenue)}</td>
+        <td>${x.year}年Q${x.q}</td><td>${money(x.pl.revenue)}</td>
         <td class="${dcls(x.pl.op)}">${money(x.pl.op)}</td>
         <td class="${dcls(x.pl.net)}">${money(x.pl.net)}</td>
         <td>${money(x.bs.equity)}</td><td>${x.rating}</td></tr>`).join('')}
@@ -77,7 +77,7 @@ export function render(g, ctx) {
       ${mini('ROE', pct(k.roe), '', k.roe > 0.08 ? 'var(--gold)' : '')}
       ${mini('自己資本比率', pct(k.equityRatio), `D/E ${k.de.toFixed(2)}倍`)}
     </div>
-    <div style="margin-top:12px">${spark(h.slice(-16).map(x => x.pl.op), { color: '#4ade9b', zero: true })}</div>
+    <div style="margin-top:12px">${spark(h.slice(-16).map(x => x.pl.op), { color: '#0f8a55', zero: true })}</div>
     <div class="hint">営業利益の推移（直近16四半期）</div>
   `)}
 
@@ -112,7 +112,7 @@ export function render(g, ctx) {
     </div>`}
   `)}
 
-  ${section('損益計算書', pl ? `${g.year}年 Q${g.quarter}` : '', plTable)}
+  ${section('損益計算書', pl ? `${g.year}年 第${g.quarter}四半期` : '', plTable)}
   ${section('貸借対照表', '', bsTable)}
   ${section('業績推移', '', histTable)}
   `;

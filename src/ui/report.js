@@ -3,7 +3,7 @@
 // ============================================================
 import { money, moneyHTML, num, pct, dcls } from '../core/format.js';
 import { mini, kv, chip, section, empty } from './dom.js';
-import { SEASON } from '../core/format.js';
+import { dateLabel } from '../core/time.js';
 import { DISTRICTS, USES } from '../data/city.js';
 
 const CAT = {
@@ -53,6 +53,7 @@ export function buildReport(g, rep, reports = []) {
   const rank = rep.rank;
 
   return `
+  <div class="hint" style="margin-bottom:12px">${dateLabel(g)}　${g.year}年 第${g.quarter}四半期（13週）の実績である。</div>
   <div class="rep-hero">
     ${mini('売上高', moneyHTML(pl.revenue), prev ? `前期比 ${money(d(pl.revenue, prev.pl.revenue), { sign: true })}` : '')}
     ${mini('営業利益', moneyHTML(pl.op), prev ? `前期比 ${money(d(pl.op, prev.pl.op), { sign: true })}` : '', pl.op >= 0 ? 'var(--green)' : 'var(--red)')}

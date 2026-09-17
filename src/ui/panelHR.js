@@ -5,7 +5,7 @@ import { money, num, pct, man, clamp } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
 import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salaryFairness, projectCapacity } from '../sim/hr.js';
-import { NG_SCHEDULE, SCHOOLS, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp } from '../sim/recruit.js';
+import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp } from '../sim/recruit.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor } from '../core/state.js';
 import { RNG } from '../core/rng.js';
@@ -142,7 +142,7 @@ function recruitSection(g) {
         ${mini('計画', r.plan + '名')}
         ${mini('エントリー', entries + '名')}
         ${mini('面接中', interview + '名')}
-        ${mini('内定', offered + '名', accepted ? `承諾 ${accepted}名` : '')}
+        ${mini('内定', offered + '名', accepted ? `承諾 ${accepted}名` : (r.incoming || []).length ? `入社待ち ${(r.incoming || []).length}名` : '')}
       </div>
       <div class="kv" style="margin-top:8px"><span class="k">初任給</span><span class="v">${man(r.salary)}</span></div>
       <div class="kv"><span class="k">採用力（母集団の集まりやすさ）</span><span class="v">${(ap.score * 100).toFixed(0)} / 100</span></div>
@@ -210,7 +210,8 @@ export function openStaff(g, s, ctx) {
       ${bar(s.morale)}
       ${kv('定着度', `${(s.loyalty * 100).toFixed(0)} / 100`)}
       ${bar(s.loyalty, 'violet')}
-      ${kv('入社', s.joined ? `${s.joined.year}年 Q${s.joined.q}（${{ newgrad: '新卒', career: 'キャリア', headhunt: 'ヘッドハント', legacy: '創業期' }[s.channel] || '—'}）` : '—')}
+      ${kv('入社', s.joined ? `${s.joined.year}年（${{ newgrad: '新卒', career: 'キャリア', headhunt: 'ヘッドハント', agent: 'エージェント', open: '公募', referral: '社員紹介', legacy: '創業期' }[s.channel] || '—'}）` : '—')}
+      ${s.uniName ? kv('出身', `${s.uniName} ${s.facultyName || ''}`) : ''}
       ${s.note ? kv('備考', s.note) : ''}
     </div>
     <div class="sec">
@@ -271,14 +272,15 @@ export function openNewGrad(g, ctx) {
   function candCard(c, mode) {
     const p = orgPower(g);
     const est = estimate(c, c.stage, p.hr.quality);
-    const sc = SCHOOLS.find(x => x.id === c.school);
-    const dept = DEPTS[c.dept];
+    const T = TIERS[c.tier] || {};
+    const dept = DEPTS[c.wishDept || c.dept];
     return `<div class="card">
       <div class="card-t">
         <span class="card-n">${c.name}（${c.age}歳）</span>
-        ${chip(sc.name, c.school === 'S' ? 'gold' : c.school === 'A' ? 'cyan' : 'grey')}
+        ${chip(c.uniName || '—', c.tier === 'S' ? 'gold' : c.tier === 'A' ? 'cyan' : 'grey')}
       </div>
-      <div class="card-s">適性：${dept.name}／希望年収 ${man(c.expected)}</div>
+      <div class="card-s">${c.facultyName || ''}　${c.facultyNote ? `<span style="color:var(--ink-mute)">${c.facultyNote}</span>` : ''}<br>
+        希望部署：${dept.name}／希望年収 ${man(c.expected)}</div>
       <div class="kv"><span class="k">推定される実力</span><span class="v">${est.lo} 〜 ${est.hi}<span style="color:var(--ink-mute);font-size:10px">（誤差±${est.err}）</span></span></div>
       <div class="kv"><span class="k">潜在能力</span><span class="v">${c.stage >= 2 ? c.potential : '—'}</span></div>
       <div class="kv"><span class="k">自社への志望度</span><span class="v ${c.interest > 0.7 ? 'up' : c.interest < 0.45 ? 'down' : ''}">${(c.interest * 100).toFixed(0)}</span></div>
@@ -308,6 +310,19 @@ export function openNewGrad(g, ctx) {
         <div class="hint">初任給が業界水準（約540万円）を上回ると、応募と内定承諾の両方に効く。</div>
       </div>
       <div class="sec">
+        <div class="sec-t"><span>配属計画</span><span class="note">合計 ${Object.values(r.deptPlan || {}).reduce((a, b) => a + b, 0)}名</span></div>
+        <div class="grid2">
+          ${DEPT_IDS.map(dk => `
+            <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+              <span style="flex:1;font-size:11.5px">${DEPTS[dk].icon} ${DEPTS[dk].name}</span>
+              <button class="btn sm" data-dp="minus" data-d="${dk}">−</button>
+              <span style="min-width:26px;text-align:center;font-family:Oswald,sans-serif">${(r.deptPlan || {})[dk] || 0}</span>
+              <button class="btn sm" data-dp="plus" data-d="${dk}">＋</button>
+            </div>`).join('')}
+        </div>
+        <div class="hint">入社時はこの枠に沿って配属する。枠を超えた分や枠が空いている場合は、本人の適性と希望に従って配属される。希望と違う部署に配属された新入社員はモチベーションがやや下がる。</div>
+      </div>
+      <div class="sec">
         <div class="sec-t"><span>採用活動への投資</span><span class="note">年間 ${money(invTotal)}</span></div>
         ${RECRUIT_INVEST.map(x => `
           <div class="field">
@@ -331,14 +346,17 @@ export function openNewGrad(g, ctx) {
 
     if (r.phase === 'attract') {
       const top = r.pool.slice().sort((a, b) => b.interest - a.interest).slice(0, 6);
-      const bySchool = SCHOOLS.map(sc => `${sc.name} ${r.pool.filter(c => c.school === sc.id).length}名`).join('　');
+      const byTier = Object.values(TIERS).map(t => `${t.label} ${r.pool.filter(c => c.tier === t.id).length}名`).join('　');
+      const topUni = Object.entries(r.pool.reduce((a, c) => { a[c.uniName] = (a[c.uniName] || 0) + 1; return a; }, {}))
+        .sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, v]) => `${n} ${v}`).join('　');
       return `
         <div class="grid3" style="margin-bottom:12px">
           ${mini('エントリー', r.pool.length + '名')}
           ${mini('計画', r.plan + '名')}
           ${mini('倍率', (r.pool.length / Math.max(1, r.plan)).toFixed(1) + '倍')}
         </div>
-        <div class="hint">${bySchool}</div>
+        <div class="hint">${byTier}</div>
+        <div class="hint">${topUni}</div>
         <div class="hint">6月第1週から選考が始まる。それまでは学生の志望度が動くだけである。</div>
         <div class="sec"><div class="sec-t"><span>志望度の高い学生</span></div>
         ${top.map(c => candCard(c, 'view')).join('')}</div>`;
@@ -389,6 +407,13 @@ export function openNewGrad(g, ctx) {
 
   function bind() {
     const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-dp]').forEach(el => el.onclick = () => {
+      const d = el.dataset.d;
+      r.deptPlan = r.deptPlan || {};
+      const v = r.deptPlan[d] || 0;
+      r.deptPlan[d] = el.dataset.dp === 'plus' ? Math.min(40, v + 1) : Math.max(0, v - 1);
+      refresh();
+    });
     body.querySelectorAll('.invRange').forEach(el => el.oninput = e => {
       r.invest[e.target.dataset.inv] = +e.target.value;
       const lab = e.target.previousElementSibling.querySelector('b');

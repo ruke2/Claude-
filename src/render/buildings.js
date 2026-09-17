@@ -75,8 +75,8 @@ function drawGrime(ctx, o, side, H, T, zoom) {
   const { cx, cy, w, h } = o;
   const g = ctx.createLinearGradient(0, cy + h / 2 - H, 0, cy + h / 2);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(0.82, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(8,12,20,${0.22 + (1 - T.faceTop) * 0.16})`);
+  g.addColorStop(0.86, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(8,12,20,${0.16 + (1 - T.faceTop) * 0.14})`);
   ctx.fillStyle = g;
   ctx.fill();
 }
@@ -85,13 +85,19 @@ function drawGrime(ctx, o, side, H, T, zoom) {
 function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
   const facade = facadeOf(use, b.stack ? 'auto' : b.facade);
   const seed = b.seed + segIndex * 977;
-  const [hu, sa, li] = USE_HSL[use] || USE_HSL.office;
+  const base = USE_HSL[use] || USE_HSL.office;
+  // 建物ごとに色をわずかに振って、同じ用途でも表情を変える
+  const jitter = hash2(b.seed, segIndex, 5);
+  const hu = base[0] + (jitter - 0.5) * 22;
+  const sa = Math.max(2, base[1] * (0.7 + jitter * 0.7));
+  const li = base[2] * (0.92 + hash2(b.seed, segIndex, 9) * 0.16);
   const mul = side === 'L' ? T.faceL : T.faceR;
   const bays = Math.max(2, Math.round((BAYS[use] || 6) * (o.w / (TILE_W * zoom))));
   const span = Math.max(0.001, vB - vA);
   const fh = span / Math.max(1, floors);
   const winLit = T.windowLit * (b.lit ?? 0.6);
-  const darkWin = shade(hu, sa + 8, li, mul * 0.58);
+  const G = T.glass || [206, 20, 55];
+  const darkWin = shade(G[0], G[1], G[2], mul * 1.0);
 
   // --- 壁 ---
   facePath(ctx, o, side, 0, 1, vA, vB, H);
@@ -103,17 +109,43 @@ function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
   ctx.fill();
 
   if (H * span < 4 || o.w < 12) return;
+
+  // 引きの絵では窓を1枚ずつ描かず、階層のラインと点灯だけで表現する
+  if (zoom < 0.52) {
+    ctx.strokeStyle = shade(hu, sa, li, mul * 0.74, 0.55);
+    ctx.lineWidth = Math.max(0.35, zoom * 0.6);
+    const every = Math.max(1, Math.round(2 / Math.max(0.2, zoom)));
+    for (let i = 0; i < floors; i += every) {
+      const v = vA + (i + 0.5) * fh;
+      facePath(ctx, o, side, 0.06, 0.94, v, v, H); ctx.stroke();
+    }
+    if (winLit > 0.12) {
+      for (let i = 0; i < floors; i += every) {
+        const r = hash2(seed + i * 37, side === 'L' ? 11 : 23);
+        if (r >= winLit * 1.6) continue;
+        const v = vA + i * fh;
+        facePath(ctx, o, side, 0.1 + r * 0.5, 0.2 + r * 0.6, v + fh * 0.2, v + fh * 0.8, H);
+        ctx.fillStyle = LIT_COLORS[Math.floor(r * 313) % 6];
+        ctx.globalAlpha = 0.7; ctx.fill(); ctx.globalAlpha = 1;
+      }
+    }
+    ctx.strokeStyle = shade(hu, sa, li, mul * 1.3, 0.4);
+    ctx.lineWidth = Math.max(0.4, zoom * 0.7);
+    facePath(ctx, o, side, 0, 1, vA, vB, H); ctx.stroke();
+    return;
+  }
+
   const maxDraw = Math.min(floors, 64);
   const step = Math.max(1, Math.ceil(floors / maxDraw));
 
   if (facade === 'curtain') {
     // ガラスのカーテンウォール。空を映し込む
-    const glassBase = shade(202, 20, 52, mul * 1.05);
+    const glassBase = shade(G[0], G[1], G[2] * 1.04, mul * 1.05);
     facePath(ctx, o, side, 0.03, 0.97, vA + fh * 0.1, vB - fh * 0.1, H);
     const sg = ctx.createLinearGradient(0, wallTop, 0, wallBot);
-    sg.addColorStop(0, shade(T.key === 'night' ? 220 : 205, 30, T.key === 'night' ? 22 : 62, mul * 1.15));
+    sg.addColorStop(0, shade(G[0], G[1] + 6, G[2] * 1.22, mul * 1.12));
     sg.addColorStop(0.55, glassBase);
-    sg.addColorStop(1, shade(210, 16, 40, mul));
+    sg.addColorStop(1, shade(G[0], G[1], G[2] * 0.90, mul));
     ctx.fillStyle = sg; ctx.fill();
     // 横連窓の目地
     ctx.strokeStyle = shade(hu, sa, li, mul * 1.26, 0.7);
@@ -150,7 +182,7 @@ function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
     for (let i = 0; i < floors; i += step) {
       const v0 = vA + i * fh + fh * 0.12, v1 = vA + i * fh + fh * 0.82;
       facePath(ctx, o, side, 0.05, 0.95, v0, v1, H);
-      ctx.fillStyle = winLit > 0.25 ? 'rgba(255,226,172,0.80)' : shade(200, 20, 52, mul * 1.06);
+      ctx.fillStyle = winLit > 0.25 ? 'rgba(255,226,172,0.80)' : shade(G[0], G[1], G[2] * 1.06, mul * 1.06);
       ctx.fill();
       // 庇
       facePath(ctx, o, side, -0.01, 1.01, vA + i * fh + fh * 0.86, vA + i * fh + fh * 0.98, H);
@@ -193,7 +225,7 @@ function drawSeg(ctx, o, side, H, b, T, zoom, vA, vB, use, floors, segIndex) {
     for (let i = 0; i < floors; i += step) {
       const v0 = vA + i * fh + fh * 0.32, v1 = vA + i * fh + fh * 0.5;
       facePath(ctx, o, side, 0.08, 0.92, v0, v1, H);
-      ctx.fillStyle = winLit > 0.35 ? 'rgba(255,238,196,0.7)' : shade(200, 14, 44, mul);
+      ctx.fillStyle = winLit > 0.35 ? 'rgba(255,238,196,0.7)' : shade(G[0], G[1] - 4, G[2] * 0.9, mul);
       ctx.fill();
     }
     // 搬入口

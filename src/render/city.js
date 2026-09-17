@@ -259,9 +259,9 @@ export class CityRenderer {
   tileColor(c) {
     const T = this.time;
     if (c.terrain === TERRAIN.WATER) return null;
-    if (c.terrain === TERRAIN.ROAD) return shade(220, 5, 27, T.faceTop);
-    if (c.terrain === TERRAIN.AVENUE) return shade(220, 4, 31, T.faceTop);
-    if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) return shade(120, 30, 30, T.faceTop);
+    if (c.terrain === TERRAIN.ROAD) return shade(220, 4, 38, T.faceTop);
+    if (c.terrain === TERRAIN.AVENUE) return shade(220, 3, 42, T.faceTop);
+    if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) return shade(118, 26, 40, T.faceTop);
     const d = DISTRICTS[c.d];
     if (this.layer === 'owner') {
       if (c.owner === 'player') return shade(45, 70, 46, T.faceTop);
@@ -275,7 +275,7 @@ export class CityRenderer {
       const v = Math.min(1, c.baseValue / 42000);
       return shade(240 - v * 240, 62, 20 + v * 26, T.faceTop);
     }
-    return shade(d ? d.hue : 210, 7, c.vacant ? 30 : 25, T.faceTop);
+    return shade(d ? d.hue : 210, 6, c.vacant ? 46 : 38, T.faceTop);
   }
 
   drawTile(c, px, py) {
@@ -324,9 +324,35 @@ export class CityRenderer {
     } else if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) {
       this.drawPark(c, px, py, w, h);
     } else if (this.layer === 'normal') {
-      // 敷地の縁石
-      ctx.strokeStyle = 'rgba(255,255,255,0.055)'; ctx.lineWidth = Math.max(0.4, z * 0.6);
-      diamond(ctx, px, py, w * 0.94, h * 0.94); ctx.stroke();
+      // 歩道（区画の外周）
+      ctx.save();
+      diamond(ctx, px, py, w + 0.8, h + 0.8); ctx.clip();
+      diamond(ctx, px, py, w + 0.8, h + 0.8);
+      ctx.fillStyle = shade(212, 4, 58, T.faceTop); ctx.fill();
+      diamond(ctx, px, py, w * 0.86, h * 0.86);
+      ctx.fillStyle = this.tileColor(c); ctx.fill();
+      ctx.restore();
+      // 縁石
+      ctx.strokeStyle = shade(212, 3, 72, T.faceTop, 0.5); ctx.lineWidth = Math.max(0.4, z * 0.55);
+      diamond(ctx, px, py, w * 0.86, h * 0.86); ctx.stroke();
+      // 敷地内の舗装と植栽
+      if (z > 0.5 && c.building) {
+        const r = hash2(c.gx, c.gy, 44);
+        if (r > 0.6) {
+          ctx.save(); diamond(ctx, px, py, w * 0.84, h * 0.84); ctx.clip();
+          ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = Math.max(0.4, z * 0.5);
+          for (let i = -2; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.moveTo(px - w * 0.3 + i * w * 0.08, py + h * 0.28);
+            ctx.lineTo(px - w * 0.06 + i * w * 0.08, py + h * 0.4);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        if (r < 0.42 && z > 0.6) {
+          this.drawTree(px + (r - 0.2) * w * 0.5, py + h * 0.30, z * 0.7, c.gx * 3, c.gy * 5);
+        }
+      }
       if (c.vacant && !c.projectId) {
         // 更地：砂利と区画ロープ
         ctx.save(); diamond(ctx, px, py, w * 0.9, h * 0.9); ctx.clip();
@@ -354,13 +380,33 @@ export class CityRenderer {
     const e = isRoad(at(c.gx + 1, c.gy)), ww = isRoad(at(c.gx - 1, c.gy));
 
     ctx.save(); diamond(ctx, px, py, w, h); ctx.clip();
+    // 舗装の質感
+    ctx.fillStyle = 'rgba(0,0,0,.05)';
+    for (let i = 0; i < 6; i++) {
+      const rx = hash2(c.gx * 7 + i, c.gy * 3), ry = hash2(c.gx, c.gy * 11 + i);
+      ctx.fillRect(px - w / 2 + rx * w, py - h / 2 + ry * h, w * 0.1, h * 0.12);
+    }
     // 中央線
-    ctx.strokeStyle = avenue ? 'rgba(240,215,120,0.45)' : 'rgba(225,230,240,0.24)';
+    ctx.strokeStyle = avenue ? 'rgba(235,200,90,0.55)' : 'rgba(250,252,255,0.42)';
     ctx.lineWidth = Math.max(0.6, z * (avenue ? 1.2 : 0.9));
     ctx.setLineDash(avenue ? [] : [z * 5, z * 5]);
     if (e || ww) { ctx.beginPath(); ctx.moveTo(px - w / 2, py); ctx.lineTo(px + w / 2, py); ctx.stroke(); }
     if (n || s) { ctx.beginPath(); ctx.moveTo(px, py - h / 2); ctx.lineTo(px, py + h / 2); ctx.stroke(); }
     ctx.setLineDash([]);
+    // 交差点には横断歩道を引く
+    if ((n || s) && (e || ww)) {
+      ctx.fillStyle = 'rgba(250,252,255,0.5)';
+      for (let i = 0; i < 4; i++) {
+        const t0 = 0.18 + i * 0.12;
+        // 北東の辺に沿って
+        ctx.beginPath();
+        ctx.moveTo(px + w * 0.5 * t0, py - h * 0.5 * t0);
+        ctx.lineTo(px + w * 0.5 * (t0 + 0.06), py - h * 0.5 * (t0 + 0.06));
+        ctx.lineTo(px + w * 0.5 * (t0 + 0.06) + w * 0.1, py - h * 0.5 * (t0 + 0.06) + h * 0.1);
+        ctx.lineTo(px + w * 0.5 * t0 + w * 0.1, py - h * 0.5 * t0 + h * 0.1);
+        ctx.closePath(); ctx.fill();
+      }
+    }
     // 街灯と光溜まり
     if (T.street > 0) {
       const lit = `rgba(255,214,150,${0.13 * T.street})`;

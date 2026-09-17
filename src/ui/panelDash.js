@@ -26,9 +26,9 @@ export function render(g) {
   // セグメント構成
   const segTotal = Math.max(1, t.revSale + t.revLease + t.revFee);
   const segs = [
-    { n: '分譲事業', v: t.revSale, c: '#4ade9b' },
-    { n: '賃貸事業', v: t.revLease, c: '#54d6ff' },
-    { n: 'その他・連結', v: t.revFee + (t.revenue - t.revSale - t.revLease - t.revFee), c: '#a78bfa' },
+    { n: '分譲事業', v: t.revSale, c: '#0f8a55' },
+    { n: '賃貸事業', v: t.revLease, c: '#0d7ea8' },
+    { n: 'その他・連結', v: t.revFee + (t.revenue - t.revSale - t.revLease - t.revFee), c: '#6b4bc4' },
   ];
 
   const m = g.market;
@@ -41,14 +41,14 @@ export function render(g) {
 
   return `
   ${alerts(g, k, t, p)}
-  ${section('主要指標', `直近4四半期（${g.year}年 ${g.month}月時点）`, `
+  ${section('主要指標', `直近4四半期（${g.year}年 ${g.month}月 第${g.weekOfMonth}週目時点）`, `
     <div class="grid4">
       ${mini('売上高', moneyHTML(t.revenue), '直近4四半期')}
       ${mini('営業利益', moneyHTML(t.op), `利益率 ${pct(k.opMargin)}`, t.op >= 0 ? 'var(--green)' : 'var(--red)')}
       ${mini('当期純利益', moneyHTML(t.net), '', t.net >= 0 ? 'var(--green)' : 'var(--red)')}
       ${mini('ROE', pct(k.roe), `ROA ${pct(k.roa)}`, k.roe >= 0.08 ? 'var(--gold)' : '')}
     </div>
-    <div style="margin-top:12px">${spark(revSeries, { color: '#e3b558' })}</div>
+    <div style="margin-top:12px">${spark(revSeries, { color: '#b0781a' })}</div>
     <div class="hint">売上高の推移（直近16四半期）</div>
   `)}
 
