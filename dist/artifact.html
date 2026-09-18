@@ -1147,7 +1147,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       short: "\u6C50\u898B",
       kana: "SHIOMI BAY",
       desc: "\u518D\u958B\u767A\u304C\u9032\u3080\u6E7E\u5CB8\u30A8\u30EA\u30A2\u3002\u30BF\u30EF\u30FC\u30DE\u30F3\u30B7\u30E7\u30F3\u3068\u5927\u578B\u5546\u696D\u306E\u4E3B\u6226\u5834\u3067\u3001\u4F9B\u7D66\u904E\u591A\u30EA\u30B9\u30AF\u3068\u96A3\u308A\u5408\u308F\u305B\u3002",
-      landPrice: 6.2,
+      landPrice: 7.3,
       farRange: [400, 900],
       rentOffice: 24e3,
       rentRetail: 26e3,
@@ -1171,7 +1171,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       short: "\u9752\u8449\u53F0",
       kana: "AOBADAI",
       desc: "\u9AD8\u53F0\u306E\u90B8\u5B85\u8857\u3002\u53B3\u3057\u3044\u9AD8\u3055\u5236\u9650\u3068\u4F4F\u6C11\u5354\u5B9A\u304C\u3042\u308A\u3001\u4F4E\u5C64\u30FB\u9AD8\u5358\u4FA1\u306E\u5546\u54C1\u958B\u767A\u304C\u6C42\u3081\u3089\u308C\u308B\u3002",
-      landPrice: 3.6,
+      landPrice: 3.1,
       farRange: [150, 300],
       rentOffice: 13e3,
       rentRetail: 15e3,
@@ -1198,9 +1198,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       landPrice: 6.4,
       farRange: [300, 700],
       rentOffice: 22e3,
-      rentRetail: 31e3,
+      rentRetail: 33e3,
       rentResi: 18400,
-      rentHotel: 48e3,
+      rentHotel: 38e3,
       rentLogi: 5200,
       priceResi: 4.5,
       capRate: 0.041,
@@ -1243,7 +1243,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       short: "\u6E2F\u5357",
       kana: "KONAN INTL",
       desc: "\u5916\u8CC7\u7CFB\u4F01\u696D\u306E\u30A2\u30B8\u30A2\u62E0\u70B9\u3068\u5927\u4F7F\u9928\u304C\u96C6\u307E\u308B\u56FD\u969B\u5730\u533A\u3002\u9AD8\u7D1A\u30DB\u30C6\u30EB\u306E\u9700\u8981\u304C\u7A81\u51FA\u3057\u3066\u9AD8\u304F\u3001\u5730\u4FA1\u3082\u5E38\u76E4\u306B\u6B21\u3050\u3002",
-      landPrice: 11,
+      landPrice: 12.3,
       farRange: [500, 1e3],
       rentOffice: 34e3,
       rentRetail: 28e3,
@@ -1342,9 +1342,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       desc: "\u5927\u5B66\u75C5\u9662\u3068\u88FD\u85AC\u30FB\u533B\u7642\u6A5F\u5668\u306E\u7814\u7A76\u62E0\u70B9\u304C\u96C6\u307E\u308B\u7279\u533A\u3002\u7814\u7A76\u958B\u767A\u578B\u30AA\u30D5\u30A3\u30B9\u3068\u3001\u7814\u7A76\u8005\u5411\u3051\u306E\u8CC3\u8CB8\u30EC\u30B8\u30C7\u30F3\u30B9\u3001\u60A3\u8005\u5BB6\u65CF\u306E\u9577\u671F\u6EDE\u5728\u30DB\u30C6\u30EB\u306B\u9700\u8981\u304C\u3042\u308B\u3002",
       landPrice: 4.9,
       farRange: [400, 800],
-      rentOffice: 27500,
+      rentOffice: 29500,
       rentRetail: 18e3,
-      rentResi: 14800,
+      rentResi: 13800,
       rentHotel: 31e3,
       rentLogi: 5400,
       priceResi: 3.9,
@@ -2675,6 +2675,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   // src/sim/valuation.js
   var COVER = { office: 0.38, resi: 0.28, rental: 0.3, retail: 0.68, hotel: 0.36, logi: 0.76, house: 0.46, mixed: 0.4 };
   var CAP_SPREAD = { office: 0, retail: 65e-4, hotel: 0.0105, logi: 18e-4, rental: 0, resi: 0, mixed: 25e-4, house: 4e-3 };
+  var FIT_MUL = (fit) => 0.26 + fit * 0.8;
+  var SALE_FEE = 0.04;
+  function saleFeeRate(g) {
+    return clamp(SALE_FEE - subEffect(g, "feeCut"), 0.012, SALE_FEE);
+  }
   var FLOOR_H = { office: 4.1, resi: 3.25, rental: 3.15, retail: 5.4, hotel: 3.4, logi: 7.2, house: 3, mixed: 3.9 };
   function landAppraisal(g, c) {
     if (!c.baseValue) return 0;
@@ -2717,7 +2722,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
     const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
     const brandMul = 1 + (g.company.brand - 40) / 420;
-    const fitMul = 0.74 + fit * 0.28;
+    const fitMul = FIT_MUL(fit);
     const bf = brandEffect(g, opt.brandId);
     const out = { gfa, floors, heightM, sellable, buildCost, weeks, fit, use: useId, grade: gradeId, farUse };
     const saleShare = useId === "mixed" ? 0.45 : U.model === "sale" ? 1 : 0;
@@ -2746,10 +2751,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     out.landCost = opt.landCost ?? landAppraisal(g, c);
     out.totalCost = out.landCost + out.buildCost;
     out.grossValue = (out.saleRevenue || 0) + (out.assetValue || 0);
-    out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * 0.04;
+    const fee = saleFeeRate(g);
+    out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * fee;
     out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
     out.yieldOnCost = out.noi ? out.noi / Math.max(1, out.totalCost) : null;
-    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * 0.04);
+    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * fee);
     return out;
   }
   var STACK_RULE = {
@@ -2802,7 +2808,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const U = USES[seg.use];
       const area = plate * seg.floors;
       const fit = d.fit[seg.use] ?? 0.3;
-      const fitMul = 0.74 + fit * 0.28;
+      const fitMul = FIT_MUL(fit);
       const fmul = stackFloorMul(seg.use, from, to, totalFloors);
       const usable = area * U.efficiency;
       const highRise = 1 + Math.max(0, to - 28) * 45e-4;
@@ -2880,10 +2886,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     out.landCost = opt.landCost ?? landAppraisal(g, c);
     out.totalCost = out.landCost + out.buildCost;
     out.grossValue = out.saleRevenue + out.assetValue;
-    out.profit = out.grossValue - out.totalCost - out.saleRevenue * 0.04;
+    const fee = saleFeeRate(g);
+    out.profit = out.grossValue - out.totalCost - out.saleRevenue * fee;
     out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
     out.yieldOnCost = noi ? noi / Math.max(1, out.totalCost) : null;
-    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * 0.04);
+    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * fee);
     return out;
   }
   function maxFloorsFor(g, c, stack) {
@@ -2931,7 +2938,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const dem = g.market.demand[a.use] ?? 1;
     const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
     const opex = 0.24 - subEffect(g, "feeRate") * 2;
-    return Math.round(gross * (1 - clamp(opex, 0.16, 0.3)) * (a.use === "hotel" ? 0.7 + dem * 0.35 : 1));
+    const hotelMul = a.use === "hotel" ? (0.7 + dem * 0.35) * (1 + subEffect(g, "hotelNoi")) : 1;
+    return Math.round(gross * (1 - clamp(opex, 0.16, 0.3)) * hotelMul);
   }
 
   // src/sim/land.js
@@ -2953,18 +2961,31 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     proposal: { id: "proposal", name: "\u4E8B\u696D\u63D0\u6848\u30B3\u30F3\u30DA", icon: "\u270E", desc: "\u4FA1\u683C\u306B\u52A0\u3048\u3066\u4F01\u753B\u5185\u5BB9\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3002\u4F01\u753B\u529B\u304C\u9AD8\u3051\u308C\u3070\u5B89\u5024\u3067\u3082\u52DD\u3066\u308B\u3002" },
     nego: { id: "nego", name: "\u76F8\u5BFE\uFF08\u5148\u7740\uFF09", icon: "\u{1F91D}", desc: "\u58F2\u4E3B\u306E\u63D0\u793A\u984D\u3067\u5373\u6642\u53D6\u5F97\u3067\u304D\u308B\u3002\u305F\u3060\u3057\u4FA1\u683C\u306F\u5F37\u6C17\u3067\u3001\u7455\u75B5\u304C\u96A0\u308C\u3066\u3044\u308B\u3053\u3068\u3082\u591A\u3044\u3002" }
   };
+  var SIZE_BANDS = [
+    { min: 0, max: 1500, w: 2.8 },
+    // 小口（〜15億／若葉町・北野・城東）
+    { min: 1500, max: 6e3, w: 2.7 },
+    // 中口（15〜60億／神楽坂・桜川・藤ヶ丘・空港）
+    { min: 6e3, max: 2e4, w: 2.1 },
+    // 大口（60〜200億／汐見・南雲）
+    { min: 2e4, max: Infinity, w: 1.7 }
+    // 特大（200億〜／常盤・港南）
+  ];
   function generateListings(g, rng, news) {
     const p = orgPower(g);
-    const infoPower = p.land.quality / 100 + p.land.capacity / 26 + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.5 : 0);
+    const infoPower = p.land.quality / 100 + p.land.capacity / 26 + subEffect(g, "landInfo") * 2.5;
     const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
     let n = Math.floor(rate);
     if (rng.next() < rate - n) n++;
     n = clamp(n, 0, 3);
-    if (g.listings.length >= 16) return;
+    if (g.listings.length >= 20) return;
     const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && !c.onSale && c.owner !== "player" && !c.projectId && !c.assetId && !c.invId);
     if (!pool.length) return;
     for (let i = 0; i < n; i++) {
-      const cand = rng.shuffle(pool).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
+      const band = rng.weighted(SIZE_BANDS);
+      let scope = pool.filter((c2) => (c2.baseValue || 0) >= band.min && (c2.baseValue || 0) < band.max);
+      if (!scope.length) scope = pool;
+      const cand = rng.shuffle(scope).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
       const c = rng.pick(cand);
       if (!c || c.onSale) continue;
       const appraisal = landAppraisal(g, c);
@@ -3206,7 +3227,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
     plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
     plan.grossValue = plan.saleRevenue + plan.assetValue;
-    plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * 0.04;
+    plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * saleFeeRate(g);
     plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
     plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
     return plan;
@@ -3228,7 +3249,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
     if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
     plan.grossValue = (plan.saleRevenue || 0) + (plan.assetValue || 0);
-    plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * 0.04;
+    plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * saleFeeRate(g);
     plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
     plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
     return plan;
@@ -3371,7 +3392,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const dem = g.market.demand[use] ?? 1;
     const sales = 0.55 + p.sales.quality / 100 * 0.55 + p.sales.capacity / 130;
     const brand = 0.82 + g.company.brand / 260;
-    const sub = 1 + (g.subsidiaries.some((s) => s.type === "sales") ? 0.15 : 0) + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.09 : 0);
+    const sub = 1 + subEffect(g, "saleSpeed") + subEffect(g, "salesPower") / 100;
     const bf = brandEffect(g, brandId).speed;
     return clamp(0.15 * gap * dem * sales * brand * sub * bf / WEEKS_PER_QUARTER, 12e-4, 0.055);
   }
@@ -3535,6 +3556,233 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return null;
   }
 
+  // src/sim/market.js
+  var PHASES = [
+    { lo: 0, name: "\u56DE\u5FA9", tone: "cyan", desc: "\u5E95\u3092\u6253\u3063\u305F\u5E02\u6CC1\u304C\u4E0A\u5411\u304D\u59CB\u3081\u3066\u3044\u308B\u3002" },
+    { lo: 0.25, name: "\u597D\u6CC1", tone: "green", desc: "\u5730\u4FA1\u3082\u8CC3\u6599\u3082\u4E0A\u6607\u57FA\u8ABF\u3002\u7528\u5730\u306E\u53D6\u308A\u5408\u3044\u304C\u6FC0\u3057\u3044\u3002" },
+    { lo: 0.55, name: "\u904E\u71B1", tone: "amber", desc: "\u53D6\u5F97\u4FA1\u683C\u304C\u7406\u8AD6\u5024\u3092\u8D85\u3048\u3064\u3064\u3042\u308B\u3002\u9AD8\u5024\u63B4\u307F\u306B\u6CE8\u610F\u3002" },
+    { lo: 0.72, name: "\u5F8C\u9000", tone: "red", desc: "\u5951\u7D04\u304C\u920D\u308A\u3001\u91D1\u878D\u6A5F\u95A2\u306E\u59FF\u52E2\u3082\u53B3\u3057\u304F\u306A\u3063\u3066\u304D\u305F\u3002" },
+    { lo: 0.88, name: "\u4E0D\u6CC1", tone: "grey", desc: "\u5728\u5EAB\u304C\u91CD\u3044\u3002\u305F\u3060\u3057\u4ED5\u8FBC\u307F\u306E\u597D\u6A5F\u3067\u3082\u3042\u308B\u3002" }
+  ];
+  function phaseOf(cycle) {
+    let p = PHASES[0];
+    for (const q of PHASES) if (cycle >= q.lo) p = q;
+    return p;
+  }
+  var K_PRICE = perWeek(0.17);
+  var K_RATE = perWeek(0.22);
+  var K_DEMAND = perWeek(0.55);
+  var K_COST = perWeek(0.14);
+  function costEquilibrium(g) {
+    const costTrend = 1 + g.week * 16e-5;
+    const boom = Math.max(0, Math.sin(g.market.cycle * Math.PI * 2)) * 0.2;
+    return costTrend * (0.66 + g.market.priceIdx * 0.34) * (1 + boom);
+  }
+  function stepMarket(g, rng) {
+    const m = g.market;
+    const d = g.diff;
+    const W = WEEKS_PER_QUARTER;
+    m.cycle = (m.cycle + 1 / 520 + rng.range(-6e-4, 8e-4)) % 1;
+    const ph = phaseOf(m.cycle);
+    m.phaseName = ph.name;
+    m.phaseTone = ph.tone;
+    m.phaseDesc = ph.desc;
+    const target = 0.86 + Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2) * 0.26 + 0.08 + g.week * 23e-5;
+    m.priceIdx += (target - m.priceIdx) * K_PRICE + rng.normal(0, 34e-4 * d.costVol);
+    m.priceIdx = clamp(m.priceIdx, 0.55, 2.6);
+    const costTarget = costEquilibrium(g);
+    m.costIdx += (costTarget - m.costIdx) * K_COST + rng.normal(0, 22e-4 * d.costVol);
+    m.costIdx = clamp(m.costIdx, 0.75, 2.2);
+    const rTarget = d.rate + Math.max(0, m.priceIdx - 1) * 0.022 + (ph.name === "\u904E\u71B1" ? 6e-3 : 0);
+    m.rate += (rTarget - m.rate) * K_RATE + rng.normal(0, 34e-5);
+    m.rate = clamp(m.rate, 2e-3, 0.075);
+    const base = d.demand;
+    const c = Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2);
+    const targets = {
+      office: base * (1 + c * 0.24),
+      resi: base * (1 + c * 0.15),
+      rental: base * (1 + c * 0.07),
+      retail: base * (1 + c * 0.2),
+      // ホテルは振幅がいちばん大きく、インバウンドの回復が早いぶん位相が半年ほど先行する。
+      // 以前は位相が +1.1rad で他用途とほぼ逆相になっており、
+      // オフィスが底を打つ不況期にホテルだけが突出して「どの地区でもホテルが勝つ」状態になっていた
+      hotel: base * (1 + Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2 + 0.5) * 0.34),
+      logi: 1.04 + g.week * 17e-5,
+      house: base * (1 + c * 0.1)
+    };
+    const lim = {
+      office: [0.55, 1.6],
+      resi: [0.55, 1.55],
+      rental: [0.7, 1.35],
+      retail: [0.5, 1.55],
+      hotel: [0.4, 1.9],
+      logi: [0.75, 1.5],
+      house: [0.6, 1.4]
+    };
+    for (const k in targets) {
+      const v = m.demand[k] + (targets[k] - m.demand[k]) * K_DEMAND + rng.normal(0, 8e-3);
+      m.demand[k] = clamp(v, lim[k][0], lim[k][1]);
+    }
+    m.demand.mixed = (m.demand.office + m.demand.retail + m.demand.resi) / 3;
+    m.sentiment = clamp01(m.sentiment + (0.5 + c * 0.32 - m.sentiment) * K_DEMAND + rng.normal(0, 0.012));
+    m.capShift = clamp((1 - m.priceIdx) * 6e-3 + (m.rate - d.rate) * 0.35, -8e-3, 0.014);
+    return ph;
+  }
+  var SHOCKS = [
+    {
+      id: "crisis",
+      p: 0.03,
+      minWeek: 104,
+      icon: "\u{1F4C9}",
+      title: "\u4E16\u754C\u7684\u306A\u91D1\u878D\u4E0D\u5B89",
+      text: "\u6D77\u5916\u767A\u306E\u4FE1\u7528\u4E0D\u5B89\u306B\u3088\u308A\u4E0D\u52D5\u7523\u4FA1\u683C\u304C\u6025\u843D\u3002\u91D1\u878D\u6A5F\u95A2\u306E\u878D\u8CC7\u59FF\u52E2\u3082\u4E00\u6C17\u306B\u53B3\u683C\u5316\u3057\u305F\u3002",
+      apply: (g) => {
+        g.market.priceIdx *= 0.86;
+        g.market.rate += 0.012;
+        for (const k in g.market.demand) g.market.demand[k] *= 0.85;
+      }
+    },
+    {
+      id: "inbound",
+      p: 0.055,
+      icon: "\u2708",
+      title: "\u30A4\u30F3\u30D0\u30A6\u30F3\u30C9\u9700\u8981\u304C\u7206\u767A",
+      text: "\u8A2A\u65E5\u5BA2\u6570\u304C\u904E\u53BB\u6700\u9AD8\u3092\u66F4\u65B0\u3002\u30DB\u30C6\u30EB\u3068\u90FD\u5FC3\u5546\u696D\u306E\u53CE\u76CA\u304C\u8DF3\u306D\u4E0A\u304C\u3063\u3066\u3044\u308B\u3002",
+      apply: (g) => {
+        g.market.demand.hotel *= 1.35;
+        g.market.demand.retail *= 1.18;
+      }
+    },
+    {
+      id: "costup",
+      p: 0.06,
+      icon: "\u2692",
+      title: "\u5EFA\u8A2D\u8CC7\u6750\u4FA1\u683C\u304C\u9AD8\u9A30",
+      text: "\u92FC\u6750\u3068\u4EBA\u4EF6\u8CBB\u306E\u4E0A\u6607\u3067\u5EFA\u7BC9\u30B3\u30B9\u30C8\u304C\u4E00\u6BB5\u3068\u91CD\u304F\u306A\u3063\u305F\u3002\u9032\u884C\u4E2D\u306E\u6848\u4EF6\u306B\u3082\u5F71\u97FF\u304C\u51FA\u308B\u3002",
+      apply: (g) => {
+        g.market.costIdx *= 1.075;
+      }
+    },
+    {
+      id: "zoning",
+      p: 0.04,
+      icon: "\u{1F4DC}",
+      title: "\u90FD\u5E02\u8A08\u753B\u306E\u898F\u5236\u7DE9\u548C",
+      text: "\u5BB9\u7A4D\u7387\u306E\u5272\u5897\u5236\u5EA6\u304C\u62E1\u5145\u3055\u308C\u305F\u3002\u5927\u578B\u518D\u958B\u767A\u306E\u63A1\u7B97\u6027\u304C\u6539\u5584\u3059\u308B\u3002",
+      apply: (g) => {
+        for (const c of g.cells) if (c.far) c.far = Math.round(c.far * 1.06 / 10) * 10;
+      }
+    },
+    {
+      id: "quake",
+      p: 0.022,
+      minWeek: 156,
+      icon: "\u26A0",
+      title: "\u5927\u898F\u6A21\u5730\u9707\u304C\u767A\u751F",
+      text: "\u76F4\u63A5\u7684\u306A\u4EBA\u7684\u88AB\u5BB3\u306F\u9650\u5B9A\u7684\u3060\u3063\u305F\u304C\u3001\u5FA9\u65E7\u8CBB\u7528\u3068\u5DE5\u671F\u9045\u5EF6\u3001\u305D\u3057\u3066\u8CB7\u3044\u63A7\u3048\u304C\u907F\u3051\u3089\u308C\u306A\u3044\u3002",
+      apply: (g) => {
+        g.market.demand.resi *= 0.82;
+        g.market.costIdx *= 1.05;
+        for (const p of g.projects) p.delay = (p.delay || 0) + 6;
+      }
+    },
+    {
+      id: "remote",
+      p: 0.038,
+      icon: "\u{1F4BB}",
+      title: "\u30EA\u30E2\u30FC\u30C8\u30EF\u30FC\u30AF\u304C\u5B9A\u7740",
+      text: "\u30AA\u30D5\u30A3\u30B9\u9700\u8981\u304C\u69CB\u9020\u7684\u306B\u6E1B\u9000\u3059\u308B\u4E00\u65B9\u3001\u90CA\u5916\u4F4F\u5B85\u3068\u7269\u6D41\u3078\u306E\u8CC7\u91D1\u6D41\u5165\u304C\u7D9A\u304F\u3002",
+      apply: (g) => {
+        g.market.demand.office *= 0.86;
+        g.market.demand.house *= 1.12;
+        g.market.demand.logi *= 1.1;
+      }
+    },
+    {
+      id: "reitboom",
+      p: 0.045,
+      icon: "\u25CE",
+      title: "REIT\u5E02\u5834\u306B\u8CC7\u91D1\u6D41\u5165",
+      text: "\u6295\u8CC7\u6CD5\u4EBA\u306E\u53D6\u5F97\u610F\u6B32\u304C\u65FA\u76DB\u3067\u3001\u512A\u826F\u306A\u53CE\u76CA\u7269\u4EF6\u304C\u9AD8\u5024\u3067\u53D6\u5F15\u3055\u308C\u3066\u3044\u308B\u3002",
+      apply: (g) => {
+        g.market.capShift -= 4e-3;
+        g.market.priceIdx *= 1.05;
+      }
+    },
+    {
+      id: "tax",
+      p: 0.035,
+      icon: "\u{1F4CA}",
+      title: "\u4F4F\u5B85\u53D6\u5F97\u652F\u63F4\u7A0E\u5236\u306E\u62E1\u5145",
+      text: "\u4E00\u6B21\u53D6\u5F97\u5C64\u5411\u3051\u306E\u6E1B\u7A0E\u304C\u6C7A\u307E\u308A\u3001\u5206\u8B72\u4F4F\u5B85\u306E\u5951\u7D04\u304C\u52D5\u304D\u51FA\u3057\u305F\u3002",
+      apply: (g) => {
+        g.market.demand.resi *= 1.16;
+        g.market.demand.house *= 1.2;
+      }
+    },
+    {
+      id: "ecommerce",
+      p: 0.04,
+      icon: "\u{1F4E6}",
+      title: "EC\u5E02\u5834\u306E\u3055\u3089\u306A\u308B\u62E1\u5927",
+      text: "\u5927\u578B\u7269\u6D41\u65BD\u8A2D\u306E\u5F15\u304D\u5408\u3044\u304C\u5F37\u304F\u3001\u8CC3\u6599\u6C34\u6E96\u304C\u5207\u308A\u4E0A\u304C\u3063\u3066\u3044\u308B\u3002",
+      apply: (g) => {
+        g.market.demand.logi *= 1.18;
+      }
+    },
+    {
+      id: "labor",
+      p: 0.042,
+      icon: "\u{1F477}",
+      title: "\u5EFA\u8A2D\u6280\u80FD\u8005\u306E\u4E0D\u8DB3\u304C\u6DF1\u523B\u5316",
+      text: "\u8077\u4EBA\u306E\u78BA\u4FDD\u304C\u96E3\u3057\u304F\u3001\u5404\u793E\u306E\u5DE5\u671F\u304C\u5168\u822C\u306B\u4F38\u3073\u3066\u3044\u308B\u3002",
+      apply: (g) => {
+        g.market.costIdx *= 1.04;
+        for (const p of g.projects) if (Math.random() < 0.4) p.delay = (p.delay || 0) + 4;
+      }
+    }
+  ];
+  function rollShocks(g, rng) {
+    const out = [];
+    for (const s of SHOCKS) {
+      if (s.minWeek && g.week < s.minWeek) continue;
+      if (rng.chance(s.p / WEEKS_PER_QUARTER)) {
+        s.apply(g);
+        out.push(s);
+      }
+    }
+    return out;
+  }
+  function rollWeather(g, rng) {
+    const M = [
+      [["clear", 5], ["cloudy", 3], ["snow", 2]],
+      // 1月
+      [["clear", 5], ["cloudy", 3], ["snow", 2]],
+      // 2月
+      [["clear", 5], ["cloudy", 3], ["rain", 2]],
+      // 3月
+      [["clear", 6], ["cloudy", 3], ["rain", 2]],
+      // 4月
+      [["clear", 6], ["cloudy", 3], ["rain", 2]],
+      // 5月
+      [["clear", 3], ["cloudy", 4], ["rain", 5]],
+      // 6月（梅雨）
+      [["clear", 6], ["cloudy", 3], ["rain", 3]],
+      // 7月
+      [["clear", 7], ["cloudy", 2], ["rain", 2]],
+      // 8月
+      [["clear", 4], ["cloudy", 4], ["rain", 4]],
+      // 9月（台風）
+      [["clear", 6], ["cloudy", 3], ["rain", 2]],
+      // 10月
+      [["clear", 6], ["cloudy", 3], ["rain", 2]],
+      // 11月
+      [["clear", 5], ["cloudy", 3], ["snow", 2]]
+      // 12月
+    ][(g.month || 1) - 1];
+    return rng.weighted(M.map(([k, w]) => ({ k, w }))).k;
+  }
+
   // src/core/save.js
   var PREFIX = "skyline_v3_";
   var META = "skyline_v3_meta";
@@ -3654,6 +3902,16 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / raw, 0.4, 3.5);
         a.marketRent = Math.round(raw * a.rentIndex);
       }
+    },
+    // 建設費指数が片道で膨らんでいたセーブを、いまの落ち着きどころまで戻す。
+    // 旧版の建設費指数には下がる項が無く、長く遊ぶと価格指数から大きく乖離して
+    // どの用途でも残余法がマイナスになっていた。
+    // 平均回帰に任せると2年ほどかかるので、読み込み時に一度だけ寄せる
+    (g) => {
+      const m = g.market;
+      if (!m || !(m.costIdx > 0)) return;
+      const eq = costEquilibrium(g);
+      if (m.costIdx > eq * 1.12) m.costIdx = Math.round(eq * 1.06 * 1e3) / 1e3;
     }
   ];
   function migrate(g) {
@@ -5474,224 +5732,6 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return [(hh + 360) % 360, s * 100, l * 100];
   }
 
-  // src/sim/market.js
-  var PHASES = [
-    { lo: 0, name: "\u56DE\u5FA9", tone: "cyan", desc: "\u5E95\u3092\u6253\u3063\u305F\u5E02\u6CC1\u304C\u4E0A\u5411\u304D\u59CB\u3081\u3066\u3044\u308B\u3002" },
-    { lo: 0.25, name: "\u597D\u6CC1", tone: "green", desc: "\u5730\u4FA1\u3082\u8CC3\u6599\u3082\u4E0A\u6607\u57FA\u8ABF\u3002\u7528\u5730\u306E\u53D6\u308A\u5408\u3044\u304C\u6FC0\u3057\u3044\u3002" },
-    { lo: 0.55, name: "\u904E\u71B1", tone: "amber", desc: "\u53D6\u5F97\u4FA1\u683C\u304C\u7406\u8AD6\u5024\u3092\u8D85\u3048\u3064\u3064\u3042\u308B\u3002\u9AD8\u5024\u63B4\u307F\u306B\u6CE8\u610F\u3002" },
-    { lo: 0.72, name: "\u5F8C\u9000", tone: "red", desc: "\u5951\u7D04\u304C\u920D\u308A\u3001\u91D1\u878D\u6A5F\u95A2\u306E\u59FF\u52E2\u3082\u53B3\u3057\u304F\u306A\u3063\u3066\u304D\u305F\u3002" },
-    { lo: 0.88, name: "\u4E0D\u6CC1", tone: "grey", desc: "\u5728\u5EAB\u304C\u91CD\u3044\u3002\u305F\u3060\u3057\u4ED5\u8FBC\u307F\u306E\u597D\u6A5F\u3067\u3082\u3042\u308B\u3002" }
-  ];
-  function phaseOf(cycle) {
-    let p = PHASES[0];
-    for (const q of PHASES) if (cycle >= q.lo) p = q;
-    return p;
-  }
-  var K_PRICE = perWeek(0.17);
-  var K_RATE = perWeek(0.22);
-  var K_DEMAND = perWeek(0.55);
-  function stepMarket(g, rng) {
-    const m = g.market;
-    const d = g.diff;
-    const W = WEEKS_PER_QUARTER;
-    m.cycle = (m.cycle + 1 / 520 + rng.range(-6e-4, 8e-4)) % 1;
-    const ph = phaseOf(m.cycle);
-    m.phaseName = ph.name;
-    m.phaseTone = ph.tone;
-    m.phaseDesc = ph.desc;
-    const target = 0.86 + Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2) * 0.26 + 0.08 + g.week * 23e-5;
-    m.priceIdx += (target - m.priceIdx) * K_PRICE + rng.normal(0, 34e-4 * d.costVol);
-    m.priceIdx = clamp(m.priceIdx, 0.55, 2.6);
-    const costPush = (3e-3 + Math.max(0, Math.sin(m.cycle * Math.PI * 2)) * 8e-3) / W;
-    m.costIdx *= 1 + costPush + rng.normal(0, 25e-4 * d.costVol);
-    m.costIdx = clamp(m.costIdx, 0.85, 3.2);
-    const rTarget = d.rate + Math.max(0, m.priceIdx - 1) * 0.022 + (ph.name === "\u904E\u71B1" ? 6e-3 : 0);
-    m.rate += (rTarget - m.rate) * K_RATE + rng.normal(0, 34e-5);
-    m.rate = clamp(m.rate, 2e-3, 0.075);
-    const base = d.demand;
-    const c = Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2);
-    const targets = {
-      office: base * (1 + c * 0.24),
-      resi: base * (1 + c * 0.15),
-      rental: base * (1 + c * 0.07),
-      retail: base * (1 + c * 0.2),
-      hotel: base * (1 + Math.sin(m.cycle * Math.PI * 2 + 1.1) * 0.34),
-      logi: 1.04 + g.week * 17e-5,
-      house: base * (1 + c * 0.1)
-    };
-    const lim = {
-      office: [0.55, 1.6],
-      resi: [0.55, 1.55],
-      rental: [0.7, 1.35],
-      retail: [0.5, 1.55],
-      hotel: [0.4, 1.9],
-      logi: [0.75, 1.5],
-      house: [0.6, 1.4]
-    };
-    for (const k in targets) {
-      const v = m.demand[k] + (targets[k] - m.demand[k]) * K_DEMAND + rng.normal(0, 8e-3);
-      m.demand[k] = clamp(v, lim[k][0], lim[k][1]);
-    }
-    m.demand.mixed = (m.demand.office + m.demand.retail + m.demand.resi) / 3;
-    m.sentiment = clamp01(m.sentiment + (0.5 + c * 0.32 - m.sentiment) * K_DEMAND + rng.normal(0, 0.012));
-    m.capShift = clamp((1 - m.priceIdx) * 6e-3 + (m.rate - d.rate) * 0.35, -8e-3, 0.014);
-    return ph;
-  }
-  var SHOCKS = [
-    {
-      id: "crisis",
-      p: 0.03,
-      minWeek: 104,
-      icon: "\u{1F4C9}",
-      title: "\u4E16\u754C\u7684\u306A\u91D1\u878D\u4E0D\u5B89",
-      text: "\u6D77\u5916\u767A\u306E\u4FE1\u7528\u4E0D\u5B89\u306B\u3088\u308A\u4E0D\u52D5\u7523\u4FA1\u683C\u304C\u6025\u843D\u3002\u91D1\u878D\u6A5F\u95A2\u306E\u878D\u8CC7\u59FF\u52E2\u3082\u4E00\u6C17\u306B\u53B3\u683C\u5316\u3057\u305F\u3002",
-      apply: (g) => {
-        g.market.priceIdx *= 0.86;
-        g.market.rate += 0.012;
-        for (const k in g.market.demand) g.market.demand[k] *= 0.85;
-      }
-    },
-    {
-      id: "inbound",
-      p: 0.055,
-      icon: "\u2708",
-      title: "\u30A4\u30F3\u30D0\u30A6\u30F3\u30C9\u9700\u8981\u304C\u7206\u767A",
-      text: "\u8A2A\u65E5\u5BA2\u6570\u304C\u904E\u53BB\u6700\u9AD8\u3092\u66F4\u65B0\u3002\u30DB\u30C6\u30EB\u3068\u90FD\u5FC3\u5546\u696D\u306E\u53CE\u76CA\u304C\u8DF3\u306D\u4E0A\u304C\u3063\u3066\u3044\u308B\u3002",
-      apply: (g) => {
-        g.market.demand.hotel *= 1.35;
-        g.market.demand.retail *= 1.18;
-      }
-    },
-    {
-      id: "costup",
-      p: 0.06,
-      icon: "\u2692",
-      title: "\u5EFA\u8A2D\u8CC7\u6750\u4FA1\u683C\u304C\u9AD8\u9A30",
-      text: "\u92FC\u6750\u3068\u4EBA\u4EF6\u8CBB\u306E\u4E0A\u6607\u3067\u5EFA\u7BC9\u30B3\u30B9\u30C8\u304C\u4E00\u6BB5\u3068\u91CD\u304F\u306A\u3063\u305F\u3002\u9032\u884C\u4E2D\u306E\u6848\u4EF6\u306B\u3082\u5F71\u97FF\u304C\u51FA\u308B\u3002",
-      apply: (g) => {
-        g.market.costIdx *= 1.075;
-      }
-    },
-    {
-      id: "zoning",
-      p: 0.04,
-      icon: "\u{1F4DC}",
-      title: "\u90FD\u5E02\u8A08\u753B\u306E\u898F\u5236\u7DE9\u548C",
-      text: "\u5BB9\u7A4D\u7387\u306E\u5272\u5897\u5236\u5EA6\u304C\u62E1\u5145\u3055\u308C\u305F\u3002\u5927\u578B\u518D\u958B\u767A\u306E\u63A1\u7B97\u6027\u304C\u6539\u5584\u3059\u308B\u3002",
-      apply: (g) => {
-        for (const c of g.cells) if (c.far) c.far = Math.round(c.far * 1.06 / 10) * 10;
-      }
-    },
-    {
-      id: "quake",
-      p: 0.022,
-      minWeek: 156,
-      icon: "\u26A0",
-      title: "\u5927\u898F\u6A21\u5730\u9707\u304C\u767A\u751F",
-      text: "\u76F4\u63A5\u7684\u306A\u4EBA\u7684\u88AB\u5BB3\u306F\u9650\u5B9A\u7684\u3060\u3063\u305F\u304C\u3001\u5FA9\u65E7\u8CBB\u7528\u3068\u5DE5\u671F\u9045\u5EF6\u3001\u305D\u3057\u3066\u8CB7\u3044\u63A7\u3048\u304C\u907F\u3051\u3089\u308C\u306A\u3044\u3002",
-      apply: (g) => {
-        g.market.demand.resi *= 0.82;
-        g.market.costIdx *= 1.05;
-        for (const p of g.projects) p.delay = (p.delay || 0) + 6;
-      }
-    },
-    {
-      id: "remote",
-      p: 0.038,
-      icon: "\u{1F4BB}",
-      title: "\u30EA\u30E2\u30FC\u30C8\u30EF\u30FC\u30AF\u304C\u5B9A\u7740",
-      text: "\u30AA\u30D5\u30A3\u30B9\u9700\u8981\u304C\u69CB\u9020\u7684\u306B\u6E1B\u9000\u3059\u308B\u4E00\u65B9\u3001\u90CA\u5916\u4F4F\u5B85\u3068\u7269\u6D41\u3078\u306E\u8CC7\u91D1\u6D41\u5165\u304C\u7D9A\u304F\u3002",
-      apply: (g) => {
-        g.market.demand.office *= 0.86;
-        g.market.demand.house *= 1.12;
-        g.market.demand.logi *= 1.1;
-      }
-    },
-    {
-      id: "reitboom",
-      p: 0.045,
-      icon: "\u25CE",
-      title: "REIT\u5E02\u5834\u306B\u8CC7\u91D1\u6D41\u5165",
-      text: "\u6295\u8CC7\u6CD5\u4EBA\u306E\u53D6\u5F97\u610F\u6B32\u304C\u65FA\u76DB\u3067\u3001\u512A\u826F\u306A\u53CE\u76CA\u7269\u4EF6\u304C\u9AD8\u5024\u3067\u53D6\u5F15\u3055\u308C\u3066\u3044\u308B\u3002",
-      apply: (g) => {
-        g.market.capShift -= 4e-3;
-        g.market.priceIdx *= 1.05;
-      }
-    },
-    {
-      id: "tax",
-      p: 0.035,
-      icon: "\u{1F4CA}",
-      title: "\u4F4F\u5B85\u53D6\u5F97\u652F\u63F4\u7A0E\u5236\u306E\u62E1\u5145",
-      text: "\u4E00\u6B21\u53D6\u5F97\u5C64\u5411\u3051\u306E\u6E1B\u7A0E\u304C\u6C7A\u307E\u308A\u3001\u5206\u8B72\u4F4F\u5B85\u306E\u5951\u7D04\u304C\u52D5\u304D\u51FA\u3057\u305F\u3002",
-      apply: (g) => {
-        g.market.demand.resi *= 1.16;
-        g.market.demand.house *= 1.2;
-      }
-    },
-    {
-      id: "ecommerce",
-      p: 0.04,
-      icon: "\u{1F4E6}",
-      title: "EC\u5E02\u5834\u306E\u3055\u3089\u306A\u308B\u62E1\u5927",
-      text: "\u5927\u578B\u7269\u6D41\u65BD\u8A2D\u306E\u5F15\u304D\u5408\u3044\u304C\u5F37\u304F\u3001\u8CC3\u6599\u6C34\u6E96\u304C\u5207\u308A\u4E0A\u304C\u3063\u3066\u3044\u308B\u3002",
-      apply: (g) => {
-        g.market.demand.logi *= 1.18;
-      }
-    },
-    {
-      id: "labor",
-      p: 0.042,
-      icon: "\u{1F477}",
-      title: "\u5EFA\u8A2D\u6280\u80FD\u8005\u306E\u4E0D\u8DB3\u304C\u6DF1\u523B\u5316",
-      text: "\u8077\u4EBA\u306E\u78BA\u4FDD\u304C\u96E3\u3057\u304F\u3001\u5404\u793E\u306E\u5DE5\u671F\u304C\u5168\u822C\u306B\u4F38\u3073\u3066\u3044\u308B\u3002",
-      apply: (g) => {
-        g.market.costIdx *= 1.04;
-        for (const p of g.projects) if (Math.random() < 0.4) p.delay = (p.delay || 0) + 4;
-      }
-    }
-  ];
-  function rollShocks(g, rng) {
-    const out = [];
-    for (const s of SHOCKS) {
-      if (s.minWeek && g.week < s.minWeek) continue;
-      if (rng.chance(s.p / WEEKS_PER_QUARTER)) {
-        s.apply(g);
-        out.push(s);
-      }
-    }
-    return out;
-  }
-  function rollWeather(g, rng) {
-    const M = [
-      [["clear", 5], ["cloudy", 3], ["snow", 2]],
-      // 1月
-      [["clear", 5], ["cloudy", 3], ["snow", 2]],
-      // 2月
-      [["clear", 5], ["cloudy", 3], ["rain", 2]],
-      // 3月
-      [["clear", 6], ["cloudy", 3], ["rain", 2]],
-      // 4月
-      [["clear", 6], ["cloudy", 3], ["rain", 2]],
-      // 5月
-      [["clear", 3], ["cloudy", 4], ["rain", 5]],
-      // 6月（梅雨）
-      [["clear", 6], ["cloudy", 3], ["rain", 3]],
-      // 7月
-      [["clear", 7], ["cloudy", 2], ["rain", 2]],
-      // 8月
-      [["clear", 4], ["cloudy", 4], ["rain", 4]],
-      // 9月（台風）
-      [["clear", 6], ["cloudy", 3], ["rain", 2]],
-      // 10月
-      [["clear", 6], ["cloudy", 3], ["rain", 2]],
-      // 11月
-      [["clear", 5], ["cloudy", 3], ["snow", 2]]
-      // 12月
-    ][(g.month || 1) - 1];
-    return rng.weighted(M.map(([k, w]) => ({ k, w }))).k;
-  }
-
   // src/sim/sales.js
   function stepInventory(g, rng, news) {
     const p = orgPower(g);
@@ -5854,6 +5894,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
 
   // src/sim/ma.js
+  var RISK_WINDOW = 156;
   var MA_RISKS = [
     { id: "debt", name: "\u7C3F\u5916\u50B5\u52D9", p: 0.16, sev: 0.9, desc: "\u6C7A\u7B97\u66F8\u306B\u73FE\u308C\u306A\u3044\u50B5\u52D9\u3002\u8CB7\u53CE\u5F8C\u306B\u7279\u5225\u640D\u5931\u3068\u3057\u3066\u8868\u9762\u5316\u3059\u308B\u3002" },
     { id: "window", name: "\u4F1A\u8A08\u51E6\u7406\u306E\u4E0D\u9069\u5207\u3055", p: 0.12, sev: 0.8, desc: "\u58F2\u4E0A\u306E\u524D\u5012\u3057\u8A08\u4E0A\u306A\u3069\u3002\u4FEE\u6B63\u306B\u3088\u308A\u5229\u76CA\u304C\u5927\u5E45\u306B\u6E1B\u308B\u3002" },
@@ -5969,7 +6010,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     g.acquisitions.push(a);
     const i = g.maTargets.indexOf(t);
     if (i >= 0) g.maTargets.splice(i, 1);
-    g.company.brand = clamp(g.company.brand + (t.rev > 2e4 ? 3 : 1.4), 0, 100);
+    g.company.brand = clamp(g.company.brand + (t.rev > 2e4 ? 3 : 1.4) + (t.effect.brand || 0), 0, 100);
     news.push({
       icon: "\u{1F91D}",
       type: "ma",
@@ -5994,7 +6035,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     for (const a of g.acquisitions) {
       if (a.failed) continue;
       const before = a.integration;
-      a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER * (a.risks.some((r) => r.id === "culture") ? 0.55 : 1));
+      a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER);
       if (before < 1 && a.integration >= 1) {
         news.push({ icon: "\u{1F517}", type: "ma", text: `${a.name}\u306E\u7D71\u5408\uFF08PMI\uFF09\u304C\u5B8C\u4E86\u3002\u30B7\u30CA\u30B8\u30FC\u304C\u5B8C\u5168\u306B\u767A\u73FE\u3057\u305F\u3002` });
       }
@@ -6014,8 +6055,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       for (const r of a.risks) {
         if (r.fired) continue;
         const window2 = g.week - a.acquiredWeek;
-        if (window2 > 156) continue;
-        if (!rng.chance(0.19 / WEEKS_PER_QUARTER)) continue;
+        if (window2 > RISK_WINDOW) continue;
+        const base = (0.2 + (r.sev ?? 0.6) * 0.2) * (r.found ? 0.6 : 1);
+        if (!rng.chance(1 - Math.pow(1 - base, 1 / RISK_WINDOW))) continue;
         r.fired = true;
         const mitigated = r.found ? 0.45 : 1;
         switch (r.id) {
@@ -7464,6 +7506,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const acc = Math.min(0.92, 0.35 + p.land.quality / 220);
       const est = Math.round(plan.residualLand * 0.86);
       const spread = Math.round(est * (0.42 - acc * 0.3));
+      const bidBase = Math.max(0, Math.min(plan.residualLand * 0.82, listing.askPrice));
+      const bidMax = Math.max(listing.askPrice, Math.max(0, plan.residualLand));
       return `
     <div class="grid3" style="margin-bottom:14px">
       ${mini("\u58F2\u51FA\u4FA1\u683C", money(listing.askPrice, { unit: false }), moneyUnit(listing.askPrice))}
@@ -7534,6 +7578,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ${kv("\u571F\u5730\u306B\u6255\u3048\u308B\u4E0A\u9650\uFF08\u6B8B\u4F59\u6CD5\uFF09", `<b style="color:var(--gold)">${money(plan.residualLand)}</b>`, "big")}
         ${kv("\u60F3\u5B9A\u4E8B\u696D\u5229\u76CA", `<span class="${plan.profit >= 0 ? "up" : "down"}">${money(plan.profit, { sign: true })}\uFF08${pct(plan.margin)}\uFF09</span>`)}
         <div class="hint">\u76EE\u6A19\u5229\u76CA\u738715%\u3092\u78BA\u4FDD\u3057\u305F\u5834\u5408\u306B\u571F\u5730\u3078\u652F\u6255\u3048\u308B\u91D1\u984D\u3002\u3053\u308C\u3092\u8D85\u3048\u3066\u5165\u672D\u3059\u308B\u3068\u9AD8\u5024\u63B4\u307F\u306B\u306A\u308B\u3002</div>
+        ${plan.residualLand <= 0 ? `<div class="hint" style="color:var(--red)">\u3053\u306E\u7528\u9014\u3067\u306F\u3001\u571F\u5730\u304C\u7121\u511F\u3067\u3082\u63A1\u7B97\u306B\u4E57\u3089\u306A\u3044\u3002\u7528\u9014\u9069\u5408${(d.fit[use] ?? 0.3).toFixed(2)}\u306E\u3053\u306E\u571F\u5730\u306B${USES[use].name}\u306F\u5408\u3063\u3066\u3044\u306A\u3044${g.market.costIdx > 1.25 ? `\u3046\u3048\u3001\u5EFA\u8A2D\u8CBB\u6307\u6570\u304C${(g.market.costIdx * 100).toFixed(0)}\u3068\u9AD8\u6B62\u307E\u308A\u3057\u3066\u3044\u308B` : ""}\u3002\u7528\u9014\u3092\u5909\u3048\u308B\u304B\u3001\u5E02\u6CC1\u306E\u843D\u3061\u7740\u304D\u3092\u5F85\u3064\u3053\u3068\u3002</div>` : ""}
       </div>
       <div class="card" style="margin-top:8px">
         ${kv("\u4ED6\u793E\u306E\u60F3\u5B9A\u5165\u672D\u30EC\u30F3\u30B8", `${money(Math.max(0, est - spread))} \u301C ${money(est + spread)}`)}
@@ -7555,9 +7600,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <div class="sec-t"><span>\u5165\u672D</span><span class="note">\u6295\u8CC7\u4F59\u529B ${money(power)}</span></div>
       <div class="field">
         <label>\u5165\u672D\u91D1\u984D\uFF08\u5104\u5186\uFF09</label>
-        <input type="number" id="inpBid" value="${Math.round((listing.bid ? listing.bid.amount : Math.min(plan.residualLand * 0.82, listing.askPrice)) / 100)}" step="1" min="0">
+        <input type="number" id="inpBid" value="${Math.round((listing.bid ? listing.bid.amount : bidBase) / 100)}" step="1" min="0">
       </div>
-      <input type="range" id="rngBid" min="${Math.round(listing.appraisal * 0.4 / 100)}" max="${Math.round(Math.max(listing.askPrice, plan.residualLand) * 1.35 / 100)}" value="${Math.round((listing.bid ? listing.bid.amount : Math.min(plan.residualLand * 0.82, listing.askPrice)) / 100)}" style="width:100%;accent-color:var(--gold)">
+      <input type="range" id="rngBid" min="${Math.round(listing.appraisal * 0.4 / 100)}" max="${Math.round(bidMax * 1.35 / 100)}" value="${Math.round((listing.bid ? listing.bid.amount : bidBase) / 100)}" style="width:100%;accent-color:var(--gold)">
       <div id="bidInfo" class="hint"></div>
       <div class="btnrow">
         ${listing.kind === "nego" ? `<button class="btn primary" data-buy="1">${money(listing.askPrice)}\u3067\u5373\u6642\u53D6\u5F97\u3059\u308B</button>` : `<button class="btn primary" data-bid="1">\u3053\u306E\u91D1\u984D\u3067\u5165\u672D\u3059\u308B</button>`}

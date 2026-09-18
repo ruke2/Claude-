@@ -12,6 +12,22 @@ import { cultureEffects } from './culture.js';
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
 /** 用途別のキャップレート・スプレッド（リスクプレミアム） */
 export const CAP_SPREAD = { office: 0, retail: 0.0065, hotel: 0.0105, logi: 0.0018, rental: 0.0, resi: 0, mixed: 0.0025, house: 0.004 };
+/**
+ * 地区適合から収益倍率を出す。
+ * 幅を広く取ることで「地区ごとに本命の用途が1つ決まる」設計が成立する。
+ * 適合1.00 → 1.06倍、0.80 → 0.90倍、0.50 → 0.66倍、0.10 → 0.34倍。
+ */
+export const FIT_MUL = fit => 0.26 + fit * 0.80;
+
+/**
+ * 分譲の販売手数料率。
+ * 販売子会社（saleSpeed / feeCut）を持つと外部への手数料流出が止まる。
+ */
+export const SALE_FEE = 0.04;
+export function saleFeeRate(g) {
+  return clamp(SALE_FEE - subEffect(g, 'feeCut'), 0.012, SALE_FEE);
+}
+
 /** 用途別の階高(m) */
 export const FLOOR_H = { office: 4.1, resi: 3.25, rental: 3.15, retail: 5.4, hotel: 3.4, logi: 7.2, house: 3.0, mixed: 3.9 };
 
@@ -64,7 +80,10 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
 
   // --- 収入 ---
   const brandMul = 1 + (g.company.brand - 40) / 420;
-  const fitMul = 0.74 + fit * 0.28;                  // 立地に合わない用途は収益が落ちる
+  // 立地に合わない用途は収益が大きく落ちる。
+  // 以前は 0.74〜1.02 の幅しかなく、適合0.3の用途でも相場の8割が取れてしまい、
+  // 素の賃料がいちばん高い用途（ホテル）がどの地区でも勝っていた
+  const fitMul = FIT_MUL(fit);
   const bf = brandEffect(g, opt.brandId);            // 自社ブランドによる上乗せ
   const out = { gfa, floors, heightM, sellable, buildCost, weeks, fit, use: useId, grade: gradeId, farUse };
 
@@ -100,11 +119,12 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   out.landCost = opt.landCost ?? landAppraisal(g, c);
   out.totalCost = out.landCost + out.buildCost;
   out.grossValue = (out.saleRevenue || 0) + (out.assetValue || 0);
-  out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * 0.04;
+  const fee = saleFeeRate(g);
+  out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * fee;
   out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
   out.yieldOnCost = out.noi ? out.noi / Math.max(1, out.totalCost) : null;
   // 土地に払える上限（残余法：目標利益率15%を確保する前提）
-  out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * 0.04);
+  out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * fee);
   return out;
 }
 
@@ -174,7 +194,7 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
     const U = USES[seg.use];
     const area = plate * seg.floors;
     const fit = d.fit[seg.use] ?? 0.3;
-    const fitMul = 0.74 + fit * 0.28;
+    const fitMul = FIT_MUL(fit);
     const fmul = stackFloorMul(seg.use, from, to, totalFloors);
     const usable = area * U.efficiency;
 
@@ -249,10 +269,11 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
   out.landCost = opt.landCost ?? landAppraisal(g, c);
   out.totalCost = out.landCost + out.buildCost;
   out.grossValue = out.saleRevenue + out.assetValue;
-  out.profit = out.grossValue - out.totalCost - out.saleRevenue * 0.04;
+  const fee = saleFeeRate(g);
+  out.profit = out.grossValue - out.totalCost - out.saleRevenue * fee;
   out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
   out.yieldOnCost = noi ? noi / Math.max(1, out.totalCost) : null;
-  out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * 0.04);
+  out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * fee);
   return out;
 }
 
@@ -311,5 +332,7 @@ export function currentNOI(g, a) {
   const dem = g.market.demand[a.use] ?? 1;
   const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
   const opex = 0.24 - subEffect(g, 'feeRate') * 2;
-  return Math.round(gross * (1 - clamp(opex, 0.16, 0.30)) * (a.use === 'hotel' ? (0.7 + dem * 0.35) : 1));
+  // ホテルは運営会社（hotelNoi）を傘下に持つと運営効率が上がる
+  const hotelMul = a.use === 'hotel' ? (0.7 + dem * 0.35) * (1 + subEffect(g, 'hotelNoi')) : 1;
+  return Math.round(gross * (1 - clamp(opex, 0.16, 0.30)) * hotelMul);
 }

@@ -11,6 +11,7 @@ import { createGame, syncUid, defaultRankPay } from './state.js';
 import { RANKS } from '../data/hrdata.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
+import { costEquilibrium } from '../sim/market.js';
 import { clamp } from './format.js';
 import { syncCalendar } from './time.js';
 
@@ -146,6 +147,17 @@ const STEPS = [
       // 相場も新しい基準で引き直す。そうしないと読み込み直後だけ市場比が狂って見える
       a.marketRent = Math.round(raw * a.rentIndex);
     }
+  },
+
+  // 建設費指数が片道で膨らんでいたセーブを、いまの落ち着きどころまで戻す。
+  // 旧版の建設費指数には下がる項が無く、長く遊ぶと価格指数から大きく乖離して
+  // どの用途でも残余法がマイナスになっていた。
+  // 平均回帰に任せると2年ほどかかるので、読み込み時に一度だけ寄せる
+  g => {
+    const m = g.market;
+    if (!m || !(m.costIdx > 0)) return;
+    const eq = costEquilibrium(g);
+    if (m.costIdx > eq * 1.12) m.costIdx = Math.round(eq * 1.06 * 1000) / 1000;
   },
 ];
 

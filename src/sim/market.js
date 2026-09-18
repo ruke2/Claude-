@@ -22,6 +22,19 @@ export function phaseOf(cycle) {
 const K_PRICE = perWeek(0.17);
 const K_RATE = perWeek(0.22);
 const K_DEMAND = perWeek(0.55);
+const K_COST = perWeek(0.14);
+
+/**
+ * 建設費指数の落ち着きどころ。
+ * 実質の上昇トレンド × 価格指数への連動 × 好況局面の資材高。
+ * 価格指数に紐づけておかないと、建設費だけが片道で膨らんで
+ * どの用途でも残余法がマイナスになる。
+ */
+export function costEquilibrium(g) {
+  const costTrend = 1 + g.week * 0.00016;                                   // 年 約+0.8%
+  const boom = Math.max(0, Math.sin(g.market.cycle * Math.PI * 2)) * 0.20;  // 好況局面の資材高
+  return costTrend * (0.66 + g.market.priceIdx * 0.34) * (1 + boom);
+}
 
 /** 毎週の市況更新 */
 export function stepMarket(g, rng) {
@@ -39,10 +52,12 @@ export function stepMarket(g, rng) {
   m.priceIdx += (target - m.priceIdx) * K_PRICE + rng.normal(0, 0.0034 * d.costVol);
   m.priceIdx = clamp(m.priceIdx, 0.55, 2.6);
 
-  // 建設費：長期的に上がり続ける。好況局面で加速
-  const costPush = (0.0030 + Math.max(0, Math.sin(m.cycle * Math.PI * 2)) * 0.008) / W;
-  m.costIdx *= 1 + costPush + rng.normal(0, 0.0025 * d.costVol);
-  m.costIdx = clamp(m.costIdx, 0.85, 3.2);
+  // 建設費：ゆるやかな実質トレンドに乗りつつ、価格指数から大きくは離れない。
+  // 以前は単調増加で下がる項が無く、長く遊ぶほど建設費だけが膨らんで
+  // どの用途でも「土地に払える上限」がマイナスになっていた
+  const costTarget = costEquilibrium(g);
+  m.costIdx += (costTarget - m.costIdx) * K_COST + rng.normal(0, 0.0022 * d.costVol);
+  m.costIdx = clamp(m.costIdx, 0.75, 2.2);
 
   // 長期金利
   const rTarget = d.rate + Math.max(0, m.priceIdx - 1) * 0.022 + (ph.name === '過熱' ? 0.006 : 0);
@@ -57,7 +72,10 @@ export function stepMarket(g, rng) {
     resi: base * (1 + c * 0.15),
     rental: base * (1 + c * 0.07),
     retail: base * (1 + c * 0.2),
-    hotel: base * (1 + Math.sin(m.cycle * Math.PI * 2 + 1.1) * 0.34),
+    // ホテルは振幅がいちばん大きく、インバウンドの回復が早いぶん位相が半年ほど先行する。
+    // 以前は位相が +1.1rad で他用途とほぼ逆相になっており、
+    // オフィスが底を打つ不況期にホテルだけが突出して「どの地区でもホテルが勝つ」状態になっていた
+    hotel: base * (1 + Math.sin(m.cycle * Math.PI * 2 - Math.PI / 2 + 0.5) * 0.34),
     logi: 1.04 + g.week * 0.00017,
     house: base * (1 + c * 0.1),
   };

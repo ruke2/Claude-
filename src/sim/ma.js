@@ -8,6 +8,9 @@ import { orgPower } from './hr.js';
 import { DEPTS } from '../data/hrdata.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
+/** リスクが顕在化しうる期間（買収後3年） */
+const RISK_WINDOW = 156;
+
 /** 買収先に潜むリスク */
 export const MA_RISKS = [
   { id: 'debt',     name: '簿外債務',           p: 0.16, sev: 0.9, desc: '決算書に現れない債務。買収後に特別損失として表面化する。' },
@@ -99,7 +102,7 @@ export function acquire(g, t, price, rng, news) {
   g.acquisitions.push(a);
   const i = g.maTargets.indexOf(t);
   if (i >= 0) g.maTargets.splice(i, 1);
-  g.company.brand = clamp(g.company.brand + (t.rev > 20000 ? 3 : 1.4), 0, 100);
+  g.company.brand = clamp(g.company.brand + (t.rev > 20000 ? 3 : 1.4) + (t.effect.brand || 0), 0, 100);
   news.push({
     icon: '🤝', type: 'ma',
     text: `${t.label}「${t.name}」を${Math.round(price / 100).toLocaleString()}億円で買収した。のれん${Math.round(goodwill / 100).toLocaleString()}億円を計上。`,
@@ -128,7 +131,11 @@ export function stepMA(g, rng, news) {
   for (const a of g.acquisitions) {
     if (a.failed) continue;
     const before = a.integration;
-    a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER * (a.risks.some(r => r.id === 'culture') ? 0.55 : 1));
+    // 統合速度は integSpeed だけで決める。
+    // 以前はここで「culture リスクを抱えているか」を見て0.55倍していたが、
+    // 未発覚・未発火のリスクでも一律に半減させていたうえ、
+    // 実際に顕在化したときの integSpeed *= 0.6 と二重に効いていた
+    a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER);
     if (before < 1 && a.integration >= 1) {
       news.push({ icon: '🔗', type: 'ma', text: `${a.name}の統合（PMI）が完了。シナジーが完全に発現した。` });
     }
@@ -151,11 +158,15 @@ export function stepMA(g, rng, news) {
     }
 
     // --- リスクの顕在化 ---
+    // 「買収後3年間で通算 base の確率で起きる」を週次に割り戻す。
+    // 以前は週あたり 0.19/13 を156週かけていて、通算9割が発火していた
     for (const r of a.risks) {
       if (r.fired) continue;
       const window = g.week - a.acquiredWeek;
-      if (window > 156) continue;
-      if (!rng.chance(0.19 / WEEKS_PER_QUARTER)) continue;
+      if (window > RISK_WINDOW) continue;
+      // 事前に把握できていたリスクは、契約で手当てできるぶん起きにくい
+      const base = (0.20 + (r.sev ?? 0.6) * 0.20) * (r.found ? 0.6 : 1);
+      if (!rng.chance(1 - Math.pow(1 - base, 1 / RISK_WINDOW))) continue;
       r.fired = true;
       const mitigated = r.found ? 0.45 : 1;     // 事前に把握していれば被害は小さい
       switch (r.id) {

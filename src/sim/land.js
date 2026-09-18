@@ -4,7 +4,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, TERRAIN, USES } from '../data/city.js';
 import { uid } from '../core/state.js';
-import { landAppraisal, devPlan, bestUseFit } from './valuation.js';
+import { landAppraisal, devPlan, bestUseFit, subEffect } from './valuation.js';
 import { orgPower } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 
@@ -32,24 +32,44 @@ const KINDS = {
 };
 export { KINDS as LISTING_KINDS };
 
+/**
+ * 売却情報に出す区画の規模帯（想定地価・百万円）。
+ * 区画を一様に引くと、区画数の多い地区に引きずられて
+ * 大型案件が出る頻度が下がってしまう。面積ではなく金額で帯を切る。
+ */
+const SIZE_BANDS = [
+  { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・北野・城東）
+  { min: 1500, max: 6000, w: 2.7 },       // 中口（15〜60億／神楽坂・桜川・藤ヶ丘・空港）
+  { min: 6000, max: 20000, w: 2.1 },      // 大口（60〜200億／汐見・南雲）
+  { min: 20000, max: Infinity, w: 1.7 },  // 特大（200億〜／常盤・港南）
+];
+
 /** 毎週の売却情報生成 */
 export function generateListings(g, rng, news) {
   const p = orgPower(g);
   // 用地部の情報力で入手できる案件数が増える
-  const infoPower = p.land.quality / 100 + p.land.capacity / 26 + (g.acquisitions.some(a => a.kind === 'broker' && !a.failed) ? 0.5 : 0);
+  // 販売仲介会社を傘下に持つと持ち込み件数が増える（landInfo）。
+  // 以前は「持っているかどうか」の判定で、統合の進み具合も健全度も反映していなかった
+  const infoPower = p.land.quality / 100 + p.land.capacity / 26 + subEffect(g, 'landInfo') * 2.5;
   // 週あたりの持ち込み件数（端数は確率的に切り上げる）
   const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
   let n = Math.floor(rate);
   if (rng.next() < rate - n) n++;
   n = clamp(n, 0, 3);
-  if (g.listings.length >= 16) return;
+  if (g.listings.length >= 20) return;
   const pool = g.cells.filter(c =>
     c.terrain === TERRAIN.LOT && c.d && !c.onSale && c.owner !== 'player' && !c.projectId && !c.assetId && !c.invId);
   if (!pool.length) return;
 
   for (let i = 0; i < n; i++) {
+    // 先に金額の帯を選び、その中から区画を選ぶ。
+    // 区画を一様に引くと、小口の区画が多い地区が増えたときに
+    // 大型案件がほとんど出てこなくなる
+    const band = rng.weighted(SIZE_BANDS);
+    let scope = pool.filter(c => (c.baseValue || 0) >= band.min && (c.baseValue || 0) < band.max);
+    if (!scope.length) scope = pool;
     // 更地 > 築古ビル > その他 の順に出やすい
-    const cand = rng.shuffle(pool).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
+    const cand = rng.shuffle(scope).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
     const c = rng.pick(cand);
     if (!c || c.onSale) continue;
 

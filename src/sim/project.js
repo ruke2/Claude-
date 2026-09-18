@@ -4,7 +4,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { uid, makeBuilding } from '../core/state.js';
-import { devPlan, devPlanStack, subEffect, marketRentRaw } from './valuation.js';
+import { devPlan, devPlanStack, subEffect, marketRentRaw, saleFeeRate } from './valuation.js';
 import { riskImpact } from './land.js';
 import { orgPower, projectCapacity } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
@@ -26,7 +26,7 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
   plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
   plan.grossValue = plan.saleRevenue + plan.assetValue;
-  plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * 0.04;
+  plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * saleFeeRate(g);
   plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
   plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
   return plan;
@@ -48,7 +48,7 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
   plan.grossValue = (plan.saleRevenue || 0) + (plan.assetValue || 0);
-  plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * 0.04;
+  plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * saleFeeRate(g);
   plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
   plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
   return plan;
@@ -163,8 +163,10 @@ export function contractSpeed(g, use, price, marketPrice, p, districtId, brandId
   const dem = g.market.demand[use] ?? 1;
   const sales = 0.55 + (p.sales.quality / 100) * 0.55 + p.sales.capacity / 130;
   const brand = 0.82 + g.company.brand / 260;
-  const sub = 1 + (g.subsidiaries.some(s => s.type === 'sales') ? 0.15 : 0)
-    + (g.acquisitions.some(a => a.kind === 'broker' && !a.failed) ? 0.09 : 0);
+  // 販売子会社・販売仲介会社の寄与。
+  // 以前は「持っているかどうか」だけを見ていたため、
+  // 効果表に書いてある saleSpeed / salesPower がまったく効いていなかった
+  const sub = 1 + subEffect(g, 'saleSpeed') + subEffect(g, 'salesPower') / 100;
   const bf = brandEffect(g, brandId).speed;
   return clamp(0.15 * gap * dem * sales * brand * sub * bf / WEEKS_PER_QUARTER, 0.0012, 0.055);
 }

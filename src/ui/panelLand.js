@@ -98,6 +98,10 @@ export function openDetail(g, listing, ctx) {
     const acc = Math.min(0.92, 0.35 + p.land.quality / 220);
     const est = Math.round(plan.residualLand * 0.86);
     const spread = Math.round(est * (0.42 - acc * 0.30));
+    // 残余法がマイナスになる（この用途では事業が成り立たない）場合、
+    // 入札欄の初期値やスライダーの上限が負の数になってしまうので下限を設ける
+    const bidBase = Math.max(0, Math.min(plan.residualLand * 0.82, listing.askPrice));
+    const bidMax = Math.max(listing.askPrice, Math.max(0, plan.residualLand));
 
     return `
     <div class="grid3" style="margin-bottom:14px">
@@ -170,6 +174,7 @@ export function openDetail(g, listing, ctx) {
         ${kv('土地に払える上限（残余法）', `<b style="color:var(--gold)">${money(plan.residualLand)}</b>`, 'big')}
         ${kv('想定事業利益', `<span class="${plan.profit >= 0 ? 'up' : 'down'}">${money(plan.profit, { sign: true })}（${pct(plan.margin)}）</span>`)}
         <div class="hint">目標利益率15%を確保した場合に土地へ支払える金額。これを超えて入札すると高値掴みになる。</div>
+        ${plan.residualLand <= 0 ? `<div class="hint" style="color:var(--red)">この用途では、土地が無償でも採算に乗らない。用途適合${(d.fit[use] ?? 0.3).toFixed(2)}のこの土地に${USES[use].name}は合っていない${g.market.costIdx > 1.25 ? `うえ、建設費指数が${(g.market.costIdx * 100).toFixed(0)}と高止まりしている` : ''}。用途を変えるか、市況の落ち着きを待つこと。</div>` : ''}
       </div>
       <div class="card" style="margin-top:8px">
         ${kv('他社の想定入札レンジ', `${money(Math.max(0, est - spread))} 〜 ${money(est + spread)}`)}
@@ -191,9 +196,9 @@ export function openDetail(g, listing, ctx) {
       <div class="sec-t"><span>入札</span><span class="note">投資余力 ${money(power)}</span></div>
       <div class="field">
         <label>入札金額（億円）</label>
-        <input type="number" id="inpBid" value="${Math.round((listing.bid ? listing.bid.amount : Math.min(plan.residualLand * 0.82, listing.askPrice)) / 100)}" step="1" min="0">
+        <input type="number" id="inpBid" value="${Math.round((listing.bid ? listing.bid.amount : bidBase) / 100)}" step="1" min="0">
       </div>
-      <input type="range" id="rngBid" min="${Math.round(listing.appraisal * 0.4 / 100)}" max="${Math.round(Math.max(listing.askPrice, plan.residualLand) * 1.35 / 100)}" value="${Math.round((listing.bid ? listing.bid.amount : Math.min(plan.residualLand * 0.82, listing.askPrice)) / 100)}" style="width:100%;accent-color:var(--gold)">
+      <input type="range" id="rngBid" min="${Math.round(listing.appraisal * 0.4 / 100)}" max="${Math.round(bidMax * 1.35 / 100)}" value="${Math.round((listing.bid ? listing.bid.amount : bidBase) / 100)}" style="width:100%;accent-color:var(--gold)">
       <div id="bidInfo" class="hint"></div>
       <div class="btnrow">
         ${listing.kind === 'nego'
