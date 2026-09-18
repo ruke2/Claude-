@@ -256,6 +256,7 @@ export function closeQuarter(g, rng, news) {
   const R = v => Math.round(v);
   const pl = {
     revenue: R(revenue), revSale: R(acc.revSale), revLease: R(acc.revLease), revFee: R(acc.revFee),
+    revOther: R(acc.revOther),
     cogs: R(cogs), cogsSale: R(acc.cogsSale), cogsLease: R(acc.cogsLease), cogsOther: R(acc.cogsOther),
     gross: R(gross), sga: R(acc.sga), personnel: R(acc.personnel), op: R(op),
     interest: R(interest), ordinary: R(ordinary),

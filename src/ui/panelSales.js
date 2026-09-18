@@ -39,7 +39,7 @@ export function render(g, ctx) {
   const pre = presales.length ? presales.map(pj => `
     <div class="card">
       <div class="card-t"><span class="card-n">${pj.name}</span>${chip(`竣工まで${weeksLabel(Math.max(0, pj.weeks + pj.delay - pj.elapsed))}`, 'cyan')}</div>
-      <div class="card-s">${DISTRICTS[pj.district].name}／${num(pj.plan.units || 0)}戸予定／坪${(pj.salePrice * 100).toFixed(0)}万円</div>
+      <div class="card-s">${DISTRICTS[pj.district].name}／${num(pj.plan.units || 0)}戸予定／${pj.stack ? '分譲部分 ' : ''}坪${(pj.salePrice * 100).toFixed(0)}万円</div>
       ${bar(pj.preContract)}
       <div class="kv"><span class="k">事前契約率</span><span class="v">${pct(pj.preContract, 0)}</span></div>
       <div class="hint">${pj.progress > 0.25 ? 'モデルルームを公開し、青田売りを進めている。' : '工事の進捗が25%を超えると販売活動を開始できる。'}</div>

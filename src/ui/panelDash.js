@@ -1,7 +1,7 @@
 // ============================================================
 //  経営ダッシュボード
 // ============================================================
-import { money, moneyHTML, pct, pctDelta, num, dcls, arrow, stars } from '../core/format.js';
+import { money, moneyHTML, pct, pctDelta, num, dcls, arrow, stars, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, spark, empty } from './dom.js';
 import { kpis, ttm, unrealizedGain, buildBS, overdraft, debtCapacity, effectiveRate } from '../sim/finance.js';
 import { personnelCost, payIndex, projectCapacity } from '../sim/hr.js';
@@ -71,7 +71,7 @@ export function render(g) {
     </div>
     ${g.company.listed ? `<div class="grid3" style="margin-top:10px">
       ${mini('株価', num(k.price) + '円')}
-      ${mini('時価総額', money(k.cap, { unit: false }), '億円')}
+      ${mini('時価総額', money(k.cap, { unit: false }), moneyUnit(k.cap))}
       ${mini('EPS', num(k.eps, 1) + '円', `BPS ${num(k.bps, 0)}円`)}
     </div>` : `<div class="hint" style="margin-top:8px">当社は未上場である。財務パネルから上場の条件を確認できる。</div>`}
   `)}

@@ -1,7 +1,7 @@
 // ============================================================
 //  競合パネル — 業界ランキングと各社の分析
 // ============================================================
-import { money, num, pct, stars } from '../core/format.js';
+import { money, num, pct, stars, moneyUnit, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, spark, empty, openModal } from './dom.js';
 import { ranking } from '../sim/rivals.js';
 import { ttm, buildBS, kpis, sharePrice, marketCap } from '../sim/finance.js';
@@ -84,9 +84,9 @@ export function openDetail(g, id, ctx) {
       <div class="card-s"><b>${r.tagline}</b><br><br>${r.profile}</div>
     </div>
     <div class="grid4" style="margin:12px 0">
-      ${mini('売上高', money(r.rev, { unit: false }), '億円')}
-      ${mini('営業利益', money(r.op, { unit: false }), pct(r.op / r.rev, 1))}
-      ${mini('純利益', money(r.np, { unit: false }), '億円')}
+      ${mini('売上高', money(r.rev, { unit: false }), moneyUnit(r.rev))}
+      ${mini('営業利益', moneyHTML(r.op), pct(r.op / r.rev, 1))}
+      ${mini('純利益', money(r.np, { unit: false }), moneyUnit(r.np))}
       ${mini('従業員', num(r.employees), '名')}
     </div>
     ${hist.length > 2 ? `<div>${spark(hist.map(x => x.rev), { color: r.color })}</div><div class="hint">売上高の推移</div>` : ''}
@@ -148,9 +148,9 @@ function openSelf(g, ctx) {
         社風は「${cultureLabel(g)}」。</div>
     </div>
     <div class="grid4" style="margin:12px 0">
-      ${mini('売上高', money(t.revenue, { unit: false }), '億円')}
-      ${mini('営業利益', money(t.op, { unit: false }), t.revenue > 0 ? pct(t.op / t.revenue, 1) : '億円')}
-      ${mini('純利益', money(t.net, { unit: false }), '億円')}
+      ${mini('売上高', money(t.revenue, { unit: false }), moneyUnit(t.revenue))}
+      ${mini('営業利益', moneyHTML(t.op), t.revenue > 0 ? pct(t.op / t.revenue, 1) : '')}
+      ${mini('純利益', money(t.net, { unit: false }), moneyUnit(t.net))}
       ${mini('従業員', num(g.staff.length), '名')}
     </div>
     ${hist.length > 2 ? `<div>${spark(hist.map(x => x.pl.revenue), { color })}</div><div class="hint">売上高の推移（直近${hist.length}四半期）</div>` : ''}

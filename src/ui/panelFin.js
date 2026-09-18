@@ -1,7 +1,7 @@
 // ============================================================
 //  財務パネル — PL / BS / 指標 / 資金調達
 // ============================================================
-import { money, num, pct, dcls } from '../core/format.js';
+import { money, num, pct, dcls, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, spark, empty, openModal, closeModal, toast } from './dom.js';
 import { kpis, ttm, buildBS, borrow, repay, ipoStatus, doIPO, issueShares, debtCapacity, effectiveRate, RATINGS, sharePrice, marketCap, unrealizedGain, overdraft } from '../sim/finance.js';
 
@@ -25,8 +25,12 @@ export function render(g, ctx) {
       <tr><td>売上高</td><td>${money(pl.revenue)}</td><td>100.0%</td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">分譲事業</td><td>${money(pl.revSale)}</td><td></td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">賃貸事業</td><td>${money(pl.revLease)}</td><td></td></tr>
-      <tr><td style="padding-left:16px;color:var(--ink-dim)">その他・連結</td><td>${money(pl.revenue - pl.revSale - pl.revLease)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">管理受託・フィー</td><td>${money(pl.revFee)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">子会社・買収先（連結）</td><td>${money(pl.revOther !== undefined ? pl.revOther : pl.revenue - pl.revSale - pl.revLease - pl.revFee)}</td><td></td></tr>
       <tr><td>売上原価</td><td>${money(-pl.cogs)}</td><td>${pct(pl.cogs / Math.max(1, pl.revenue))}</td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">分譲原価</td><td>${money(-pl.cogsSale)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">賃貸原価・減価償却</td><td>${money(-pl.cogsLease)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">用地保有コスト・連結原価</td><td>${money(-pl.cogsOther)}</td><td></td></tr>
       <tr class="sum"><td>売上総利益</td><td>${money(pl.gross)}</td><td>${pct(pl.gross / Math.max(1, pl.revenue))}</td></tr>
       <tr><td>販売費及び一般管理費</td><td>${money(-pl.sga)}</td><td></td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">人件費</td><td>${money(-pl.personnel)}</td><td></td></tr>
@@ -72,7 +76,7 @@ export function render(g, ctx) {
   return `
   ${section('経営指標', '直近4四半期', `
     <div class="grid4">
-      ${mini('売上高', money(t.revenue, { unit: false }), '億円')}
+      ${mini('売上高', money(t.revenue, { unit: false }), moneyUnit(t.revenue))}
       ${mini('営業利益率', pct(k.opMargin), '', k.opMargin > 0.1 ? 'var(--green)' : k.opMargin < 0 ? 'var(--red)' : '')}
       ${mini('ROE', pct(k.roe), '', k.roe > 0.08 ? 'var(--gold)' : '')}
       ${mini('自己資本比率', pct(k.equityRatio), `D/E ${k.de.toFixed(2)}倍`)}
@@ -83,9 +87,9 @@ export function render(g, ctx) {
 
   ${section('資金調達', `格付 ${k.rating.id}（${k.rating.label}）`, `
     <div class="grid3">
-      ${mini('現預金', money(g.cash, { unit: false }), '億円')}
-      ${mini('有利子負債', money(g.debt, { unit: false }), '億円')}
-      ${mini('調達余力', money(k.room, { unit: false }), '億円', k.room <= 0 ? 'var(--red)' : '')}
+      ${mini('現預金', money(g.cash, { unit: false }), moneyUnit(g.cash))}
+      ${mini('有利子負債', money(g.debt, { unit: false }), moneyUnit(g.debt))}
+      ${mini('調達余力', money(k.room, { unit: false }), moneyUnit(k.room), k.room <= 0 ? 'var(--red)' : '')}
     </div>
     ${od > 0 ? `<div class="card" style="border-color:rgba(255,107,122,.5);margin-top:10px">
       <div class="card-t"><span class="card-n" style="color:var(--red)">⚠ 借入枠を超過している</span></div>
@@ -107,7 +111,7 @@ export function render(g, ctx) {
       ${(ipo.reqs || []).map(r => `<div class="kv"><span class="k">${r.ok ? '✅' : '⬜'} ${r.label}</span><span class="v">${r.now}</span></div>`).join('')}
     </div>` : `<div class="grid3" style="margin-top:10px">
       ${mini('株価', num(k.price) + '円')}
-      ${mini('時価総額', money(k.cap, { unit: false }), '億円')}
+      ${mini('時価総額', money(k.cap, { unit: false }), moneyUnit(k.cap))}
       ${mini('PBR', (k.price / Math.max(1, k.bps)).toFixed(2) + '倍', `EPS ${num(k.eps, 0)}円`)}
     </div>`}
   `)}

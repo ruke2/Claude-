@@ -1,7 +1,7 @@
 // ============================================================
 //  開発パネル — 企画・着工・工事進捗
 // ============================================================
-import { money, num, pct } from '../core/format.js';
+import { money, num, pct, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { feasibility, feasibilityStack, canStart } from '../sim/project.js';
@@ -34,11 +34,12 @@ export function render(g, ctx) {
       <div class="kv"><span class="k">工事予算 / 支出</span><span class="v">${money(pj.budget)} / ${money(pj.spent)}</span></div>
       ${over ? `<div class="kv"><span class="k">増減額</span><span class="v ${over > 0 ? 'down' : 'up'}">${money(over, { sign: true })}</span></div>` : ''}
       ${pj.delay ? `<div class="kv"><span class="k">工期</span><span class="v ${pj.delay > 0 ? 'down' : 'up'}">${pj.delay > 0 ? `${pj.delay}週 遅延` : `${-pj.delay}週 前倒し`}</span></div>` : ''}
+      ${pj.stack && pj.nra ? `<div class="kv"><span class="k">賃貸部分</span><span class="v">${num(pj.nra)}坪／月坪${num(pj.rent)}円</span></div>` : ''}
       ${pj.saleArea ? `<div class="kv"><span class="k">事前契約率（青田売り）</span><span class="v">${(pj.preContract * 100).toFixed(0)}%</span></div>${bar(pj.preContract)}` : ''}
       ${pj.events.length ? `<div class="hint">${pj.events.slice(-2).map(e => `${e.icon} ${e.text}`).join('<br>')}</div>` : ''}
       <div class="btnrow">
         <button class="btn sm" data-act="focus" data-id="${pj.cellId}">📍 地図で見る</button>
-        ${pj.saleArea ? `<button class="btn sm" data-act="dev.price" data-id="${pj.id}">販売価格を調整（坪${(pj.salePrice * 100).toFixed(0)}万円）</button>` : ''}
+        ${pj.saleArea ? `<button class="btn sm" data-act="dev.price" data-id="${pj.id}">販売価格を調整（${pj.stack ? '分譲部分 ' : ''}坪${(pj.salePrice * 100).toFixed(0)}万円）</button>` : ''}
       </div>
     </div>`;
   }).join('') : empty('進行中の開発案件はない');
@@ -129,9 +130,9 @@ export function openPlan(g, cell, ctx) {
 
     return `
     <div class="grid3" style="margin-bottom:12px">
-      ${mini('土地簿価', money(cell.bookValue ?? cell.lastPaid ?? 0, { unit: false }), '億円')}
-      ${mini('建設費', money(plan.buildCost, { unit: false }), '億円')}
-      ${mini('総事業費', money(plan.totalCost, { unit: false }), '億円')}
+      ${mini('土地簿価', money(cell.bookValue ?? cell.lastPaid ?? 0, { unit: false }), moneyUnit(cell.bookValue ?? cell.lastPaid ?? 0))}
+      ${mini('建設費', money(plan.buildCost, { unit: false }), moneyUnit(plan.buildCost))}
+      ${mini('総事業費', money(plan.totalCost, { unit: false }), moneyUnit(plan.totalCost))}
     </div>
 
     <div class="sec">
@@ -178,10 +179,10 @@ export function openPlan(g, cell, ctx) {
         <div>
           ${plan.saleArea ? kv('分譲面積', num(plan.saleArea) + '坪') : ''}
           ${plan.units ? kv('計画戸数', num(plan.units) + '戸') : ''}
-          ${plan.salePrice ? kv('想定坪単価', (plan.salePrice * 100).toFixed(0) + '万円') : ''}
+          ${plan.salePrice ? kv(plan.stack ? '分譲部分の坪単価（加重平均）' : '想定坪単価', (plan.salePrice * 100).toFixed(0) + '万円') : ''}
           ${plan.saleRevenue ? kv('分譲売上', money(plan.saleRevenue)) : ''}
           ${plan.nra ? kv('貸室面積', num(plan.nra) + '坪') : ''}
-          ${plan.rent ? kv('想定賃料', num(plan.rent) + '円/坪·月') : ''}
+          ${plan.rent ? kv(plan.stack ? '賃貸部分の賃料（加重平均）' : '想定賃料', num(plan.rent) + '円/坪·月') : ''}
           ${plan.noi ? kv('年間NOI', money(plan.noi)) : ''}
           ${plan.assetValue ? kv('完成時資産価値', money(plan.assetValue)) : ''}
         </div>
@@ -276,10 +277,19 @@ export function openPlan(g, cell, ctx) {
 
 /** 分譲価格の調整（建設中の青田売り） */
 export function openPricing(g, pj, ctx) {
+  // 基準単価。計画に入っていない案件（旧版の複合開発）は現在値から拾う
+  const base = (pj.plan && pj.plan.salePrice > 0) ? pj.plan.salePrice
+    : (pj.plan && pj.plan.saleRevenue > 0 && pj.plan.saleArea > 0) ? pj.plan.saleRevenue / pj.plan.saleArea
+      : (pj.salePrice > 0 ? pj.salePrice : 0);
+  if (!(base > 0)) {
+    openModal(`販売価格の設定 — ${pj.name}`,
+      '<div class="empty">この案件には分譲部分の想定単価が設定されていない。<br>週を進めると自動的に引き直される。</div>',
+      [{ label: '閉じる', cls: 'ghost' }]);
+    return;
+  }
   openModal(`販売価格の設定 — ${pj.name}`, build(), [{ label: '閉じる', cls: 'ghost' }]);
   bind();
   function build() {
-    const base = pj.plan.salePrice;
     return `
     <div class="card">
       ${kv('市場想定坪単価', (base * 100).toFixed(0) + '万円')}
@@ -290,7 +300,7 @@ export function openPricing(g, pj, ctx) {
     <div class="field" style="margin-top:12px">
       <label>坪単価（万円）</label>
       <input type="number" id="inpP" value="${(pj.salePrice * 100).toFixed(0)}" step="5">
-      <input type="range" id="rngP" min="${(base * 60).toFixed(0)}" max="${(base * 145).toFixed(0)}" value="${(pj.salePrice * 100).toFixed(0)}" style="width:100%;margin-top:8px;accent-color:var(--gold)">
+      <input type="range" id="rngP" min="${Math.min(base * 60, pj.salePrice * 100).toFixed(0)}" max="${Math.max(base * 145, pj.salePrice * 100).toFixed(0)}" value="${(pj.salePrice * 100).toFixed(0)}" style="width:100%;margin-top:8px;accent-color:var(--gold)">
     </div>
     <div id="pInfo" class="hint"></div>
     <div class="hint">価格を下げれば契約は速く進むが、ブランドと利益が犠牲になる。逆に強気の価格は在庫の長期化を招き、評価損の原因になる。</div>
@@ -302,7 +312,7 @@ export function openPricing(g, pj, ctx) {
     const sync = v => {
       inp.value = v; rg.value = v;
       const price = v / 100;
-      const ratio = price / pj.plan.salePrice;
+      const ratio = price / base;
       const speed = Math.max(0.12, Math.min(1.85, 2.15 - ratio * 1.15));
       info.innerHTML = `市場比 <b>${((ratio - 1) * 100).toFixed(1)}%</b>　販売総額 ${money(Math.round(pj.saleArea * price))}　契約の進み ${speed > 1.2 ? '<b class="up">速い</b>' : speed > 0.85 ? '標準的' : '<b class="down">遅い</b>'}`;
     };
@@ -310,8 +320,9 @@ export function openPricing(g, pj, ctx) {
     rg.oninput = e => sync(+e.target.value);
     sync(+inp.value);
     body.querySelector('[data-set]').onclick = () => {
-      pj.salePrice = (+inp.value) / 100;
-      toast(`販売価格を坪${inp.value}万円に設定した`);
+      // 基準単価の50%〜160%に収める（0にすると売上が立たないまま原価だけが出る）
+      pj.salePrice = Math.min(base * 1.6, Math.max(base * 0.5, (+inp.value) / 100));
+      toast(`販売価格を坪${(pj.salePrice * 100).toFixed(0)}万円に設定した`);
       ctx.refresh(); closeModal();
     };
   }

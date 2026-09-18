@@ -70,6 +70,10 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
 
   const saleShare = useId === 'mixed' ? 0.45 : (U.model === 'sale' ? 1 : 0);
   const leaseShare = 1 - saleShare;
+  // 竣工時に総事業費を分譲在庫と保有資産に割り振る比率。
+  // これを持たせないと、複合開発で原価の配分が実態とずれる
+  out.saleCostShare = saleShare;
+  out.leaseUse = leaseShare > 0 ? (useId === 'mixed' ? 'office' : useId) : null;
 
   if (saleShare > 0) {
     const unitPrice = d.priceResi * G.priceMul * g.market.priceIdx
@@ -215,6 +219,22 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
   const capRate = clamp(d.capRate + 0.0025 + g.market.capShift - subEffect(g, 'exitPremium') * 0.05, 0.024, 0.09);
   const assetValue = noi > 0 ? Math.round(noi / capRate) : 0;
 
+  // 案件全体の代表値。セグメントごとの値の面積加重平均を取る。
+  // これを返さないと startProject で salePrice/rent が 0 になり、
+  // 竣工時に「売上0・原価満額」の在庫と「賃料0」の保有資産ができてしまう
+  const saleSegs = segs.filter(x => x.model === 'sale');
+  const leaseSegs = segs.filter(x => x.model === 'lease');
+  const salePrice = saleArea > 0 ? Math.round(saleRevenue / saleArea * 1000) / 1000 : 0;
+  const rent = nra > 0
+    ? Math.round(leaseSegs.reduce((a, x) => a + x.rent * x.usable, 0) / nra)
+    : 0;
+  // 原価は実際のセグメント建設費で分ける（固定45%ではない）
+  const saleBuild = saleSegs.reduce((a, x) => a + x.build, 0);
+  const leaseBuild = leaseSegs.reduce((a, x) => a + x.build, 0);
+  const saleCostShare = saleBuild + leaseBuild > 0 ? saleBuild / (saleBuild + leaseBuild) : (saleArea > 0 ? 1 : 0);
+  // 賃貸部分の主用途（面積がいちばん大きいもの）。保有資産の賃料相場の基準になる
+  const mainLease = leaseSegs.slice().sort((a, b) => b.usable - a.usable)[0];
+
   const out = {
     stack: segs, gfa: Math.round(gfa), maxGfa: Math.round(maxGfa), plate: Math.round(plate),
     floors: totalFloors, heightM: Math.round(heightM * 10) / 10,
@@ -223,6 +243,8 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
     saleRevenue: Math.round(saleRevenue), saleArea: Math.round(saleArea), units,
     nra: Math.round(nra), grossRent, noi, capRate, assetValue,
     sellable: Math.round(saleArea + nra),
+    salePrice, rent,
+    saleCostShare, leaseUse: mainLease ? mainLease.use : null,
   };
   out.landCost = opt.landCost ?? landAppraisal(g, c);
   out.totalCost = out.landCost + out.buildCost;
@@ -261,6 +283,27 @@ export function assetValue(g, a) {
   const cap = clamp(d.capRate + (CAP_SPREAD[a.use] ?? 0) + g.market.capShift + (a.age > 30 ? 0.004 : 0), 0.024, 0.09);
   const noi = currentNOI(g, a);
   return Math.round(noi / cap);
+}
+
+/** 用途ごとに参照する地区の賃料項目 */
+export const RENT_KEY = {
+  office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi',
+  rental: 'rentResi', resi: 'rentResi', house: 'rentResi', mixed: 'rentOffice',
+};
+
+/**
+ * 地区の相場賃料（円/坪·月）。
+ * グレードやブランド、駅力は含まない“素の相場”で、
+ * 物件ごとの上振れ・下振れは `a.rentIndex` で持つ。
+ * 竣工時の賃料と同じ物差しで比べられるようにするための基準値。
+ */
+export function marketRentRaw(g, a) {
+  const d = DISTRICTS[a.district];
+  if (!d) return 0;
+  const dem = g.market.demand[a.use] ?? 1;
+  const base = d[RENT_KEY[a.use] || 'rentOffice'] ?? d.rentOffice * 0.6;
+  const aged = 1 - Math.min(0.22, (a.age || 0) * 0.006);
+  return base * (0.86 + dem * 0.2) * g.market.priceIdx * aged;
 }
 
 /** 保有資産の現在NOI（年額） */

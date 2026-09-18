@@ -878,6 +878,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
     return s + v + (unit ? u : "");
   }
+  function moneyUnit(mm) {
+    const abs = Math.abs(mm ?? 0);
+    if (!Number.isFinite(abs)) return "";
+    if (abs < 0.5) return "\u5104\u5186";
+    if (abs >= 1e6) return "\u5146\u5186";
+    if (abs >= 100) return "\u5104\u5186";
+    return "\u767E\u4E07\u5186";
+  }
   function moneyHTML(mm) {
     const s = money(mm);
     const m = s.match(/^(△?\+?[\d,.]+)(.*)$/);
@@ -2444,6 +2452,1109 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return g.cells.find((c) => c.id === id);
   }
 
+  // src/sim/hr.js
+  function orgPower(g) {
+    const out = {};
+    for (const d of DEPT_IDS) {
+      const list = g.staff.filter((s) => s.dept === d && !s.subsidiary);
+      let wsum = 0, asum = 0, cap = 0;
+      for (const s of list) {
+        const w = 1 + s.rank * 0.42;
+        const eff = s.abil[DEPTS[d].key] * (0.72 + s.morale * 0.42);
+        wsum += w;
+        asum += eff * w;
+        cap += w * (0.8 + s.morale * 0.4);
+      }
+      out[d] = {
+        quality: wsum ? clamp(asum / wsum, 0, 120) : 0,
+        capacity: cap,
+        count: list.length
+      };
+    }
+    for (const sub of g.subsidiaries) {
+      if (sub.type === "sales") out.sales.quality *= 1.08;
+      if (sub.type === "construction") out.cons.quality *= 1.1;
+      if (sub.type === "pm") out.lease.quality *= 1.08;
+      if (sub.type === "reit") out.fin.quality *= 1.06;
+    }
+    for (const a of g.acquisitions) {
+      if (a.failed) continue;
+      if (a.kind === "broker") out.sales.quality *= 1.06;
+      if (a.kind === "builder") out.cons.quality *= 1.07;
+      if (a.kind === "pm") out.lease.quality *= 1.06;
+    }
+    if (g.hrPolicy.programs.dx) for (const d of DEPT_IDS) out[d].capacity *= 1.12;
+    const ce = cultureEffects(g);
+    for (const d of DEPT_IDS) {
+      out[d].capacity *= ce.capacityMul;
+      out[d].quality *= 0.97 + (g.culture ? g.culture.team : 0.5) * 0.06;
+    }
+    out.total = g.staff.filter((s) => !s.subsidiary).length;
+    out.avgSalary = g.staff.length ? g.staff.reduce((a, s) => a + s.salary, 0) / g.staff.length : 0;
+    return out;
+  }
+  function projectCapacity(g) {
+    const p = orgPower(g);
+    const base = (p.cons.capacity + p.plan.capacity) / 6;
+    return Math.max(3, Math.floor(base) + 1 + g.subsidiaries.filter((s) => s.type === "construction").length * 2);
+  }
+  function personnelCost(g) {
+    const salary = g.staff.reduce((a, s) => a + s.salary, 0) / WEEKS_PER_YEAR;
+    const welfare = salary * 0.16;
+    const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
+    return salary + welfare + programs;
+  }
+  function personnelCostYear(g) {
+    return personnelCost(g) * WEEKS_PER_YEAR;
+  }
+  function salaryFairness(g, s) {
+    return s.salary / Math.max(0.1, baseSalaryFor(s));
+  }
+  function payIndex(g) {
+    if (!g.staff.length) return 1;
+    let sum = 0;
+    for (const s of g.staff) sum += s.salary / Math.max(0.1, baseSalaryFor(s));
+    return sum / g.staff.length;
+  }
+  function stepHR(g, rng, news) {
+    const pol = g.hrPolicy;
+    const trainMul = pol.programs.training ? 1.35 : 1;
+    const welfare = pol.programs.welfare ? 1 : 0;
+    const W = WEEKS_PER_QUARTER;
+    const ce = cultureEffects(g);
+    const leavers = [];
+    for (const s of g.staff) {
+      const youth = clamp(1.25 - (s.age - 22) * 0.028, 0.15, 1.25);
+      for (const k of ABILITY_IDS) {
+        const room = s.potential - s.abil[k];
+        if (room > 0) {
+          const isMain = DEPTS[s.dept].key === k;
+          const gain = room / 100 * youth * trainMul * ce.growthMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05 / W;
+          s.abil[k] = clamp(s.abil[k] + gain, 0, 99);
+        } else if (s.age > 48 && rng.chance(0.1 / W)) {
+          s.abil[k] = clamp(s.abil[k] - rng.range(0, 0.4), 0, 99);
+        }
+      }
+      s.tenure += 1 / WEEKS_PER_YEAR;
+      const fair = salaryFairness(g, s);
+      let dm = (fair - 1) * 0.1 + welfare * 0.028 - 0.012 + ce.moraleShift;
+      if (s.rank >= 3) dm += 0.012;
+      if (g.market.sentiment > 0.65) dm += 8e-3;
+      if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
+      s.morale = clamp01(s.morale + (dm + rng.normal(0, 0.03)) / W);
+      let risk = 0.012;
+      risk += Math.max(0, 0.72 - s.morale) * 0.1;
+      risk += Math.max(0, 1 - fair) * 0.09;
+      risk += (1 - s.loyalty) * 0.022;
+      if (pol.programs.welfare) risk *= 0.7;
+      if (s.age > 60) risk += 0.16;
+      if (avgAbility(s) > 76 && s.rank < 3) risk += 0.02;
+      const rel = (avgAbility(s) - 55) / 45;
+      risk *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
+      risk *= ce.leaveMul;
+      if (rng.chance(clamp01(risk) / W)) leavers.push(s);
+    }
+    for (const s of leavers) {
+      g.staff.splice(g.staff.indexOf(s), 1);
+      const why = s.age > 60 ? "\u5B9A\u5E74\u9000\u8077" : salaryFairness(g, s) < 0.92 ? "\u5F85\u9047\u3078\u306E\u4E0D\u6E80" : s.morale < 0.45 ? "\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u4F4E\u4E0B" : "\u4ED6\u793E\u3078\u306E\u8EE2\u8077";
+      news.push({ icon: "\u{1F6AA}", type: "hr", major: s.rank >= 4, text: `${DEPTS[s.dept].name}\u306E${RANKS[s.rank].name}\u30FB${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08${why}\uFF09\u3002` });
+    }
+    if (isYearStart(g) && g.week > 0) {
+      let promoted = 0;
+      for (const s of g.staff) {
+        s.age += 1;
+        const std = stdSalary(g, s);
+        s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
+      }
+      for (let r = RANKS.length - 2; r >= 1; r--) {
+        const rank = RANKS[r];
+        const cur = g.staff.filter((s) => s.rank === r).length;
+        const room = rank.slots === Infinity ? 99 : Math.max(0, rank.slots - cur);
+        const cands = g.staff.filter((s) => s.rank === r - 1 && avgAbility(s) >= rank.minAbility && s.tenure >= 2).sort((a, b) => avgAbility(b) + b.abil.lead * 0.4 - (avgAbility(a) + a.abil.lead * 0.4));
+        const n = Math.min(room, Math.ceil(cands.length * (0.13 + pol.evalStrict * 0.12 + ce.promoteBoost * 0.14)));
+        for (let i = 0; i < n; i++) {
+          const s = cands[i];
+          if (!s) break;
+          s.rank = r;
+          s.salary = Math.max(s.salary, stdSalary(g, s));
+          s.morale = clamp01(s.morale + 0.14);
+          promoted++;
+          if (r >= 5) news.push({ icon: "\u2B06", type: "hr", major: true, text: `${s.name}\u304C${rank.name}\u306B\u6607\u683C\u3057\u305F\u3002` });
+        }
+      }
+      if (promoted) news.push({ icon: "\u{1F4CB}", type: "hr", major: true, text: `${g.year}\u5E74\u306E\u5B9A\u671F\u4EBA\u4E8B\u3067${promoted}\u540D\u304C\u6607\u683C\u3057\u3001\u5168\u793E\u54E1\u306E\u7D66\u4E0E\u3092\u6539\u5B9A\u3057\u305F\u3002` });
+    }
+    if (!g.staff.some((s) => s.rank === 7) && g.staff.length) {
+      const next = g.staff.slice().sort((a, b) => avgAbility(b) + b.abil.lead - (avgAbility(a) + a.abil.lead))[0];
+      next.rank = 7;
+      next.salary = stdSalary(g, next);
+      news.push({ icon: "\u{1F451}", type: "hr", major: true, text: `${next.name}\u304C\u65B0\u793E\u9577\u306B\u5C31\u4EFB\u3057\u305F\u3002` });
+    }
+  }
+  function hireStaff(g, s, news) {
+    s.joined = { year: g.year, q: g.quarter };
+    s.tenure = 0;
+    delete s.hireCost;
+    g.staff.push(s);
+    news && news.push({ icon: "\u{1F91D}", type: "hr", text: `${s.prevCompany || "\u4ED6\u793E"}\u304B\u3089${s.name}\uFF08${RANKS[s.rank].name}\u76F8\u5F53\uFF09\u3092\u63A1\u7528\u3057\u305F\u3002` });
+  }
+
+  // src/sim/brands.js
+  var BRAND_CATEGORIES = {
+    resi: { id: "resi", name: "\u5206\u8B72\u30DE\u30F3\u30B7\u30E7\u30F3", uses: ["resi"], icon: "\u25A4", example: "\u30D1\u30FC\u30AF\u30B3\u30FC\u30C8\u3001\u30D6\u30E9\u30F3\u30BA\u3001\u30D7\u30E9\u30A6\u30C9" },
+    house: { id: "house", name: "\u6238\u5EFA\u5206\u8B72", uses: ["house"], icon: "\u2302", example: "\u30D5\u30A1\u30A4\u30F3\u30B3\u30FC\u30C8\u3001\u30D7\u30EC\u30DF\u30A2\u30E0\u30B9\u30C6\u30FC\u30B8" },
+    rental: { id: "rental", name: "\u8CC3\u8CB8\u30EC\u30B8\u30C7\u30F3\u30B9", uses: ["rental"], icon: "\u25A5", example: "\u30D1\u30FC\u30AF\u30A2\u30AF\u30B7\u30B9\u3001\u30D7\u30E9\u30A6\u30C9\u30D5\u30E9\u30C3\u30C8" },
+    office: { id: "office", name: "\u30AA\u30D5\u30A3\u30B9\u30D3\u30EB", uses: ["office", "mixed"], icon: "\u25AE", example: "\u25CB\u25CB\u30D3\u30EB\u30C7\u30A3\u30F3\u30B0\u3001\u25CB\u25CB\u30B2\u30FC\u30C8\u30BF\u30EF\u30FC" },
+    retail: { id: "retail", name: "\u5546\u696D\u65BD\u8A2D", uses: ["retail", "mixed"], icon: "\u25A6", example: "\u3089\u3089\u307D\u30FC\u3068\u3001\u30E9\u30BE\u30FC\u30CA\u3001\u30A2\u30FC\u30D0\u30F3\u30C9\u30C3\u30AF" },
+    hotel: { id: "hotel", name: "\u30DB\u30C6\u30EB", uses: ["hotel"], icon: "\u25A7", example: "\u30B6\u30FB\u30BB\u30EC\u30B9\u30C6\u30A3\u30F3\u3001\u30AC\u30FC\u30C7\u30F3\u30DB\u30C6\u30EB" },
+    logi: { id: "logi", name: "\u7269\u6D41\u65BD\u8A2D", uses: ["logi"], icon: "\u25AC", example: "MFLP\u3001GLP\u3001\u30D7\u30ED\u30ED\u30B8\u30B9\u30D1\u30FC\u30AF" }
+  };
+  var BRAND_GRADES = {
+    mass: { id: "mass", name: "\u30DC\u30EA\u30E5\u30FC\u30E0", cost: 240, priceMul: 1, growth: 1.3, cap: 78, desc: "\u4FA1\u683C\u8A34\u6C42\u578B\u3002\u8A8D\u77E5\u306F\u5E83\u304C\u308A\u3084\u3059\u3044\u304C\u5358\u4FA1\u306F\u4E0A\u304C\u308A\u306B\u304F\u3044\u3002" },
+    upper: { id: "upper", name: "\u30A2\u30C3\u30D1\u30FC", cost: 620, priceMul: 1.05, growth: 1, cap: 90, desc: "\u4E3B\u529B\u30D6\u30E9\u30F3\u30C9\u3002\u30D0\u30E9\u30F3\u30B9\u304C\u3088\u304F\u3001\u80B2\u3066\u3070\u5927\u304D\u306A\u6B66\u5668\u306B\u306A\u308B\u3002" },
+    premium: { id: "premium", name: "\u30D7\u30EC\u30DF\u30A2\u30E0", cost: 1450, priceMul: 1.12, growth: 0.7, cap: 100, desc: "\u6700\u4E0A\u4F4D\u3002\u80B2\u6210\u306B\u6642\u9593\u306F\u304B\u304B\u308B\u304C\u3001\u5358\u4FA1\u3068\u8CC3\u6599\u3092\u5927\u304D\u304F\u62BC\u3057\u4E0A\u3052\u308B\u3002" }
+  };
+  function createBrand(g, { name: name2, category, grade }) {
+    const G2 = BRAND_GRADES[grade];
+    const b = {
+      id: uid("B"),
+      name: name2.slice(0, 16),
+      category,
+      grade,
+      awareness: 6 + (grade === "premium" ? 4 : 0),
+      reputation: 55,
+      supplied: 0,
+      area: 0,
+      units: 0,
+      foundedWeek: g.week,
+      lastUsedWeek: g.week,
+      adSpend: 0
+    };
+    g.cash -= G2.cost;
+    g.finance.quarterAcc.sga += G2.cost;
+    g.brands.push(b);
+    return b;
+  }
+  function brandsFor(g, useId) {
+    return g.brands.filter((b) => (BRAND_CATEGORIES[b.category]?.uses || []).includes(useId));
+  }
+  function getBrand(g, id) {
+    return id ? g.brands.find((b) => b.id === id) : null;
+  }
+  function brandEffect(g, brandId) {
+    const b = getBrand(g, brandId);
+    if (!b) return { price: 1, speed: 1, rent: 1, awareness: 0 };
+    const G2 = BRAND_GRADES[b.grade];
+    const a = b.awareness / 100;
+    const rep = 0.85 + b.reputation / 340;
+    return {
+      price: (1 + a * 0.14) * G2.priceMul * rep,
+      speed: (1 + a * 0.3) * rep,
+      rent: (1 + a * 0.1) * G2.priceMul * rep,
+      awareness: b.awareness,
+      brand: b
+    };
+  }
+  function growBrand(g, brandId, opt = {}) {
+    const b = getBrand(g, brandId);
+    if (!b) return;
+    const G2 = BRAND_GRADES[b.grade];
+    const scale = clamp((opt.area || 0) / 6e3, 0.25, 2.4);
+    const gain = (opt.base ?? 3.5) * scale * G2.growth * (1 - b.awareness / (G2.cap + 12));
+    b.awareness = clamp(b.awareness + gain, 0, G2.cap);
+    b.lastUsedWeek = g.week;
+    if (opt.supplied) {
+      b.supplied++;
+      b.area += opt.area || 0;
+      b.units += opt.units || 0;
+    }
+    if (opt.reputation) b.reputation = clamp(b.reputation + opt.reputation, 0, 100);
+  }
+  function damageBrand(g, brandId, amount, repHit = 0) {
+    const b = getBrand(g, brandId);
+    if (!b) return;
+    b.awareness = clamp(b.awareness - amount, 0, 100);
+    b.reputation = clamp(b.reputation - repHit, 0, 100);
+  }
+  function stepBrands(g, rng, news) {
+    for (const b of g.brands) {
+      const G2 = BRAND_GRADES[b.grade];
+      const idle = g.week - b.lastUsedWeek;
+      const floor = 3 + b.supplied * 1.5;
+      if (idle > 104 && b.awareness > floor) b.awareness = clamp(b.awareness - 0.02, floor, 100);
+      if (b.adSpend > 0) {
+        const w = b.adSpend / 52;
+        g.cash -= w;
+        g.finance.quarterAcc.sga += w;
+        b.awareness = clamp(b.awareness + b.adSpend / 900 * G2.growth * (1 - b.awareness / (G2.cap + 8)) / 52 * 12, 0, G2.cap);
+      }
+      b.reputation = clamp(b.reputation + (55 - b.reputation) * 2e-3, 0, 100);
+    }
+  }
+
+  // src/sim/valuation.js
+  var COVER = { office: 0.38, resi: 0.28, rental: 0.3, retail: 0.68, hotel: 0.36, logi: 0.76, house: 0.46, mixed: 0.4 };
+  var CAP_SPREAD = { office: 0, retail: 65e-4, hotel: 0.0105, logi: 18e-4, rental: 0, resi: 0, mixed: 25e-4, house: 4e-3 };
+  var FLOOR_H = { office: 4.1, resi: 3.25, rental: 3.15, retail: 5.4, hotel: 3.4, logi: 7.2, house: 3, mixed: 3.9 };
+  function landAppraisal(g, c) {
+    if (!c.baseValue) return 0;
+    const d = DISTRICTS[c.d];
+    const best = bestUseFit(c);
+    const demand = g.market.demand[best] ?? 1;
+    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1));
+  }
+  function bestUseFit(c) {
+    const d = DISTRICTS[c.d];
+    let best = "office", bv = -1;
+    for (const u in d.fit) {
+      if (d.fit[u] > bv) {
+        bv = d.fit[u];
+        best = u;
+      }
+    }
+    return best;
+  }
+  function devPlan(g, c, useId, gradeId = "standard", opt = {}) {
+    const d = DISTRICTS[c.d];
+    const U = USES[useId];
+    const G2 = GRADES[gradeId];
+    const p = orgPower(g);
+    const fit = d.fit[useId] ?? 0.4;
+    const mixedBonus = useId === "mixed" ? 1.18 : 1;
+    const farUse = clamp01(0.8 + fit * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
+    const gfa = Math.round(c.area * (c.far / 100) * farUse);
+    const cover = COVER[useId] * (opt.coverMul ?? 1);
+    const floors = Math.max(1, Math.round(gfa / Math.max(1, c.area * cover)));
+    const heightM = Math.round(floors * FLOOR_H[useId] * 10) / 10;
+    const sellable = Math.round(gfa * U.efficiency);
+    const highRise = 1 + Math.max(0, floors - 28) * 45e-4;
+    const costCut = 1 - subEffect(g, "costCut") - clamp((p.cons.quality - 55) / 100 * 0.1, -0.05, 0.1);
+    const build = gfa * U.build * g.market.costIdx * G2.costMul * highRise * costCut;
+    const softCost = build * 0.085;
+    const buildCost = Math.round(build + softCost);
+    const sizePenalty = Math.floor(floors / 14) * 6 + (gfa > 2e4 ? 8 : 0);
+    const ce = cultureEffects(g);
+    const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
+    const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
+    const brandMul = 1 + (g.company.brand - 40) / 420;
+    const fitMul = 0.74 + fit * 0.28;
+    const bf = brandEffect(g, opt.brandId);
+    const out = { gfa, floors, heightM, sellable, buildCost, weeks, fit, use: useId, grade: gradeId, farUse };
+    const saleShare = useId === "mixed" ? 0.45 : U.model === "sale" ? 1 : 0;
+    const leaseShare = 1 - saleShare;
+    out.saleCostShare = saleShare;
+    out.leaseUse = leaseShare > 0 ? useId === "mixed" ? "office" : useId : null;
+    if (saleShare > 0) {
+      const unitPrice = d.priceResi * G2.priceMul * g.market.priceIdx * (0.88 + (g.market.demand[useId] ?? 1) * 0.16) * (0.9 + c.station * 0.2) * brandMul * (useId === "house" ? 0.95 : 1) * fitMul * bf.price;
+      out.salePrice = Math.round(unitPrice * 1e3) / 1e3;
+      out.saleArea = Math.round(sellable * saleShare);
+      out.saleRevenue = Math.round(out.saleArea * unitPrice);
+      out.units = Math.max(1, Math.round(out.saleArea / (useId === "house" ? 34 : 26)));
+    }
+    if (leaseShare > 0) {
+      const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi", mixed: "rentOffice", house: "rentResi" }[useId];
+      const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
+      const rent = baseRent * G2.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
+      out.rent = Math.round(rent);
+      out.nra = Math.round(sellable * leaseShare);
+      out.grossRent = Math.round(out.nra * rent * 12 / 1e6);
+      out.noi = Math.round(out.grossRent * 0.76 * 0.95);
+      out.capRate = clamp(d.capRate + (CAP_SPREAD[useId] ?? 0) + g.market.capShift + (fit < 0.5 ? 6e-3 : 0) - subEffect(g, "exitPremium") * 0.05, 0.024, 0.09);
+      out.assetValue = Math.round(out.noi / out.capRate);
+    }
+    out.brandId = opt.brandId || null;
+    out.landCost = opt.landCost ?? landAppraisal(g, c);
+    out.totalCost = out.landCost + out.buildCost;
+    out.grossValue = (out.saleRevenue || 0) + (out.assetValue || 0);
+    out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * 0.04;
+    out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
+    out.yieldOnCost = out.noi ? out.noi / Math.max(1, out.totalCost) : null;
+    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * 0.04);
+    return out;
+  }
+  var STACK_RULE = {
+    retail: { label: "\u4F4E\u5C64", best: [1, 6], desc: "\u5546\u696D\u306F\u6B69\u884C\u8005\u304C\u4E0A\u304C\u3063\u3066\u3053\u3089\u308C\u308B\u4F4E\u5C64\u968E\u3067\u3053\u305D\u529B\u3092\u767A\u63EE\u3059\u308B\u3002" },
+    office: { label: "\u4F4E\u301C\u4E2D\u5C64", best: [1, 44], desc: "\u30AA\u30D5\u30A3\u30B9\u306F\u968E\u5C64\u3092\u3042\u307E\u308A\u9078\u3070\u306A\u3044\u3002\u57FA\u6E96\u968E\u304C\u5E83\u3044\u307B\u3069\u52B9\u7387\u304C\u3088\u3044\u3002" },
+    hotel: { label: "\u4E2D\u301C\u9AD8\u5C64", best: [5, 60], desc: "\u30DB\u30C6\u30EB\u306F\u773A\u671B\u3068\u9759\u7C9B\u6027\u304C\u4FA1\u5024\u306B\u306A\u308B\u305F\u3081\u3001\u4F4E\u5C64\u968E\u3067\u306F\u5358\u4FA1\u304C\u843D\u3061\u308B\u3002" },
+    resi: { label: "\u9AD8\u5C64", best: [7, 70], desc: "\u5206\u8B72\u4F4F\u5B85\u306F\u4E0A\u5C64\u968E\u307B\u3069\u9AD8\u304F\u58F2\u308C\u308B\u3002\u4F4E\u5C64\u968E\u306F\u4FA1\u683C\u304C\u4F38\u3073\u306A\u3044\u3002" },
+    rental: { label: "\u4E2D\u301C\u9AD8\u5C64", best: [5, 70], desc: "\u8CC3\u8CB8\u4F4F\u5B85\u3082\u4E0A\u5C64\u968E\u306E\u307B\u3046\u304C\u8CC3\u6599\u304C\u53D6\u308C\u308B\u3002" },
+    logi: { label: "\u4F4E\u5C64", best: [1, 5], desc: "\u7269\u6D41\u306F\u8377\u634C\u304D\u306E\u90FD\u5408\u3067\u4F4E\u5C64\u306B\u9650\u3089\u308C\u3001\u8907\u5408\u306B\u306F\u5411\u304B\u306A\u3044\u3002" },
+    house: { label: "\u4E0D\u53EF", best: [1, 2], desc: "\u6238\u5EFA\u306F\u8907\u5408\u5EFA\u7269\u306B\u306F\u7D44\u307F\u8FBC\u3081\u306A\u3044\u3002" },
+    mixed: { label: "\u2014", best: [1, 70], desc: "" }
+  };
+  function stackFloorMul(use, from, to, total) {
+    const R2 = STACK_RULE[use] || STACK_RULE.office;
+    const mid = (from + to) / 2;
+    let m = 1;
+    if (use === "retail") m = from <= 3 ? 1 : from <= 6 ? 0.88 : 0.5;
+    else if (use === "hotel") m = from >= 5 ? 0.97 + Math.min(0.08, mid / Math.max(1, total) * 0.1) : 0.82;
+    else if (use === "resi" || use === "rental") {
+      const h = mid / Math.max(1, total);
+      m = 0.82 + h * 0.32;
+      if (from <= 3) m *= 0.9;
+    } else if (use === "office") m = 0.95 + Math.min(0.06, mid / Math.max(1, total) * 0.08);
+    else if (use === "logi") m = from <= 3 ? 0.9 : 0.5;
+    else if (use === "house") m = 0.45;
+    return m;
+  }
+  function devPlanStack(g, c, stack, gradeId = "standard", opt = {}) {
+    const d = DISTRICTS[c.d];
+    const G2 = GRADES[gradeId];
+    const p = orgPower(g);
+    const bf = brandEffect(g, opt.brandId);
+    const clean = (stack || []).filter((x) => x && x.floors > 0);
+    if (!clean.length) return null;
+    const totalFloors = clean.reduce((a, x) => a + x.floors, 0);
+    const cover = clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / totalFloors;
+    const plate = c.area * cover * (opt.coverMul ?? 1);
+    const fitAvg = clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / totalFloors;
+    const mixedBonus = 1.18;
+    const farUse = clamp01(0.8 + fitAvg * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
+    const maxGfa = c.area * (c.far / 100) * farUse;
+    const gfa = plate * totalFloors;
+    const heightM = clean.reduce((a, x) => a + FLOOR_H[x.use] * x.floors, 0);
+    const brandMul = 1 + (g.company.brand - 40) / 420;
+    const segs = [];
+    let cursor = 1, saleRevenue = 0, saleArea = 0, units = 0, noi = 0, nra = 0, grossRent = 0, build = 0;
+    for (const seg of clean) {
+      const from = cursor, to = cursor + seg.floors - 1;
+      cursor = to + 1;
+      const U = USES[seg.use];
+      const area = plate * seg.floors;
+      const fit = d.fit[seg.use] ?? 0.3;
+      const fitMul = 0.74 + fit * 0.28;
+      const fmul = stackFloorMul(seg.use, from, to, totalFloors);
+      const usable = area * U.efficiency;
+      const highRise = 1 + Math.max(0, to - 28) * 45e-4;
+      const costCut = 1 - subEffect(g, "costCut") - clamp((p.cons.quality - 55) / 100 * 0.1, -0.05, 0.1);
+      const segBuild = area * U.build * 1.08 * g.market.costIdx * G2.costMul * highRise * costCut;
+      build += segBuild;
+      const rec = { ...seg, from, to, area: Math.round(area), usable: Math.round(usable), floorMul: fmul, build: Math.round(segBuild * 1.085) };
+      if (U.model === "sale") {
+        const unitPrice = d.priceResi * G2.priceMul * g.market.priceIdx * (0.88 + (g.market.demand[seg.use] ?? 1) * 0.16) * (0.9 + c.station * 0.2) * brandMul * fitMul * fmul * bf.price * (seg.use === "house" ? 0.95 : 1);
+        rec.model = "sale";
+        rec.price = Math.round(unitPrice * 1e3) / 1e3;
+        rec.revenue = Math.round(usable * unitPrice);
+        rec.units = Math.max(1, Math.round(usable / 26));
+        saleRevenue += rec.revenue;
+        saleArea += usable;
+        units += rec.units;
+      } else {
+        const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi" }[seg.use] || "rentOffice";
+        const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
+        const rent2 = baseRent * G2.priceMul * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
+        rec.model = "lease";
+        rec.rent = Math.round(rent2);
+        rec.grossRent = Math.round(usable * rent2 * 12 / 1e6);
+        rec.noi = Math.round(rec.grossRent * 0.76 * 0.95);
+        nra += usable;
+        grossRent += rec.grossRent;
+        noi += rec.noi;
+      }
+      segs.push(rec);
+    }
+    const softCost = build * 0.085;
+    const buildCost = Math.round(build + softCost);
+    const sizePenalty = Math.floor(totalFloors / 14) * 6 + (gfa > 2e4 ? 8 : 0) + 12;
+    const ceS = cultureEffects(g);
+    const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
+    const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp) / ceS.speedMul));
+    const capRate = clamp(d.capRate + 25e-4 + g.market.capShift - subEffect(g, "exitPremium") * 0.05, 0.024, 0.09);
+    const assetValue2 = noi > 0 ? Math.round(noi / capRate) : 0;
+    const saleSegs = segs.filter((x) => x.model === "sale");
+    const leaseSegs = segs.filter((x) => x.model === "lease");
+    const salePrice = saleArea > 0 ? Math.round(saleRevenue / saleArea * 1e3) / 1e3 : 0;
+    const rent = nra > 0 ? Math.round(leaseSegs.reduce((a, x) => a + x.rent * x.usable, 0) / nra) : 0;
+    const saleBuild = saleSegs.reduce((a, x) => a + x.build, 0);
+    const leaseBuild = leaseSegs.reduce((a, x) => a + x.build, 0);
+    const saleCostShare = saleBuild + leaseBuild > 0 ? saleBuild / (saleBuild + leaseBuild) : saleArea > 0 ? 1 : 0;
+    const mainLease = leaseSegs.slice().sort((a, b) => b.usable - a.usable)[0];
+    const out = {
+      stack: segs,
+      gfa: Math.round(gfa),
+      maxGfa: Math.round(maxGfa),
+      plate: Math.round(plate),
+      floors: totalFloors,
+      heightM: Math.round(heightM * 10) / 10,
+      farUse,
+      over: gfa > maxGfa * 1.001,
+      buildCost,
+      weeks,
+      use: "mixed",
+      grade: gradeId,
+      brandId: opt.brandId || null,
+      saleRevenue: Math.round(saleRevenue),
+      saleArea: Math.round(saleArea),
+      units,
+      nra: Math.round(nra),
+      grossRent,
+      noi,
+      capRate,
+      assetValue: assetValue2,
+      sellable: Math.round(saleArea + nra),
+      salePrice,
+      rent,
+      saleCostShare,
+      leaseUse: mainLease ? mainLease.use : null
+    };
+    out.landCost = opt.landCost ?? landAppraisal(g, c);
+    out.totalCost = out.landCost + out.buildCost;
+    out.grossValue = out.saleRevenue + out.assetValue;
+    out.profit = out.grossValue - out.totalCost - out.saleRevenue * 0.04;
+    out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
+    out.yieldOnCost = noi ? noi / Math.max(1, out.totalCost) : null;
+    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * 0.04);
+    return out;
+  }
+  function maxFloorsFor(g, c, stack) {
+    const clean = (stack || []).filter((x) => x && x.floors > 0);
+    const p = orgPower(g);
+    const d = DISTRICTS[c.d];
+    const tf = clean.reduce((a, x) => a + x.floors, 0) || 1;
+    const cover = clean.length ? clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / tf : 0.4;
+    const fitAvg = clean.length ? clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / tf : 0.5;
+    const farUse = clamp01(0.8 + fitAvg * 0.18 + p.plan.quality / 900) * 1.18;
+    const plate = c.area * cover;
+    return Math.max(1, Math.floor(c.area * (c.far / 100) * farUse / Math.max(1, plate)));
+  }
+  function subEffect(g, key) {
+    let v = 0;
+    for (const s of g.subsidiaries) if (s.effect && s.effect[key]) v += s.effect[key] * (s.health ?? 1);
+    for (const a of g.acquisitions) if (!a.failed && a.effect && a.effect[key]) v += a.effect[key] * (a.integration ?? 1);
+    return v;
+  }
+  function assetValue(g, a) {
+    const d = DISTRICTS[a.district];
+    const cap = clamp(d.capRate + (CAP_SPREAD[a.use] ?? 0) + g.market.capShift + (a.age > 30 ? 4e-3 : 0), 0.024, 0.09);
+    const noi = currentNOI(g, a);
+    return Math.round(noi / cap);
+  }
+  var RENT_KEY = {
+    office: "rentOffice",
+    retail: "rentRetail",
+    hotel: "rentHotel",
+    logi: "rentLogi",
+    rental: "rentResi",
+    resi: "rentResi",
+    house: "rentResi",
+    mixed: "rentOffice"
+  };
+  function marketRentRaw(g, a) {
+    const d = DISTRICTS[a.district];
+    if (!d) return 0;
+    const dem = g.market.demand[a.use] ?? 1;
+    const base = d[RENT_KEY[a.use] || "rentOffice"] ?? d.rentOffice * 0.6;
+    const aged = 1 - Math.min(0.22, (a.age || 0) * 6e-3);
+    return base * (0.86 + dem * 0.2) * g.market.priceIdx * aged;
+  }
+  function currentNOI(g, a) {
+    const dem = g.market.demand[a.use] ?? 1;
+    const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
+    const opex = 0.24 - subEffect(g, "feeRate") * 2;
+    return Math.round(gross * (1 - clamp(opex, 0.16, 0.3)) * (a.use === "hotel" ? 0.7 + dem * 0.35 : 1));
+  }
+
+  // src/sim/land.js
+  var RISKS = [
+    { id: "soil", name: "\u571F\u58CC\u6C5A\u67D3", p: 0.115, bad: true, desc: "\u65E7\u5DE5\u5834\u7B49\u306B\u7531\u6765\u3059\u308B\u6C5A\u67D3\u3002\u9664\u53BB\u8CBB\u7528\u304C\u571F\u5730\u4EE3\u306E6\u301C16%\u767A\u751F\u3059\u308B\u3002" },
+    { id: "buried", name: "\u57CB\u8535\u6587\u5316\u8CA1\u306E\u5305\u8535\u5730", p: 0.085, bad: true, desc: "\u8A66\u6398\u8ABF\u67FB\u304C\u5FC5\u8981\u3067\u3001\u7740\u5DE5\u304C2\u56DB\u534A\u671F\u9045\u308C\u308B\u3002" },
+    { id: "obstacle", name: "\u5730\u4E2D\u969C\u5BB3\u7269", p: 0.1, bad: true, desc: "\u65E7\u5EFA\u7269\u306E\u57FA\u790E\u676D\u306A\u3069\u304C\u6B8B\u5B58\u3002\u5EFA\u8A2D\u8CBB\u304C7%\u5897\u3048\u308B\u3002" },
+    { id: "opposition", name: "\u8FD1\u96A3\u4F4F\u6C11\u306E\u53CD\u5BFE\u904B\u52D5", p: 0.115, bad: true, desc: "\u8A08\u753B\u306E\u7E2E\u5C0F\u3092\u6C42\u3081\u3089\u308C\u3001\u5BB9\u7A4D\u6D88\u5316\u7387\u304C15%\u843D\u3061\u5DE5\u671F\u3082\u5EF6\u3073\u308B\u3002" },
+    { id: "leasehold", name: "\u501F\u5730\u6A29\u30FB\u5E95\u5730\u306E\u672A\u6574\u7406", p: 0.075, bad: true, desc: "\u6A29\u5229\u95A2\u4FC2\u306E\u6574\u7406\u306B\u571F\u5730\u4EE3\u306E8%\u76F8\u5F53\u306E\u8FFD\u52A0\u8CBB\u7528\u304C\u304B\u304B\u308B\u3002" },
+    { id: "shadow", name: "\u65E5\u5F71\u898F\u5236\u306E\u5F37\u3044\u5236\u7D04", p: 0.095, bad: true, desc: "\u8A08\u753B\u5EFA\u7269\u306E\u968E\u6570\u304C\u5B9F\u8CEA\u7684\u306B15%\u5236\u9650\u3055\u308C\u308B\u3002" },
+    { id: "road", name: "\u63A5\u9053\u6761\u4EF6\u304C\u52A3\u308B", p: 0.08, bad: true, desc: "\u5DE5\u4E8B\u8ECA\u4E21\u306E\u52D5\u7DDA\u304C\u53D6\u308C\u305A\u5EFA\u8A2D\u8CBB4%\u5897\u30FB\u5DE5\u671F1\u56DB\u534A\u671F\u5897\u3002" },
+    { id: "asbestos", name: "\u65E2\u5B58\u5EFA\u7269\u306E\u30A2\u30B9\u30D9\u30B9\u30C8", p: 0.07, bad: true, desc: "\u89E3\u4F53\u8CBB\u7528\u304C\u571F\u5730\u4EE3\u306E5%\u76F8\u5F53\u5897\u52A0\u3059\u308B\u3002" },
+    { id: "upzoning", name: "\u5BB9\u7A4D\u7387\u5272\u5897\u306E\u898B\u8FBC\u307F", p: 0.085, bad: false, desc: "\u7DCF\u5408\u8A2D\u8A08\u5236\u5EA6\u306E\u9069\u7528\u304C\u898B\u8FBC\u3081\u3001\u5BB9\u7A4D\u7387\u304C15%\u4E0A\u4E57\u305B\u3067\u304D\u308B\u3002" },
+    { id: "newstation", name: "\u65B0\u99C5\u8A2D\u7F6E\u8A08\u753B", p: 0.055, bad: false, desc: "\u6570\u5E74\u5185\u306B\u65B0\u99C5\u304C\u958B\u696D\u3059\u308B\u898B\u8FBC\u307F\u3002\u5C06\u6765\u306E\u8CC3\u6599\u30FB\u5206\u8B72\u5358\u4FA1\u304C\u4E0A\u304C\u308B\u3002" }
+  ];
+  var ACQ_FEE = 0.052;
+  var KINDS = {
+    tender: { id: "tender", name: "\u4E00\u822C\u7AF6\u4E89\u5165\u672D", icon: "\u2696", desc: "\u6700\u9AD8\u4FA1\u683C\u3092\u63D0\u793A\u3057\u305F\u8005\u304C\u843D\u672D\u3059\u308B\u3002\u4FA1\u683C\u3060\u3051\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3002" },
+    proposal: { id: "proposal", name: "\u4E8B\u696D\u63D0\u6848\u30B3\u30F3\u30DA", icon: "\u270E", desc: "\u4FA1\u683C\u306B\u52A0\u3048\u3066\u4F01\u753B\u5185\u5BB9\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3002\u4F01\u753B\u529B\u304C\u9AD8\u3051\u308C\u3070\u5B89\u5024\u3067\u3082\u52DD\u3066\u308B\u3002" },
+    nego: { id: "nego", name: "\u76F8\u5BFE\uFF08\u5148\u7740\uFF09", icon: "\u{1F91D}", desc: "\u58F2\u4E3B\u306E\u63D0\u793A\u984D\u3067\u5373\u6642\u53D6\u5F97\u3067\u304D\u308B\u3002\u305F\u3060\u3057\u4FA1\u683C\u306F\u5F37\u6C17\u3067\u3001\u7455\u75B5\u304C\u96A0\u308C\u3066\u3044\u308B\u3053\u3068\u3082\u591A\u3044\u3002" }
+  };
+  function generateListings(g, rng, news) {
+    const p = orgPower(g);
+    const infoPower = p.land.quality / 100 + p.land.capacity / 26 + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.5 : 0);
+    const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
+    let n = Math.floor(rate);
+    if (rng.next() < rate - n) n++;
+    n = clamp(n, 0, 3);
+    if (g.listings.length >= 16) return;
+    const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && !c.onSale && c.owner !== "player" && !c.projectId && !c.assetId && !c.invId);
+    if (!pool.length) return;
+    for (let i = 0; i < n; i++) {
+      const cand = rng.shuffle(pool).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
+      const c = rng.pick(cand);
+      if (!c || c.onSale) continue;
+      const appraisal = landAppraisal(g, c);
+      const kind = rng.weighted([
+        { k: "tender", w: 5 },
+        { k: "proposal", w: 3 },
+        { k: "nego", w: 2.4 }
+      ]).k;
+      const heat = 0.9 + g.market.sentiment * 0.3;
+      const askMul = kind === "nego" ? rng.range(1.02, 1.3) : rng.range(0.82, 1.06);
+      const risks = [];
+      for (const r of RISKS) {
+        let pr = r.p;
+        if (r.id === "asbestos" && !c.building) pr = 0.01;
+        if (r.id === "soil" && c.d === "J") pr *= 2.1;
+        if (r.id === "opposition" && (c.d === "A" || c.d === "K")) pr *= 1.9;
+        if (r.id === "buried" && c.d === "K") pr *= 2;
+        if (r.id === "shadow" && (c.d === "A" || c.d === "N")) pr *= 1.7;
+        if (r.id === "newstation" && c.station > 0.85) pr *= 0.4;
+        if (rng.chance(pr)) risks.push({ ...r, found: false });
+      }
+      const seller = rng.pick([
+        "\u5730\u65B9\u9280\u884C\uFF08\u62C5\u4FDD\u51E6\u5206\uFF09",
+        "\u4E8B\u696D\u4F1A\u793E\uFF08\u8CC7\u7523\u5727\u7E2E\uFF09",
+        "\u500B\u4EBA\u5730\u6A29\u8005\uFF08\u76F8\u7D9A\uFF09",
+        "\u5916\u8CC7\u7CFB\u30D5\u30A1\u30F3\u30C9\uFF08\u51FA\u53E3\uFF09",
+        "\u88FD\u9020\u696D\uFF08\u5DE5\u5834\u79FB\u8EE2\uFF09",
+        "\u5B66\u6821\u6CD5\u4EBA\uFF08\u6821\u820E\u7D71\u5408\uFF09",
+        "\u9244\u9053\u4F1A\u793E\uFF08\u904A\u4F11\u5730\uFF09",
+        "\u81EA\u6CBB\u4F53\uFF08\u516C\u6709\u5730\u6255\u4E0B\u3052\uFF09"
+      ]);
+      c.onSale = {
+        id: uid("L"),
+        cellId: c.id,
+        kind,
+        appraisal,
+        askPrice: Math.round(appraisal * askMul * heat),
+        deadline: kind === "nego" ? rng.int(5, 11) : rng.int(3, 8),
+        seller,
+        risks,
+        ddLevel: 0,
+        bid: null,
+        bestUse: bestUseFit(c),
+        note: rng.pick([
+          "\u58F2\u4E3B\u306F\u65E9\u671F\u306E\u6C7A\u6E08\u3092\u5E0C\u671B\u3057\u3066\u3044\u308B\u3002",
+          "\u540C\u696D\u5404\u793E\u306B\u3082\u60C5\u5831\u304C\u56DE\u3063\u3066\u3044\u308B\u3002",
+          "\u5730\u5143\u3067\u306F\u4EE5\u524D\u304B\u3089\u58F2\u5374\u306E\u5642\u304C\u3042\u3063\u305F\u571F\u5730\u3067\u3042\u308B\u3002",
+          "\u5165\u672D\u53C2\u52A0\u8005\u306F\u591A\u3044\u3068\u898B\u3089\u308C\u308B\u3002",
+          "\u6761\u4EF6\u6B21\u7B2C\u3067\u306F\u4FA1\u683C\u4EA4\u6E09\u306E\u4F59\u5730\u304C\u3042\u308B\u3002",
+          "\u58F2\u4E3B\u306F\u4FA1\u683C\u3088\u308A\u3082\u8A08\u753B\u5185\u5BB9\u3092\u91CD\u8996\u3057\u3066\u3044\u308B\u3002"
+        ]),
+        week: g.week
+      };
+      g.listings.push(c.onSale);
+    }
+    function score(c, g2) {
+      let s = rng.next() * 0.5;
+      if (c.vacant) s += 1.2;
+      if (c.building && c.building.year < 1998) s += 0.8;
+      if (c.owner === "other") s += 0.5;
+      s += (g2.market.sentiment - 0.5) * 0.4;
+      return s;
+    }
+  }
+  function ddCost(listing, level) {
+    return Math.round(listing.askPrice * (level === 1 ? 4e-3 : 0.013));
+  }
+  function runDueDiligence(g, listing, level, rng) {
+    const p = orgPower(g);
+    const base = level === 1 ? 0.48 : 0.86;
+    const skill = clamp01(base + (p.land.quality - 55) / 260 + (p.corp.quality - 55) / 420);
+    let found = 0;
+    for (const r of listing.risks) {
+      if (r.found) continue;
+      if (rng.chance(skill)) {
+        r.found = true;
+        found++;
+      }
+    }
+    listing.ddLevel = Math.max(listing.ddLevel, level);
+    listing.ddSkill = skill;
+    return found;
+  }
+  function riskImpact(g, cell, risks) {
+    const eff = { extraCost: 0, delay: 0, buildMul: 1, farMul: 1, floorMul: 1, priceMul: 1 };
+    const land = cell.lastPaid || landAppraisal(g, cell);
+    for (const r of risks) {
+      switch (r.id) {
+        case "soil":
+          eff.extraCost += land * (0.06 + (r.mag ?? 0.5) * 0.1);
+          break;
+        case "buried":
+          eff.delay += 2;
+          break;
+        case "obstacle":
+          eff.buildMul *= 1.07;
+          break;
+        case "opposition":
+          eff.farMul *= 0.85;
+          eff.delay += 1;
+          break;
+        case "leasehold":
+          eff.extraCost += land * 0.08;
+          break;
+        case "shadow":
+          eff.floorMul *= 0.85;
+          break;
+        case "road":
+          eff.buildMul *= 1.04;
+          eff.delay += 1;
+          break;
+        case "asbestos":
+          eff.extraCost += land * 0.05;
+          break;
+        case "upzoning":
+          eff.farMul *= 1.15;
+          break;
+        case "newstation":
+          eff.priceMul *= 1.12;
+          break;
+      }
+    }
+    return eff;
+  }
+  function rivalBid(g, listing, cell, rv, rng) {
+    const use = listing.bestUse;
+    const fit = DISTRICTS[cell.d].fit[use] ?? 0.3;
+    const minDeal = rv.rev * 62e-4;
+    if (listing.appraisal < minDeal) return null;
+    if (listing.appraisal > rv.cash * 0.9 + rv.equity * 0.22) return null;
+    const interest = (rv.focus[use] ?? 0.3) * (0.42 + fit * 0.72) * (0.5 + rv.aggression * 0.62);
+    if (!rng.chance(clamp01(interest * 0.72))) return null;
+    const plan = devPlan(g, cell, use, rv.brand > 86 ? "high" : "standard", { landCost: listing.appraisal });
+    const ceiling = Math.max(listing.appraisal * 0.72, plan.residualLand);
+    let bid = ceiling * rng.range(0.58, 1) * (0.84 + rv.aggression * 0.22);
+    bid *= 0.95 + (rv.momentum || 0) * 0.05;
+    if (bid < listing.askPrice * 0.58) return null;
+    return {
+      id: rv.id,
+      name: rv.name,
+      short: rv.short,
+      color: rv.color,
+      amount: Math.round(bid),
+      quality: rv.brand * 0.45 + (rv.focus[use] ?? 0.3) * 45
+    };
+  }
+  function resolveListing(g, listing, rng, news) {
+    const cell = g.cells.find((c) => c.id === listing.cellId);
+    if (!cell) return null;
+    const p = orgPower(g);
+    const bids = [];
+    for (const rv of g.rivals) {
+      const b = rivalBid(g, listing, cell, rv, rng);
+      if (b) bids.push(b);
+    }
+    const reserve = listing.appraisal * rng.range(0.72, 0.92);
+    let playerBid = null;
+    if (listing.bid) {
+      const planQ = listing.bid.planQuality ?? 40;
+      playerBid = {
+        id: "player",
+        name: g.company.name,
+        short: g.company.name,
+        color: "#e3b558",
+        amount: listing.bid.amount,
+        quality: g.company.brand * 0.32 + p.plan.quality * 0.3 + planQ * 0.62,
+        isPlayer: true
+      };
+      bids.push(playerBid);
+    }
+    if (!bids.length) {
+      return { winner: null, bids: [], listing, cell, reason: "nobid" };
+    }
+    const scored = bids.map((b) => ({
+      ...b,
+      score: listing.kind === "proposal" ? b.amount / Math.max(1, listing.appraisal) * 100 * 0.78 + b.quality * 0.78 : b.amount
+    })).sort((a, b) => b.score - a.score);
+    const top = scored[0];
+    if (top.amount < reserve) return { winner: null, bids: scored, listing, cell, reason: "reserve", reserve };
+    return { winner: top, bids: scored, listing, cell, second: scored[1] || null };
+  }
+  function acquireForPlayer(g, listing, cell, amount, news) {
+    const fee = Math.round(amount * ACQ_FEE);
+    g.cash -= amount + fee;
+    g.finance.quarterAcc.landSpend += amount + fee;
+    cell.owner = "player";
+    cell.vacant = true;
+    cell.building = null;
+    cell.lastPaid = amount;
+    cell.acquiredWeek = g.week;
+    cell.risks = listing.risks.map((r) => ({ ...r }));
+    cell.onSale = null;
+    cell.holdCost = 0;
+    const idx = g.listings.indexOf(listing);
+    if (idx >= 0) g.listings.splice(idx, 1);
+    news && news.push({
+      icon: "\u{1F3C1}",
+      type: "land",
+      text: `${DISTRICTS[cell.d].name}\u306E\u7528\u5730\uFF08${cell.area.toLocaleString()}\u576A\uFF09\u3092${Math.round(amount / 100).toLocaleString()}\u5104\u5186\u3067\u53D6\u5F97\u3057\u305F\u3002\u8AF8\u8CBB\u7528${Math.round(fee / 100).toLocaleString()}\u5104\u5186\u3002`
+    });
+    return fee;
+  }
+  function acquireForRival(g, listing, cell, rvId, amount) {
+    const rv = g.rivals.find((r) => r.id === rvId);
+    cell.owner = rvId;
+    cell.onSale = null;
+    cell.vacant = true;
+    cell.building = null;
+    cell.rivalDev = { week: g.week, weeks: 52 + Math.floor(Math.random() * 78), use: listing.bestUse };
+    if (rv) {
+      rv.cash -= amount;
+      rv.lots++;
+      rv.momentum = Math.min(3, (rv.momentum || 0) + 1);
+    }
+    const idx = g.listings.indexOf(listing);
+    if (idx >= 0) g.listings.splice(idx, 1);
+  }
+  function holdingCost(g, cell) {
+    const v = cell.lastPaid || landAppraisal(g, cell);
+    return v * 42e-4 / WEEKS_PER_QUARTER;
+  }
+  function holdingCostQ(g, cell) {
+    return Math.round(holdingCost(g, cell) * WEEKS_PER_QUARTER);
+  }
+
+  // src/sim/project.js
+  function feasibilityStack(g, cell, stack, gradeId, brandId) {
+    const eff = riskImpact(g, cell, cell.risks || []);
+    const plan = devPlanStack(g, cell, stack, gradeId, {
+      farPenalty: eff.farMul,
+      landCost: cell.lastPaid || void 0,
+      brandId
+    });
+    if (!plan) return null;
+    plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
+    plan.weeks += eff.delay;
+    plan.riskExtra = Math.round(eff.extraCost);
+    plan.totalCost = plan.landCost + plan.buildCost;
+    plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
+    plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
+    plan.grossValue = plan.saleRevenue + plan.assetValue;
+    plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * 0.04;
+    plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
+    plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
+    return plan;
+  }
+  function feasibility(g, cell, useId, gradeId, brandId) {
+    const eff = riskImpact(g, cell, (cell.risks || []).filter((r) => true));
+    const plan = devPlan(g, cell, useId, gradeId, {
+      farPenalty: eff.farMul,
+      coverMul: 1 / Math.max(0.6, eff.floorMul) * eff.floorMul,
+      landCost: cell.lastPaid || void 0,
+      brandId
+    });
+    plan.floors = Math.max(1, Math.round(plan.floors * eff.floorMul));
+    plan.heightM = Math.round(plan.heightM * eff.floorMul * 10) / 10;
+    plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
+    plan.weeks += eff.delay;
+    plan.riskExtra = Math.round(eff.extraCost);
+    plan.totalCost = plan.landCost + plan.buildCost;
+    if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
+    if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
+    plan.grossValue = (plan.saleRevenue || 0) + (plan.assetValue || 0);
+    plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * 0.04;
+    plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
+    plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
+    return plan;
+  }
+  function brandedName(rng, brand, use, districtId) {
+    const d = DISTRICTS[districtId];
+    if (use === "office" || use === "mixed") return `${brand.name}${d.short}`;
+    if (use === "logi") return `${brand.name}${d.short}`;
+    if (use === "hotel") return `${brand.name} ${d.short}`;
+    if (use === "retail") return `${brand.name}${d.short}`;
+    return `${brand.name}${d.short}${rng.pick(["", "", "\u30B6\u30FB\u30BF\u30EF\u30FC", "\u30A4\u30FC\u30B9\u30C8", "\u30A6\u30A8\u30B9\u30C8", "\u30C6\u30E9\u30B9"])}`;
+  }
+  function projectName(rng, use, districtId, grade) {
+    const d = DISTRICTS[districtId];
+    if (use === "office" || use === "mixed") return `${d.short}${rng.pick(OFFICE_SUFFIX)}`;
+    if (use === "logi") return `${d.short}\u30ED\u30B8\u30B9\u30C6\u30A3\u30AF\u30B9\u30D1\u30FC\u30AF`;
+    if (use === "hotel") return `${rng.pick(["\u30DB\u30C6\u30EB", "\u30B6\u30FB", "\u30B0\u30E9\u30F3\u30C9"])}${d.short}${grade === "luxury" ? "\u30E9\u30B0\u30B8\u30E5\u30A2\u30EA\u30FC" : ""}`;
+    if (use === "retail") return `${d.short}${rng.pick(["\u30E2\u30FC\u30EB", "\u30C6\u30E9\u30B9", "\u30D7\u30E9\u30B6", "\u30A2\u30D9\u30CB\u30E5\u30FC"])}`;
+    if (use === "house") return `${d.short}${rng.pick(["\u30AC\u30FC\u30C7\u30F3\u30BF\u30A6\u30F3", "\u30D2\u30EB\u30B5\u30A4\u30C9", "\u30C6\u30E9\u30B9\u30BF\u30A6\u30F3"])}`;
+    return `${rng.pick(BRAND_PREFIX)}${d.short}${rng.pick(BRAND_CORE)}`;
+  }
+  function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null) {
+    const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId) : feasibility(g, cell, useId, gradeId, brandId);
+    if (!plan) return null;
+    const bd = getBrand(g, brandId);
+    const pj = {
+      id: uid("P"),
+      cellId: cell.id,
+      district: cell.d,
+      name: bd ? brandedName(rng, bd, useId, cell.d) : projectName(rng, useId, cell.d, gradeId),
+      use: useId,
+      grade: gradeId,
+      brandId,
+      stack: plan.stack || null,
+      gfa: plan.gfa,
+      floors: plan.floors,
+      heightM: plan.heightM,
+      sellable: plan.sellable,
+      saleArea: plan.saleArea || 0,
+      nra: plan.nra || 0,
+      budget: plan.buildCost,
+      spent: 0,
+      overrun: 0,
+      landCost: plan.landCost,
+      weeks: plan.weeks,
+      elapsed: 0,
+      progress: 0,
+      delay: 0,
+      status: "construction",
+      startWeek: g.week,
+      seed: rng.int(0, 99999),
+      plan,
+      salePrice: plan.salePrice || 0,
+      rent: plan.rent || 0,
+      // 竣工時に総事業費を分譲／賃貸へ割り振る比率と、賃貸部分の主用途
+      saleCostShare: typeof plan.saleCostShare === "number" ? plan.saleCostShare : plan.saleArea > 0 ? 1 : 0,
+      leaseUse: plan.leaseUse || null,
+      preContract: 0,
+      marketing: false,
+      events: []
+    };
+    cell.projectId = pj.id;
+    cell.vacant = false;
+    g.projects.push(pj);
+    news && news.push({
+      icon: "\u{1F3D7}",
+      type: "dev",
+      text: `${DISTRICTS[cell.d].name}\u3067\u300C${pj.name}\u300D\uFF08${USES[useId].name}\u30FB\u5730\u4E0A${pj.floors}\u968E\uFF09\u304C\u7740\u5DE5\u3002\u7DCF\u4E8B\u696D\u8CBB${Math.round(plan.totalCost / 100).toLocaleString()}\u5104\u5186\u3002`
+    });
+    return pj;
+  }
+  var BUILD_EVENTS = [
+    { id: "weather", p: 0.07, icon: "\u{1F327}", bad: true, text: "\u8A18\u9332\u7684\u306A\u9577\u96E8\u3067\u5916\u69CB\u5DE5\u4E8B\u304C\u6B62\u307E\u3063\u305F\u3002\u5DE5\u671F\u304C3\u9031\u5EF6\u3073\u308B\u3002", apply: (pj) => {
+      pj.delay += 3;
+    } },
+    { id: "overrun", p: 0.1, icon: "\u{1F4B8}", bad: true, text: "\u8CC7\u6750\u4FA1\u683C\u306E\u518D\u898B\u7A4D\u308A\u3067\u8ACB\u8CA0\u91D1\u984D\u306E\u5897\u984D\u3092\u6C42\u3081\u3089\u308C\u305F\u3002", apply: (pj, g, rng) => {
+      const up = pj.budget * rng.range(0.03, 0.09);
+      pj.budget += up;
+      pj.overrun += up;
+    } },
+    { id: "accident", p: 0.035, icon: "\u26A0", bad: true, text: "\u73FE\u5834\u3067\u52B4\u707D\u4E8B\u6545\u304C\u767A\u751F\u3002\u5B89\u5168\u5BFE\u7B56\u306E\u305F\u3081\u5DE5\u4E8B\u30924\u9031\u9593\u4E2D\u65AD\u3057\u305F\u3002", apply: (pj) => {
+      pj.delay += 4;
+      pj.safety = true;
+    } },
+    { id: "labor", p: 0.055, icon: "\u{1F477}", bad: true, text: "\u578B\u67A0\u5DE5\u306E\u78BA\u4FDD\u304C\u96E3\u822A\u3057\u3001\u8EAF\u4F53\u5DE5\u4E8B\u304C2\u9031\u9045\u308C\u3066\u3044\u308B\u3002", apply: (pj) => {
+      pj.delay += 2;
+    } },
+    { id: "vecut", p: 0.075, icon: "\u2702", bad: false, text: "VE\u63D0\u6848\u306B\u3088\u308A\u4ED5\u69D8\u3092\u898B\u76F4\u3057\u3001\u5DE5\u4E8B\u8CBB\u3092\u5727\u7E2E\u3067\u304D\u305F\u3002", apply: (pj, g, rng) => {
+      const cut = pj.budget * rng.range(0.02, 0.055);
+      pj.budget -= cut;
+      pj.overrun -= cut;
+    } },
+    { id: "fast", p: 0.06, icon: "\u26A1", bad: false, text: "\u65BD\u5DE5\u304C\u8A08\u753B\u3092\u4E0A\u56DE\u308B\u30DA\u30FC\u30B9\u3067\u9032\u307F\u3001\u5DE5\u7A0B\u30923\u9031\u77ED\u7E2E\u3067\u304D\u305F\u3002", apply: (pj) => {
+      pj.delay = Math.max(-Math.round(pj.weeks * 0.12), pj.delay - 3);
+    } },
+    { id: "media", p: 0.05, icon: "\u{1F4E3}", bad: false, text: "\u5EFA\u7BC9\u5C02\u9580\u8A8C\u306B\u8A08\u753B\u304C\u5927\u304D\u304F\u53D6\u308A\u4E0A\u3052\u3089\u308C\u3001\u5F15\u304D\u5408\u3044\u304C\u5897\u3048\u305F\u3002", apply: (pj, g) => {
+      pj.hype = (pj.hype || 0) + 0.12;
+      g.company.brand += 0.4;
+    } }
+  ];
+  function stepProjects(g, rng, news) {
+    const p = orgPower(g);
+    const done = [];
+    const ce = cultureEffects(g);
+    for (const pj of g.projects) {
+      if (pj.status !== "construction") continue;
+      pj.elapsed += 1;
+      const total = Math.max(4, pj.weeks + pj.delay);
+      pj.progress = clamp01(pj.elapsed / total);
+      const pay = Math.round(pj.budget / total);
+      pj.spent += pay;
+      g.cash -= pay;
+      g.finance.quarterAcc.buildSpend += pay;
+      for (const ev of BUILD_EVENTS) {
+        let pr = ev.p * ce.eventSwing;
+        if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk;
+        else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6);
+        if (g.subsidiaries.some((s) => s.type === "construction")) pr *= ev.bad ? 0.78 : 1.18;
+        if (rng.chance(pr / Math.max(1, total * 0.55 / WEEKS_PER_QUARTER))) {
+          ev.apply(pj, g, rng);
+          pj.events.push({ ...ev, week: g.week });
+          news.push({ icon: ev.icon, type: "dev", text: `\u3010${pj.name}\u3011${ev.text}` });
+        }
+      }
+      if (pj.saleArea > 0 && pj.progress > 0.25) {
+        const speed = contractSpeed(g, pj.use, pj.salePrice, pj.plan.salePrice, p, pj.district, pj.brandId) * (1 + (pj.hype || 0));
+        pj.preContract = clamp01(pj.preContract + speed * 0.62);
+      }
+      if (pj.elapsed >= total) {
+        pj.status = "done";
+        pj.progress = 1;
+        done.push(pj);
+      }
+    }
+    for (const pj of done) completeProject(g, pj, rng, news);
+  }
+  function contractSpeed(g, use, price, marketPrice, p, districtId, brandId) {
+    const gapRaw = marketPrice > 0 ? price / marketPrice : 1;
+    const gap = clamp(2.15 - gapRaw * 1.15, 0.12, 1.85);
+    const dem = g.market.demand[use] ?? 1;
+    const sales = 0.55 + p.sales.quality / 100 * 0.55 + p.sales.capacity / 130;
+    const brand = 0.82 + g.company.brand / 260;
+    const sub = 1 + (g.subsidiaries.some((s) => s.type === "sales") ? 0.15 : 0) + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.09 : 0);
+    const bf = brandEffect(g, brandId).speed;
+    return clamp(0.15 * gap * dem * sales * brand * sub * bf / WEEKS_PER_QUARTER, 12e-4, 0.055);
+  }
+  function saleCostShareOf(pj) {
+    if (typeof pj.saleCostShare === "number") return clamp01(pj.saleCostShare);
+    if (pj.plan && typeof pj.plan.saleCostShare === "number") return clamp01(pj.plan.saleCostShare);
+    const segs = Array.isArray(pj.stack) ? pj.stack : null;
+    if (segs && segs.length) {
+      const isSale = (x) => x.model ? x.model === "sale" : (USES[x.use] || {}).model === "sale";
+      const all = segs.reduce((a, x) => a + (x.build || x.area || 0), 0);
+      if (all > 0) {
+        const sale = segs.filter(isSale).reduce((a, x) => a + (x.build || x.area || 0), 0);
+        return clamp01(sale / all);
+      }
+    }
+    if (pj.nra > 0 && pj.saleArea > 0) return clamp01(pj.saleArea / (pj.saleArea + pj.nra));
+    return pj.saleArea > 0 ? 1 : 0;
+  }
+  function weighted(list, valueKey, areaKey) {
+    const items = (list || []).filter((x) => x && x[valueKey] > 0 && x[areaKey] > 0);
+    const area = items.reduce((a, x) => a + x[areaKey], 0);
+    return area > 0 ? items.reduce((a, x) => a + x[valueKey] * x[areaKey], 0) / area : 0;
+  }
+  function salePriceOf(pj) {
+    if (pj.salePrice > 0) return pj.salePrice;
+    const pl = pj.plan || {};
+    if (pl.salePrice > 0) return pl.salePrice;
+    if (pl.saleRevenue > 0 && pl.saleArea > 0) return Math.round(pl.saleRevenue / pl.saleArea * 1e3) / 1e3;
+    const w = weighted((pj.stack || []).filter((x) => x.model === "sale"), "price", "usable");
+    return w > 0 ? Math.round(w * 1e3) / 1e3 : 0;
+  }
+  function rentOf(pj) {
+    if (pj.rent > 0) return pj.rent;
+    const pl = pj.plan || {};
+    if (pl.rent > 0) return pl.rent;
+    if (pl.grossRent > 0 && pl.nra > 0) return Math.round(pl.grossRent * 1e6 / (pl.nra * 12));
+    const w = weighted((pj.stack || []).filter((x) => x.model === "lease"), "rent", "usable");
+    return w > 0 ? Math.round(w) : 0;
+  }
+  function completeProject(g, pj, rng, news) {
+    const cell = g.cells.find((c) => c.id === pj.cellId);
+    if (!cell) return;
+    const U = USES[pj.use];
+    cell.projectId = null;
+    cell.building = makeBuilding(rng, {
+      use: pj.use,
+      floors: pj.floors,
+      d: cell.d,
+      owner: "player",
+      grade: pj.grade,
+      year: g.year,
+      name: pj.name
+    });
+    cell.building.height = pj.heightM;
+    if (pj.stack) cell.building.stack = pj.stack.map((x) => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
+    g.kpi.builtCount++;
+    g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12e3 ? 1.6 : 1), 0, 100);
+    const ceq = cultureEffects(g);
+    if (pj.brandId) growBrand(g, pj.brandId, {
+      area: pj.gfa,
+      units: pj.plan.units || 0,
+      supplied: true,
+      base: 4.2 * ceq.qualityMul,
+      reputation: 1.5 * ceq.qualityMul
+    });
+    const cost = pj.landCost + pj.spent;
+    const saleShare = saleCostShareOf(pj);
+    if (pj.saleArea > 0) {
+      const price = salePriceOf(pj);
+      const basePrice = pj.plan && pj.plan.salePrice > 0 ? pj.plan.salePrice : price;
+      const inv = {
+        id: uid("I"),
+        cellId: cell.id,
+        projectId: pj.id,
+        name: pj.name,
+        use: pj.use,
+        district: cell.d,
+        grade: pj.grade,
+        brandId: pj.brandId,
+        area: pj.saleArea,
+        units: pj.plan.units || Math.round(pj.saleArea / 26),
+        price,
+        basePrice,
+        totalValue: Math.round(pj.saleArea * price),
+        cost: Math.round(cost * saleShare),
+        soldRatio: 0,
+        revenue: 0,
+        weeksOnSale: 0,
+        completedWeek: g.week,
+        impaired: 0,
+        discount: 0
+      };
+      const pre = clamp01(pj.preContract);
+      if (pre > 0) {
+        const rev = Math.round(inv.totalValue * pre);
+        const cogs = Math.round(inv.cost * pre);
+        g.finance.quarterAcc.revSale += rev;
+        g.finance.quarterAcc.cogsSale += cogs;
+        g.cash += rev;
+        inv.soldRatio = pre;
+        inv.revenue = rev;
+        g.kpi.soldUnits += Math.round(inv.units * pre);
+      }
+      g.inventory.push(inv);
+      cell.invId = inv.id;
+      news.push({
+        icon: "\u{1F389}",
+        type: "dev",
+        text: `\u300C${pj.name}\u300D\u304C\u7AE3\u5DE5\u3002\u5168${inv.units}\u6238\u306E\u3046\u3061${Math.round(pre * 100)}%\u304C\u5F15\u6E21\u6E08\u307F\u3002\u5F15\u6E21\u58F2\u4E0A${Math.round(inv.revenue / 100).toLocaleString()}\u5104\u5186\u3002`
+      });
+    }
+    if (pj.nra > 0) {
+      const share = 1 - saleShare;
+      const use = pj.use === "mixed" ? pj.leaseUse || pj.plan && pj.plan.leaseUse || "office" : pj.use;
+      const asset = {
+        id: uid("A"),
+        cellId: cell.id,
+        projectId: pj.id,
+        name: pj.name,
+        use,
+        district: cell.d,
+        grade: pj.grade,
+        brandId: pj.brandId,
+        nra: pj.nra,
+        rent: 0,
+        marketRent: 0,
+        occupancy: use === "logi" ? 0.86 : 0.42,
+        // 竣工直後は稼働が低い
+        bookLand: Math.round(pj.landCost * share),
+        bookBuild: Math.round(pj.spent * share),
+        completedWeek: g.week,
+        age: 0,
+        lastRentReview: g.week,
+        noi: 0,
+        cumNoi: 0
+      };
+      const raw = Math.max(1, marketRentRaw(g, asset));
+      const ask = rentOf(pj) || raw;
+      asset.rent = Math.round(ask);
+      asset.rentIndex = clamp(asset.rent / raw, 0.4, 3.5);
+      asset.marketRent = Math.round(raw * asset.rentIndex);
+      g.assets.push(asset);
+      cell.assetId = asset.id;
+      news.push({
+        icon: "\u{1F3E2}",
+        type: "dev",
+        text: `\u300C${pj.name}\u300D\u304C\u7AE3\u5DE5\u3002\u8CB8\u5BA4${asset.nra.toLocaleString()}\u576A\uFF0F\u52DF\u96C6\u8CC3\u6599 \u6708\u576A${asset.rent.toLocaleString()}\u5186\u3067\u30EA\u30FC\u30B7\u30F3\u30B0\u3092\u958B\u59CB\u3057\u305F\u3002`
+      });
+    }
+    const i = g.projects.indexOf(pj);
+    if (i >= 0) g.projects.splice(i, 1);
+    g.completed = g.completed || [];
+    g.completed.push({ ...pj, cost, completedWeek: g.week });
+  }
+  function canStart(g, cell) {
+    if (!cell || cell.owner !== "player") return "\u81EA\u793E\u304C\u6240\u6709\u3057\u3066\u3044\u306A\u3044\u533A\u753B\u3067\u3042\u308B";
+    if (cell.projectId) return "\u3059\u3067\u306B\u958B\u767A\u4E2D\u3067\u3042\u308B";
+    if (cell.assetId || cell.invId) return "\u3059\u3067\u306B\u5EFA\u7269\u304C\u5EFA\u3063\u3066\u3044\u308B";
+    const running = g.projects.filter((p) => p.status === "construction").length;
+    if (running >= projectCapacity(g)) return `\u540C\u6642\u9032\u884C\u3067\u304D\u308B\u6848\u4EF6\u6570\u306E\u4E0A\u9650\uFF08${projectCapacity(g)}\u4EF6\uFF09\u306B\u9054\u3057\u3066\u3044\u308B`;
+    return null;
+  }
+
   // src/core/save.js
   var PREFIX = "skyline_v3_";
   var META = "skyline_v3_meta";
@@ -2519,6 +3630,50 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (!pol || Array.isArray(pol.rankPay)) return;
       const mul = typeof pol.salaryMul === "number" ? pol.salaryMul : 1;
       pol.rankPay = RANKS.map((r) => Math.round(r.baseSalary * mul * 10) / 10);
+    },
+    // 複合開発の坪単価・募集賃料・原価配分が入っていない案件を引き直す。
+    // 旧版は devPlanStack がこれらを返しておらず 0 のまま保存されていた。
+    // そのまま竣工すると「売上0・原価満額」の在庫と「賃料0」の資産ができる。
+    (g) => {
+      for (const pj of g.projects || []) {
+        if (typeof pj.saleCostShare !== "number") pj.saleCostShare = saleCostShareOf(pj);
+        if (!pj.leaseUse && pj.plan && pj.plan.leaseUse) pj.leaseUse = pj.plan.leaseUse;
+        if (pj.saleArea > 0) {
+          const base = salePriceOf({ ...pj, salePrice: 0 });
+          if (base > 0) {
+            if (!(pj.plan && pj.plan.salePrice > 0)) {
+              pj.plan = pj.plan || {};
+              pj.plan.salePrice = base;
+            }
+            if (!(pj.salePrice > 0) || pj.salePrice < base * 0.55) pj.salePrice = base;
+          }
+        }
+        if (pj.nra > 0 && !(pj.rent > 0)) {
+          const r = rentOf({ ...pj, rent: 0 });
+          if (r > 0) pj.rent = r;
+        }
+      }
+    },
+    // 総販売額が0の在庫を、坪単価から引き直す
+    (g) => {
+      for (const inv of g.inventory || []) {
+        if (inv.totalValue > 0) continue;
+        const price = inv.price > 0 ? inv.price : inv.basePrice > 0 ? inv.basePrice : 0;
+        if (price > 0 && inv.area > 0) {
+          inv.price = price;
+          inv.basePrice = inv.basePrice > 0 ? inv.basePrice : price;
+          inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
+        }
+      }
+    },
+    // 賃料が0／未設定の保有資産に相場の賃料を入れ、相場との位置（rentIndex）を持たせる
+    (g) => {
+      for (const a of g.assets || []) {
+        const raw = Math.max(1, marketRentRaw(g, a));
+        if (!(a.rent > 0)) a.rent = Math.round(raw);
+        if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / raw, 0.4, 3.5);
+        a.marketRent = Math.round(raw * a.rentIndex);
+      }
     }
   ];
   function migrate(g) {
@@ -4557,1034 +5712,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return rng.weighted(M.map(([k, w]) => ({ k, w }))).k;
   }
 
-  // src/sim/hr.js
-  function orgPower(g) {
-    const out = {};
-    for (const d of DEPT_IDS) {
-      const list = g.staff.filter((s) => s.dept === d && !s.subsidiary);
-      let wsum = 0, asum = 0, cap = 0;
-      for (const s of list) {
-        const w = 1 + s.rank * 0.42;
-        const eff = s.abil[DEPTS[d].key] * (0.72 + s.morale * 0.42);
-        wsum += w;
-        asum += eff * w;
-        cap += w * (0.8 + s.morale * 0.4);
-      }
-      out[d] = {
-        quality: wsum ? clamp(asum / wsum, 0, 120) : 0,
-        capacity: cap,
-        count: list.length
-      };
-    }
-    for (const sub of g.subsidiaries) {
-      if (sub.type === "sales") out.sales.quality *= 1.08;
-      if (sub.type === "construction") out.cons.quality *= 1.1;
-      if (sub.type === "pm") out.lease.quality *= 1.08;
-      if (sub.type === "reit") out.fin.quality *= 1.06;
-    }
-    for (const a of g.acquisitions) {
-      if (a.failed) continue;
-      if (a.kind === "broker") out.sales.quality *= 1.06;
-      if (a.kind === "builder") out.cons.quality *= 1.07;
-      if (a.kind === "pm") out.lease.quality *= 1.06;
-    }
-    if (g.hrPolicy.programs.dx) for (const d of DEPT_IDS) out[d].capacity *= 1.12;
-    const ce = cultureEffects(g);
-    for (const d of DEPT_IDS) {
-      out[d].capacity *= ce.capacityMul;
-      out[d].quality *= 0.97 + (g.culture ? g.culture.team : 0.5) * 0.06;
-    }
-    out.total = g.staff.filter((s) => !s.subsidiary).length;
-    out.avgSalary = g.staff.length ? g.staff.reduce((a, s) => a + s.salary, 0) / g.staff.length : 0;
-    return out;
-  }
-  function projectCapacity(g) {
-    const p = orgPower(g);
-    const base = (p.cons.capacity + p.plan.capacity) / 6;
-    return Math.max(3, Math.floor(base) + 1 + g.subsidiaries.filter((s) => s.type === "construction").length * 2);
-  }
-  function personnelCost(g) {
-    const salary = g.staff.reduce((a, s) => a + s.salary, 0) / WEEKS_PER_YEAR;
-    const welfare = salary * 0.16;
-    const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
-    return salary + welfare + programs;
-  }
-  function personnelCostYear(g) {
-    return personnelCost(g) * WEEKS_PER_YEAR;
-  }
-  function salaryFairness(g, s) {
-    return s.salary / Math.max(0.1, baseSalaryFor(s));
-  }
-  function payIndex(g) {
-    if (!g.staff.length) return 1;
-    let sum = 0;
-    for (const s of g.staff) sum += s.salary / Math.max(0.1, baseSalaryFor(s));
-    return sum / g.staff.length;
-  }
-  function stepHR(g, rng, news) {
-    const pol = g.hrPolicy;
-    const trainMul = pol.programs.training ? 1.35 : 1;
-    const welfare = pol.programs.welfare ? 1 : 0;
-    const W = WEEKS_PER_QUARTER;
-    const ce = cultureEffects(g);
-    const leavers = [];
-    for (const s of g.staff) {
-      const youth = clamp(1.25 - (s.age - 22) * 0.028, 0.15, 1.25);
-      for (const k of ABILITY_IDS) {
-        const room = s.potential - s.abil[k];
-        if (room > 0) {
-          const isMain = DEPTS[s.dept].key === k;
-          const gain = room / 100 * youth * trainMul * ce.growthMul * (isMain ? 1.5 : 0.5) * rng.range(0.5, 1.5) * 1.05 / W;
-          s.abil[k] = clamp(s.abil[k] + gain, 0, 99);
-        } else if (s.age > 48 && rng.chance(0.1 / W)) {
-          s.abil[k] = clamp(s.abil[k] - rng.range(0, 0.4), 0, 99);
-        }
-      }
-      s.tenure += 1 / WEEKS_PER_YEAR;
-      const fair = salaryFairness(g, s);
-      let dm = (fair - 1) * 0.1 + welfare * 0.028 - 0.012 + ce.moraleShift;
-      if (s.rank >= 3) dm += 0.012;
-      if (g.market.sentiment > 0.65) dm += 8e-3;
-      if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
-      s.morale = clamp01(s.morale + (dm + rng.normal(0, 0.03)) / W);
-      let risk = 0.012;
-      risk += Math.max(0, 0.72 - s.morale) * 0.1;
-      risk += Math.max(0, 1 - fair) * 0.09;
-      risk += (1 - s.loyalty) * 0.022;
-      if (pol.programs.welfare) risk *= 0.7;
-      if (s.age > 60) risk += 0.16;
-      if (avgAbility(s) > 76 && s.rank < 3) risk += 0.02;
-      const rel = (avgAbility(s) - 55) / 45;
-      risk *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
-      risk *= ce.leaveMul;
-      if (rng.chance(clamp01(risk) / W)) leavers.push(s);
-    }
-    for (const s of leavers) {
-      g.staff.splice(g.staff.indexOf(s), 1);
-      const why = s.age > 60 ? "\u5B9A\u5E74\u9000\u8077" : salaryFairness(g, s) < 0.92 ? "\u5F85\u9047\u3078\u306E\u4E0D\u6E80" : s.morale < 0.45 ? "\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u4F4E\u4E0B" : "\u4ED6\u793E\u3078\u306E\u8EE2\u8077";
-      news.push({ icon: "\u{1F6AA}", type: "hr", major: s.rank >= 4, text: `${DEPTS[s.dept].name}\u306E${RANKS[s.rank].name}\u30FB${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08${why}\uFF09\u3002` });
-    }
-    if (isYearStart(g) && g.week > 0) {
-      let promoted = 0;
-      for (const s of g.staff) {
-        s.age += 1;
-        const std = stdSalary(g, s);
-        s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
-      }
-      for (let r = RANKS.length - 2; r >= 1; r--) {
-        const rank = RANKS[r];
-        const cur = g.staff.filter((s) => s.rank === r).length;
-        const room = rank.slots === Infinity ? 99 : Math.max(0, rank.slots - cur);
-        const cands = g.staff.filter((s) => s.rank === r - 1 && avgAbility(s) >= rank.minAbility && s.tenure >= 2).sort((a, b) => avgAbility(b) + b.abil.lead * 0.4 - (avgAbility(a) + a.abil.lead * 0.4));
-        const n = Math.min(room, Math.ceil(cands.length * (0.13 + pol.evalStrict * 0.12 + ce.promoteBoost * 0.14)));
-        for (let i = 0; i < n; i++) {
-          const s = cands[i];
-          if (!s) break;
-          s.rank = r;
-          s.salary = Math.max(s.salary, stdSalary(g, s));
-          s.morale = clamp01(s.morale + 0.14);
-          promoted++;
-          if (r >= 5) news.push({ icon: "\u2B06", type: "hr", major: true, text: `${s.name}\u304C${rank.name}\u306B\u6607\u683C\u3057\u305F\u3002` });
-        }
-      }
-      if (promoted) news.push({ icon: "\u{1F4CB}", type: "hr", major: true, text: `${g.year}\u5E74\u306E\u5B9A\u671F\u4EBA\u4E8B\u3067${promoted}\u540D\u304C\u6607\u683C\u3057\u3001\u5168\u793E\u54E1\u306E\u7D66\u4E0E\u3092\u6539\u5B9A\u3057\u305F\u3002` });
-    }
-    if (!g.staff.some((s) => s.rank === 7) && g.staff.length) {
-      const next = g.staff.slice().sort((a, b) => avgAbility(b) + b.abil.lead - (avgAbility(a) + a.abil.lead))[0];
-      next.rank = 7;
-      next.salary = stdSalary(g, next);
-      news.push({ icon: "\u{1F451}", type: "hr", major: true, text: `${next.name}\u304C\u65B0\u793E\u9577\u306B\u5C31\u4EFB\u3057\u305F\u3002` });
-    }
-  }
-  function hireStaff(g, s, news) {
-    s.joined = { year: g.year, q: g.quarter };
-    s.tenure = 0;
-    delete s.hireCost;
-    g.staff.push(s);
-    news && news.push({ icon: "\u{1F91D}", type: "hr", text: `${s.prevCompany || "\u4ED6\u793E"}\u304B\u3089${s.name}\uFF08${RANKS[s.rank].name}\u76F8\u5F53\uFF09\u3092\u63A1\u7528\u3057\u305F\u3002` });
-  }
-
-  // src/sim/brands.js
-  var BRAND_CATEGORIES = {
-    resi: { id: "resi", name: "\u5206\u8B72\u30DE\u30F3\u30B7\u30E7\u30F3", uses: ["resi"], icon: "\u25A4", example: "\u30D1\u30FC\u30AF\u30B3\u30FC\u30C8\u3001\u30D6\u30E9\u30F3\u30BA\u3001\u30D7\u30E9\u30A6\u30C9" },
-    house: { id: "house", name: "\u6238\u5EFA\u5206\u8B72", uses: ["house"], icon: "\u2302", example: "\u30D5\u30A1\u30A4\u30F3\u30B3\u30FC\u30C8\u3001\u30D7\u30EC\u30DF\u30A2\u30E0\u30B9\u30C6\u30FC\u30B8" },
-    rental: { id: "rental", name: "\u8CC3\u8CB8\u30EC\u30B8\u30C7\u30F3\u30B9", uses: ["rental"], icon: "\u25A5", example: "\u30D1\u30FC\u30AF\u30A2\u30AF\u30B7\u30B9\u3001\u30D7\u30E9\u30A6\u30C9\u30D5\u30E9\u30C3\u30C8" },
-    office: { id: "office", name: "\u30AA\u30D5\u30A3\u30B9\u30D3\u30EB", uses: ["office", "mixed"], icon: "\u25AE", example: "\u25CB\u25CB\u30D3\u30EB\u30C7\u30A3\u30F3\u30B0\u3001\u25CB\u25CB\u30B2\u30FC\u30C8\u30BF\u30EF\u30FC" },
-    retail: { id: "retail", name: "\u5546\u696D\u65BD\u8A2D", uses: ["retail", "mixed"], icon: "\u25A6", example: "\u3089\u3089\u307D\u30FC\u3068\u3001\u30E9\u30BE\u30FC\u30CA\u3001\u30A2\u30FC\u30D0\u30F3\u30C9\u30C3\u30AF" },
-    hotel: { id: "hotel", name: "\u30DB\u30C6\u30EB", uses: ["hotel"], icon: "\u25A7", example: "\u30B6\u30FB\u30BB\u30EC\u30B9\u30C6\u30A3\u30F3\u3001\u30AC\u30FC\u30C7\u30F3\u30DB\u30C6\u30EB" },
-    logi: { id: "logi", name: "\u7269\u6D41\u65BD\u8A2D", uses: ["logi"], icon: "\u25AC", example: "MFLP\u3001GLP\u3001\u30D7\u30ED\u30ED\u30B8\u30B9\u30D1\u30FC\u30AF" }
-  };
-  var BRAND_GRADES = {
-    mass: { id: "mass", name: "\u30DC\u30EA\u30E5\u30FC\u30E0", cost: 240, priceMul: 1, growth: 1.3, cap: 78, desc: "\u4FA1\u683C\u8A34\u6C42\u578B\u3002\u8A8D\u77E5\u306F\u5E83\u304C\u308A\u3084\u3059\u3044\u304C\u5358\u4FA1\u306F\u4E0A\u304C\u308A\u306B\u304F\u3044\u3002" },
-    upper: { id: "upper", name: "\u30A2\u30C3\u30D1\u30FC", cost: 620, priceMul: 1.05, growth: 1, cap: 90, desc: "\u4E3B\u529B\u30D6\u30E9\u30F3\u30C9\u3002\u30D0\u30E9\u30F3\u30B9\u304C\u3088\u304F\u3001\u80B2\u3066\u3070\u5927\u304D\u306A\u6B66\u5668\u306B\u306A\u308B\u3002" },
-    premium: { id: "premium", name: "\u30D7\u30EC\u30DF\u30A2\u30E0", cost: 1450, priceMul: 1.12, growth: 0.7, cap: 100, desc: "\u6700\u4E0A\u4F4D\u3002\u80B2\u6210\u306B\u6642\u9593\u306F\u304B\u304B\u308B\u304C\u3001\u5358\u4FA1\u3068\u8CC3\u6599\u3092\u5927\u304D\u304F\u62BC\u3057\u4E0A\u3052\u308B\u3002" }
-  };
-  function createBrand(g, { name: name2, category, grade }) {
-    const G2 = BRAND_GRADES[grade];
-    const b = {
-      id: uid("B"),
-      name: name2.slice(0, 16),
-      category,
-      grade,
-      awareness: 6 + (grade === "premium" ? 4 : 0),
-      reputation: 55,
-      supplied: 0,
-      area: 0,
-      units: 0,
-      foundedWeek: g.week,
-      lastUsedWeek: g.week,
-      adSpend: 0
-    };
-    g.cash -= G2.cost;
-    g.finance.quarterAcc.sga += G2.cost;
-    g.brands.push(b);
-    return b;
-  }
-  function brandsFor(g, useId) {
-    return g.brands.filter((b) => (BRAND_CATEGORIES[b.category]?.uses || []).includes(useId));
-  }
-  function getBrand(g, id) {
-    return id ? g.brands.find((b) => b.id === id) : null;
-  }
-  function brandEffect(g, brandId) {
-    const b = getBrand(g, brandId);
-    if (!b) return { price: 1, speed: 1, rent: 1, awareness: 0 };
-    const G2 = BRAND_GRADES[b.grade];
-    const a = b.awareness / 100;
-    const rep = 0.85 + b.reputation / 340;
-    return {
-      price: (1 + a * 0.14) * G2.priceMul * rep,
-      speed: (1 + a * 0.3) * rep,
-      rent: (1 + a * 0.1) * G2.priceMul * rep,
-      awareness: b.awareness,
-      brand: b
-    };
-  }
-  function growBrand(g, brandId, opt = {}) {
-    const b = getBrand(g, brandId);
-    if (!b) return;
-    const G2 = BRAND_GRADES[b.grade];
-    const scale = clamp((opt.area || 0) / 6e3, 0.25, 2.4);
-    const gain = (opt.base ?? 3.5) * scale * G2.growth * (1 - b.awareness / (G2.cap + 12));
-    b.awareness = clamp(b.awareness + gain, 0, G2.cap);
-    b.lastUsedWeek = g.week;
-    if (opt.supplied) {
-      b.supplied++;
-      b.area += opt.area || 0;
-      b.units += opt.units || 0;
-    }
-    if (opt.reputation) b.reputation = clamp(b.reputation + opt.reputation, 0, 100);
-  }
-  function damageBrand(g, brandId, amount, repHit = 0) {
-    const b = getBrand(g, brandId);
-    if (!b) return;
-    b.awareness = clamp(b.awareness - amount, 0, 100);
-    b.reputation = clamp(b.reputation - repHit, 0, 100);
-  }
-  function stepBrands(g, rng, news) {
-    for (const b of g.brands) {
-      const G2 = BRAND_GRADES[b.grade];
-      const idle = g.week - b.lastUsedWeek;
-      const floor = 3 + b.supplied * 1.5;
-      if (idle > 104 && b.awareness > floor) b.awareness = clamp(b.awareness - 0.02, floor, 100);
-      if (b.adSpend > 0) {
-        const w = b.adSpend / 52;
-        g.cash -= w;
-        g.finance.quarterAcc.sga += w;
-        b.awareness = clamp(b.awareness + b.adSpend / 900 * G2.growth * (1 - b.awareness / (G2.cap + 8)) / 52 * 12, 0, G2.cap);
-      }
-      b.reputation = clamp(b.reputation + (55 - b.reputation) * 2e-3, 0, 100);
-    }
-  }
-
-  // src/sim/valuation.js
-  var COVER = { office: 0.38, resi: 0.28, rental: 0.3, retail: 0.68, hotel: 0.36, logi: 0.76, house: 0.46, mixed: 0.4 };
-  var CAP_SPREAD = { office: 0, retail: 65e-4, hotel: 0.0105, logi: 18e-4, rental: 0, resi: 0, mixed: 25e-4, house: 4e-3 };
-  var FLOOR_H = { office: 4.1, resi: 3.25, rental: 3.15, retail: 5.4, hotel: 3.4, logi: 7.2, house: 3, mixed: 3.9 };
-  function landAppraisal(g, c) {
-    if (!c.baseValue) return 0;
-    const d = DISTRICTS[c.d];
-    const best = bestUseFit(c);
-    const demand = g.market.demand[best] ?? 1;
-    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1));
-  }
-  function bestUseFit(c) {
-    const d = DISTRICTS[c.d];
-    let best = "office", bv = -1;
-    for (const u in d.fit) {
-      if (d.fit[u] > bv) {
-        bv = d.fit[u];
-        best = u;
-      }
-    }
-    return best;
-  }
-  function devPlan(g, c, useId, gradeId = "standard", opt = {}) {
-    const d = DISTRICTS[c.d];
-    const U = USES[useId];
-    const G2 = GRADES[gradeId];
-    const p = orgPower(g);
-    const fit = d.fit[useId] ?? 0.4;
-    const mixedBonus = useId === "mixed" ? 1.18 : 1;
-    const farUse = clamp01(0.8 + fit * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
-    const gfa = Math.round(c.area * (c.far / 100) * farUse);
-    const cover = COVER[useId] * (opt.coverMul ?? 1);
-    const floors = Math.max(1, Math.round(gfa / Math.max(1, c.area * cover)));
-    const heightM = Math.round(floors * FLOOR_H[useId] * 10) / 10;
-    const sellable = Math.round(gfa * U.efficiency);
-    const highRise = 1 + Math.max(0, floors - 28) * 45e-4;
-    const costCut = 1 - subEffect(g, "costCut") - clamp((p.cons.quality - 55) / 100 * 0.1, -0.05, 0.1);
-    const build = gfa * U.build * g.market.costIdx * G2.costMul * highRise * costCut;
-    const softCost = build * 0.085;
-    const buildCost = Math.round(build + softCost);
-    const sizePenalty = Math.floor(floors / 14) * 6 + (gfa > 2e4 ? 8 : 0);
-    const ce = cultureEffects(g);
-    const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-    const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
-    const brandMul = 1 + (g.company.brand - 40) / 420;
-    const fitMul = 0.74 + fit * 0.28;
-    const bf = brandEffect(g, opt.brandId);
-    const out = { gfa, floors, heightM, sellable, buildCost, weeks, fit, use: useId, grade: gradeId, farUse };
-    const saleShare = useId === "mixed" ? 0.45 : U.model === "sale" ? 1 : 0;
-    const leaseShare = 1 - saleShare;
-    if (saleShare > 0) {
-      const unitPrice = d.priceResi * G2.priceMul * g.market.priceIdx * (0.88 + (g.market.demand[useId] ?? 1) * 0.16) * (0.9 + c.station * 0.2) * brandMul * (useId === "house" ? 0.95 : 1) * fitMul * bf.price;
-      out.salePrice = Math.round(unitPrice * 1e3) / 1e3;
-      out.saleArea = Math.round(sellable * saleShare);
-      out.saleRevenue = Math.round(out.saleArea * unitPrice);
-      out.units = Math.max(1, Math.round(out.saleArea / (useId === "house" ? 34 : 26)));
-    }
-    if (leaseShare > 0) {
-      const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi", mixed: "rentOffice", house: "rentResi" }[useId];
-      const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-      const rent = baseRent * G2.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
-      out.rent = Math.round(rent);
-      out.nra = Math.round(sellable * leaseShare);
-      out.grossRent = Math.round(out.nra * rent * 12 / 1e6);
-      out.noi = Math.round(out.grossRent * 0.76 * 0.95);
-      out.capRate = clamp(d.capRate + (CAP_SPREAD[useId] ?? 0) + g.market.capShift + (fit < 0.5 ? 6e-3 : 0) - subEffect(g, "exitPremium") * 0.05, 0.024, 0.09);
-      out.assetValue = Math.round(out.noi / out.capRate);
-    }
-    out.brandId = opt.brandId || null;
-    out.landCost = opt.landCost ?? landAppraisal(g, c);
-    out.totalCost = out.landCost + out.buildCost;
-    out.grossValue = (out.saleRevenue || 0) + (out.assetValue || 0);
-    out.profit = out.grossValue - out.totalCost - (out.saleRevenue || 0) * 0.04;
-    out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
-    out.yieldOnCost = out.noi ? out.noi / Math.max(1, out.totalCost) : null;
-    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - (out.saleRevenue || 0) * 0.04);
-    return out;
-  }
-  var STACK_RULE = {
-    retail: { label: "\u4F4E\u5C64", best: [1, 6], desc: "\u5546\u696D\u306F\u6B69\u884C\u8005\u304C\u4E0A\u304C\u3063\u3066\u3053\u3089\u308C\u308B\u4F4E\u5C64\u968E\u3067\u3053\u305D\u529B\u3092\u767A\u63EE\u3059\u308B\u3002" },
-    office: { label: "\u4F4E\u301C\u4E2D\u5C64", best: [1, 44], desc: "\u30AA\u30D5\u30A3\u30B9\u306F\u968E\u5C64\u3092\u3042\u307E\u308A\u9078\u3070\u306A\u3044\u3002\u57FA\u6E96\u968E\u304C\u5E83\u3044\u307B\u3069\u52B9\u7387\u304C\u3088\u3044\u3002" },
-    hotel: { label: "\u4E2D\u301C\u9AD8\u5C64", best: [5, 60], desc: "\u30DB\u30C6\u30EB\u306F\u773A\u671B\u3068\u9759\u7C9B\u6027\u304C\u4FA1\u5024\u306B\u306A\u308B\u305F\u3081\u3001\u4F4E\u5C64\u968E\u3067\u306F\u5358\u4FA1\u304C\u843D\u3061\u308B\u3002" },
-    resi: { label: "\u9AD8\u5C64", best: [7, 70], desc: "\u5206\u8B72\u4F4F\u5B85\u306F\u4E0A\u5C64\u968E\u307B\u3069\u9AD8\u304F\u58F2\u308C\u308B\u3002\u4F4E\u5C64\u968E\u306F\u4FA1\u683C\u304C\u4F38\u3073\u306A\u3044\u3002" },
-    rental: { label: "\u4E2D\u301C\u9AD8\u5C64", best: [5, 70], desc: "\u8CC3\u8CB8\u4F4F\u5B85\u3082\u4E0A\u5C64\u968E\u306E\u307B\u3046\u304C\u8CC3\u6599\u304C\u53D6\u308C\u308B\u3002" },
-    logi: { label: "\u4F4E\u5C64", best: [1, 5], desc: "\u7269\u6D41\u306F\u8377\u634C\u304D\u306E\u90FD\u5408\u3067\u4F4E\u5C64\u306B\u9650\u3089\u308C\u3001\u8907\u5408\u306B\u306F\u5411\u304B\u306A\u3044\u3002" },
-    house: { label: "\u4E0D\u53EF", best: [1, 2], desc: "\u6238\u5EFA\u306F\u8907\u5408\u5EFA\u7269\u306B\u306F\u7D44\u307F\u8FBC\u3081\u306A\u3044\u3002" },
-    mixed: { label: "\u2014", best: [1, 70], desc: "" }
-  };
-  function stackFloorMul(use, from, to, total) {
-    const R2 = STACK_RULE[use] || STACK_RULE.office;
-    const mid = (from + to) / 2;
-    let m = 1;
-    if (use === "retail") m = from <= 3 ? 1 : from <= 6 ? 0.88 : 0.5;
-    else if (use === "hotel") m = from >= 5 ? 0.97 + Math.min(0.08, mid / Math.max(1, total) * 0.1) : 0.82;
-    else if (use === "resi" || use === "rental") {
-      const h = mid / Math.max(1, total);
-      m = 0.82 + h * 0.32;
-      if (from <= 3) m *= 0.9;
-    } else if (use === "office") m = 0.95 + Math.min(0.06, mid / Math.max(1, total) * 0.08);
-    else if (use === "logi") m = from <= 3 ? 0.9 : 0.5;
-    else if (use === "house") m = 0.45;
-    return m;
-  }
-  function devPlanStack(g, c, stack, gradeId = "standard", opt = {}) {
-    const d = DISTRICTS[c.d];
-    const G2 = GRADES[gradeId];
-    const p = orgPower(g);
-    const bf = brandEffect(g, opt.brandId);
-    const clean = (stack || []).filter((x) => x && x.floors > 0);
-    if (!clean.length) return null;
-    const totalFloors = clean.reduce((a, x) => a + x.floors, 0);
-    const cover = clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / totalFloors;
-    const plate = c.area * cover * (opt.coverMul ?? 1);
-    const fitAvg = clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / totalFloors;
-    const mixedBonus = 1.18;
-    const farUse = clamp01(0.8 + fitAvg * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
-    const maxGfa = c.area * (c.far / 100) * farUse;
-    const gfa = plate * totalFloors;
-    const heightM = clean.reduce((a, x) => a + FLOOR_H[x.use] * x.floors, 0);
-    const brandMul = 1 + (g.company.brand - 40) / 420;
-    const segs = [];
-    let cursor = 1, saleRevenue = 0, saleArea = 0, units = 0, noi = 0, nra = 0, grossRent = 0, build = 0;
-    for (const seg of clean) {
-      const from = cursor, to = cursor + seg.floors - 1;
-      cursor = to + 1;
-      const U = USES[seg.use];
-      const area = plate * seg.floors;
-      const fit = d.fit[seg.use] ?? 0.3;
-      const fitMul = 0.74 + fit * 0.28;
-      const fmul = stackFloorMul(seg.use, from, to, totalFloors);
-      const usable = area * U.efficiency;
-      const highRise = 1 + Math.max(0, to - 28) * 45e-4;
-      const costCut = 1 - subEffect(g, "costCut") - clamp((p.cons.quality - 55) / 100 * 0.1, -0.05, 0.1);
-      const segBuild = area * U.build * 1.08 * g.market.costIdx * G2.costMul * highRise * costCut;
-      build += segBuild;
-      const rec = { ...seg, from, to, area: Math.round(area), usable: Math.round(usable), floorMul: fmul, build: Math.round(segBuild * 1.085) };
-      if (U.model === "sale") {
-        const unitPrice = d.priceResi * G2.priceMul * g.market.priceIdx * (0.88 + (g.market.demand[seg.use] ?? 1) * 0.16) * (0.9 + c.station * 0.2) * brandMul * fitMul * fmul * bf.price * (seg.use === "house" ? 0.95 : 1);
-        rec.model = "sale";
-        rec.price = Math.round(unitPrice * 1e3) / 1e3;
-        rec.revenue = Math.round(usable * unitPrice);
-        rec.units = Math.max(1, Math.round(usable / 26));
-        saleRevenue += rec.revenue;
-        saleArea += usable;
-        units += rec.units;
-      } else {
-        const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi" }[seg.use] || "rentOffice";
-        const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-        const rent = baseRent * G2.priceMul * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
-        rec.model = "lease";
-        rec.rent = Math.round(rent);
-        rec.grossRent = Math.round(usable * rent * 12 / 1e6);
-        rec.noi = Math.round(rec.grossRent * 0.76 * 0.95);
-        nra += usable;
-        grossRent += rec.grossRent;
-        noi += rec.noi;
-      }
-      segs.push(rec);
-    }
-    const softCost = build * 0.085;
-    const buildCost = Math.round(build + softCost);
-    const sizePenalty = Math.floor(totalFloors / 14) * 6 + (gfa > 2e4 ? 8 : 0) + 12;
-    const ceS = cultureEffects(g);
-    const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-    const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp) / ceS.speedMul));
-    const capRate = clamp(d.capRate + 25e-4 + g.market.capShift - subEffect(g, "exitPremium") * 0.05, 0.024, 0.09);
-    const assetValue2 = noi > 0 ? Math.round(noi / capRate) : 0;
-    const out = {
-      stack: segs,
-      gfa: Math.round(gfa),
-      maxGfa: Math.round(maxGfa),
-      plate: Math.round(plate),
-      floors: totalFloors,
-      heightM: Math.round(heightM * 10) / 10,
-      farUse,
-      over: gfa > maxGfa * 1.001,
-      buildCost,
-      weeks,
-      use: "mixed",
-      grade: gradeId,
-      brandId: opt.brandId || null,
-      saleRevenue: Math.round(saleRevenue),
-      saleArea: Math.round(saleArea),
-      units,
-      nra: Math.round(nra),
-      grossRent,
-      noi,
-      capRate,
-      assetValue: assetValue2,
-      sellable: Math.round(saleArea + nra)
-    };
-    out.landCost = opt.landCost ?? landAppraisal(g, c);
-    out.totalCost = out.landCost + out.buildCost;
-    out.grossValue = out.saleRevenue + out.assetValue;
-    out.profit = out.grossValue - out.totalCost - out.saleRevenue * 0.04;
-    out.margin = out.grossValue > 0 ? out.profit / out.grossValue : 0;
-    out.yieldOnCost = noi ? noi / Math.max(1, out.totalCost) : null;
-    out.residualLand = Math.round(out.grossValue * 0.85 - out.buildCost - out.saleRevenue * 0.04);
-    return out;
-  }
-  function maxFloorsFor(g, c, stack) {
-    const clean = (stack || []).filter((x) => x && x.floors > 0);
-    const p = orgPower(g);
-    const d = DISTRICTS[c.d];
-    const tf = clean.reduce((a, x) => a + x.floors, 0) || 1;
-    const cover = clean.length ? clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / tf : 0.4;
-    const fitAvg = clean.length ? clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / tf : 0.5;
-    const farUse = clamp01(0.8 + fitAvg * 0.18 + p.plan.quality / 900) * 1.18;
-    const plate = c.area * cover;
-    return Math.max(1, Math.floor(c.area * (c.far / 100) * farUse / Math.max(1, plate)));
-  }
-  function subEffect(g, key) {
-    let v = 0;
-    for (const s of g.subsidiaries) if (s.effect && s.effect[key]) v += s.effect[key] * (s.health ?? 1);
-    for (const a of g.acquisitions) if (!a.failed && a.effect && a.effect[key]) v += a.effect[key] * (a.integration ?? 1);
-    return v;
-  }
-  function assetValue(g, a) {
-    const d = DISTRICTS[a.district];
-    const cap = clamp(d.capRate + (CAP_SPREAD[a.use] ?? 0) + g.market.capShift + (a.age > 30 ? 4e-3 : 0), 0.024, 0.09);
-    const noi = currentNOI(g, a);
-    return Math.round(noi / cap);
-  }
-  function currentNOI(g, a) {
-    const dem = g.market.demand[a.use] ?? 1;
-    const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
-    const opex = 0.24 - subEffect(g, "feeRate") * 2;
-    return Math.round(gross * (1 - clamp(opex, 0.16, 0.3)) * (a.use === "hotel" ? 0.7 + dem * 0.35 : 1));
-  }
-
-  // src/sim/land.js
-  var RISKS = [
-    { id: "soil", name: "\u571F\u58CC\u6C5A\u67D3", p: 0.115, bad: true, desc: "\u65E7\u5DE5\u5834\u7B49\u306B\u7531\u6765\u3059\u308B\u6C5A\u67D3\u3002\u9664\u53BB\u8CBB\u7528\u304C\u571F\u5730\u4EE3\u306E6\u301C16%\u767A\u751F\u3059\u308B\u3002" },
-    { id: "buried", name: "\u57CB\u8535\u6587\u5316\u8CA1\u306E\u5305\u8535\u5730", p: 0.085, bad: true, desc: "\u8A66\u6398\u8ABF\u67FB\u304C\u5FC5\u8981\u3067\u3001\u7740\u5DE5\u304C2\u56DB\u534A\u671F\u9045\u308C\u308B\u3002" },
-    { id: "obstacle", name: "\u5730\u4E2D\u969C\u5BB3\u7269", p: 0.1, bad: true, desc: "\u65E7\u5EFA\u7269\u306E\u57FA\u790E\u676D\u306A\u3069\u304C\u6B8B\u5B58\u3002\u5EFA\u8A2D\u8CBB\u304C7%\u5897\u3048\u308B\u3002" },
-    { id: "opposition", name: "\u8FD1\u96A3\u4F4F\u6C11\u306E\u53CD\u5BFE\u904B\u52D5", p: 0.115, bad: true, desc: "\u8A08\u753B\u306E\u7E2E\u5C0F\u3092\u6C42\u3081\u3089\u308C\u3001\u5BB9\u7A4D\u6D88\u5316\u7387\u304C15%\u843D\u3061\u5DE5\u671F\u3082\u5EF6\u3073\u308B\u3002" },
-    { id: "leasehold", name: "\u501F\u5730\u6A29\u30FB\u5E95\u5730\u306E\u672A\u6574\u7406", p: 0.075, bad: true, desc: "\u6A29\u5229\u95A2\u4FC2\u306E\u6574\u7406\u306B\u571F\u5730\u4EE3\u306E8%\u76F8\u5F53\u306E\u8FFD\u52A0\u8CBB\u7528\u304C\u304B\u304B\u308B\u3002" },
-    { id: "shadow", name: "\u65E5\u5F71\u898F\u5236\u306E\u5F37\u3044\u5236\u7D04", p: 0.095, bad: true, desc: "\u8A08\u753B\u5EFA\u7269\u306E\u968E\u6570\u304C\u5B9F\u8CEA\u7684\u306B15%\u5236\u9650\u3055\u308C\u308B\u3002" },
-    { id: "road", name: "\u63A5\u9053\u6761\u4EF6\u304C\u52A3\u308B", p: 0.08, bad: true, desc: "\u5DE5\u4E8B\u8ECA\u4E21\u306E\u52D5\u7DDA\u304C\u53D6\u308C\u305A\u5EFA\u8A2D\u8CBB4%\u5897\u30FB\u5DE5\u671F1\u56DB\u534A\u671F\u5897\u3002" },
-    { id: "asbestos", name: "\u65E2\u5B58\u5EFA\u7269\u306E\u30A2\u30B9\u30D9\u30B9\u30C8", p: 0.07, bad: true, desc: "\u89E3\u4F53\u8CBB\u7528\u304C\u571F\u5730\u4EE3\u306E5%\u76F8\u5F53\u5897\u52A0\u3059\u308B\u3002" },
-    { id: "upzoning", name: "\u5BB9\u7A4D\u7387\u5272\u5897\u306E\u898B\u8FBC\u307F", p: 0.085, bad: false, desc: "\u7DCF\u5408\u8A2D\u8A08\u5236\u5EA6\u306E\u9069\u7528\u304C\u898B\u8FBC\u3081\u3001\u5BB9\u7A4D\u7387\u304C15%\u4E0A\u4E57\u305B\u3067\u304D\u308B\u3002" },
-    { id: "newstation", name: "\u65B0\u99C5\u8A2D\u7F6E\u8A08\u753B", p: 0.055, bad: false, desc: "\u6570\u5E74\u5185\u306B\u65B0\u99C5\u304C\u958B\u696D\u3059\u308B\u898B\u8FBC\u307F\u3002\u5C06\u6765\u306E\u8CC3\u6599\u30FB\u5206\u8B72\u5358\u4FA1\u304C\u4E0A\u304C\u308B\u3002" }
-  ];
-  var ACQ_FEE = 0.052;
-  var KINDS = {
-    tender: { id: "tender", name: "\u4E00\u822C\u7AF6\u4E89\u5165\u672D", icon: "\u2696", desc: "\u6700\u9AD8\u4FA1\u683C\u3092\u63D0\u793A\u3057\u305F\u8005\u304C\u843D\u672D\u3059\u308B\u3002\u4FA1\u683C\u3060\u3051\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3002" },
-    proposal: { id: "proposal", name: "\u4E8B\u696D\u63D0\u6848\u30B3\u30F3\u30DA", icon: "\u270E", desc: "\u4FA1\u683C\u306B\u52A0\u3048\u3066\u4F01\u753B\u5185\u5BB9\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3002\u4F01\u753B\u529B\u304C\u9AD8\u3051\u308C\u3070\u5B89\u5024\u3067\u3082\u52DD\u3066\u308B\u3002" },
-    nego: { id: "nego", name: "\u76F8\u5BFE\uFF08\u5148\u7740\uFF09", icon: "\u{1F91D}", desc: "\u58F2\u4E3B\u306E\u63D0\u793A\u984D\u3067\u5373\u6642\u53D6\u5F97\u3067\u304D\u308B\u3002\u305F\u3060\u3057\u4FA1\u683C\u306F\u5F37\u6C17\u3067\u3001\u7455\u75B5\u304C\u96A0\u308C\u3066\u3044\u308B\u3053\u3068\u3082\u591A\u3044\u3002" }
-  };
-  function generateListings(g, rng, news) {
-    const p = orgPower(g);
-    const infoPower = p.land.quality / 100 + p.land.capacity / 26 + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.5 : 0);
-    const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
-    let n = Math.floor(rate);
-    if (rng.next() < rate - n) n++;
-    n = clamp(n, 0, 3);
-    if (g.listings.length >= 16) return;
-    const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && !c.onSale && c.owner !== "player" && !c.projectId && !c.assetId && !c.invId);
-    if (!pool.length) return;
-    for (let i = 0; i < n; i++) {
-      const cand = rng.shuffle(pool).sort((a, b) => score(b, g) - score(a, g)).slice(0, 14);
-      const c = rng.pick(cand);
-      if (!c || c.onSale) continue;
-      const appraisal = landAppraisal(g, c);
-      const kind = rng.weighted([
-        { k: "tender", w: 5 },
-        { k: "proposal", w: 3 },
-        { k: "nego", w: 2.4 }
-      ]).k;
-      const heat = 0.9 + g.market.sentiment * 0.3;
-      const askMul = kind === "nego" ? rng.range(1.02, 1.3) : rng.range(0.82, 1.06);
-      const risks = [];
-      for (const r of RISKS) {
-        let pr = r.p;
-        if (r.id === "asbestos" && !c.building) pr = 0.01;
-        if (r.id === "soil" && c.d === "J") pr *= 2.1;
-        if (r.id === "opposition" && (c.d === "A" || c.d === "K")) pr *= 1.9;
-        if (r.id === "buried" && c.d === "K") pr *= 2;
-        if (r.id === "shadow" && (c.d === "A" || c.d === "N")) pr *= 1.7;
-        if (r.id === "newstation" && c.station > 0.85) pr *= 0.4;
-        if (rng.chance(pr)) risks.push({ ...r, found: false });
-      }
-      const seller = rng.pick([
-        "\u5730\u65B9\u9280\u884C\uFF08\u62C5\u4FDD\u51E6\u5206\uFF09",
-        "\u4E8B\u696D\u4F1A\u793E\uFF08\u8CC7\u7523\u5727\u7E2E\uFF09",
-        "\u500B\u4EBA\u5730\u6A29\u8005\uFF08\u76F8\u7D9A\uFF09",
-        "\u5916\u8CC7\u7CFB\u30D5\u30A1\u30F3\u30C9\uFF08\u51FA\u53E3\uFF09",
-        "\u88FD\u9020\u696D\uFF08\u5DE5\u5834\u79FB\u8EE2\uFF09",
-        "\u5B66\u6821\u6CD5\u4EBA\uFF08\u6821\u820E\u7D71\u5408\uFF09",
-        "\u9244\u9053\u4F1A\u793E\uFF08\u904A\u4F11\u5730\uFF09",
-        "\u81EA\u6CBB\u4F53\uFF08\u516C\u6709\u5730\u6255\u4E0B\u3052\uFF09"
-      ]);
-      c.onSale = {
-        id: uid("L"),
-        cellId: c.id,
-        kind,
-        appraisal,
-        askPrice: Math.round(appraisal * askMul * heat),
-        deadline: kind === "nego" ? rng.int(5, 11) : rng.int(3, 8),
-        seller,
-        risks,
-        ddLevel: 0,
-        bid: null,
-        bestUse: bestUseFit(c),
-        note: rng.pick([
-          "\u58F2\u4E3B\u306F\u65E9\u671F\u306E\u6C7A\u6E08\u3092\u5E0C\u671B\u3057\u3066\u3044\u308B\u3002",
-          "\u540C\u696D\u5404\u793E\u306B\u3082\u60C5\u5831\u304C\u56DE\u3063\u3066\u3044\u308B\u3002",
-          "\u5730\u5143\u3067\u306F\u4EE5\u524D\u304B\u3089\u58F2\u5374\u306E\u5642\u304C\u3042\u3063\u305F\u571F\u5730\u3067\u3042\u308B\u3002",
-          "\u5165\u672D\u53C2\u52A0\u8005\u306F\u591A\u3044\u3068\u898B\u3089\u308C\u308B\u3002",
-          "\u6761\u4EF6\u6B21\u7B2C\u3067\u306F\u4FA1\u683C\u4EA4\u6E09\u306E\u4F59\u5730\u304C\u3042\u308B\u3002",
-          "\u58F2\u4E3B\u306F\u4FA1\u683C\u3088\u308A\u3082\u8A08\u753B\u5185\u5BB9\u3092\u91CD\u8996\u3057\u3066\u3044\u308B\u3002"
-        ]),
-        week: g.week
-      };
-      g.listings.push(c.onSale);
-    }
-    function score(c, g2) {
-      let s = rng.next() * 0.5;
-      if (c.vacant) s += 1.2;
-      if (c.building && c.building.year < 1998) s += 0.8;
-      if (c.owner === "other") s += 0.5;
-      s += (g2.market.sentiment - 0.5) * 0.4;
-      return s;
-    }
-  }
-  function ddCost(listing, level) {
-    return Math.round(listing.askPrice * (level === 1 ? 4e-3 : 0.013));
-  }
-  function runDueDiligence(g, listing, level, rng) {
-    const p = orgPower(g);
-    const base = level === 1 ? 0.48 : 0.86;
-    const skill = clamp01(base + (p.land.quality - 55) / 260 + (p.corp.quality - 55) / 420);
-    let found = 0;
-    for (const r of listing.risks) {
-      if (r.found) continue;
-      if (rng.chance(skill)) {
-        r.found = true;
-        found++;
-      }
-    }
-    listing.ddLevel = Math.max(listing.ddLevel, level);
-    listing.ddSkill = skill;
-    return found;
-  }
-  function riskImpact(g, cell, risks) {
-    const eff = { extraCost: 0, delay: 0, buildMul: 1, farMul: 1, floorMul: 1, priceMul: 1 };
-    const land = cell.lastPaid || landAppraisal(g, cell);
-    for (const r of risks) {
-      switch (r.id) {
-        case "soil":
-          eff.extraCost += land * (0.06 + (r.mag ?? 0.5) * 0.1);
-          break;
-        case "buried":
-          eff.delay += 2;
-          break;
-        case "obstacle":
-          eff.buildMul *= 1.07;
-          break;
-        case "opposition":
-          eff.farMul *= 0.85;
-          eff.delay += 1;
-          break;
-        case "leasehold":
-          eff.extraCost += land * 0.08;
-          break;
-        case "shadow":
-          eff.floorMul *= 0.85;
-          break;
-        case "road":
-          eff.buildMul *= 1.04;
-          eff.delay += 1;
-          break;
-        case "asbestos":
-          eff.extraCost += land * 0.05;
-          break;
-        case "upzoning":
-          eff.farMul *= 1.15;
-          break;
-        case "newstation":
-          eff.priceMul *= 1.12;
-          break;
-      }
-    }
-    return eff;
-  }
-  function rivalBid(g, listing, cell, rv, rng) {
-    const use = listing.bestUse;
-    const fit = DISTRICTS[cell.d].fit[use] ?? 0.3;
-    const minDeal = rv.rev * 62e-4;
-    if (listing.appraisal < minDeal) return null;
-    if (listing.appraisal > rv.cash * 0.9 + rv.equity * 0.22) return null;
-    const interest = (rv.focus[use] ?? 0.3) * (0.42 + fit * 0.72) * (0.5 + rv.aggression * 0.62);
-    if (!rng.chance(clamp01(interest * 0.72))) return null;
-    const plan = devPlan(g, cell, use, rv.brand > 86 ? "high" : "standard", { landCost: listing.appraisal });
-    const ceiling = Math.max(listing.appraisal * 0.72, plan.residualLand);
-    let bid = ceiling * rng.range(0.58, 1) * (0.84 + rv.aggression * 0.22);
-    bid *= 0.95 + (rv.momentum || 0) * 0.05;
-    if (bid < listing.askPrice * 0.58) return null;
-    return {
-      id: rv.id,
-      name: rv.name,
-      short: rv.short,
-      color: rv.color,
-      amount: Math.round(bid),
-      quality: rv.brand * 0.45 + (rv.focus[use] ?? 0.3) * 45
-    };
-  }
-  function resolveListing(g, listing, rng, news) {
-    const cell = g.cells.find((c) => c.id === listing.cellId);
-    if (!cell) return null;
-    const p = orgPower(g);
-    const bids = [];
-    for (const rv of g.rivals) {
-      const b = rivalBid(g, listing, cell, rv, rng);
-      if (b) bids.push(b);
-    }
-    const reserve = listing.appraisal * rng.range(0.72, 0.92);
-    let playerBid = null;
-    if (listing.bid) {
-      const planQ = listing.bid.planQuality ?? 40;
-      playerBid = {
-        id: "player",
-        name: g.company.name,
-        short: g.company.name,
-        color: "#e3b558",
-        amount: listing.bid.amount,
-        quality: g.company.brand * 0.32 + p.plan.quality * 0.3 + planQ * 0.62,
-        isPlayer: true
-      };
-      bids.push(playerBid);
-    }
-    if (!bids.length) {
-      return { winner: null, bids: [], listing, cell, reason: "nobid" };
-    }
-    const scored = bids.map((b) => ({
-      ...b,
-      score: listing.kind === "proposal" ? b.amount / Math.max(1, listing.appraisal) * 100 * 0.78 + b.quality * 0.78 : b.amount
-    })).sort((a, b) => b.score - a.score);
-    const top = scored[0];
-    if (top.amount < reserve) return { winner: null, bids: scored, listing, cell, reason: "reserve", reserve };
-    return { winner: top, bids: scored, listing, cell, second: scored[1] || null };
-  }
-  function acquireForPlayer(g, listing, cell, amount, news) {
-    const fee = Math.round(amount * ACQ_FEE);
-    g.cash -= amount + fee;
-    g.finance.quarterAcc.landSpend += amount + fee;
-    cell.owner = "player";
-    cell.vacant = true;
-    cell.building = null;
-    cell.lastPaid = amount;
-    cell.acquiredWeek = g.week;
-    cell.risks = listing.risks.map((r) => ({ ...r }));
-    cell.onSale = null;
-    cell.holdCost = 0;
-    const idx = g.listings.indexOf(listing);
-    if (idx >= 0) g.listings.splice(idx, 1);
-    news && news.push({
-      icon: "\u{1F3C1}",
-      type: "land",
-      text: `${DISTRICTS[cell.d].name}\u306E\u7528\u5730\uFF08${cell.area.toLocaleString()}\u576A\uFF09\u3092${Math.round(amount / 100).toLocaleString()}\u5104\u5186\u3067\u53D6\u5F97\u3057\u305F\u3002\u8AF8\u8CBB\u7528${Math.round(fee / 100).toLocaleString()}\u5104\u5186\u3002`
-    });
-    return fee;
-  }
-  function acquireForRival(g, listing, cell, rvId, amount) {
-    const rv = g.rivals.find((r) => r.id === rvId);
-    cell.owner = rvId;
-    cell.onSale = null;
-    cell.vacant = true;
-    cell.building = null;
-    cell.rivalDev = { week: g.week, weeks: 52 + Math.floor(Math.random() * 78), use: listing.bestUse };
-    if (rv) {
-      rv.cash -= amount;
-      rv.lots++;
-      rv.momentum = Math.min(3, (rv.momentum || 0) + 1);
-    }
-    const idx = g.listings.indexOf(listing);
-    if (idx >= 0) g.listings.splice(idx, 1);
-  }
-  function holdingCost(g, cell) {
-    const v = cell.lastPaid || landAppraisal(g, cell);
-    return v * 42e-4 / WEEKS_PER_QUARTER;
-  }
-  function holdingCostQ(g, cell) {
-    return Math.round(holdingCost(g, cell) * WEEKS_PER_QUARTER);
-  }
-
-  // src/sim/project.js
-  function feasibilityStack(g, cell, stack, gradeId, brandId) {
-    const eff = riskImpact(g, cell, cell.risks || []);
-    const plan = devPlanStack(g, cell, stack, gradeId, {
-      farPenalty: eff.farMul,
-      landCost: cell.lastPaid || void 0,
-      brandId
-    });
-    if (!plan) return null;
-    plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
-    plan.weeks += eff.delay;
-    plan.riskExtra = Math.round(eff.extraCost);
-    plan.totalCost = plan.landCost + plan.buildCost;
-    plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
-    plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
-    plan.grossValue = plan.saleRevenue + plan.assetValue;
-    plan.profit = plan.grossValue - plan.totalCost - plan.saleRevenue * 0.04;
-    plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
-    plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
-    return plan;
-  }
-  function feasibility(g, cell, useId, gradeId, brandId) {
-    const eff = riskImpact(g, cell, (cell.risks || []).filter((r) => true));
-    const plan = devPlan(g, cell, useId, gradeId, {
-      farPenalty: eff.farMul,
-      coverMul: 1 / Math.max(0.6, eff.floorMul) * eff.floorMul,
-      landCost: cell.lastPaid || void 0,
-      brandId
-    });
-    plan.floors = Math.max(1, Math.round(plan.floors * eff.floorMul));
-    plan.heightM = Math.round(plan.heightM * eff.floorMul * 10) / 10;
-    plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
-    plan.weeks += eff.delay;
-    plan.riskExtra = Math.round(eff.extraCost);
-    plan.totalCost = plan.landCost + plan.buildCost;
-    if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
-    if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
-    plan.grossValue = (plan.saleRevenue || 0) + (plan.assetValue || 0);
-    plan.profit = plan.grossValue - plan.totalCost - (plan.saleRevenue || 0) * 0.04;
-    plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
-    plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
-    return plan;
-  }
-  function brandedName(rng, brand, use, districtId) {
-    const d = DISTRICTS[districtId];
-    if (use === "office" || use === "mixed") return `${brand.name}${d.short}`;
-    if (use === "logi") return `${brand.name}${d.short}`;
-    if (use === "hotel") return `${brand.name} ${d.short}`;
-    if (use === "retail") return `${brand.name}${d.short}`;
-    return `${brand.name}${d.short}${rng.pick(["", "", "\u30B6\u30FB\u30BF\u30EF\u30FC", "\u30A4\u30FC\u30B9\u30C8", "\u30A6\u30A8\u30B9\u30C8", "\u30C6\u30E9\u30B9"])}`;
-  }
-  function projectName(rng, use, districtId, grade) {
-    const d = DISTRICTS[districtId];
-    if (use === "office" || use === "mixed") return `${d.short}${rng.pick(OFFICE_SUFFIX)}`;
-    if (use === "logi") return `${d.short}\u30ED\u30B8\u30B9\u30C6\u30A3\u30AF\u30B9\u30D1\u30FC\u30AF`;
-    if (use === "hotel") return `${rng.pick(["\u30DB\u30C6\u30EB", "\u30B6\u30FB", "\u30B0\u30E9\u30F3\u30C9"])}${d.short}${grade === "luxury" ? "\u30E9\u30B0\u30B8\u30E5\u30A2\u30EA\u30FC" : ""}`;
-    if (use === "retail") return `${d.short}${rng.pick(["\u30E2\u30FC\u30EB", "\u30C6\u30E9\u30B9", "\u30D7\u30E9\u30B6", "\u30A2\u30D9\u30CB\u30E5\u30FC"])}`;
-    if (use === "house") return `${d.short}${rng.pick(["\u30AC\u30FC\u30C7\u30F3\u30BF\u30A6\u30F3", "\u30D2\u30EB\u30B5\u30A4\u30C9", "\u30C6\u30E9\u30B9\u30BF\u30A6\u30F3"])}`;
-    return `${rng.pick(BRAND_PREFIX)}${d.short}${rng.pick(BRAND_CORE)}`;
-  }
-  function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null) {
-    const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId) : feasibility(g, cell, useId, gradeId, brandId);
-    if (!plan) return null;
-    const bd = getBrand(g, brandId);
-    const pj = {
-      id: uid("P"),
-      cellId: cell.id,
-      district: cell.d,
-      name: bd ? brandedName(rng, bd, useId, cell.d) : projectName(rng, useId, cell.d, gradeId),
-      use: useId,
-      grade: gradeId,
-      brandId,
-      stack: plan.stack || null,
-      gfa: plan.gfa,
-      floors: plan.floors,
-      heightM: plan.heightM,
-      sellable: plan.sellable,
-      saleArea: plan.saleArea || 0,
-      nra: plan.nra || 0,
-      budget: plan.buildCost,
-      spent: 0,
-      overrun: 0,
-      landCost: plan.landCost,
-      weeks: plan.weeks,
-      elapsed: 0,
-      progress: 0,
-      delay: 0,
-      status: "construction",
-      startWeek: g.week,
-      seed: rng.int(0, 99999),
-      plan,
-      salePrice: plan.salePrice || 0,
-      rent: plan.rent || 0,
-      preContract: 0,
-      marketing: false,
-      events: []
-    };
-    cell.projectId = pj.id;
-    cell.vacant = false;
-    g.projects.push(pj);
-    news && news.push({
-      icon: "\u{1F3D7}",
-      type: "dev",
-      text: `${DISTRICTS[cell.d].name}\u3067\u300C${pj.name}\u300D\uFF08${USES[useId].name}\u30FB\u5730\u4E0A${pj.floors}\u968E\uFF09\u304C\u7740\u5DE5\u3002\u7DCF\u4E8B\u696D\u8CBB${Math.round(plan.totalCost / 100).toLocaleString()}\u5104\u5186\u3002`
-    });
-    return pj;
-  }
-  var BUILD_EVENTS = [
-    { id: "weather", p: 0.07, icon: "\u{1F327}", bad: true, text: "\u8A18\u9332\u7684\u306A\u9577\u96E8\u3067\u5916\u69CB\u5DE5\u4E8B\u304C\u6B62\u307E\u3063\u305F\u3002\u5DE5\u671F\u304C3\u9031\u5EF6\u3073\u308B\u3002", apply: (pj) => {
-      pj.delay += 3;
-    } },
-    { id: "overrun", p: 0.1, icon: "\u{1F4B8}", bad: true, text: "\u8CC7\u6750\u4FA1\u683C\u306E\u518D\u898B\u7A4D\u308A\u3067\u8ACB\u8CA0\u91D1\u984D\u306E\u5897\u984D\u3092\u6C42\u3081\u3089\u308C\u305F\u3002", apply: (pj, g, rng) => {
-      const up = pj.budget * rng.range(0.03, 0.09);
-      pj.budget += up;
-      pj.overrun += up;
-    } },
-    { id: "accident", p: 0.035, icon: "\u26A0", bad: true, text: "\u73FE\u5834\u3067\u52B4\u707D\u4E8B\u6545\u304C\u767A\u751F\u3002\u5B89\u5168\u5BFE\u7B56\u306E\u305F\u3081\u5DE5\u4E8B\u30924\u9031\u9593\u4E2D\u65AD\u3057\u305F\u3002", apply: (pj) => {
-      pj.delay += 4;
-      pj.safety = true;
-    } },
-    { id: "labor", p: 0.055, icon: "\u{1F477}", bad: true, text: "\u578B\u67A0\u5DE5\u306E\u78BA\u4FDD\u304C\u96E3\u822A\u3057\u3001\u8EAF\u4F53\u5DE5\u4E8B\u304C2\u9031\u9045\u308C\u3066\u3044\u308B\u3002", apply: (pj) => {
-      pj.delay += 2;
-    } },
-    { id: "vecut", p: 0.075, icon: "\u2702", bad: false, text: "VE\u63D0\u6848\u306B\u3088\u308A\u4ED5\u69D8\u3092\u898B\u76F4\u3057\u3001\u5DE5\u4E8B\u8CBB\u3092\u5727\u7E2E\u3067\u304D\u305F\u3002", apply: (pj, g, rng) => {
-      const cut = pj.budget * rng.range(0.02, 0.055);
-      pj.budget -= cut;
-      pj.overrun -= cut;
-    } },
-    { id: "fast", p: 0.06, icon: "\u26A1", bad: false, text: "\u65BD\u5DE5\u304C\u8A08\u753B\u3092\u4E0A\u56DE\u308B\u30DA\u30FC\u30B9\u3067\u9032\u307F\u3001\u5DE5\u7A0B\u30923\u9031\u77ED\u7E2E\u3067\u304D\u305F\u3002", apply: (pj) => {
-      pj.delay = Math.max(-Math.round(pj.weeks * 0.12), pj.delay - 3);
-    } },
-    { id: "media", p: 0.05, icon: "\u{1F4E3}", bad: false, text: "\u5EFA\u7BC9\u5C02\u9580\u8A8C\u306B\u8A08\u753B\u304C\u5927\u304D\u304F\u53D6\u308A\u4E0A\u3052\u3089\u308C\u3001\u5F15\u304D\u5408\u3044\u304C\u5897\u3048\u305F\u3002", apply: (pj, g) => {
-      pj.hype = (pj.hype || 0) + 0.12;
-      g.company.brand += 0.4;
-    } }
-  ];
-  function stepProjects(g, rng, news) {
-    const p = orgPower(g);
-    const done = [];
-    const ce = cultureEffects(g);
-    for (const pj of g.projects) {
-      if (pj.status !== "construction") continue;
-      pj.elapsed += 1;
-      const total = Math.max(4, pj.weeks + pj.delay);
-      pj.progress = clamp01(pj.elapsed / total);
-      const pay = Math.round(pj.budget / total);
-      pj.spent += pay;
-      g.cash -= pay;
-      g.finance.quarterAcc.buildSpend += pay;
-      for (const ev of BUILD_EVENTS) {
-        let pr = ev.p * ce.eventSwing;
-        if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk;
-        else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6);
-        if (g.subsidiaries.some((s) => s.type === "construction")) pr *= ev.bad ? 0.78 : 1.18;
-        if (rng.chance(pr / Math.max(1, total * 0.55 / WEEKS_PER_QUARTER))) {
-          ev.apply(pj, g, rng);
-          pj.events.push({ ...ev, week: g.week });
-          news.push({ icon: ev.icon, type: "dev", text: `\u3010${pj.name}\u3011${ev.text}` });
-        }
-      }
-      if (pj.saleArea > 0 && pj.progress > 0.25) {
-        const speed = contractSpeed(g, pj.use, pj.salePrice, pj.plan.salePrice, p, pj.district, pj.brandId) * (1 + (pj.hype || 0));
-        pj.preContract = clamp01(pj.preContract + speed * 0.62);
-      }
-      if (pj.elapsed >= total) {
-        pj.status = "done";
-        pj.progress = 1;
-        done.push(pj);
-      }
-    }
-    for (const pj of done) completeProject(g, pj, rng, news);
-  }
-  function contractSpeed(g, use, price, marketPrice, p, districtId, brandId) {
-    const gapRaw = marketPrice > 0 ? price / marketPrice : 1;
-    const gap = clamp(2.15 - gapRaw * 1.15, 0.12, 1.85);
-    const dem = g.market.demand[use] ?? 1;
-    const sales = 0.55 + p.sales.quality / 100 * 0.55 + p.sales.capacity / 130;
-    const brand = 0.82 + g.company.brand / 260;
-    const sub = 1 + (g.subsidiaries.some((s) => s.type === "sales") ? 0.15 : 0) + (g.acquisitions.some((a) => a.kind === "broker" && !a.failed) ? 0.09 : 0);
-    const bf = brandEffect(g, brandId).speed;
-    return clamp(0.15 * gap * dem * sales * brand * sub * bf / WEEKS_PER_QUARTER, 12e-4, 0.055);
-  }
-  function completeProject(g, pj, rng, news) {
-    const cell = g.cells.find((c) => c.id === pj.cellId);
-    if (!cell) return;
-    const U = USES[pj.use];
-    cell.projectId = null;
-    cell.building = makeBuilding(rng, {
-      use: pj.use,
-      floors: pj.floors,
-      d: cell.d,
-      owner: "player",
-      grade: pj.grade,
-      year: g.year,
-      name: pj.name
-    });
-    cell.building.height = pj.heightM;
-    if (pj.stack) cell.building.stack = pj.stack.map((x) => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
-    g.kpi.builtCount++;
-    g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12e3 ? 1.6 : 1), 0, 100);
-    const ceq = cultureEffects(g);
-    if (pj.brandId) growBrand(g, pj.brandId, {
-      area: pj.gfa,
-      units: pj.plan.units || 0,
-      supplied: true,
-      base: 4.2 * ceq.qualityMul,
-      reputation: 1.5 * ceq.qualityMul
-    });
-    const cost = pj.landCost + pj.spent;
-    if (pj.saleArea > 0) {
-      const inv = {
-        id: uid("I"),
-        cellId: cell.id,
-        projectId: pj.id,
-        name: pj.name,
-        use: pj.use,
-        district: cell.d,
-        grade: pj.grade,
-        brandId: pj.brandId,
-        area: pj.saleArea,
-        units: pj.plan.units || Math.round(pj.saleArea / 26),
-        price: pj.salePrice,
-        basePrice: pj.plan.salePrice,
-        totalValue: Math.round(pj.saleArea * pj.salePrice),
-        cost: Math.round(cost * (pj.use === "mixed" ? 0.45 : 1)),
-        soldRatio: 0,
-        revenue: 0,
-        weeksOnSale: 0,
-        completedWeek: g.week,
-        impaired: 0,
-        discount: 0
-      };
-      const pre = clamp01(pj.preContract);
-      if (pre > 0) {
-        const rev = Math.round(inv.totalValue * pre);
-        const cogs = Math.round(inv.cost * pre);
-        g.finance.quarterAcc.revSale += rev;
-        g.finance.quarterAcc.cogsSale += cogs;
-        g.cash += rev;
-        inv.soldRatio = pre;
-        inv.revenue = rev;
-        g.kpi.soldUnits += Math.round(inv.units * pre);
-      }
-      g.inventory.push(inv);
-      cell.invId = inv.id;
-      news.push({
-        icon: "\u{1F389}",
-        type: "dev",
-        text: `\u300C${pj.name}\u300D\u304C\u7AE3\u5DE5\u3002\u5168${inv.units}\u6238\u306E\u3046\u3061${Math.round(pre * 100)}%\u304C\u5F15\u6E21\u6E08\u307F\u3002\u5F15\u6E21\u58F2\u4E0A${Math.round(inv.revenue / 100).toLocaleString()}\u5104\u5186\u3002`
-      });
-    }
-    if (pj.nra > 0) {
-      const share = pj.use === "mixed" ? 0.55 : 1;
-      const asset = {
-        id: uid("A"),
-        cellId: cell.id,
-        projectId: pj.id,
-        name: pj.name,
-        use: pj.use === "mixed" ? "office" : pj.use,
-        district: cell.d,
-        grade: pj.grade,
-        nra: pj.nra,
-        rent: pj.rent,
-        marketRent: pj.rent,
-        occupancy: pj.use === "logi" ? 0.86 : 0.42,
-        // 竣工直後は稼働が低い
-        bookLand: Math.round(pj.landCost * share),
-        bookBuild: Math.round(pj.spent * share),
-        completedWeek: g.week,
-        age: 0,
-        lastRentReview: g.week,
-        noi: 0,
-        cumNoi: 0
-      };
-      g.assets.push(asset);
-      cell.assetId = asset.id;
-      news.push({
-        icon: "\u{1F3E2}",
-        type: "dev",
-        text: `\u300C${pj.name}\u300D\u304C\u7AE3\u5DE5\u3002\u8CB8\u5BA4${asset.nra.toLocaleString()}\u576A\uFF0F\u52DF\u96C6\u8CC3\u6599 \u6708\u576A${asset.rent.toLocaleString()}\u5186\u3067\u30EA\u30FC\u30B7\u30F3\u30B0\u3092\u958B\u59CB\u3057\u305F\u3002`
-      });
-    }
-    const i = g.projects.indexOf(pj);
-    if (i >= 0) g.projects.splice(i, 1);
-    g.completed = g.completed || [];
-    g.completed.push({ ...pj, cost, completedWeek: g.week });
-  }
-  function canStart(g, cell) {
-    if (!cell || cell.owner !== "player") return "\u81EA\u793E\u304C\u6240\u6709\u3057\u3066\u3044\u306A\u3044\u533A\u753B\u3067\u3042\u308B";
-    if (cell.projectId) return "\u3059\u3067\u306B\u958B\u767A\u4E2D\u3067\u3042\u308B";
-    if (cell.assetId || cell.invId) return "\u3059\u3067\u306B\u5EFA\u7269\u304C\u5EFA\u3063\u3066\u3044\u308B";
-    const running = g.projects.filter((p) => p.status === "construction").length;
-    if (running >= projectCapacity(g)) return `\u540C\u6642\u9032\u884C\u3067\u304D\u308B\u6848\u4EF6\u6570\u306E\u4E0A\u9650\uFF08${projectCapacity(g)}\u4EF6\uFF09\u306B\u9054\u3057\u3066\u3044\u308B`;
-    return null;
-  }
-
   // src/sim/sales.js
   function stepInventory(g, rng, news) {
     const p = orgPower(g);
     const finished = [];
     for (const inv of g.inventory) {
       inv.weeksOnSale++;
+      if (!(inv.totalValue > 0) && inv.cost > 0) {
+        const price = inv.price > 0 ? inv.price : inv.basePrice > 0 ? inv.basePrice : 0;
+        if (price > 0 && inv.area > 0) {
+          inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
+        } else {
+          continue;
+        }
+      }
       if (inv.soldRatio >= 0.999) {
         finished.push(inv);
         continue;
@@ -5635,11 +5776,20 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const p = orgPower(g);
     for (const a of g.assets) {
       a.age += 1 / WEEKS_PER_YEAR;
-      const d = DISTRICTS[a.district];
       const dem = g.market.demand[a.use] ?? 1;
-      const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi" }[a.use] || "rentOffice";
-      const base = d[rentKey] ?? d.rentOffice * 0.6;
-      a.marketRent = Math.round(base * (0.86 + dem * 0.2) * g.market.priceIdx * (1 - Math.min(0.22, a.age * 6e-3)));
+      const raw = marketRentRaw(g, a);
+      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+      a.marketRent = Math.round(raw * a.rentIndex);
+      if (!(a.rent > 0)) {
+        a.rent = Math.max(1, Math.round(a.marketRent || raw));
+        a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+        a.marketRent = Math.round(raw * a.rentIndex);
+        news.push({
+          icon: "\u{1F3E2}",
+          type: "lease",
+          text: `\u3010${a.name}\u3011\u52DF\u96C6\u8CC3\u6599\u304C\u672A\u8A2D\u5B9A\u3060\u3063\u305F\u305F\u3081\u3001\u76F8\u5834\u306E\u6708\u576A${a.rent.toLocaleString()}\u5186\u3067\u52DF\u96C6\u3092\u958B\u59CB\u3057\u305F\u3002`
+        });
+      }
       const gap = a.rent / Math.max(1, a.marketRent);
       const lease = 0.8 + p.lease.quality / 340 + subEffect(g, "occupancy") * 2;
       let target = clamp01((1.34 - gap * 0.36) * (0.7 + dem * 0.31) * lease);
@@ -5650,7 +5800,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (g.week - a.lastRentReview >= 104) {
         const power = 0.35 + p.lease.quality / 260;
         const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
-        if (Math.abs(newRent - a.rent) / a.rent > 0.03) {
+        if (a.rent > 0 && Math.abs(newRent - a.rent) / a.rent > 0.03) {
           news.push({
             icon: newRent > a.rent ? "\u{1F4C8}" : "\u{1F4C9}",
             type: "lease",
@@ -5710,7 +5860,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
   function repriceInventory(g, inv, newPrice, news) {
     const old = inv.price;
-    inv.price = Math.round(newPrice * 1e3) / 1e3;
+    const base = inv.basePrice > 0 ? inv.basePrice : old > 0 ? old : 0;
+    const lo = base > 0 ? base * 0.4 : 0.01;
+    const hi = base > 0 ? base * 2 : Number.MAX_SAFE_INTEGER;
+    inv.price = Math.round(clamp(newPrice, lo, hi) * 1e3) / 1e3;
     const remain = 1 - inv.soldRatio;
     inv.totalValue = Math.round(inv.revenue + inv.area * remain * inv.price);
     if (newPrice < old * 0.94) {
@@ -6261,6 +6414,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       revSale: R2(acc.revSale),
       revLease: R2(acc.revLease),
       revFee: R2(acc.revFee),
+      revOther: R2(acc.revOther),
       cogs: R2(cogs),
       cogsSale: R2(acc.cogsSale),
       cogsLease: R2(acc.cogsLease),
@@ -7170,7 +7324,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     </div>
     ${g.company.listed ? `<div class="grid3" style="margin-top:10px">
       ${mini("\u682A\u4FA1", num(k.price) + "\u5186")}
-      ${mini("\u6642\u4FA1\u7DCF\u984D", money(k.cap, { unit: false }), "\u5104\u5186")}
+      ${mini("\u6642\u4FA1\u7DCF\u984D", money(k.cap, { unit: false }), moneyUnit(k.cap))}
       ${mini("EPS", num(k.eps, 1) + "\u5186", `BPS ${num(k.bps, 0)}\u5186`)}
     </div>` : `<div class="hint" style="margin-top:8px">\u5F53\u793E\u306F\u672A\u4E0A\u5834\u3067\u3042\u308B\u3002\u8CA1\u52D9\u30D1\u30CD\u30EB\u304B\u3089\u4E0A\u5834\u306E\u6761\u4EF6\u3092\u78BA\u8A8D\u3067\u304D\u308B\u3002</div>`}
   `)}
@@ -7332,8 +7486,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const spread = Math.round(est * (0.42 - acc * 0.3));
       return `
     <div class="grid3" style="margin-bottom:14px">
-      ${mini("\u58F2\u51FA\u4FA1\u683C", money(listing.askPrice, { unit: false }), "\u5104\u5186")}
-      ${mini("\u5F53\u793E\u67FB\u5B9A", money(listing.appraisal, { unit: false }), "\u5104\u5186")}
+      ${mini("\u58F2\u51FA\u4FA1\u683C", money(listing.askPrice, { unit: false }), moneyUnit(listing.askPrice))}
+      ${mini("\u5F53\u793E\u67FB\u5B9A", money(listing.appraisal, { unit: false }), moneyUnit(listing.appraisal))}
       ${mini("\u53D6\u5F97\u8AF8\u8CBB\u7528", moneyHTML(Math.round(listing.askPrice * ACQ_FEE)), `\u58F2\u8CB7\u4FA1\u683C\u306E${(ACQ_FEE * 100).toFixed(1)}%`)}
     </div>
 
@@ -7550,11 +7704,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <div class="kv"><span class="k">\u5DE5\u4E8B\u4E88\u7B97 / \u652F\u51FA</span><span class="v">${money(pj.budget)} / ${money(pj.spent)}</span></div>
       ${over ? `<div class="kv"><span class="k">\u5897\u6E1B\u984D</span><span class="v ${over > 0 ? "down" : "up"}">${money(over, { sign: true })}</span></div>` : ""}
       ${pj.delay ? `<div class="kv"><span class="k">\u5DE5\u671F</span><span class="v ${pj.delay > 0 ? "down" : "up"}">${pj.delay > 0 ? `${pj.delay}\u9031 \u9045\u5EF6` : `${-pj.delay}\u9031 \u524D\u5012\u3057`}</span></div>` : ""}
+      ${pj.stack && pj.nra ? `<div class="kv"><span class="k">\u8CC3\u8CB8\u90E8\u5206</span><span class="v">${num(pj.nra)}\u576A\uFF0F\u6708\u576A${num(pj.rent)}\u5186</span></div>` : ""}
       ${pj.saleArea ? `<div class="kv"><span class="k">\u4E8B\u524D\u5951\u7D04\u7387\uFF08\u9752\u7530\u58F2\u308A\uFF09</span><span class="v">${(pj.preContract * 100).toFixed(0)}%</span></div>${bar(pj.preContract)}` : ""}
       ${pj.events.length ? `<div class="hint">${pj.events.slice(-2).map((e) => `${e.icon} ${e.text}`).join("<br>")}</div>` : ""}
       <div class="btnrow">
         <button class="btn sm" data-act="focus" data-id="${pj.cellId}">\u{1F4CD} \u5730\u56F3\u3067\u898B\u308B</button>
-        ${pj.saleArea ? `<button class="btn sm" data-act="dev.price" data-id="${pj.id}">\u8CA9\u58F2\u4FA1\u683C\u3092\u8ABF\u6574\uFF08\u576A${(pj.salePrice * 100).toFixed(0)}\u4E07\u5186\uFF09</button>` : ""}
+        ${pj.saleArea ? `<button class="btn sm" data-act="dev.price" data-id="${pj.id}">\u8CA9\u58F2\u4FA1\u683C\u3092\u8ABF\u6574\uFF08${pj.stack ? "\u5206\u8B72\u90E8\u5206 " : ""}\u576A${(pj.salePrice * 100).toFixed(0)}\u4E07\u5186\uFF09</button>` : ""}
       </div>
     </div>`;
     }).join("") : empty("\u9032\u884C\u4E2D\u306E\u958B\u767A\u6848\u4EF6\u306F\u306A\u3044");
@@ -7636,9 +7791,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const goods = (cell.risks || []).filter((r) => !r.bad);
       return `
     <div class="grid3" style="margin-bottom:12px">
-      ${mini("\u571F\u5730\u7C3F\u4FA1", money(cell.bookValue ?? cell.lastPaid ?? 0, { unit: false }), "\u5104\u5186")}
-      ${mini("\u5EFA\u8A2D\u8CBB", money(plan.buildCost, { unit: false }), "\u5104\u5186")}
-      ${mini("\u7DCF\u4E8B\u696D\u8CBB", money(plan.totalCost, { unit: false }), "\u5104\u5186")}
+      ${mini("\u571F\u5730\u7C3F\u4FA1", money(cell.bookValue ?? cell.lastPaid ?? 0, { unit: false }), moneyUnit(cell.bookValue ?? cell.lastPaid ?? 0))}
+      ${mini("\u5EFA\u8A2D\u8CBB", money(plan.buildCost, { unit: false }), moneyUnit(plan.buildCost))}
+      ${mini("\u7DCF\u4E8B\u696D\u8CBB", money(plan.totalCost, { unit: false }), moneyUnit(plan.totalCost))}
     </div>
 
     <div class="sec">
@@ -7682,10 +7837,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         <div>
           ${plan.saleArea ? kv("\u5206\u8B72\u9762\u7A4D", num(plan.saleArea) + "\u576A") : ""}
           ${plan.units ? kv("\u8A08\u753B\u6238\u6570", num(plan.units) + "\u6238") : ""}
-          ${plan.salePrice ? kv("\u60F3\u5B9A\u576A\u5358\u4FA1", (plan.salePrice * 100).toFixed(0) + "\u4E07\u5186") : ""}
+          ${plan.salePrice ? kv(plan.stack ? "\u5206\u8B72\u90E8\u5206\u306E\u576A\u5358\u4FA1\uFF08\u52A0\u91CD\u5E73\u5747\uFF09" : "\u60F3\u5B9A\u576A\u5358\u4FA1", (plan.salePrice * 100).toFixed(0) + "\u4E07\u5186") : ""}
           ${plan.saleRevenue ? kv("\u5206\u8B72\u58F2\u4E0A", money(plan.saleRevenue)) : ""}
           ${plan.nra ? kv("\u8CB8\u5BA4\u9762\u7A4D", num(plan.nra) + "\u576A") : ""}
-          ${plan.rent ? kv("\u60F3\u5B9A\u8CC3\u6599", num(plan.rent) + "\u5186/\u576A\xB7\u6708") : ""}
+          ${plan.rent ? kv(plan.stack ? "\u8CC3\u8CB8\u90E8\u5206\u306E\u8CC3\u6599\uFF08\u52A0\u91CD\u5E73\u5747\uFF09" : "\u60F3\u5B9A\u8CC3\u6599", num(plan.rent) + "\u5186/\u576A\xB7\u6708") : ""}
           ${plan.noi ? kv("\u5E74\u9593NOI", money(plan.noi)) : ""}
           ${plan.assetValue ? kv("\u5B8C\u6210\u6642\u8CC7\u7523\u4FA1\u5024", money(plan.assetValue)) : ""}
         </div>
@@ -7790,10 +7945,18 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
   }
   function openPricing(g, pj, ctx2) {
+    const base = pj.plan && pj.plan.salePrice > 0 ? pj.plan.salePrice : pj.plan && pj.plan.saleRevenue > 0 && pj.plan.saleArea > 0 ? pj.plan.saleRevenue / pj.plan.saleArea : pj.salePrice > 0 ? pj.salePrice : 0;
+    if (!(base > 0)) {
+      openModal(
+        `\u8CA9\u58F2\u4FA1\u683C\u306E\u8A2D\u5B9A \u2014 ${pj.name}`,
+        '<div class="empty">\u3053\u306E\u6848\u4EF6\u306B\u306F\u5206\u8B72\u90E8\u5206\u306E\u60F3\u5B9A\u5358\u4FA1\u304C\u8A2D\u5B9A\u3055\u308C\u3066\u3044\u306A\u3044\u3002<br>\u9031\u3092\u9032\u3081\u308B\u3068\u81EA\u52D5\u7684\u306B\u5F15\u304D\u76F4\u3055\u308C\u308B\u3002</div>',
+        [{ label: "\u9589\u3058\u308B", cls: "ghost" }]
+      );
+      return;
+    }
     openModal(`\u8CA9\u58F2\u4FA1\u683C\u306E\u8A2D\u5B9A \u2014 ${pj.name}`, build(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
     bind();
     function build() {
-      const base = pj.plan.salePrice;
       return `
     <div class="card">
       ${kv("\u5E02\u5834\u60F3\u5B9A\u576A\u5358\u4FA1", (base * 100).toFixed(0) + "\u4E07\u5186")}
@@ -7804,7 +7967,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="field" style="margin-top:12px">
       <label>\u576A\u5358\u4FA1\uFF08\u4E07\u5186\uFF09</label>
       <input type="number" id="inpP" value="${(pj.salePrice * 100).toFixed(0)}" step="5">
-      <input type="range" id="rngP" min="${(base * 60).toFixed(0)}" max="${(base * 145).toFixed(0)}" value="${(pj.salePrice * 100).toFixed(0)}" style="width:100%;margin-top:8px;accent-color:var(--gold)">
+      <input type="range" id="rngP" min="${Math.min(base * 60, pj.salePrice * 100).toFixed(0)}" max="${Math.max(base * 145, pj.salePrice * 100).toFixed(0)}" value="${(pj.salePrice * 100).toFixed(0)}" style="width:100%;margin-top:8px;accent-color:var(--gold)">
     </div>
     <div id="pInfo" class="hint"></div>
     <div class="hint">\u4FA1\u683C\u3092\u4E0B\u3052\u308C\u3070\u5951\u7D04\u306F\u901F\u304F\u9032\u3080\u304C\u3001\u30D6\u30E9\u30F3\u30C9\u3068\u5229\u76CA\u304C\u72A0\u7272\u306B\u306A\u308B\u3002\u9006\u306B\u5F37\u6C17\u306E\u4FA1\u683C\u306F\u5728\u5EAB\u306E\u9577\u671F\u5316\u3092\u62DB\u304D\u3001\u8A55\u4FA1\u640D\u306E\u539F\u56E0\u306B\u306A\u308B\u3002</div>
@@ -7817,7 +7980,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         inp.value = v;
         rg.value = v;
         const price = v / 100;
-        const ratio = price / pj.plan.salePrice;
+        const ratio = price / base;
         const speed = Math.max(0.12, Math.min(1.85, 2.15 - ratio * 1.15));
         info.innerHTML = `\u5E02\u5834\u6BD4 <b>${((ratio - 1) * 100).toFixed(1)}%</b>\u3000\u8CA9\u58F2\u7DCF\u984D ${money(Math.round(pj.saleArea * price))}\u3000\u5951\u7D04\u306E\u9032\u307F ${speed > 1.2 ? '<b class="up">\u901F\u3044</b>' : speed > 0.85 ? "\u6A19\u6E96\u7684" : '<b class="down">\u9045\u3044</b>'}`;
       };
@@ -7825,8 +7988,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rg.oninput = (e) => sync(+e.target.value);
       sync(+inp.value);
       body.querySelector("[data-set]").onclick = () => {
-        pj.salePrice = +inp.value / 100;
-        toast(`\u8CA9\u58F2\u4FA1\u683C\u3092\u576A${inp.value}\u4E07\u5186\u306B\u8A2D\u5B9A\u3057\u305F`);
+        pj.salePrice = Math.min(base * 1.6, Math.max(base * 0.5, +inp.value / 100));
+        toast(`\u8CA9\u58F2\u4FA1\u683C\u3092\u576A${(pj.salePrice * 100).toFixed(0)}\u4E07\u5186\u306B\u8A2D\u5B9A\u3057\u305F`);
         ctx2.refresh();
         closeModal();
       };
@@ -7867,7 +8030,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const pre = presales.length ? presales.map((pj) => `
     <div class="card">
       <div class="card-t"><span class="card-n">${pj.name}</span>${chip(`\u7AE3\u5DE5\u307E\u3067${weeksLabel(Math.max(0, pj.weeks + pj.delay - pj.elapsed))}`, "cyan")}</div>
-      <div class="card-s">${DISTRICTS[pj.district].name}\uFF0F${num(pj.plan.units || 0)}\u6238\u4E88\u5B9A\uFF0F\u576A${(pj.salePrice * 100).toFixed(0)}\u4E07\u5186</div>
+      <div class="card-s">${DISTRICTS[pj.district].name}\uFF0F${num(pj.plan.units || 0)}\u6238\u4E88\u5B9A\uFF0F${pj.stack ? "\u5206\u8B72\u90E8\u5206 " : ""}\u576A${(pj.salePrice * 100).toFixed(0)}\u4E07\u5186</div>
       ${bar(pj.preContract)}
       <div class="kv"><span class="k">\u4E8B\u524D\u5951\u7D04\u7387</span><span class="v">${pct(pj.preContract, 0)}</span></div>
       <div class="hint">${pj.progress > 0.25 ? "\u30E2\u30C7\u30EB\u30EB\u30FC\u30E0\u3092\u516C\u958B\u3057\u3001\u9752\u7530\u58F2\u308A\u3092\u9032\u3081\u3066\u3044\u308B\u3002" : "\u5DE5\u4E8B\u306E\u9032\u6357\u304C25%\u3092\u8D85\u3048\u308B\u3068\u8CA9\u58F2\u6D3B\u52D5\u3092\u958B\u59CB\u3067\u304D\u308B\u3002"}</div>
@@ -7978,10 +8141,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return `
   ${section("\u8CC3\u8CB8\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA", `${g.assets.length}\u4EF6`, `
     <div class="grid4">
-      ${mini("\u7C3F\u4FA1\u5408\u8A08", money(book, { unit: false }), "\u5104\u5186")}
-      ${mini("\u6642\u4FA1\u5408\u8A08", money(mv, { unit: false }), "\u5104\u5186")}
-      ${mini("\u542B\u307F\u640D\u76CA", money(mv - book, { unit: false }), "\u5104\u5186", mv - book >= 0 ? "var(--green)" : "var(--red)")}
-      ${mini("\u5E74\u9593NOI", money(noi, { unit: false }), `\u5229\u56DE\u308A ${pct(noi / Math.max(1, book))}`)}
+      ${mini("\u7C3F\u4FA1\u5408\u8A08", money(book, { unit: false }), moneyUnit(book))}
+      ${mini("\u6642\u4FA1\u5408\u8A08", money(mv, { unit: false }), moneyUnit(mv))}
+      ${mini("\u542B\u307F\u640D\u76CA", money(mv - book, { unit: false }), moneyUnit(mv - book), mv - book >= 0 ? "var(--green)" : "var(--red)")}
+      ${mini("\u5E74\u9593NOI", moneyHTML(noi), `\u5229\u56DE\u308A ${pct(noi / Math.max(1, book))}`)}
     </div>
     ${Object.keys(byUse).length ? `<table class="tbl" style="margin-top:12px">
       <tr><th>\u7528\u9014</th><th>\u4EF6\u6570</th><th>\u8CB8\u5BA4\u9762\u7A4D</th><th>\u5E74\u9593NOI</th><th>\u6642\u4FA1</th></tr>
@@ -8006,7 +8169,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="field" style="margin-top:12px">
       <label>\u65B0\u3057\u3044\u52DF\u96C6\u8CC3\u6599\uFF08\u5186/\u576A\xB7\u6708\uFF09</label>
       <input type="number" id="inpR" value="${a.rent}" step="500">
-      <input type="range" id="rngR" min="${Math.round(a.marketRent * 0.6)}" max="${Math.round(a.marketRent * 1.4)}" value="${a.rent}" step="100" style="width:100%;margin-top:8px;accent-color:var(--gold)">
+      <input type="range" id="rngR" min="${Math.round(Math.min(a.marketRent * 0.6, a.rent * 0.9))}" max="${Math.round(Math.max(a.marketRent * 1.4, a.rent * 1.1))}" value="${a.rent}" step="100" style="width:100%;margin-top:8px;accent-color:var(--gold)">
     </div>
     <div id="rInfo" class="hint"></div>
     <div class="hint">\u5E02\u5834\u8CC3\u6599\u3092\u4E0A\u56DE\u308B\u8A2D\u5B9A\u306F\u7A7A\u5BA4\u3092\u5897\u3084\u3059\u3002\u9006\u306B\u5B89\u3059\u304E\u308B\u3068\u53CE\u76CA\u3092\u53D6\u308A\u3053\u307C\u3059\u3002\u65E2\u5B58\u30C6\u30CA\u30F3\u30C8\u306E\u8CC3\u6599\u306F\u6BB5\u968E\u7684\u306B\u3057\u304B\u52D5\u304B\u306A\u3044\u3002</div>
@@ -8018,7 +8181,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const sync = (v) => {
         inp.value = v;
         rg.value = v;
-        const gap = v / a.marketRent;
+        const gap = v / Math.max(1, a.marketRent);
         const target = Math.max(0, Math.min(1, (1.34 - gap * 0.36) * 0.95));
         info.innerHTML = `\u5E02\u5834\u6BD4 <b>${((gap - 1) * 100).toFixed(0)}%</b>\u3000\u60F3\u5B9A\u7A3C\u50CD\u7387 <b>${(target * 100).toFixed(0)}%</b>\u3000\u6E80\u5BA4\u60F3\u5B9A\u8CC3\u6599\u53CE\u5165 ${money(Math.round(a.nra * v * 12 / 1e6))}\uFF0F\u5E74`;
       };
@@ -8061,8 +8224,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <tr><td>\u58F2\u4E0A\u9AD8</td><td>${money(pl.revenue)}</td><td>100.0%</td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">\u5206\u8B72\u4E8B\u696D</td><td>${money(pl.revSale)}</td><td></td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">\u8CC3\u8CB8\u4E8B\u696D</td><td>${money(pl.revLease)}</td><td></td></tr>
-      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u305D\u306E\u4ED6\u30FB\u9023\u7D50</td><td>${money(pl.revenue - pl.revSale - pl.revLease)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u7BA1\u7406\u53D7\u8A17\u30FB\u30D5\u30A3\u30FC</td><td>${money(pl.revFee)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u5B50\u4F1A\u793E\u30FB\u8CB7\u53CE\u5148\uFF08\u9023\u7D50\uFF09</td><td>${money(pl.revOther !== void 0 ? pl.revOther : pl.revenue - pl.revSale - pl.revLease - pl.revFee)}</td><td></td></tr>
       <tr><td>\u58F2\u4E0A\u539F\u4FA1</td><td>${money(-pl.cogs)}</td><td>${pct(pl.cogs / Math.max(1, pl.revenue))}</td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u5206\u8B72\u539F\u4FA1</td><td>${money(-pl.cogsSale)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u8CC3\u8CB8\u539F\u4FA1\u30FB\u6E1B\u4FA1\u511F\u5374</td><td>${money(-pl.cogsLease)}</td><td></td></tr>
+      <tr><td style="padding-left:16px;color:var(--ink-dim)">\u7528\u5730\u4FDD\u6709\u30B3\u30B9\u30C8\u30FB\u9023\u7D50\u539F\u4FA1</td><td>${money(-pl.cogsOther)}</td><td></td></tr>
       <tr class="sum"><td>\u58F2\u4E0A\u7DCF\u5229\u76CA</td><td>${money(pl.gross)}</td><td>${pct(pl.gross / Math.max(1, pl.revenue))}</td></tr>
       <tr><td>\u8CA9\u58F2\u8CBB\u53CA\u3073\u4E00\u822C\u7BA1\u7406\u8CBB</td><td>${money(-pl.sga)}</td><td></td></tr>
       <tr><td style="padding-left:16px;color:var(--ink-dim)">\u4EBA\u4EF6\u8CBB</td><td>${money(-pl.personnel)}</td><td></td></tr>
@@ -8105,7 +8272,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return `
   ${section("\u7D4C\u55B6\u6307\u6A19", "\u76F4\u8FD14\u56DB\u534A\u671F", `
     <div class="grid4">
-      ${mini("\u58F2\u4E0A\u9AD8", money(t.revenue, { unit: false }), "\u5104\u5186")}
+      ${mini("\u58F2\u4E0A\u9AD8", money(t.revenue, { unit: false }), moneyUnit(t.revenue))}
       ${mini("\u55B6\u696D\u5229\u76CA\u7387", pct(k.opMargin), "", k.opMargin > 0.1 ? "var(--green)" : k.opMargin < 0 ? "var(--red)" : "")}
       ${mini("ROE", pct(k.roe), "", k.roe > 0.08 ? "var(--gold)" : "")}
       ${mini("\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387", pct(k.equityRatio), `D/E ${k.de.toFixed(2)}\u500D`)}
@@ -8116,9 +8283,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 
   ${section("\u8CC7\u91D1\u8ABF\u9054", `\u683C\u4ED8 ${k.rating.id}\uFF08${k.rating.label}\uFF09`, `
     <div class="grid3">
-      ${mini("\u73FE\u9810\u91D1", money(g.cash, { unit: false }), "\u5104\u5186")}
-      ${mini("\u6709\u5229\u5B50\u8CA0\u50B5", money(g.debt, { unit: false }), "\u5104\u5186")}
-      ${mini("\u8ABF\u9054\u4F59\u529B", money(k.room, { unit: false }), "\u5104\u5186", k.room <= 0 ? "var(--red)" : "")}
+      ${mini("\u73FE\u9810\u91D1", money(g.cash, { unit: false }), moneyUnit(g.cash))}
+      ${mini("\u6709\u5229\u5B50\u8CA0\u50B5", money(g.debt, { unit: false }), moneyUnit(g.debt))}
+      ${mini("\u8ABF\u9054\u4F59\u529B", money(k.room, { unit: false }), moneyUnit(k.room), k.room <= 0 ? "var(--red)" : "")}
     </div>
     ${od > 0 ? `<div class="card" style="border-color:rgba(255,107,122,.5);margin-top:10px">
       <div class="card-t"><span class="card-n" style="color:var(--red)">\u26A0 \u501F\u5165\u67A0\u3092\u8D85\u904E\u3057\u3066\u3044\u308B</span></div>
@@ -8140,7 +8307,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ${(ipo.reqs || []).map((r) => `<div class="kv"><span class="k">${r.ok ? "\u2705" : "\u2B1C"} ${r.label}</span><span class="v">${r.now}</span></div>`).join("")}
     </div>` : `<div class="grid3" style="margin-top:10px">
       ${mini("\u682A\u4FA1", num(k.price) + "\u5186")}
-      ${mini("\u6642\u4FA1\u7DCF\u984D", money(k.cap, { unit: false }), "\u5104\u5186")}
+      ${mini("\u6642\u4FA1\u7DCF\u984D", money(k.cap, { unit: false }), moneyUnit(k.cap))}
       ${mini("PBR", (k.price / Math.max(1, k.bps)).toFixed(2) + "\u500D", `EPS ${num(k.eps, 0)}\u5186`)}
     </div>`}
   `)}
@@ -8294,7 +8461,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ${mini("\u5F93\u696D\u54E1\u6570", num(active.length) + "\u540D", `\u5E73\u5747 ${avgAge.toFixed(1)}\u6B73`)}
       ${mini("\u5E73\u5747\u5E74\u53CE", man(avgSal), `\u5E02\u5834\u6BD4 ${pct(pi, 0)}`, pi < 0.95 ? "var(--red)" : pi > 1.1 ? "var(--green)" : "")}
       ${mini("\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3", (avgMor * 100).toFixed(0), avgMor < 0.55 ? "\u4F4E\u4E0B\u3057\u3066\u3044\u308B" : avgMor > 0.75 ? "\u9AD8\u3044" : "\u6A19\u6E96\u7684", avgMor < 0.55 ? "var(--red)" : avgMor > 0.75 ? "var(--green)" : "")}
-      ${mini("\u4EBA\u4EF6\u8CBB", money(personnelCostYear(g), { unit: false }), "\u5E74\u984D")}
+      ${mini("\u4EBA\u4EF6\u8CBB", moneyHTML(personnelCostYear(g)), "\u5E74\u984D")}
     </div>
     ${subs}
     <div class="hint">\u7D66\u4E0E\u304C\u5E02\u5834\u6C34\u6E96\u3092\u4E0B\u56DE\u308B\u3068\u3001\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u304C\u843D\u3061\u3066\u96E2\u8077\u3068\u5F15\u304D\u629C\u304D\u304C\u5897\u3048\u308B\u3002\u9006\u306B\u9AD8\u3059\u304E\u308B\u7D66\u4E0E\u306F\u5229\u76CA\u3092\u5727\u8FEB\u3059\u308B\u3002</div>
@@ -9015,7 +9182,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="grid3">
       ${mini("\u7D4C\u55B6\u4F01\u753B\u90E8", p.corp.quality.toFixed(0), `${p.corp.count}\u540D`)}
       ${mini("\u8CA1\u52D9\u7D4C\u7406\u90E8", p.fin.quality.toFixed(0), `${p.fin.count}\u540D`)}
-      ${mini("\u6295\u8CC7\u4F59\u529B", money(g.cash + Math.max(0, debtCapacity(g) - g.debt), { unit: false }), "\u5104\u5186")}
+      ${mini("\u6295\u8CC7\u4F59\u529B", money(g.cash + Math.max(0, debtCapacity(g) - g.debt), { unit: false }), moneyUnit(g.cash + Math.max(0, debtCapacity(g) - g.debt)))}
     </div>
     <div class="hint">\u7D4C\u55B6\u4F01\u753B\u90E8\u3068\u8CA1\u52D9\u7D4C\u7406\u90E8\u306E\u80FD\u529B\u304C\u30C7\u30E5\u30FC\u30C7\u30EA\u30B8\u30A7\u30F3\u30B9\u306E\u7CBE\u5EA6\u3068PMI\u306E\u6210\u529F\u7387\u3092\u5DE6\u53F3\u3059\u308B\u3002\u8ABF\u67FB\u3092\u6020\u308C\u3070\u7C3F\u5916\u50B5\u52D9\u3084\u30AD\u30FC\u30DE\u30F3\u6D41\u51FA\u3067\u8CB7\u53CE\u306F\u5931\u6557\u3059\u308B\u3002</div>
   `)}
@@ -9036,9 +9203,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const p = orgPower(g);
       return `
     <div class="grid3" style="margin-bottom:12px">
-      ${mini("\u58F2\u4E0A\u9AD8", money(t.rev, { unit: false }), "\u5104\u5186")}
-      ${mini("\u55B6\u696D\u5229\u76CA", money(t.op, { unit: false }), `\u5229\u76CA\u7387 ${pct(t.op / t.rev, 1)}`)}
-      ${mini("\u7D14\u8CC7\u7523", money(t.equity, { unit: false }), "\u5104\u5186")}
+      ${mini("\u58F2\u4E0A\u9AD8", money(t.rev, { unit: false }), moneyUnit(t.rev))}
+      ${mini("\u55B6\u696D\u5229\u76CA", moneyHTML(t.op), `\u5229\u76CA\u7387 ${pct(t.op / t.rev, 1)}`)}
+      ${mini("\u7D14\u8CC7\u7523", money(t.equity, { unit: false }), moneyUnit(t.equity))}
     </div>
     <div class="card">
       <div class="card-t"><span class="card-n">${t.label}</span>${chip(`\u5F93\u696D\u54E1 ${num(t.employees)}\u540D`, "grey")}</div>
@@ -9215,9 +9382,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <div class="card-s"><b>${r.tagline}</b><br><br>${r.profile}</div>
     </div>
     <div class="grid4" style="margin:12px 0">
-      ${mini("\u58F2\u4E0A\u9AD8", money(r.rev, { unit: false }), "\u5104\u5186")}
-      ${mini("\u55B6\u696D\u5229\u76CA", money(r.op, { unit: false }), pct(r.op / r.rev, 1))}
-      ${mini("\u7D14\u5229\u76CA", money(r.np, { unit: false }), "\u5104\u5186")}
+      ${mini("\u58F2\u4E0A\u9AD8", money(r.rev, { unit: false }), moneyUnit(r.rev))}
+      ${mini("\u55B6\u696D\u5229\u76CA", moneyHTML(r.op), pct(r.op / r.rev, 1))}
+      ${mini("\u7D14\u5229\u76CA", money(r.np, { unit: false }), moneyUnit(r.np))}
       ${mini("\u5F93\u696D\u54E1", num(r.employees), "\u540D")}
     </div>
     ${hist.length > 2 ? `<div>${spark(hist.map((x) => x.rev), { color: r.color })}</div><div class="hint">\u58F2\u4E0A\u9AD8\u306E\u63A8\u79FB</div>` : ""}
@@ -9271,9 +9438,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         \u793E\u98A8\u306F\u300C${cultureLabel(g)}\u300D\u3002</div>
     </div>
     <div class="grid4" style="margin:12px 0">
-      ${mini("\u58F2\u4E0A\u9AD8", money(t.revenue, { unit: false }), "\u5104\u5186")}
-      ${mini("\u55B6\u696D\u5229\u76CA", money(t.op, { unit: false }), t.revenue > 0 ? pct(t.op / t.revenue, 1) : "\u5104\u5186")}
-      ${mini("\u7D14\u5229\u76CA", money(t.net, { unit: false }), "\u5104\u5186")}
+      ${mini("\u58F2\u4E0A\u9AD8", money(t.revenue, { unit: false }), moneyUnit(t.revenue))}
+      ${mini("\u55B6\u696D\u5229\u76CA", moneyHTML(t.op), t.revenue > 0 ? pct(t.op / t.revenue, 1) : "")}
+      ${mini("\u7D14\u5229\u76CA", money(t.net, { unit: false }), moneyUnit(t.net))}
       ${mini("\u5F93\u696D\u54E1", num(g.staff.length), "\u540D")}
     </div>
     ${hist.length > 2 ? `<div>${spark(hist.map((x) => x.pl.revenue), { color })}</div><div class="hint">\u58F2\u4E0A\u9AD8\u306E\u63A8\u79FB\uFF08\u76F4\u8FD1${hist.length}\u56DB\u534A\u671F\uFF09</div>` : ""}
@@ -9824,7 +9991,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     };
     $("#btnWeek").onclick = () => advance(1);
     $("#btnMonth").onclick = () => advance(4);
-    $("#btnQuarter").onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
+    $("#btnQuarter").onclick = () => {
+      const end = WEEKS_PER_QUARTER - 1;
+      const n = (end - G.weekOfQuarter + WEEKS_PER_QUARTER) % WEEKS_PER_QUARTER;
+      advance(n || WEEKS_PER_QUARTER);
+    };
     $("#btnMenu").onclick = openSaveMenu;
     const toggleFeed = () => {
       const f = $("#feed");
@@ -10293,7 +10464,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div class="hint" style="font-size:13px;line-height:2">${G.gameOver.text}</div>
     <div class="grid3" style="margin:16px 0">
       ${mini("\u7D4C\u55B6\u5E74\u6570", G.year - G.company.founded + "\u5E74", `${G.week}\u9031`)}
-      ${mini("\u6700\u7D42\u58F2\u4E0A\u9AD8", money(ttm(G).revenue, { unit: false }), "\u5104\u5186")}
+      ${mini("\u6700\u7D42\u58F2\u4E0A\u9AD8", money(ttm(G).revenue, { unit: false }), moneyUnit(ttm(G).revenue))}
       ${mini("\u696D\u754C\u9806\u4F4D", rank ? rank.rank + "\u4F4D" : "\u2014", "")}
     </div>
     <div class="card">
@@ -10334,11 +10505,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     $("#hdrDate").textContent = dateLabel(G);
     $("#hdrSeason").textContent = `${seasonOfMonth(G.month)}\u30FB${timeOfMonth(G.month).label}\u3000\u7B2C${G.quarter}\u56DB\u534A\u671F ${G.weekOfQuarter + 1}/13\u9031`;
     const items = [
-      { k: "\u73FE\u9810\u91D1", v: money(G.cash, { unit: false }), u: "\u5104\u5186", d: null },
-      { k: "\u6709\u5229\u5B50\u8CA0\u50B5", v: money(G.debt, { unit: false }), u: "\u5104\u5186" },
-      { k: "\u58F2\u4E0A\u9AD8(TTM)", v: money(t.revenue, { unit: false }), u: "\u5104\u5186" },
-      { k: "\u55B6\u696D\u5229\u76CA", v: money(t.op, { unit: false }), u: "\u5104\u5186", c: t.op >= 0 ? "up" : "down" },
-      { k: "\u7D14\u8CC7\u7523", v: money(k.bps * G.company.shares / 1e6, { unit: false }), u: "\u5104\u5186" },
+      { k: "\u73FE\u9810\u91D1", v: money(G.cash, { unit: false }), u: moneyUnit(G.cash), d: null },
+      { k: "\u6709\u5229\u5B50\u8CA0\u50B5", v: money(G.debt, { unit: false }), u: moneyUnit(G.debt) },
+      { k: "\u58F2\u4E0A\u9AD8(TTM)", v: money(t.revenue, { unit: false }), u: moneyUnit(t.revenue) },
+      { k: "\u55B6\u696D\u5229\u76CA", v: money(t.op, { unit: false }), u: moneyUnit(t.op), c: t.op >= 0 ? "up" : "down" },
+      { k: "\u7D14\u8CC7\u7523", v: money(k.bps * G.company.shares / 1e6, { unit: false }), u: moneyUnit(k.bps * G.company.shares / 1e6) },
       { k: "\u683C\u4ED8", v: k.rating.id, u: "" },
       { k: "\u30D6\u30E9\u30F3\u30C9", v: G.company.brand.toFixed(0), u: "" }
     ];

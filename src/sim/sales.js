@@ -5,7 +5,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { contractSpeed } from './project.js';
-import { assetValue, currentNOI, subEffect } from './valuation.js';
+import { assetValue, currentNOI, subEffect, marketRentRaw } from './valuation.js';
 import { growBrand, damageBrand } from './brands.js';
 import { perWeek, WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
@@ -15,6 +15,16 @@ export function stepInventory(g, rng, news) {
   const finished = [];
   for (const inv of g.inventory) {
     inv.weeksOnSale++;
+    // 安全弁：総販売額が0のまま原価だけ立つのを防ぐ。
+    // 坪単価が抜けている在庫を売ると、売上0・原価満額の巨額赤字になる
+    if (!(inv.totalValue > 0) && inv.cost > 0) {
+      const price = inv.price > 0 ? inv.price : (inv.basePrice > 0 ? inv.basePrice : 0);
+      if (price > 0 && inv.area > 0) {
+        inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
+      } else {
+        continue;     // 値付けができないものは販売を進めない
+      }
+    }
     if (inv.soldRatio >= 0.999) { finished.push(inv); continue; }
 
     let speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district, inv.brandId);
@@ -67,13 +77,26 @@ export function stepAssets(g, rng, news) {
   const p = orgPower(g);
   for (const a of g.assets) {
     a.age += 1 / WEEKS_PER_YEAR;
-    const d = DISTRICTS[a.district];
     const dem = g.market.demand[a.use] ?? 1;
 
-    // 市場賃料の変動
-    const rentKey = { office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi', rental: 'rentResi', resi: 'rentResi' }[a.use] || 'rentOffice';
-    const base = (d[rentKey] ?? d.rentOffice * 0.6);
-    a.marketRent = Math.round(base * (0.86 + dem * 0.2) * g.market.priceIdx * (1 - Math.min(0.22, a.age * 0.006)));
+    // 市場賃料の変動。
+    // 素の相場に、この物件の位置（rentIndex）を掛ける。
+    // グレードやブランド、駅力のぶんを相場側にも織り込まないと、
+    // 高級物件は永久に「市場比+100%」と判定されて空室が増えてしまう
+    const raw = marketRentRaw(g, a);
+    if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+    a.marketRent = Math.round(raw * a.rentIndex);
+
+    // 賃料が抜けている物件（旧版の複合開発）は相場で埋める
+    if (!(a.rent > 0)) {
+      a.rent = Math.max(1, Math.round(a.marketRent || raw));
+      a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+      a.marketRent = Math.round(raw * a.rentIndex);
+      news.push({
+        icon: '🏢', type: 'lease',
+        text: `【${a.name}】募集賃料が未設定だったため、相場の月坪${a.rent.toLocaleString()}円で募集を開始した。`,
+      });
+    }
 
     // 稼働率：賃料が市場より高いと埋まりにくい
     const gap = a.rent / Math.max(1, a.marketRent);
@@ -88,7 +111,7 @@ export function stepAssets(g, rng, news) {
     if (g.week - a.lastRentReview >= 104) {
       const power = 0.35 + p.lease.quality / 260;
       const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
-      if (Math.abs(newRent - a.rent) / a.rent > 0.03) {
+      if (a.rent > 0 && Math.abs(newRent - a.rent) / a.rent > 0.03) {
         news.push({
           icon: newRent > a.rent ? '📈' : '📉', type: 'lease',
           text: `【${a.name}】賃料改定。月坪${a.rent.toLocaleString()}円 → ${newRent.toLocaleString()}円（稼働${Math.round(a.occupancy * 100)}%）。`,
@@ -152,7 +175,11 @@ export function sellAsset(g, a, news) {
 /** 在庫の値付けを変更する */
 export function repriceInventory(g, inv, newPrice, news) {
   const old = inv.price;
-  inv.price = Math.round(newPrice * 1000) / 1000;
+  // 基準単価の40%〜200%に収める。0を許すと売上が立たないまま原価だけが出る
+  const base = inv.basePrice > 0 ? inv.basePrice : (old > 0 ? old : 0);
+  const lo = base > 0 ? base * 0.4 : 0.01;
+  const hi = base > 0 ? base * 2.0 : Number.MAX_SAFE_INTEGER;
+  inv.price = Math.round(clamp(newPrice, lo, hi) * 1000) / 1000;
   const remain = 1 - inv.soldRatio;
   inv.totalValue = Math.round(inv.revenue + inv.area * remain * inv.price);
   if (newPrice < old * 0.94) {

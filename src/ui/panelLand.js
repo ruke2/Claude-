@@ -1,7 +1,7 @@
 // ============================================================
 //  用地パネル — 売却情報・デューデリジェンス・入札
 // ============================================================
-import { money, moneyHTML, num, pct, clamp } from '../core/format.js';
+import { money, moneyHTML, num, pct, clamp, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES, TERRAIN } from '../data/city.js';
 import { LISTING_KINDS, ddCost, runDueDiligence, ACQ_FEE, holdingCostQ } from '../sim/land.js';
@@ -101,8 +101,8 @@ export function openDetail(g, listing, ctx) {
 
     return `
     <div class="grid3" style="margin-bottom:14px">
-      ${mini('売出価格', money(listing.askPrice, { unit: false }), '億円')}
-      ${mini('当社査定', money(listing.appraisal, { unit: false }), '億円')}
+      ${mini('売出価格', money(listing.askPrice, { unit: false }), moneyUnit(listing.askPrice))}
+      ${mini('当社査定', money(listing.appraisal, { unit: false }), moneyUnit(listing.appraisal))}
       ${mini('取得諸費用', moneyHTML(Math.round(listing.askPrice * ACQ_FEE)), `売買価格の${(ACQ_FEE * 100).toFixed(1)}%`)}
     </div>
 

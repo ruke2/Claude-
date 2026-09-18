@@ -57,6 +57,23 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
   続きから始めたときに新しい案件が既存の案件と同じIDになる
 - 保存する形を変えたときは `SAVE_VERSION` を上げ、`migrate()` に処理を足す
 
+## 竣工処理でいちばん壊れやすいところ
+
+`devPlan()` と `devPlanStack()` は、**同じ名前の値を返さないと竣工時に破綻する**。
+
+必須：`salePrice`（分譲の坪単価）／`rent`（賃貸の募集賃料）／
+`saleCostShare`（総事業費を分譲在庫と保有資産に割り振る比率）／`leaseUse`（賃貸部分の主用途）
+
+- `salePrice` が抜けると在庫の `totalValue` が0になり、
+  **売上0のまま原価が満額計上される**。竣工のたびに数百億円の営業損失が出る
+- `rent` が抜けると保有資産の募集賃料が0になり、簿価だけ残って永久に無収入になる
+- `saleCostShare` が実態と合わないと、分譲と賃貸の原価配分がずれる
+- 新しい用途や計画関数を足したら、必ず `node scripts/check-lifecycle.mjs` を流す
+
+保有資産の「市場賃料」（`marketRentRaw()`）は、グレードやブランドを含まない素の相場である。
+物件ごとの上振れ・下振れは `a.rentIndex` が持つ。
+ここを混ぜると、高級物件が永久に「市場比+100%」と判定されて空室が増える。
+
 ## 地区を追加するとき
 
 地区の定義は `src/data/city.js` の `DISTRICTS` に集約している。
@@ -73,6 +90,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 
 ```bash
 node scripts/check-districts.mjs   # 全地区×全用途の事業利益率を一覧する
+node scripts/check-lifecycle.mjs   # 着工から完売までの金の流れを突き合わせる
 ```
 
 ## 描画の性能

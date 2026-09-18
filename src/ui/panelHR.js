@@ -1,7 +1,7 @@
 // ============================================================
 //  人事パネル — 組織図・採用・給与・制度
 // ============================================================
-import { money, num, pct, man, clamp } from '../core/format.js';
+import { money, num, pct, man, clamp, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
 import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salaryFairness, projectCapacity } from '../sim/hr.js';
@@ -62,7 +62,7 @@ export function render(g, ctx) {
       ${mini('従業員数', num(active.length) + '名', `平均 ${avgAge.toFixed(1)}歳`)}
       ${mini('平均年収', man(avgSal), `市場比 ${pct(pi, 0)}`, pi < 0.95 ? 'var(--red)' : pi > 1.1 ? 'var(--green)' : '')}
       ${mini('モチベーション', (avgMor * 100).toFixed(0), avgMor < 0.55 ? '低下している' : avgMor > 0.75 ? '高い' : '標準的', avgMor < 0.55 ? 'var(--red)' : avgMor > 0.75 ? 'var(--green)' : '')}
-      ${mini('人件費', money(personnelCostYear(g), { unit: false }), '年額')}
+      ${mini('人件費', moneyHTML(personnelCostYear(g)), '年額')}
     </div>
     ${subs}
     <div class="hint">給与が市場水準を下回ると、モチベーションが落ちて離職と引き抜きが増える。逆に高すぎる給与は利益を圧迫する。</div>

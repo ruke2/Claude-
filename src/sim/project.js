@@ -4,7 +4,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { uid, makeBuilding } from '../core/state.js';
-import { devPlan, devPlanStack, subEffect } from './valuation.js';
+import { devPlan, devPlanStack, subEffect, marketRentRaw } from './valuation.js';
 import { riskImpact } from './land.js';
 import { orgPower, projectCapacity } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
@@ -90,6 +90,9 @@ export function startProject(g, cell, useId, gradeId, rng, news, brandId = null,
     weeks: plan.weeks, elapsed: 0, progress: 0, delay: 0,
     status: 'construction', startWeek: g.week, seed: rng.int(0, 99999),
     plan, salePrice: plan.salePrice || 0, rent: plan.rent || 0,
+    // 竣工時に総事業費を分譲／賃貸へ割り振る比率と、賃貸部分の主用途
+    saleCostShare: typeof plan.saleCostShare === 'number' ? plan.saleCostShare : (plan.saleArea > 0 ? 1 : 0),
+    leaseUse: plan.leaseUse || null,
     preContract: 0, marketing: false, events: [],
   };
   cell.projectId = pj.id;
@@ -166,6 +169,57 @@ export function contractSpeed(g, use, price, marketPrice, p, districtId, brandId
   return clamp(0.15 * gap * dem * sales * brand * sub * bf / WEEKS_PER_QUARTER, 0.0012, 0.055);
 }
 
+// ------------------------------------------------------------
+//  竣工時の値の引き直し
+//    旧版の複合開発は salePrice / rent / saleCostShare を持っていない。
+//    そのまま竣工させると「売上0・原価満額」の在庫と「賃料0」の資産ができる。
+// ------------------------------------------------------------
+
+/** 総事業費のうち分譲在庫が負担する割合 */
+export function saleCostShareOf(pj) {
+  if (typeof pj.saleCostShare === 'number') return clamp01(pj.saleCostShare);
+  if (pj.plan && typeof pj.plan.saleCostShare === 'number') return clamp01(pj.plan.saleCostShare);
+  // 積層があれば、実際のセグメント建設費で分ける
+  const segs = Array.isArray(pj.stack) ? pj.stack : null;
+  if (segs && segs.length) {
+    const isSale = x => (x.model ? x.model === 'sale' : (USES[x.use] || {}).model === 'sale');
+    const all = segs.reduce((a, x) => a + (x.build || x.area || 0), 0);
+    if (all > 0) {
+      const sale = segs.filter(isSale).reduce((a, x) => a + (x.build || x.area || 0), 0);
+      return clamp01(sale / all);
+    }
+  }
+  if (pj.nra > 0 && pj.saleArea > 0) return clamp01(pj.saleArea / (pj.saleArea + pj.nra));
+  return pj.saleArea > 0 ? 1 : 0;
+}
+
+/** 面積加重の平均を取るための小さな補助 */
+function weighted(list, valueKey, areaKey) {
+  const items = (list || []).filter(x => x && x[valueKey] > 0 && x[areaKey] > 0);
+  const area = items.reduce((a, x) => a + x[areaKey], 0);
+  return area > 0 ? items.reduce((a, x) => a + x[valueKey] * x[areaKey], 0) / area : 0;
+}
+
+/** 分譲の坪単価（百万円/坪） */
+export function salePriceOf(pj) {
+  if (pj.salePrice > 0) return pj.salePrice;
+  const pl = pj.plan || {};
+  if (pl.salePrice > 0) return pl.salePrice;
+  if (pl.saleRevenue > 0 && pl.saleArea > 0) return Math.round(pl.saleRevenue / pl.saleArea * 1000) / 1000;
+  const w = weighted((pj.stack || []).filter(x => x.model === 'sale'), 'price', 'usable');
+  return w > 0 ? Math.round(w * 1000) / 1000 : 0;
+}
+
+/** 賃貸の募集賃料（円/坪·月） */
+export function rentOf(pj) {
+  if (pj.rent > 0) return pj.rent;
+  const pl = pj.plan || {};
+  if (pl.rent > 0) return pl.rent;
+  if (pl.grossRent > 0 && pl.nra > 0) return Math.round(pl.grossRent * 1e6 / (pl.nra * 12));
+  const w = weighted((pj.stack || []).filter(x => x.model === 'lease'), 'rent', 'usable');
+  return w > 0 ? Math.round(w) : 0;
+}
+
 /** 竣工処理 */
 function completeProject(g, pj, rng, news) {
   const cell = g.cells.find(c => c.id === pj.cellId);
@@ -187,15 +241,21 @@ function completeProject(g, pj, rng, news) {
   });
 
   const cost = pj.landCost + pj.spent;
+  // 総事業費を分譲と賃貸に割り振る比率。複合開発は実際のセグメント建設費で分ける
+  const saleShare = saleCostShareOf(pj);
   // --- 分譲部分 ---
   if (pj.saleArea > 0) {
+    // 坪単価が抜けている案件（旧版の複合開発）は、計画値から引き直す。
+    // 0のまま在庫にすると「売上0・原価満額」になり、竣工のたびに巨額の赤字が出る
+    const price = salePriceOf(pj);
+    const basePrice = pj.plan && pj.plan.salePrice > 0 ? pj.plan.salePrice : price;
     const inv = {
       id: uid('I'), cellId: cell.id, projectId: pj.id, name: pj.name,
       use: pj.use, district: cell.d, grade: pj.grade, brandId: pj.brandId,
       area: pj.saleArea, units: pj.plan.units || Math.round(pj.saleArea / 26),
-      price: pj.salePrice, basePrice: pj.plan.salePrice,
-      totalValue: Math.round(pj.saleArea * pj.salePrice),
-      cost: Math.round(cost * (pj.use === 'mixed' ? 0.45 : 1)),
+      price, basePrice,
+      totalValue: Math.round(pj.saleArea * price),
+      cost: Math.round(cost * saleShare),
       soldRatio: 0, revenue: 0, weeksOnSale: 0, completedWeek: g.week,
       impaired: 0, discount: 0,
     };
@@ -219,17 +279,25 @@ function completeProject(g, pj, rng, news) {
   }
   // --- 賃貸部分 ---
   if (pj.nra > 0) {
-    const share = pj.use === 'mixed' ? 0.55 : 1;
+    const share = 1 - saleShare;
+    // 複合開発は賃貸部分の主用途を資産の用途にする（従来は一律オフィス扱いだった）
+    const use = pj.use === 'mixed' ? (pj.leaseUse || (pj.plan && pj.plan.leaseUse) || 'office') : pj.use;
     const asset = {
       id: uid('A'), cellId: cell.id, projectId: pj.id, name: pj.name,
-      use: pj.use === 'mixed' ? 'office' : pj.use, district: cell.d, grade: pj.grade,
-      nra: pj.nra, rent: pj.rent, marketRent: pj.rent,
-      occupancy: pj.use === 'logi' ? 0.86 : 0.42,       // 竣工直後は稼働が低い
+      use, district: cell.d, grade: pj.grade, brandId: pj.brandId,
+      nra: pj.nra, rent: 0, marketRent: 0,
+      occupancy: use === 'logi' ? 0.86 : 0.42,          // 竣工直後は稼働が低い
       bookLand: Math.round(pj.landCost * share),
       bookBuild: Math.round(pj.spent * share),
       completedWeek: g.week, age: 0, lastRentReview: g.week,
       noi: 0, cumNoi: 0,
     };
+    // 募集賃料を決める。抜けている案件は相場から引き直す
+    const raw = Math.max(1, marketRentRaw(g, asset));
+    const ask = rentOf(pj) || raw;
+    asset.rent = Math.round(ask);
+    asset.rentIndex = clamp(asset.rent / raw, 0.4, 3.5);   // 相場に対する自社物件の位置
+    asset.marketRent = Math.round(raw * asset.rentIndex);
     g.assets.push(asset);
     cell.assetId = asset.id;
     news.push({

@@ -1,7 +1,7 @@
 // ============================================================
 //  M&A・子会社パネル
 // ============================================================
-import { money, num, pct } from '../core/format.js';
+import { money, num, pct, moneyUnit, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { SUB_TYPES } from '../data/companies.js';
 import { maDueDiligence, acquire, foundSubsidiary, liquidate, MA_RISKS } from '../sim/ma.js';
@@ -75,7 +75,7 @@ export function render(g, ctx) {
     <div class="grid3">
       ${mini('経営企画部', p.corp.quality.toFixed(0), `${p.corp.count}名`)}
       ${mini('財務経理部', p.fin.quality.toFixed(0), `${p.fin.count}名`)}
-      ${mini('投資余力', money(g.cash + Math.max(0, debtCapacity(g) - g.debt), { unit: false }), '億円')}
+      ${mini('投資余力', money(g.cash + Math.max(0, debtCapacity(g) - g.debt), { unit: false }), moneyUnit(g.cash + Math.max(0, debtCapacity(g) - g.debt)))}
     </div>
     <div class="hint">経営企画部と財務経理部の能力がデューデリジェンスの精度とPMIの成功率を左右する。調査を怠れば簿外債務やキーマン流出で買収は失敗する。</div>
   `)}
@@ -98,9 +98,9 @@ export function openTarget(g, t, ctx) {
     const p = orgPower(g);
     return `
     <div class="grid3" style="margin-bottom:12px">
-      ${mini('売上高', money(t.rev, { unit: false }), '億円')}
-      ${mini('営業利益', money(t.op, { unit: false }), `利益率 ${pct(t.op / t.rev, 1)}`)}
-      ${mini('純資産', money(t.equity, { unit: false }), '億円')}
+      ${mini('売上高', money(t.rev, { unit: false }), moneyUnit(t.rev))}
+      ${mini('営業利益', moneyHTML(t.op), `利益率 ${pct(t.op / t.rev, 1)}`)}
+      ${mini('純資産', money(t.equity, { unit: false }), moneyUnit(t.equity))}
     </div>
     <div class="card">
       <div class="card-t"><span class="card-n">${t.label}</span>${chip(`従業員 ${num(t.employees)}名`, 'grey')}</div>

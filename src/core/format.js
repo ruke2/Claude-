@@ -18,6 +18,20 @@ export function money(mm, opt = {}) {
   return s + v + (unit ? u : '');
 }
 
+/**
+ * money() が選ぶ単位だけを返す。
+ * 数字だけを大きく出して単位を小さく添えるとき、
+ * 単位を「億円」と決め打ちすると兆円・百万円の桁で嘘になる。
+ */
+export function moneyUnit(mm) {
+  const abs = Math.abs(mm ?? 0);
+  if (!Number.isFinite(abs)) return '';
+  if (abs < 0.5) return '億円';
+  if (abs >= 1000000) return '兆円';
+  if (abs >= 100) return '億円';
+  return '百万円';
+}
+
 /** 百万円 → 数値と単位を分けたHTML（大きな数字の表示用） */
 export function moneyHTML(mm) {
   const s = money(mm);

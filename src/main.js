@@ -2,7 +2,7 @@
 //  摩天楼の設計図 — エントリポイント
 // ============================================================
 import { createGame, cellById } from './core/state.js';
-import { money, num, pct, dcls, arrow } from './core/format.js';
+import { money, moneyUnit, num, pct, dcls, arrow } from './core/format.js';
 import { dateLabel, dateLabelOf, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
 import { SLOTS, SLOT_LABEL, BACKUP, listSaves, backupSave, saveTo, loadFrom, deleteSlot, latestSave,
   exportText, exportName, importText, totalSize, storageAvailable, requestPersistence } from './core/save.js';
@@ -299,7 +299,13 @@ function bindInput() {
   $('#modalWrap').onclick = e => { if (e.target.id === 'modalWrap') closeModal(); };
   $('#btnWeek').onclick = () => advance(1);
   $('#btnMonth').onclick = () => advance(4);
-  $('#btnQuarter').onclick = () => advance(WEEKS_PER_QUARTER - G.weekOfQuarter);
+  $('#btnQuarter').onclick = () => {
+    // 次の決算週（weekOfQuarter = 12）までの週数。
+    // ちょうど決算週にいるときは、1週ではなく次の決算まで進める
+    const end = WEEKS_PER_QUARTER - 1;
+    const n = (end - G.weekOfQuarter + WEEKS_PER_QUARTER) % WEEKS_PER_QUARTER;
+    advance(n || WEEKS_PER_QUARTER);
+  };
   $('#btnMenu').onclick = openSaveMenu;
   const toggleFeed = () => {
     const f = $('#feed');
@@ -702,7 +708,7 @@ function showGameOver() {
     <div class="hint" style="font-size:13px;line-height:2">${G.gameOver.text}</div>
     <div class="grid3" style="margin:16px 0">
       ${mini('経営年数', (G.year - G.company.founded) + '年', `${G.week}週`)}
-      ${mini('最終売上高', money(ttm(G).revenue, { unit: false }), '億円')}
+      ${mini('最終売上高', money(ttm(G).revenue, { unit: false }), moneyUnit(ttm(G).revenue))}
       ${mini('業界順位', rank ? rank.rank + '位' : '—', '')}
     </div>
     <div class="card">
@@ -748,11 +754,11 @@ function updateHeader() {
   $('#hdrDate').textContent = dateLabel(G);
   $('#hdrSeason').textContent = `${seasonOfMonth(G.month)}・${timeOfMonth(G.month).label}　第${G.quarter}四半期 ${G.weekOfQuarter + 1}/13週`;
   const items = [
-    { k: '現預金', v: money(G.cash, { unit: false }), u: '億円', d: null },
-    { k: '有利子負債', v: money(G.debt, { unit: false }), u: '億円' },
-    { k: '売上高(TTM)', v: money(t.revenue, { unit: false }), u: '億円' },
-    { k: '営業利益', v: money(t.op, { unit: false }), u: '億円', c: t.op >= 0 ? 'up' : 'down' },
-    { k: '純資産', v: money(k.bps * G.company.shares / 1e6, { unit: false }), u: '億円' },
+    { k: '現預金', v: money(G.cash, { unit: false }), u: moneyUnit(G.cash), d: null },
+    { k: '有利子負債', v: money(G.debt, { unit: false }), u: moneyUnit(G.debt) },
+    { k: '売上高(TTM)', v: money(t.revenue, { unit: false }), u: moneyUnit(t.revenue) },
+    { k: '営業利益', v: money(t.op, { unit: false }), u: moneyUnit(t.op), c: t.op >= 0 ? 'up' : 'down' },
+    { k: '純資産', v: money(k.bps * G.company.shares / 1e6, { unit: false }), u: moneyUnit(k.bps * G.company.shares / 1e6) },
     { k: '格付', v: k.rating.id, u: '' },
     { k: 'ブランド', v: G.company.brand.toFixed(0), u: '' },
   ];

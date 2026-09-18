@@ -9,6 +9,9 @@
 // ============================================================
 import { createGame, syncUid, defaultRankPay } from './state.js';
 import { RANKS } from '../data/hrdata.js';
+import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
+import { marketRentRaw } from '../sim/valuation.js';
+import { clamp } from './format.js';
 import { syncCalendar } from './time.js';
 
 const PREFIX = 'skyline_v3_';          // ← 変更禁止
@@ -96,6 +99,53 @@ const STEPS = [
     if (!pol || Array.isArray(pol.rankPay)) return;
     const mul = typeof pol.salaryMul === 'number' ? pol.salaryMul : 1;
     pol.rankPay = RANKS.map(r => Math.round(r.baseSalary * mul * 10) / 10);
+  },
+
+  // 複合開発の坪単価・募集賃料・原価配分が入っていない案件を引き直す。
+  // 旧版は devPlanStack がこれらを返しておらず 0 のまま保存されていた。
+  // そのまま竣工すると「売上0・原価満額」の在庫と「賃料0」の資産ができる。
+  g => {
+    for (const pj of g.projects || []) {
+      if (typeof pj.saleCostShare !== 'number') pj.saleCostShare = saleCostShareOf(pj);
+      if (!pj.leaseUse && pj.plan && pj.plan.leaseUse) pj.leaseUse = pj.plan.leaseUse;
+      if (pj.saleArea > 0) {
+        const base = salePriceOf({ ...pj, salePrice: 0 });      // 計画から引いた単価
+        if (base > 0) {
+          if (!(pj.plan && pj.plan.salePrice > 0)) { pj.plan = pj.plan || {}; pj.plan.salePrice = base; }
+          // 値付け画面が壊れていた時期に入った異常な安値も戻す（調整幅の下限は基準の60%）
+          if (!(pj.salePrice > 0) || pj.salePrice < base * 0.55) pj.salePrice = base;
+        }
+      }
+      if (pj.nra > 0 && !(pj.rent > 0)) {
+        const r = rentOf({ ...pj, rent: 0 });
+        if (r > 0) pj.rent = r;
+      }
+    }
+  },
+
+  // 総販売額が0の在庫を、坪単価から引き直す
+  g => {
+    for (const inv of g.inventory || []) {
+      if (inv.totalValue > 0) continue;
+      const price = inv.price > 0 ? inv.price : (inv.basePrice > 0 ? inv.basePrice : 0);
+      if (price > 0 && inv.area > 0) {
+        inv.price = price;
+        inv.basePrice = inv.basePrice > 0 ? inv.basePrice : price;
+        // すでに引き渡した分の売上は動かさず、残りぶんだけ評価し直す
+        inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
+      }
+    }
+  },
+
+  // 賃料が0／未設定の保有資産に相場の賃料を入れ、相場との位置（rentIndex）を持たせる
+  g => {
+    for (const a of g.assets || []) {
+      const raw = Math.max(1, marketRentRaw(g, a));
+      if (!(a.rent > 0)) a.rent = Math.round(raw);
+      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / raw, 0.4, 3.5);
+      // 相場も新しい基準で引き直す。そうしないと読み込み直後だけ市場比が狂って見える
+      a.marketRent = Math.round(raw * a.rentIndex);
+    }
   },
 ];
 

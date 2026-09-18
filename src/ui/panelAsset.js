@@ -1,7 +1,7 @@
 // ============================================================
 //  保有物件パネル — 賃貸ポートフォリオ
 // ============================================================
-import { money, num, pct } from '../core/format.js';
+import { money, num, pct, moneyUnit, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { assetValue, currentNOI, subEffect } from '../sim/valuation.js';
@@ -47,10 +47,10 @@ export function render(g, ctx) {
   return `
   ${section('賃貸ポートフォリオ', `${g.assets.length}件`, `
     <div class="grid4">
-      ${mini('簿価合計', money(book, { unit: false }), '億円')}
-      ${mini('時価合計', money(mv, { unit: false }), '億円')}
-      ${mini('含み損益', money(mv - book, { unit: false }), '億円', mv - book >= 0 ? 'var(--green)' : 'var(--red)')}
-      ${mini('年間NOI', money(noi, { unit: false }), `利回り ${pct(noi / Math.max(1, book))}`)}
+      ${mini('簿価合計', money(book, { unit: false }), moneyUnit(book))}
+      ${mini('時価合計', money(mv, { unit: false }), moneyUnit(mv))}
+      ${mini('含み損益', money(mv - book, { unit: false }), moneyUnit(mv - book), mv - book >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${mini('年間NOI', moneyHTML(noi), `利回り ${pct(noi / Math.max(1, book))}`)}
     </div>
     ${Object.keys(byUse).length ? `<table class="tbl" style="margin-top:12px">
       <tr><th>用途</th><th>件数</th><th>貸室面積</th><th>年間NOI</th><th>時価</th></tr>
@@ -76,7 +76,7 @@ export function openRent(g, a, ctx) {
     <div class="field" style="margin-top:12px">
       <label>新しい募集賃料（円/坪·月）</label>
       <input type="number" id="inpR" value="${a.rent}" step="500">
-      <input type="range" id="rngR" min="${Math.round(a.marketRent * 0.6)}" max="${Math.round(a.marketRent * 1.4)}" value="${a.rent}" step="100" style="width:100%;margin-top:8px;accent-color:var(--gold)">
+      <input type="range" id="rngR" min="${Math.round(Math.min(a.marketRent * 0.6, a.rent * 0.9))}" max="${Math.round(Math.max(a.marketRent * 1.4, a.rent * 1.1))}" value="${a.rent}" step="100" style="width:100%;margin-top:8px;accent-color:var(--gold)">
     </div>
     <div id="rInfo" class="hint"></div>
     <div class="hint">市場賃料を上回る設定は空室を増やす。逆に安すぎると収益を取りこぼす。既存テナントの賃料は段階的にしか動かない。</div>
@@ -87,7 +87,7 @@ export function openRent(g, a, ctx) {
     const inp = body.querySelector('#inpR'), rg = body.querySelector('#rngR'), info = body.querySelector('#rInfo');
     const sync = v => {
       inp.value = v; rg.value = v;
-      const gap = v / a.marketRent;
+      const gap = v / Math.max(1, a.marketRent);
       const target = Math.max(0, Math.min(1, (1.34 - gap * 0.36) * 0.95));
       info.innerHTML = `市場比 <b>${((gap - 1) * 100).toFixed(0)}%</b>　想定稼働率 <b>${(target * 100).toFixed(0)}%</b>　満室想定賃料収入 ${money(Math.round(a.nra * v * 12 / 1e6))}／年`;
     };
