@@ -9,6 +9,7 @@
 // ============================================================
 import { createGame, syncUid, defaultRankPay } from './state.js';
 import { RANKS } from '../data/hrdata.js';
+import { RIVAL_DEFS } from '../data/companies.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
 import { costEquilibrium } from '../sim/market.js';
@@ -81,9 +82,19 @@ function fill(target, src, depth = 0, skip = null) {
       target[k] = clone(sv);
     } else if (isObj(sv) && isObj(target[k])) {
       fill(target[k], sv, depth + 1);
-    } else if (Array.isArray(sv) && Array.isArray(target[k]) && isObj(sv[0])) {
-      // 配列の中身にも、新しく増えた項目を足す
-      for (const item of target[k]) if (isObj(item)) fill(item, sv[0], depth + 1);
+    } else if (Array.isArray(sv) && Array.isArray(target[k]) && sv.length && isObj(sv[0])) {
+      // 配列の中身にも、新しく増えた項目を足す。
+      // ◆ ひな型の先頭だけで埋めないこと ◆
+      //   要素ごとに中身が違う配列（競合各社など）だと、
+      //   全要素が1社目の値で埋まってしまう。
+      //   IDで突き合わせ、無ければ同じ位置のものを使う
+      const byId = new Map();
+      for (const t of sv) if (isObj(t) && t.id != null) byId.set(t.id, t);
+      target[k].forEach((item, i) => {
+        if (!isObj(item)) return;
+        const proto = (item.id != null && byId.get(item.id)) || sv[i] || sv[0];
+        if (isObj(proto)) fill(item, proto, depth + 1);
+      });
     }
   }
 }
@@ -174,6 +185,27 @@ const STEPS = [
     }
     // すでに使っている機能は、売上が段階に届いていなくても取り上げない
     grantExisting(g);
+  },
+
+  // 競合各社の地盤・平均年収・平均年齢・勤続年数を定義から引き直す。
+  // 以前は配列をひな型の先頭だけで埋めていたため、
+  // 読み込んだセーブでは全社が1社目（四井不動産）と同じ値になっていた
+  g => {
+    for (const rv of g.rivals || []) {
+      const def = RIVAL_DEFS.find(d => d.id === rv.id);
+      if (!def) continue;
+      rv.home = def.home;
+      rv.payBase = def.avgPay;
+      rv.payMargin = def.op / Math.max(1, def.rev);
+      // 創業時からの伸びを年収に反映する（賞与で振れるぶんは次の決算から）
+      const grow = Math.min(2.2, Math.max(0.6, (rv.rev || def.rev) / def.rev));
+      rv.avgPay = Math.round(def.avgPay * Math.pow(grow, 0.45) * 10) / 10;
+      rv.avgAge = def.avgAge;
+      rv.avgTenure = def.avgTenure;
+      // 過去の推移に年収は残っていない。
+      // ここで埋めると「ずっと横ばい」の折れ線になってしまうので、
+      // 次の決算から本物の値だけを積む
+    }
   },
 ];
 

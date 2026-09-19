@@ -20,6 +20,16 @@ const KEYS = [
 /** 平均年収の表示（百万円 → 万円） */
 const pay = v => (v > 0 ? `${Math.round(v * 100).toLocaleString()}万円` : '—');
 
+/** 1年前と比べた平均年収の増減 */
+function yoy(r) {
+  const h = r.history || [];
+  const prev = h.length >= 5 ? h[h.length - 5].pay : null;
+  if (!(prev > 0) || !(r.avgPay > 0)) return '';
+  const d = r.avgPay / prev - 1;
+  if (Math.abs(d) < 0.005) return '　<span class="flat">前年比 ±0%</span>';
+  return `　<span class="${d > 0 ? 'up' : 'down'}">前年比 ${d > 0 ? '+' : ''}${(d * 100).toFixed(1)}%</span>`;
+}
+
 export function render(g, ctx) {
   const key = ctx.rivalKey || 'rev';
   const list = ranking(g, key);
@@ -28,13 +38,14 @@ export function render(g, ctx) {
   const hrMode = key === 'avgPay' || key === 'employees';
   const table = `<table class="tbl">
     <tr><th>順位</th><th>企業</th>${hrMode
-    ? '<th>平均年収</th><th>平均年齢</th><th>勤続</th><th>従業員</th><th>地盤</th>'
+    ? '<th>平均年収</th><th>前年比</th><th>平均年齢</th><th>勤続</th><th>従業員</th><th>地盤</th>'
     : '<th>売上高</th><th>営業利益</th><th>営利率</th><th>純資産</th><th>従業員</th>'}</tr>
     ${list.map(r => `<tr class="click ${r.isPlayer ? 'me' : ''}" data-act="rival.detail" data-id="${r.id}">
       <td>${r.rank}</td>
       <td><span style="color:${r.color}">■</span> ${r.name}</td>
       ${hrMode ? `
       <td>${pay(r.avgPay)}</td>
+      <td>${r.isPlayer ? '—' : yoy(r).replace(/^　/, '').replace('前年比 ', '') || '—'}</td>
       <td>${r.avgAge > 0 ? r.avgAge.toFixed(1) + '歳' : '—'}</td>
       <td>${r.avgTenure > 0 ? r.avgTenure.toFixed(1) + '年' : '—'}</td>
       <td>${num(r.employees)}</td>
@@ -124,6 +135,7 @@ export function openDetail(g, id, ctx) {
   const r = g.rivals.find(x => x.id === id);
   if (!r) return;
   const hist = r.history.slice(-16);
+  const payHist = hist.map(x => x.pay).filter(v => v > 0);
   const focus = Object.entries(r.focus).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const lots = g.cells.filter(c => c.owner === r.id).length;
 
@@ -149,7 +161,10 @@ export function openDetail(g, id, ctx) {
     </div>
     <div class="sec">
       <div class="sec-t"><span>人材と処遇</span></div>
-      ${kv('平均年収', `<b>${pay(r.avgPay)}</b>`)}
+      ${kv('平均年収', `<b>${pay(r.avgPay)}</b>${yoy(r)}`)}
+      ${payHist.length > 2 ? `<div>${spark(payHist, { color: r.color })}</div>
+        <div class="hint">平均年収の推移（直近${payHist.length}四半期）。賞与があるので、
+        利益率が落ちた年や不況の年には下がる。</div>` : ''}
       ${kv('平均年齢', r.avgAge > 0 ? r.avgAge.toFixed(1) + '歳' : '—')}
       ${kv('平均勤続年数', r.avgTenure > 0 ? r.avgTenure.toFixed(1) + '年' : '—')}
       ${kv('従業員数', num(r.employees) + '名')}

@@ -2455,6 +2455,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       momentum: 0,
       lastRev: def.rev,
       lastOp: def.op,
+      lastEmployees: def.employees,
+      // 平均年収の基準。賞与はこの水準のまわりで利益率と市況に応じて振れる
+      payBase: def.avgPay,
+      payMargin: def.op / def.rev,
       stock: Math.round(def.equity / (def.employees * 0.4) * (0.8 + rng.next() * 0.5)) / 100,
       news: []
     }));
@@ -4362,8 +4366,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         target[k] = clone(sv);
       } else if (isObj(sv) && isObj(target[k])) {
         fill(target[k], sv, depth + 1);
-      } else if (Array.isArray(sv) && Array.isArray(target[k]) && isObj(sv[0])) {
-        for (const item of target[k]) if (isObj(item)) fill(item, sv[0], depth + 1);
+      } else if (Array.isArray(sv) && Array.isArray(target[k]) && sv.length && isObj(sv[0])) {
+        const byId = /* @__PURE__ */ new Map();
+        for (const t of sv) if (isObj(t) && t.id != null) byId.set(t.id, t);
+        target[k].forEach((item, i) => {
+          if (!isObj(item)) return;
+          const proto = item.id != null && byId.get(item.id) || sv[i] || sv[0];
+          if (isObj(proto)) fill(item, proto, depth + 1);
+        });
       }
     }
   }
@@ -4442,6 +4452,22 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         g.company.home = top ? top[0] : "W";
       }
       grantExisting(g);
+    },
+    // 競合各社の地盤・平均年収・平均年齢・勤続年数を定義から引き直す。
+    // 以前は配列をひな型の先頭だけで埋めていたため、
+    // 読み込んだセーブでは全社が1社目（四井不動産）と同じ値になっていた
+    (g) => {
+      for (const rv of g.rivals || []) {
+        const def = RIVAL_DEFS.find((d) => d.id === rv.id);
+        if (!def) continue;
+        rv.home = def.home;
+        rv.payBase = def.avgPay;
+        rv.payMargin = def.op / Math.max(1, def.rev);
+        const grow = Math.min(2.2, Math.max(0.6, (rv.rev || def.rev) / def.rev));
+        rv.avgPay = Math.round(def.avgPay * Math.pow(grow, 0.45) * 10) / 10;
+        rv.avgAge = def.avgAge;
+        rv.avgTenure = def.avgTenure;
+      }
     }
   ];
   function migrate(g) {
@@ -7587,17 +7613,32 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       rv.debt = Math.max(0, Math.round(rv.assets - rv.equity));
       rv.cash = Math.round(rv.cash + rv.np * 0.5 - rv.rev * 0.02);
       rv.employees = Math.round(rv.employees * (1 + growth2 * 0.35));
-      if (typeof rv.avgPay === "number") {
-        rv.avgPay = Math.round(clamp(rv.avgPay * (1 + growth2 * 0.5 + rng.normal(0, 8e-3)), 4, 32) * 10) / 10;
-      }
-      if (typeof rv.avgAge === "number") {
-        rv.avgAge = Math.round(clamp(rv.avgAge + (growth2 > 0.012 ? -0.03 : 0.04), 33, 50) * 10) / 10;
-      }
+      stepPay(rv, cyc, g, rng);
       rv.stock = Math.round(rv.stock * (1 + growth2 * 1.6 + cyc * 0.03 + rng.normal(0, 0.03)) * 100) / 100;
       rv.momentum = Math.max(0, (rv.momentum || 0) - 0.34);
-      rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np });
+      rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np, pay: rv.avgPay });
       if (rv.history.length > 60) rv.history.shift();
     }
+  }
+  function stepPay(rv, cyc, g, rng) {
+    if (!(rv.payBase > 0)) {
+      rv.payBase = rv.avgPay || 8;
+      rv.payMargin = Math.max(0.01, rv.op / Math.max(1, rv.rev));
+    }
+    const margin = rv.op / Math.max(1, rv.rev);
+    const perf = clamp(margin / Math.max(5e-3, rv.payMargin) - 1, -0.55, 0.85);
+    const scale = clamp(rv.rev / Math.max(1, rv.lastRev || rv.rev), 0.9, 1.1);
+    rv.payBase = rv.payBase * (1 + 25e-4 + (scale - 1) * 0.12);
+    const target = rv.payBase * (1 + perf * 0.26 + cyc * 0.05);
+    rv.avgPay = Math.round(clamp(
+      rv.avgPay + (target - rv.avgPay) * 0.32 + rng.normal(0, 0.05),
+      3.5,
+      34
+    ) * 10) / 10;
+    const hiring = (rv.employees || 1) / Math.max(1, rv.lastEmployees || rv.employees || 1);
+    rv.lastEmployees = rv.employees;
+    rv.avgAge = Math.round(clamp(rv.avgAge + (hiring > 1.004 ? -0.06 : 0.05) + rng.normal(0, 0.02), 33, 50) * 10) / 10;
+    rv.avgTenure = Math.round(clamp(rv.avgTenure + (hiring > 1.004 ? -0.04 : 0.06) + rng.normal(0, 0.02), 4, 22) * 10) / 10;
   }
   function stepRivalsWeekly(g, rng, news) {
     const W = WEEKS_PER_QUARTER;
@@ -10089,18 +10130,27 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     { k: "employees", n: "\u5F93\u696D\u54E1\u6570" }
   ];
   var pay = (v) => v > 0 ? `${Math.round(v * 100).toLocaleString()}\u4E07\u5186` : "\u2014";
+  function yoy(r) {
+    const h = r.history || [];
+    const prev = h.length >= 5 ? h[h.length - 5].pay : null;
+    if (!(prev > 0) || !(r.avgPay > 0)) return "";
+    const d = r.avgPay / prev - 1;
+    if (Math.abs(d) < 5e-3) return '\u3000<span class="flat">\u524D\u5E74\u6BD4 \xB10%</span>';
+    return `\u3000<span class="${d > 0 ? "up" : "down"}">\u524D\u5E74\u6BD4 ${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}%</span>`;
+  }
   function render9(g, ctx2) {
     const key = ctx2.rivalKey || "rev";
     const list = ranking(g, key);
     const me = list.find((x) => x.isPlayer);
     const hrMode = key === "avgPay" || key === "employees";
     const table = `<table class="tbl">
-    <tr><th>\u9806\u4F4D</th><th>\u4F01\u696D</th>${hrMode ? "<th>\u5E73\u5747\u5E74\u53CE</th><th>\u5E73\u5747\u5E74\u9F62</th><th>\u52E4\u7D9A</th><th>\u5F93\u696D\u54E1</th><th>\u5730\u76E4</th>" : "<th>\u58F2\u4E0A\u9AD8</th><th>\u55B6\u696D\u5229\u76CA</th><th>\u55B6\u5229\u7387</th><th>\u7D14\u8CC7\u7523</th><th>\u5F93\u696D\u54E1</th>"}</tr>
+    <tr><th>\u9806\u4F4D</th><th>\u4F01\u696D</th>${hrMode ? "<th>\u5E73\u5747\u5E74\u53CE</th><th>\u524D\u5E74\u6BD4</th><th>\u5E73\u5747\u5E74\u9F62</th><th>\u52E4\u7D9A</th><th>\u5F93\u696D\u54E1</th><th>\u5730\u76E4</th>" : "<th>\u58F2\u4E0A\u9AD8</th><th>\u55B6\u696D\u5229\u76CA</th><th>\u55B6\u5229\u7387</th><th>\u7D14\u8CC7\u7523</th><th>\u5F93\u696D\u54E1</th>"}</tr>
     ${list.map((r) => `<tr class="click ${r.isPlayer ? "me" : ""}" data-act="rival.detail" data-id="${r.id}">
       <td>${r.rank}</td>
       <td><span style="color:${r.color}">\u25A0</span> ${r.name}</td>
       ${hrMode ? `
       <td>${pay(r.avgPay)}</td>
+      <td>${r.isPlayer ? "\u2014" : yoy(r).replace(/^　/, "").replace("\u524D\u5E74\u6BD4 ", "") || "\u2014"}</td>
       <td>${r.avgAge > 0 ? r.avgAge.toFixed(1) + "\u6B73" : "\u2014"}</td>
       <td>${r.avgTenure > 0 ? r.avgTenure.toFixed(1) + "\u5E74" : "\u2014"}</td>
       <td>${num(r.employees)}</td>
@@ -10186,6 +10236,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const r = g.rivals.find((x) => x.id === id);
     if (!r) return;
     const hist = r.history.slice(-16);
+    const payHist = hist.map((x) => x.pay).filter((v) => v > 0);
     const focus = Object.entries(r.focus).sort((a, b) => b[1] - a[1]).slice(0, 4);
     const lots = g.cells.filter((c) => c.owner === r.id).length;
     openModal(`${r.name}`, `
@@ -10210,7 +10261,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     </div>
     <div class="sec">
       <div class="sec-t"><span>\u4EBA\u6750\u3068\u51E6\u9047</span></div>
-      ${kv("\u5E73\u5747\u5E74\u53CE", `<b>${pay(r.avgPay)}</b>`)}
+      ${kv("\u5E73\u5747\u5E74\u53CE", `<b>${pay(r.avgPay)}</b>${yoy(r)}`)}
+      ${payHist.length > 2 ? `<div>${spark(payHist, { color: r.color })}</div>
+        <div class="hint">\u5E73\u5747\u5E74\u53CE\u306E\u63A8\u79FB\uFF08\u76F4\u8FD1${payHist.length}\u56DB\u534A\u671F\uFF09\u3002\u8CDE\u4E0E\u304C\u3042\u308B\u306E\u3067\u3001
+        \u5229\u76CA\u7387\u304C\u843D\u3061\u305F\u5E74\u3084\u4E0D\u6CC1\u306E\u5E74\u306B\u306F\u4E0B\u304C\u308B\u3002</div>` : ""}
       ${kv("\u5E73\u5747\u5E74\u9F62", r.avgAge > 0 ? r.avgAge.toFixed(1) + "\u6B73" : "\u2014")}
       ${kv("\u5E73\u5747\u52E4\u7D9A\u5E74\u6570", r.avgTenure > 0 ? r.avgTenure.toFixed(1) + "\u5E74" : "\u2014")}
       ${kv("\u5F93\u696D\u54E1\u6570", num(r.employees) + "\u540D")}

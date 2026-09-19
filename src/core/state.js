@@ -221,7 +221,9 @@ function initRivals(rng, diff) {
     aggression: clamp01(def.aggression * diff.rivalAgg),
     history: [],
     lots: 0, projects: [], momentum: 0,
-    lastRev: def.rev, lastOp: def.op,
+    lastRev: def.rev, lastOp: def.op, lastEmployees: def.employees,
+    // 平均年収の基準。賞与はこの水準のまわりで利益率と市況に応じて振れる
+    payBase: def.avgPay, payMargin: def.op / def.rev,
     stock: Math.round(def.equity / (def.employees * 0.4) * (0.8 + rng.next() * 0.5)) / 100,
     news: [],
   }));

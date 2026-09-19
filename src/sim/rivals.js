@@ -29,18 +29,44 @@ export function stepRivalsQuarter(g, rng, news) {
     rv.debt = Math.max(0, Math.round(rv.assets - rv.equity));
     rv.cash = Math.round(rv.cash + rv.np * 0.5 - rv.rev * 0.02);
     rv.employees = Math.round(rv.employees * (1 + growth * 0.35));
-    // 平均年収は業績に半年〜1年遅れて付いていく（賞与で振れる）
-    if (typeof rv.avgPay === 'number') {
-      rv.avgPay = Math.round(clamp(rv.avgPay * (1 + growth * 0.5 + rng.normal(0, 0.008)), 4.0, 32.0) * 10) / 10;
-    }
-    if (typeof rv.avgAge === 'number') {
-      rv.avgAge = Math.round(clamp(rv.avgAge + (growth > 0.012 ? -0.03 : 0.04), 33, 50) * 10) / 10;
-    }
+    stepPay(rv, cyc, g, rng);
     rv.stock = Math.round(rv.stock * (1 + growth * 1.6 + cyc * 0.03 + rng.normal(0, 0.03)) * 100) / 100;
     rv.momentum = Math.max(0, (rv.momentum || 0) - 0.34);
-    rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np });
+    rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np, pay: rv.avgPay });
     if (rv.history.length > 60) rv.history.shift();
   }
+}
+
+/**
+ * 競合各社の平均年収。
+ *  年収 = 基本給の部分 ＋ 賞与の部分
+ *  基本給はベースアップでじわじわ上がり、賞与は利益率と市況で上下する。
+ *  好況で利益が出た年は跳ね、不況の年はきちんと下がる。
+ *  会社ごとの水準（payBase）と利益率の基準（payMargin）は
+ *  data/companies.js の定義から来ているので、各社の差は保たれる。
+ */
+function stepPay(rv, cyc, g, rng) {
+  if (!(rv.payBase > 0)) {
+    // 古いセーブ向けの保険。定義から引き直せないときはいまの値を基準にする
+    rv.payBase = rv.avgPay || 8;
+    rv.payMargin = Math.max(0.01, rv.op / Math.max(1, rv.rev));
+  }
+  const margin = rv.op / Math.max(1, rv.rev);
+  // 定義時の利益率に対してどれだけ稼げているか。賞与はここで決まる
+  const perf = clamp(margin / Math.max(0.005, rv.payMargin) - 1, -0.55, 0.85);
+  // ベースアップ：年 約1%。規模が伸びた会社はもう少し払う
+  const scale = clamp(rv.rev / Math.max(1, rv.lastRev || rv.rev), 0.9, 1.1);
+  rv.payBase = rv.payBase * (1 + 0.0025 + (scale - 1) * 0.12);
+  const target = rv.payBase * (1 + perf * 0.26 + cyc * 0.05);
+  // 実際の支給は一気には動かない（賞与の査定は半年〜1年遅れる）
+  rv.avgPay = Math.round(clamp(
+    rv.avgPay + (target - rv.avgPay) * 0.32 + rng.normal(0, 0.05), 3.5, 34) * 10) / 10;
+
+  // 平均年齢と勤続年数：伸びている会社は若返り、縮む会社は高齢化する
+  const hiring = (rv.employees || 1) / Math.max(1, rv.lastEmployees || rv.employees || 1);
+  rv.lastEmployees = rv.employees;
+  rv.avgAge = Math.round(clamp(rv.avgAge + (hiring > 1.004 ? -0.06 : 0.05) + rng.normal(0, 0.02), 33, 50) * 10) / 10;
+  rv.avgTenure = Math.round(clamp(rv.avgTenure + (hiring > 1.004 ? -0.04 : 0.06) + rng.normal(0, 0.02), 4, 22) * 10) / 10;
 }
 
 /** 競合の週次の動き（開発・干渉） */
