@@ -22,6 +22,7 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
   plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
+  applyProgram(cell, plan);
   plan.totalCost = plan.landCost + plan.buildCost;
   plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
@@ -44,6 +45,7 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   plan.buildCost = Math.round(plan.buildCost * eff.buildMul + eff.extraCost);
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
+  applyProgram(cell, plan);
   plan.totalCost = plan.landCost + plan.buildCost;
   if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
@@ -52,6 +54,21 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   plan.margin = plan.grossValue > 0 ? plan.profit / plan.grossValue : 0;
   plan.yieldOnCost = plan.noi ? plan.noi / Math.max(1, plan.totalCost) : null;
   return plan;
+}
+
+/**
+ * 公共案件の条件を事業費に織り込む。
+ * 広場・図書館・保育所といった公共貢献施設は収益を生まないが、
+ * 作らなければ事業者に選ばれない。
+ */
+function applyProgram(cell, plan) {
+  const pg = cell && cell.program;
+  if (!pg || !pg.benefit) return;
+  const extra = Math.round(plan.buildCost * pg.benefit);
+  plan.buildCost += extra;
+  plan.programCost = extra;
+  plan.program = pg;
+  plan.weeks += 4;                       // 協議と手続きのぶん工期が伸びる
 }
 
 /** ブランドを冠した物件名 */
@@ -314,11 +331,24 @@ function completeProject(g, pj, rng, news) {
 }
 
 /** 着工可否のチェック */
-export function canStart(g, cell) {
+export function canStart(g, cell, useId, gradeId) {
   if (!cell || cell.owner !== 'player') return '自社が所有していない区画である';
   if (cell.projectId) return 'すでに開発中である';
   if (cell.assetId || cell.invId) return 'すでに建物が建っている';
   const running = g.projects.filter(p => p.status === 'construction').length;
   if (running >= projectCapacity(g)) return `同時進行できる案件数の上限（${projectCapacity(g)}件）に達している`;
+  // 公共案件は提案どおりに作る義務がある
+  const pg = cell.program;
+  if (pg) {
+    if (useId && useId !== pg.use) {
+      return `この用地は「${pg.name}」の公募条件により、${USES[pg.use].name}として整備する義務がある`;
+    }
+    if (gradeId && pg.minGrade) {
+      const order = ['standard', 'high', 'luxury'];
+      if (order.indexOf(gradeId) < order.indexOf(pg.minGrade)) {
+        return `公募条件により、${GRADES[pg.minGrade].name}以上の仕様が求められている`;
+      }
+    }
+  }
   return null;
 }

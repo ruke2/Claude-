@@ -7,6 +7,7 @@ import { DISTRICTS, USES, GRADES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { brandEffect } from './brands.js';
 import { cultureEffects } from './culture.js';
+import { homeMul } from './company.js';
 
 /** 用途別の建築面積率（敷地に対する各階の床の割合） */
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
@@ -79,7 +80,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
 
   // --- 収入 ---
-  const brandMul = 1 + (g.company.brand - 40) / 420;
+  const brandMul = (1 + (g.company.brand - 40) / 420) * homeMul(g, c.d);   // 地盤では地元の信用が単価に乗る
   // 立地に合わない用途は収益が大きく落ちる。
   // 以前は 0.74〜1.02 の幅しかなく、適合0.3の用途でも相場の8割が取れてしまい、
   // 素の賃料がいちばん高い用途（ホテル）がどの地区でも勝っていた
@@ -183,7 +184,7 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
   const gfa = plate * totalFloors;
 
   const heightM = clean.reduce((a, x) => a + FLOOR_H[x.use] * x.floors, 0);
-  const brandMul = 1 + (g.company.brand - 40) / 420;
+  const brandMul = (1 + (g.company.brand - 40) / 420) * homeMul(g, c.d);
 
   const segs = [];
   let cursor = 1, saleRevenue = 0, saleArea = 0, units = 0, noi = 0, nra = 0, grossRent = 0, build = 0;

@@ -84,3 +84,19 @@ export function section(title, note, inner) {
 }
 
 export function empty(msg) { return `<div class="empty">${msg}</div>`; }
+
+/**
+ * まだ解禁されていない機能の案内。
+ * 何が必要で、いまどこまで来ているのかを必ず出す。
+ */
+export function lockCard(info, needRev, nowRev) {
+  const pct2 = Math.min(1, needRev > 0 ? nowRev / needRev : 1);
+  return `<div class="card lockcard">
+    <div class="card-t"><span class="card-n">🔒 ${info.icon} ${info.name}</span>
+      <span class="chip amber">売上高 ${Math.round(needRev / 100).toLocaleString()}億円で解禁</span></div>
+    <div class="card-s">${info.desc}</div>
+    <div class="kv" style="margin-top:7px"><span class="k">直近4四半期の売上高</span>
+      <span class="v">${Math.round(nowRev / 100).toLocaleString()} / ${Math.round(needRev / 100).toLocaleString()} 億円</span></div>
+    ${bar(pct2, 'gold')}
+  </div>`;
+}

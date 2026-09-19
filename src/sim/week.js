@@ -5,7 +5,7 @@ import { RNG } from '../core/rng.js';
 import { blankPL } from '../core/state.js';
 import { syncCalendar, isQuarterEnd, WEEKS_PER_QUARTER } from '../core/time.js';
 import { stepMarket, rollShocks, rollWeather } from './market.js';
-import { generateListings, resolveListing, acquireForPlayer, acquireForRival } from './land.js';
+import { generateListings, generatePublic, resolveListing, acquireForPlayer, acquireForRival } from './land.js';
 import { stepProjects } from './project.js';
 import { stepInventory, stepAssets } from './sales.js';
 import { stepMA, generateTargets } from './ma.js';
@@ -16,6 +16,7 @@ import { stepRecruit } from './recruit.js';
 import { stepRivalsWeekly, stepRivalsQuarter, ranking } from './rivals.js';
 import { weeklyCosts, closeQuarter, kpis } from './finance.js';
 import { DISTRICTS } from '../data/city.js';
+import { stepTier } from './company.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -65,6 +66,7 @@ export function nextWeek(g) {
   }
   // 4. 新規の売り出し
   generateListings(g, rng, news);
+  generatePublic(g, rng, news);
 
   // 5. 事業
   const before = g.assets.length + g.inventory.length;
@@ -92,6 +94,10 @@ export function nextWeek(g) {
   if (isQuarterEnd(g)) {
     stepRivalsQuarter(g, rng, news);
     rep.pl = closeQuarter(g, rng, news);
+    // 決算が締まったところで、売上規模に応じた解禁を見る
+    const before = (g.unlocked || []).length;
+    stepTier(g, news);
+    rep.unlocked = (g.unlocked || []).slice(before);
     rep.quarterEnd = true;
     rep.rank = ranking(g, 'rev').find(x => x.isPlayer);
     rep.kpi = kpis(g);

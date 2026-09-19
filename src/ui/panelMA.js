@@ -2,7 +2,8 @@
 //  M&A・子会社パネル
 // ============================================================
 import { money, num, pct, moneyUnit, moneyHTML } from '../core/format.js';
-import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
+import { section, kv, mini, chip, bar, empty, lockCard, openModal, closeModal, toast } from './dom.js';
+import { unlocked, needFor, ttmRevenue, UNLOCK_INFO } from '../sim/company.js';
 import { SUB_TYPES } from '../data/companies.js';
 import { maDueDiligence, acquire, foundSubsidiary, liquidate, MA_RISKS } from '../sim/ma.js';
 import { orgPower } from '../sim/hr.js';
@@ -80,9 +81,10 @@ export function render(g, ctx) {
     <div class="hint">経営企画部と財務経理部の能力がデューデリジェンスの精度とPMIの成功率を左右する。調査を怠れば簿外債務やキーマン流出で買収は失敗する。</div>
   `)}
   ${section('保有子会社', `${g.subsidiaries.length}社`, subs)}
-  ${section('子会社の設立', '', subMenu)}
-  ${section('買収候補', `${g.maTargets.length}社`, targets)}
-  ${section('買収済み企業', `${g.acquisitions.length}社`, done)}
+  ${section('子会社の設立', '', unlocked(g, 'sub') ? subMenu : lockCard(UNLOCK_INFO.sub, needFor(g, 'sub'), ttmRevenue(g)))}
+  ${section('買収候補', unlocked(g, 'ma') ? `${g.maTargets.length}社` : '未解禁',
+    unlocked(g, 'ma') ? targets : lockCard(UNLOCK_INFO.ma, needFor(g, 'ma'), ttmRevenue(g)))}
+  ${g.acquisitions.length ? section('買収済み企業', `${g.acquisitions.length}社`, done) : ''}
   `;
 }
 

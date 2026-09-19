@@ -2,7 +2,7 @@
 //  都市レンダラ — 空・地面・建物・エフェクト
 // ============================================================
 import { hash2 } from '../core/rng.js';
-import { MAP_W, MAP_H, DISTRICTS, TERRAIN, USES } from '../data/city.js';
+import { MAP_W, MAP_H, DISTRICTS, TERRAIN, USES, CITIES } from '../data/city.js';
 import { TIMES, WEATHERS, timeOfMonth, hsl, shade } from './palette.js';
 import { TILE_W, TILE_H, Z_UNIT, toScreen, fromScreen, depthKey, diamond, rotate } from './iso.js';
 import { renderBuilding } from './buildings.js';
@@ -31,6 +31,7 @@ export class CityRenderer {
     this.stars = null;
     this.skyline = null;
     this.pulse = 0;
+    this.city = 'minato';      // いま見ている都市
     this.resize();
   }
 
@@ -50,6 +51,7 @@ export class CityRenderer {
     this.skyline = null;
     this._ground = null;
     this._groundOff = false;
+    this._skySig = null; this._sunSig = null;
   }
 
   invalidate() {
@@ -67,16 +69,38 @@ export class CityRenderer {
   setWeather(key) { this.weather = WEATHERS[key] || WEATHERS.clear; }
 
   center() {
-    // マップ中心が画面中央に来るようカメラを置く。建物が上に伸びる分だけ下げる
-    const p = toScreen(MAP_W / 2, MAP_H / 2, 0, this.cam.rot, this.zoom);
+    this.centerOn(MAP_W / 2, MAP_H / 2);
+  }
+
+  /** 指定した位置が画面中央に来るようカメラを置く。建物が上に伸びる分だけ下げる */
+  centerOn(gx, gy) {
+    const p = toScreen(gx, gy, 0, this.cam.rot, this.zoom);
     this.cam.x = -p.x;
     this.cam.y = -p.y + this.h * 0.14;
   }
 
-  // 画面にマップ全体がだいたい収まる倍率に合わせる（小さい画面向け）
-  fit() {
-    const wSpan = (MAP_W + MAP_H) * (TILE_W / 2);
-    const hSpan = (MAP_W + MAP_H) * (TILE_H / 2);
+  /**
+   * ある都市の区画が占める範囲。
+   * 地図が広がっても、いま見たい街だけを画面に収められるようにする。
+   */
+  cityBounds(cityId) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+    for (const c of this.g.cells) {
+      if (!c.d || c.terrain !== TERRAIN.LOT) continue;
+      if (cityId && (DISTRICTS[c.d].city || 'minato') !== cityId) continue;
+      n++;
+      if (c.gx < x0) x0 = c.gx; if (c.gx > x1) x1 = c.gx;
+      if (c.gy < y0) y0 = c.gy; if (c.gy > y1) y1 = c.gy;
+    }
+    if (!n) return { x0: 0, y0: 0, x1: MAP_W - 1, y1: MAP_H - 1, cx: MAP_W / 2, cy: MAP_H / 2, w: MAP_W, h: MAP_H };
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0 + 3, h: y1 - y0 + 3 };
+  }
+
+  // 画面にその都市がだいたい収まる倍率に合わせる（小さい画面向け）
+  fit(cityId = this.city) {
+    const b = this.cityBounds(cityId);
+    const wSpan = (b.w + b.h) * (TILE_W / 2);
+    const hSpan = (b.w + b.h) * (TILE_H / 2);
     let idx = 0;
     for (let i = 0; i < ZOOM_STEPS.length; i++) {
       const z = ZOOM_STEPS[i];
@@ -84,7 +108,16 @@ export class CityRenderer {
     }
     this.cam.zoomIdx = idx;
     this.invalidate();
-    this.center();
+    this.centerOn(b.cx, b.cy);
+  }
+
+  /** 見る都市を切り替える */
+  focusCity(cityId, zoomIdx) {
+    this.city = cityId;
+    const b = this.cityBounds(cityId);
+    if (typeof zoomIdx === 'number') { this.cam.zoomIdx = zoomIdx; this.invalidate(); }
+    this.centerOn(b.cx, b.cy);
+    return CITIES[cityId] ? CITIES[cityId].name : '';
   }
 
   zoomBy(d, ax, ay) {
@@ -140,9 +173,15 @@ export class CityRenderer {
     const { ctx, w, h } = this;
     const T = this.time, W = this.weather;
     const hz0 = this.horizonY();
-    const g = ctx.createLinearGradient(0, Math.min(0, hz0 - h * 1.35), 0, hz0);
-    T.sky.forEach((c, i) => g.addColorStop(i / (T.sky.length - 1), c));
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, Math.max(1, hz0));
+    // 空のグラデーションは時間帯と画面サイズでしか変わらない。
+    // 毎フレーム作り直さずに使い回す
+    const skySig = `${T.key}|${hz0.toFixed(0)}|${w}x${h}`;
+    if (this._skySig !== skySig) {
+      const g0 = ctx.createLinearGradient(0, Math.min(0, hz0 - h * 1.35), 0, hz0);
+      T.sky.forEach((c, i) => g0.addColorStop(i / (T.sky.length - 1), c));
+      this._skyGrad = g0; this._skySig = skySig;
+    }
+    ctx.fillStyle = this._skyGrad; ctx.fillRect(0, 0, w, Math.max(1, hz0));
 
     // 星
     if (T.key === 'night') {
@@ -163,10 +202,15 @@ export class CityRenderer {
 
     // 太陽／月
     const sx = T.sun.x * w, sy = hz0 - T.sun.alt * Math.max(180, hz0);
-    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, T.sun.r * 5);
-    sg.addColorStop(0, T.sun.color);
-    sg.addColorStop(0.18, T.sun.color.replace(/[\d.]+\)$/, '0.30)'));
-    sg.addColorStop(1, 'rgba(0,0,0,0)');
+    // 太陽・月のにじみも動かないので使い回す
+    if (this._sunSig !== skySig) {
+      const s0 = ctx.createRadialGradient(sx, sy, 0, sx, sy, T.sun.r * 5);
+      s0.addColorStop(0, T.sun.color);
+      s0.addColorStop(0.18, T.sun.color.replace(/[\d.]+\)$/, '0.30)'));
+      s0.addColorStop(1, 'rgba(0,0,0,0)');
+      this._sunGrad = s0; this._sunSig = skySig;
+    }
+    const sg = this._sunGrad;
     ctx.save(); ctx.globalAlpha = 1 - W.cloud * 0.65;
     ctx.beginPath(); ctx.rect(0, 0, w, Math.max(1, hz0)); ctx.clip();
     ctx.fillStyle = sg; ctx.fillRect(0, 0, w, h);
@@ -582,28 +626,53 @@ export class CityRenderer {
   groundLayer(order) {
     const z = this.zoom;
     const key = `${this.cam.zoomIdx}|${this.cam.rot}|${this.time.key}|${this.layer}|${this.groundSig()}`;
-    if (this._ground && this._ground.key === key) return this._ground;
-    if (this._groundOff) return null;
+    // いま画面に入っているワールド座標の範囲
+    const vx0 = -this.w / 2 - this.cam.x, vx1 = this.w / 2 - this.cam.x;
+    const vy0 = -this.h / 2 - this.cam.y, vy1 = this.h / 2 - this.cam.y;
+    const gd = this._ground;
+    // 焼いたときに面倒を見ると決めた範囲（cov）に画面が収まっていれば使い回す。
+    // 焼いた画像そのものはマップの外を切り落としてあるので、
+    // 画像の大きさで判定すると、端に寄せたときに毎フレーム焼き直しになる
+    if (gd && gd.key === key && gd.cov
+      && vx0 >= gd.cov.x0 && vy0 >= gd.cov.y0
+      && vx1 <= gd.cov.x1 && vy1 <= gd.cov.y1) return gd;
 
-    // マップ四隅から必要な範囲を求める（起伏と島の厚みぶんの余白を足す）
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    // マップ四隅（起伏と島の厚みぶんの余白を足す）
+    let mx0 = Infinity, my0 = Infinity, mx1 = -Infinity, my1 = -Infinity;
     for (const [gx, gy] of [[-1, -1], [MAP_W, -1], [MAP_W, MAP_H], [-1, MAP_H]]) {
       const p = toScreen(gx, gy, 0, this.cam.rot, z);
-      if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
-      if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+      if (p.x < mx0) mx0 = p.x; if (p.x > mx1) mx1 = p.x;
+      if (p.y < my0) my0 = p.y; if (p.y > my1) my1 = p.y;
     }
     const pad = TILE_W * z;
-    x0 -= pad; x1 += pad;
-    y0 -= 7 * 6 * Z_UNIT * z + pad;     // 最大標高ぶん上に伸ばす
-    y1 += pad;
-    const cw = Math.ceil(x1 - x0), ch = Math.ceil(y1 - y0);
+    mx0 -= pad; mx1 += pad;
+    my0 -= 7 * 6 * Z_UNIT * z + pad;     // 最大標高ぶん上に伸ばす
+    my1 += pad;
+
+    // 焼くのは「画面の少し外まで」。マップ全体を焼こうとすると、
+    // 拡大したときに上限を超えて毎フレーム1枚ずつ描くことになり、
+    // そこがいちばん重くなる。画面まわりだけなら拡大しても焼ける
+    const mgx = this.w * 0.3, mgy = this.h * 0.3;
+    const cov = { x0: vx0 - mgx, y0: vy0 - mgy, x1: vx1 + mgx, y1: vy1 + mgy };
+    let x0 = Math.max(mx0, cov.x0), x1 = Math.min(mx1, cov.x1);
+    let y0 = Math.max(my0, cov.y0), y1 = Math.min(my1, cov.y1);
+    if (!(x1 > x0 && y1 > y0)) return null;     // 画面がマップの外
+
     const dpr = this.dpr;   // 本体と同じ解像度で焼くと、貼るときに拡大縮小が入らない
-    // 大きすぎるときは諦める。拡大時は画面外が切り捨てられるので1枚ずつでも軽い。
-    // 上限は端末のメモリを食いつぶさないための歯止め（5e6px ≒ 20MB）
-    if (cw * ch * dpr * dpr > 5e6) { this._groundOff = true; return null; }
+    let cw = Math.ceil(x1 - x0), ch = Math.ceil(y1 - y0);
+    // それでも大きすぎるときは、余白を削ってから諦める
+    // （上限は端末のメモリを食いつぶさないための歯止め。6e6px ≒ 24MB）
+    const LIMIT = 6e6;
+    if (cw * ch * dpr * dpr > LIMIT) {
+      cov.x0 = vx0; cov.x1 = vx1; cov.y0 = vy0; cov.y1 = vy1;
+      x0 = Math.max(mx0, vx0); x1 = Math.min(mx1, vx1);
+      y0 = Math.max(my0, vy0); y1 = Math.min(my1, vy1);
+      cw = Math.ceil(x1 - x0); ch = Math.ceil(y1 - y0);
+      if (cw * ch * dpr * dpr > LIMIT) { this._groundOff = true; return null; }
+    }
     this._groundOff = false;
 
-    const cv = (this._ground && this._ground.canvas) || document.createElement('canvas');
+    const cv = (gd && gd.canvas) || document.createElement('canvas');
     const pw = Math.max(1, Math.round(cw * dpr)), phh = Math.max(1, Math.round(ch * dpr));
     if (cv.width !== pw || cv.height !== phh) { cv.width = pw; cv.height = phh; }
     const c2 = cv.getContext('2d');
@@ -613,16 +682,19 @@ export class CityRenderer {
 
     // drawTile は this.ctx を見るので、一時的に差し替える
     const prev = this.ctx;
+    const margin = 260 * z + 400;
     this.ctx = c2;
     try {
       for (const { c } of order) {
         const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        // 焼く範囲の外は描かない
+        if (p.x < x0 - margin || p.x > x1 + margin || p.y < y0 - margin || p.y > y1 + margin) continue;
         this.drawTile(c, p.x, p.y);
       }
     } finally {
       this.ctx = prev;
     }
-    this._ground = { key, canvas: cv, x: x0, y: y0, w: cw, h: ch };
+    this._ground = { key, canvas: cv, x: x0, y: y0, w: cw, h: ch, cov };
     return this._ground;
   }
 

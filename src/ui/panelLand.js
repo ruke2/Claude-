@@ -2,8 +2,9 @@
 //  用地パネル — 売却情報・デューデリジェンス・入札
 // ============================================================
 import { money, moneyHTML, num, pct, clamp, moneyUnit } from '../core/format.js';
-import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
-import { DISTRICTS, USES, GRADES, TERRAIN } from '../data/city.js';
+import { section, kv, mini, chip, bar, empty, lockCard, openModal, closeModal, toast } from './dom.js';
+import { unlocked, needFor, ttmRevenue, UNLOCK_INFO, isHome } from '../sim/company.js';
+import { DISTRICTS, USES, GRADES, TERRAIN, CITIES, cityOf } from '../data/city.js';
 import { LISTING_KINDS, ddCost, runDueDiligence, ACQ_FEE, holdingCostQ } from '../sim/land.js';
 import { weeksLabel } from '../core/time.js';
 import { devPlan, landAppraisal, bestUseFit } from '../sim/valuation.js';
@@ -23,13 +24,14 @@ export function render(g, ctx) {
     const d = DISTRICTS[c.d];
     const K = LISTING_KINDS[l.kind];
     const known = l.risks.filter(r => r.found);
-    return `<div class="card click" data-act="land.detail" data-id="${l.id}">
+    return `<div class="card click ${l.kind === 'public' ? 'publiccard' : ''}" data-act="land.detail" data-id="${l.id}">
       <div class="card-t">
-        <span class="card-n">${d.name}　${num(c.area)}坪</span>
-        ${chip(K.name, l.kind === 'nego' ? 'green' : l.kind === 'proposal' ? 'violet' : 'cyan')}
+        <span class="card-n">${l.program ? l.program.icon + ' ' : ''}${cityOf(c.d) === 'minato' ? '' : CITIES[cityOf(c.d)].short + '・'}${d.name}　${num(c.area)}坪</span>
+        ${chip(K.name, l.kind === 'public' ? 'cyan' : l.kind === 'nego' ? 'green' : l.kind === 'proposal' ? 'violet' : 'cyan')}
+        ${isHome(g, c.d) ? chip('地盤', 'gold') : ''}
       </div>
       <div class="card-s">
-        容積率 ${c.far}% ／ 最有効利用 ${USES[l.bestUse].name} ／ 駅力 ${(c.station * 100).toFixed(0)}
+        ${l.program ? `<b>${l.program.name}</b><br>指定用途 ${USES[l.program.use].name}　／　` : `容積率 ${c.far}% ／ 最有効利用 ${USES[l.bestUse].name} ／ `}容積率 ${c.far}% ／ 駅力 ${(c.station * 100).toFixed(0)}
         <br>売主：${l.seller}
       </div>
       <div class="kv"><span class="k">売出価格</span><span class="v">${money(l.askPrice)}</span></div>
@@ -49,8 +51,9 @@ export function render(g, ctx) {
     const book = c.bookValue ?? c.lastPaid ?? 0;
     const gain = app - book;
     return `<div class="card click" data-act="dev.plan" data-id="${c.id}">
-      <div class="card-t"><span class="card-n">${d.name}　${num(c.area)}坪</span>${chip('未着工', 'amber')}</div>
-      <div class="card-s">容積率 ${c.far}%／取得 ${money(book)}／時価 ${money(app)}
+      <div class="card-t"><span class="card-n">${c.program ? c.program.icon + ' ' : ''}${cityOf(c.d) === 'minato' ? '' : CITIES[cityOf(c.d)].short + '・'}${d.name}　${num(c.area)}坪</span>${
+      c.program ? chip('公募条件あり', 'cyan') : chip('未着工', 'amber')}</div>
+      <div class="card-s">${c.program ? `<b>${c.program.name}</b>（${USES[c.program.use].name}として整備する義務がある）<br>` : ''}容積率 ${c.far}%／取得 ${money(book)}／時価 ${money(app)}
         <span class="${gain >= 0 ? 'up' : 'down'}">（${money(gain, { sign: true })}）</span><br>
         保有コスト ${money(holdingCostQ(g, c))}／四半期
         ${(c.risks || []).filter(r => r.bad).length ? `<br><span style="color:var(--red)">未解消の課題：${(c.risks || []).filter(r => r.bad).map(r => r.name).join('・')}</span>` : ''}
@@ -69,6 +72,8 @@ export function render(g, ctx) {
     <div class="hint">用地開発部の人員と能力が高いほど、多くの売却情報が持ち込まれる。仲介子会社の買収も情報量を押し上げる。</div>
   `)}
   ${section('売却情報', `${g.listings.length}件`, cards)}
+  ${unlocked(g, 'public') ? '' : section('公共案件', '未解禁',
+    lockCard(UNLOCK_INFO.public, needFor(g, 'public'), ttmRevenue(g)))}
   ${section('保有中の未着工用地', `${owned.length}件`, ownedCards)}
   `;
 }
@@ -114,12 +119,21 @@ export function openDetail(g, listing, ctx) {
       <div class="card-t"><span class="card-n">${K.icon} ${K.name}</span>${chip(`締切まで ${listing.deadline}週`, listing.deadline <= 2 ? 'red' : 'grey')}</div>
       <div class="card-s">${K.desc}<br>売主：${listing.seller}<br>${listing.note}</div>
     </div>
+    ${listing.program ? `<div class="card" style="border-color:rgba(13,126,168,.4)">
+      <div class="card-t"><span class="card-n">${listing.program.icon} ${listing.program.name}</span>${chip('公募条件', 'cyan')}</div>
+      <div class="card-s">${listing.program.desc}</div>
+      ${kv('指定用途', USES[listing.program.use].name)}
+      ${kv('仕様の下限', GRADES[listing.program.minGrade] ? GRADES[listing.program.minGrade].name : '—')}
+      ${kv('公共貢献施設の負担', '建設費の約' + (listing.program.benefit * 100).toFixed(1) + '%')}
+      ${kv('審査', '提案内容 7割・価格 3割')}
+      <div class="hint">公募価格を下回る提示はできない。選定されると企業ブランドが上がるが、指定された用途でしか着工できない。</div>
+    </div>` : ''}
 
     <div class="sec">
       <div class="sec-t"><span>区画の概要</span></div>
       <div class="grid2">
         <div>
-          ${kv('所在', d.name)}
+          ${kv('所在', `${CITIES[cityOf(c.d)].name}　${d.name}`)}
           ${kv('敷地面積', num(c.area) + '坪')}
           ${kv('容積率', c.far + '%')}
         </div>

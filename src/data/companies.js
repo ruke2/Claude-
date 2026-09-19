@@ -1,6 +1,11 @@
 // ============================================================
 //  競合デベロッパー（すべて架空の企業）
 //  金額単位: 百万円 ／ 年額ベース
+//
+//  home     … 地盤。その地区では入札にも商品力にも下駄が履ける
+//  avgPay   … 平均年収（百万円）。採用市場での比較対象になる
+//  avgAge   … 平均年齢　avgTenure … 平均勤続年数
+//  いずれも実在企業の数値ではなく、この架空の業界のための設定値である
 // ============================================================
 
 export const RIVAL_DEFS = [
@@ -12,6 +17,7 @@ export const RIVAL_DEFS = [
     employees: 25400, brand: 96, aggression: 0.82, cash: 520000,
     focus: { office: 1.0, mixed: 1.0, retail: 0.8, resi: 0.7, hotel: 0.7, logi: 0.5, rental: 0.6, house: 0.2 },
     style: 'balanced', growth: 0.042, listed: true,
+    home: 'T', avgPay: 12.8, avgAge: 41.2, avgTenure: 14.6,
   },
   {
     id: 'sanryo', name: '三陵地所', kana: 'SANRYO ESTATE', short: '三陵', color: '#c0392b',
@@ -21,6 +27,7 @@ export const RIVAL_DEFS = [
     employees: 11200, brand: 94, aggression: 0.68, cash: 410000,
     focus: { office: 1.0, mixed: 0.9, retail: 0.7, hotel: 0.6, resi: 0.4, rental: 0.5, logi: 0.3, house: 0.1 },
     style: 'office', growth: 0.031, listed: true,
+    home: 'T', avgPay: 13.4, avgAge: 40.4, avgTenure: 15.8,
   },
   {
     id: 'sumikura', name: '住倉不動産', kana: 'SUMIKURA REALTY', short: '住倉', color: '#16a085',
@@ -30,6 +37,7 @@ export const RIVAL_DEFS = [
     employees: 6100, brand: 88, aggression: 0.76, cash: 240000,
     focus: { resi: 1.0, rental: 0.95, office: 0.6, retail: 0.5, mixed: 0.7, hotel: 0.4, house: 0.3, logi: 0.2 },
     style: 'resi', growth: 0.038, listed: true,
+    home: 'B', avgPay: 7.2, avgAge: 43.1, avgTenure: 12.9,
   },
   {
     id: 'nobayashi', name: '野林不動産', kana: 'NOBAYASHI RE', short: '野林', color: '#8e44ad',
@@ -39,6 +47,7 @@ export const RIVAL_DEFS = [
     employees: 3400, brand: 79, aggression: 0.88, cash: 96000,
     focus: { resi: 1.0, house: 0.8, rental: 0.7, office: 0.4, retail: 0.4, logi: 0.5, mixed: 0.4, hotel: 0.3 },
     style: 'aggressive', growth: 0.055, listed: true,
+    home: 'S', avgPay: 9.6, avgAge: 38.7, avgTenure: 9.4,
   },
   {
     id: 'morib', name: '杜ビルディング', kana: 'MORI BUILDING CORP', short: '杜ビル', color: '#d4a03c',
@@ -48,6 +57,7 @@ export const RIVAL_DEFS = [
     employees: 1650, brand: 91, aggression: 0.58, cash: 78000,
     focus: { mixed: 1.0, office: 0.9, retail: 0.8, hotel: 0.85, resi: 0.5, rental: 0.4, logi: 0.05, house: 0.02 },
     style: 'mega', growth: 0.028, listed: false,
+    home: 'I', avgPay: 9.9, avgAge: 42.0, avgTenure: 13.1,
   },
   {
     id: 'toyokyu', name: '東洋急行不動産', kana: 'TOYOKYU RE', short: '東洋急行', color: '#2e86c1',
@@ -57,6 +67,7 @@ export const RIVAL_DEFS = [
     employees: 8900, brand: 82, aggression: 0.62, cash: 132000,
     focus: { house: 1.0, resi: 0.85, retail: 0.8, rental: 0.7, office: 0.5, mixed: 0.6, hotel: 0.5, logi: 0.45 },
     style: 'suburb', growth: 0.034, listed: true,
+    home: 'N', avgPay: 10.4, avgAge: 43.6, avgTenure: 16.2,
   },
   {
     id: 'taiga', name: '大河ハウス工業', kana: 'TAIGA HOUSE', short: '大河', color: '#e67e22',
@@ -66,6 +77,7 @@ export const RIVAL_DEFS = [
     employees: 19800, brand: 76, aggression: 0.71, cash: 286000,
     focus: { logi: 1.0, house: 1.0, rental: 0.7, resi: 0.6, retail: 0.5, office: 0.3, mixed: 0.3, hotel: 0.25 },
     style: 'builder', growth: 0.045, listed: true,
+    home: 'J', avgPay: 8.9, avgAge: 39.8, avgTenure: 12.4,
   },
   {
     id: 'kyobashi', name: '京橋建物', kana: 'KYOBASHI BLDG', short: '京橋', color: '#7f8c8d',
@@ -75,6 +87,7 @@ export const RIVAL_DEFS = [
     employees: 2300, brand: 71, aggression: 0.48, cash: 42000,
     focus: { office: 0.8, hotel: 1.0, retail: 0.85, rental: 0.7, mixed: 0.5, resi: 0.5, house: 0.2, logi: 0.3 },
     style: 'steady', growth: 0.022, listed: true,
+    home: 'K', avgPay: 7.6, avgAge: 44.5, avgTenure: 17.0,
   },
 ];
 

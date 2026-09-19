@@ -322,6 +322,17 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 .field input[type=range]{width:100%;accent-color:var(--accent)}
 .hint{font-size:11px;color:var(--ink-mute);line-height:1.7;margin-top:5px}
 .empty{text-align:center;color:var(--ink-mute);font-size:12px;padding:32px 12px;line-height:1.9}
+.lockcard{border-style:dashed;background:var(--surface-2)}
+.publiccard{border-color:rgba(13,126,168,.4);background:#f4fafd}
+.lockcard .card-n{color:var(--ink-dim)}
+.tierrow{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--line-soft)}
+.tierrow:last-child{border-bottom:none}
+.tierrow .tr-m{width:22px;text-align:center;font-size:13px;flex:0 0 auto}
+.tierrow .tr-b{flex:1;min-width:0}
+.tierrow .tr-n{font-size:12.5px;font-weight:700}
+.tierrow .tr-d{font-size:10.5px;color:var(--ink-mute);line-height:1.7}
+.tierrow.now{background:var(--gold-soft);border-radius:8px;padding-left:7px;padding-right:7px}
+.tierrow.done .tr-n{color:var(--ink-dim)}
 
 /* ---------- modal ---------- */
 #modalWrap,#reportWrap{
@@ -382,6 +393,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   background:var(--field-bg);border:1px solid var(--line);color:var(--ink);font-size:13px;
 }
 .title-form input:focus,.title-form select:focus{outline:none;border-color:var(--accent);background:#fff}
+.title-note{
+  max-width:680px;margin:-8px auto 18px;padding:10px 14px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--line);
+  font-size:11.5px;line-height:1.85;color:var(--ink-dim);text-align:left;
+}
+.title-note b{color:var(--ink)}
 .title-credit{margin-top:18px;font-size:10.5px;color:var(--ink-mute);letter-spacing:.06em}
 
 .title-saves-t{
@@ -449,6 +466,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   #topbar{
     padding:env(safe-area-inset-top,0px) 10px 30px;
     gap:8px;
+    /* すりガラスは、都市が動くたびに帯のぶんだけぼかしを焼き直す。
+       もともと94%不透明で効果はほとんど見えないので、狭い画面では切る */
+    backdrop-filter:none;background:#fff;
   }
   .brandbox{min-width:0;gap:7px;flex:0 0 auto}
   .brand-text{display:none}
@@ -483,7 +503,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     flex-direction:row;align-items:stretch;gap:3px;
     padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));
     border-right:none;border-top:1px solid var(--line);
-    background:rgba(255,255,255,.96);
+    background:#fff;backdrop-filter:none;
     box-shadow:0 -2px 14px rgba(22,32,47,.07);
     overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
     scrollbar-width:none;
@@ -500,6 +520,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     border-right:none;border-top:1px solid var(--line);
     box-shadow:0 -8px 34px rgba(22,32,47,.16);
     animation:sheetIn .2s cubic-bezier(.2,.9,.3,1);
+    /* 全画面のシートになるので、背景のすりガラスは見えない。
+       残しておくと画面ぜんぶのぼかしを毎フレーム焼き直すことになり、
+       端末が熱くなるだけで得るものがない */
+    backdrop-filter:none;background:#fff;
   }
   .panel-head{padding:11px 8px 11px 14px}
   .panel-head h2{font-size:14px}

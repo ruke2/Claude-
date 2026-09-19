@@ -10,7 +10,7 @@ import { CityRenderer, ZOOM_STEPS } from './render/city.js';
 import { toScreen } from './render/iso.js';
 import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
 import { hash2 } from './core/rng.js';
-import { DISTRICTS, USES, TERRAIN, GRADES } from './data/city.js';
+import { DISTRICTS, USES, TERRAIN, GRADES, CITIES } from './data/city.js';
 import { RNG } from './core/rng.js';
 
 import { nextWeek } from './sim/week.js';
@@ -22,7 +22,8 @@ import { sellAsset } from './sim/sales.js';
 import { foundSubsidiary, liquidate, generateTargets as genTargets } from './sim/ma.js';
 import { orgPower } from './sim/hr.js';
 import { ranking } from './sim/rivals.js';
-import { SUB_TYPES } from './data/companies.js';
+import { unlocked } from './sim/company.js';
+import { SUB_TYPES, RIVAL_DEFS } from './data/companies.js';
 import { HR_PROGRAMS, DEPTS, RANKS } from './data/hrdata.js';
 
 import { $, openModal, closeModal, toast, section, kv, mini, chip, bar, empty } from './ui/dom.js';
@@ -132,8 +133,12 @@ function startGame(saved) {
   } else {
     const name = ($('#inpCompany').value || '常盤地所').slice(0, 12);
     const diff = $('#inpDiff').value;
-    G = createGame({ companyName: name, difficulty: diff, seed: Date.now() & 0x7fffffff });
-    G.news = [{ icon: '🏢', type: 'market', text: `${name}が創業した。湊都市での事業を開始する。` }];
+    const home = ($('#inpHome') && $('#inpHome').value) || 'W';
+    G = createGame({ companyName: name, difficulty: diff, home, seed: Date.now() & 0x7fffffff });
+    G.news = [{
+      icon: '🏢', type: 'market',
+      text: `${name}が創業した。${DISTRICTS[G.company.home].name}を地盤に、湊都市での事業を開始する。`,
+    }];
     // 初期の売却情報と買収候補を用意する
     const rng0 = new RNG(G.rngState ^ 12345);
     genListings(G, rng0, G.news);
@@ -146,7 +151,7 @@ function startGame(saved) {
   R = new CityRenderer(cv, G);
   R.setMonth(G.month);
   R.setWeather(G.weather || 'clear');
-  if (IS_SMALL) R.fit(); else R.center();
+  if (IS_SMALL) R.fit('minato'); else { R.cam.zoomIdx = 1; R.focusCity('minato', 1); }
   window.R = R;
 
   // 画面が狭いときは週次フィードを畳んでおく（見出しをタップで開く）
@@ -165,11 +170,44 @@ function startGame(saved) {
   if (!saved) setTimeout(showIntro, 900);
 }
 
+// ------------------------------------------------------------
+//  描画ループ
+//    端末を温めないために、必要なときだけ・必要な回数だけ描く。
+//    ・画面が隠れている（別のタブ、ホーム画面に戻した）→ 描かない
+//    ・都市が完全に覆われている → 描かない。
+//      キャンバスが動き続けるかぎり、その上に重なっている
+//      backdrop-filter（すりガラス）が毎フレーム焼き直しになる。
+//      スマートフォンで熱くなる原因はほぼこれである
+//    ・指や視点を動かしていない間はコマ数を落とす。
+//      雲の流れも夜景の瞬きも、この速さで見た目は変わらない
+// ------------------------------------------------------------
+const FPS_IDLE = IS_SMALL ? 24 : 30;
+const FPS_ACTIVE = 60;
+let activeUntil = 0;       // 操作した直後だけなめらかに描く
+let lastDraw = 0;
+
+/** 操作があったことを描画ループに伝える */
+function wake(ms = 800) { activeUntil = performance.now() + ms; }
+
+/** 都市が完全に隠れているか（隠れているなら描く意味がない） */
+function cityHidden() {
+  if (document.hidden) return true;
+  const open = el => el && !el.classList.contains('hidden');
+  // ダイアログと決算画面は、どの画面幅でも都市の前に暗幕が掛かる
+  if (open($('#modalWrap')) || open($('#reportWrap'))) return true;
+  // 狭い画面では、パネルが全画面のシートになって都市を覆い隠す
+  if (IS_SMALL && open($('#panel'))) return true;
+  return false;
+}
+
 function loop(ts) {
-  const dt = Math.min(0.05, (ts - lastT) / 1000 || 0.016);
-  lastT = ts;
-  R.draw(dt);
   requestAnimationFrame(loop);
+  if (cityHidden()) { lastT = ts; return; }
+  const fps = ts < activeUntil ? FPS_ACTIVE : FPS_IDLE;
+  if (ts - lastDraw < 1000 / fps - 1.5) return;
+  const dt = Math.min(0.05, (ts - lastT) / 1000 || 0.016);
+  lastT = ts; lastDraw = ts;
+  R.draw(dt);
 }
 
 // ------------------------------------------------------------
@@ -177,6 +215,12 @@ function loop(ts) {
 // ------------------------------------------------------------
 function bindInput() {
   const cv = $('#city');
+  // 操作している間だけコマ数を上げる。個々のハンドラに手を入れず、
+  // 画面全体で入力を拾って描画ループに知らせる
+  for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'click']) {
+    window.addEventListener(ev, () => wake(), { passive: true, capture: true });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
   const pts = new Map();     // 画面に触れている指（マウスなら1つ）
   let drag = null;           // 1本指のドラッグ＝カメラ移動
   let pinch = null;          // 2本指のピンチ＝拡大縮小
@@ -286,7 +330,16 @@ function bindInput() {
     if (v === 'zoomin') R.zoomBy(1);
     if (v === 'zoomout') R.zoomBy(-1);
     if (v === 'rotate') R.rotateBy(1);
-    if (v === 'reset') { R.cam.rot = 0; if (IS_SMALL) R.fit(); else { R.cam.zoomIdx = 1; R.invalidate(); R.center(); } }
+    if (v === 'reset') { R.cam.rot = 0; if (IS_SMALL) R.fit(R.city); else { R.cam.zoomIdx = 1; R.invalidate(); R.focusCity(R.city, 1); } }
+    if (v === 'city') {
+      // 進出していない都市には飛べない
+      const ids = Object.keys(CITIES).filter(id => id === 'minato' || unlocked(G, 'city2'));
+      if (ids.length < 2) return toast('まだ湊都市の外には出ていない', 'bad');
+      const next = ids[(ids.indexOf(R.city) + 1) % ids.length];
+      R.city = next;
+      R.fit(next);                       // その街がちょうど収まる倍率に合わせる
+      toast(`${CITIES[next].name}を表示している`);
+    }
     if (v === 'layer') {
       R.layer = R.layer === 'normal' ? 'owner' : R.layer === 'owner' ? 'value' : 'normal';
       toast({ normal: '通常表示', owner: '所有者の色分け表示', value: '地価ヒートマップ表示' }[R.layer]);
@@ -508,6 +561,7 @@ function handleAction(act, id) {
       break;
     }
     case 'ma.found': {
+      if (!unlocked(G, 'sub')) return toast('まだ子会社を設立できる規模ではない', 'bad');
       const def = SUB_TYPES.find(x => x.id === id);
       openModal(`${def.icon} ${def.name}の設立`, `
         <div class="card">
@@ -545,11 +599,14 @@ function handleAction(act, id) {
       break;
     }
     case 'ma.target': {
+      if (!unlocked(G, 'ma')) return toast('まだ他社を買収できる規模ではない', 'bad');
       const t = G.maTargets.find(x => x.id === id);
       if (t) MA.openTarget(G, t, ctx);
       break;
     }
-    case 'brand.new': Brand.openNew(G, ctx); break;
+    case 'brand.new':
+      if (!unlocked(G, 'brand')) return toast('まだ自社ブランドを立ち上げられる規模ではない', 'bad');
+      Brand.openNew(G, ctx); break;
     case 'brand.ad': { const b = G.brands.find(x => x.id === id); if (b) Brand.openAd(G, b, ctx); break; }
     case 'brand.rename': { const b = G.brands.find(x => x.id === id); if (b) Brand.openRename(G, b, ctx); break; }
     case 'rival.sort': ctx.rivalKey = id; refresh(); break;
@@ -970,7 +1027,7 @@ function applyLoaded(g) {
   R.invalidate();
   R.setMonth(G.month);
   R.setWeather(G.weather || 'clear');
-  if (IS_SMALL) R.fit(); else R.center();
+  if (IS_SMALL) R.fit('minato'); else { R.cam.zoomIdx = 1; R.focusCity('minato', 1); }
   closePanel();
   updateHeader(); updateTicker(); refresh();
   toast(`${G.year}年 ${G.month}月 第${G.weekOfMonth}週目から再開する`, 'good');
@@ -1009,3 +1066,35 @@ titleAnim();
   });
 })();
 document.getElementById('btnStart').onclick = () => startGame(null);
+
+// ------------------------------------------------------------
+//  タイトル画面：地盤の選択
+//    どの地区を創業の地にするかで、序盤の戦い方が変わる。
+//    大手が地盤にしている街を選べば真正面からぶつかることになる。
+// ------------------------------------------------------------
+(function initHomeSelect() {
+  const sel = document.getElementById('inpHome');
+  const note = document.getElementById('homeNote');
+  if (!sel) return;
+  const owners = {};
+  for (const r of RIVAL_DEFS) (owners[r.home] = owners[r.home] || []).push(r);
+  // 創業の地は湊都市の中から選ぶ（鶴見野市は進出してから）
+  const order = Object.values(DISTRICTS).filter(d => (d.city || 'minato') === 'minato').sort((a, b) =>
+    (owners[a.id] ? owners[a.id].length : 0) - (owners[b.id] ? owners[b.id].length : 0) || a.landPrice - b.landPrice);
+  sel.innerHTML = order.map(d => {
+    const rv = owners[d.id] || [];
+    return `<option value="${d.id}"${d.id === 'W' ? ' selected' : ''}>${d.name}${rv.length ? `（${rv.map(r => r.short).join('・')}の地盤）` : '（空白地帯）'}</option>`;
+  }).join('');
+  const draw = () => {
+    const d = DISTRICTS[sel.value];
+    const rv = owners[sel.value] || [];
+    note.innerHTML = `<b>${d.name}</b>　${d.desc}<br>`
+      + (rv.length
+        ? `この街は <b>${rv.map(r => r.name).join('・')}</b> の地盤である。真正面からぶつかることになるが、勝てば一気に名が通る。`
+        : 'この街を地盤にしている大手はいない。腰を据えて足場を固められる。')
+      + '<br>地盤では、分譲単価と募集賃料に約3%の上乗せがつき、稼働率も上がる。'
+      + '提案コンペでは地元の実績が評価され、売却情報も入りやすくなる。';
+  };
+  sel.onchange = draw;
+  draw();
+})();

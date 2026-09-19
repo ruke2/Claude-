@@ -103,9 +103,10 @@ function populateCity(cells, rng, rivals) {
     let floors = rng.int(lo, hi);
     if (use === 'logi') floors = rng.int(1, 5);
     if (use === 'house') floors = rng.int(2, 3);
-    // 所有者：3割が競合、残りは一般事業者
+    // 所有者：3割が競合、残りは一般事業者。
+    // 湊都市の大手は海峡の向こうにはあまり出ていないので、鶴見野市では少ない
     let owner = 'other';
-    if (rng.chance(0.34)) {
+    if (rng.chance((dd.city || 'minato') === 'minato' ? 0.34 : 0.10)) {
       const pool = rivals.filter(r => (r.focus[use] ?? 0.3) > 0.45);
       owner = (pool.length ? rng.pick(pool) : rng.pick(rivals)).id;
     }
@@ -229,7 +230,7 @@ function initRivals(rng, diff) {
 // ------------------------------------------------------------
 //  ゲーム生成
 // ------------------------------------------------------------
-export function createGame({ companyName = '常盤地所', difficulty = 'normal', seed = Date.now() } = {}) {
+export function createGame({ companyName = '常盤地所', difficulty = 'normal', home = 'W', seed = Date.now() } = {}) {
   const rng = new RNG(seed);
   const diff = DIFFICULTY[difficulty] ?? DIFFICULTY.normal;
   const rivals = initRivals(rng, diff);
@@ -273,6 +274,9 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     company: {
       name: companyName,
       brand: 22,            // ブランド力 0-100
+      // 地盤（創業の地）。ここでは商品力も入札も有利になる。
+      // 創業時は湊都市の中からしか選べない
+      home: (DISTRICTS[home] && (DISTRICTS[home].city || 'minato') === 'minato') ? home : 'W',
       founded: 2026,
       shares: 40000000,     // 発行済株式数（株）
       listed: false,
@@ -284,6 +288,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     // 本社ビルの簿価（BSの整合：資産合計 = 純資産 + 有利子負債）
     hqBook: diff.equity + Math.round(diff.equity * 0.4) - Math.round(diff.equity * 0.55),
     goodwill: 0,
+    // 売上に応じて解禁した機能（一度入ったら消えない）
+    unlocked: [],
     cells,
     listings: [],
     projects: [],
@@ -323,7 +329,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
       phaseName: '回復',
     },
     finance: { history: [], pl: null, bs: null, quarterAcc: null },
-    kpi: { cumRevenue: 0, cumProfit: 0, builtCount: 0, soldUnits: 0, bestQuarter: 0 },
+    kpi: { cumRevenue: 0, cumProfit: 0, builtCount: 0, soldUnits: 0, bestQuarter: 0, publicWon: 0 },
     log: [],
     news: [],
     flags: { tutorialDone: false },

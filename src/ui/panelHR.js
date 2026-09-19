@@ -10,6 +10,7 @@ import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeC
 import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor, stdSalary, rankPayOf, defaultRankPay } from '../core/state.js';
 import { RNG } from '../core/rng.js';
+import { ranking, industryPay } from '../sim/rivals.js';
 
 export const title = '人事・組織';
 
@@ -81,6 +82,24 @@ export function render(g, ctx) {
   ${section('組織図', '課長以上は個人を表示', `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
+
+  ${section('他社との比較', `業界平均 ${man(industryPay(g))}`, `
+    <table class="tbl">
+      <tr><th>企業</th><th>平均年収</th><th>当社との差</th><th>平均年齢</th><th>勤続</th><th>従業員</th></tr>
+      ${ranking(g, 'avgPay').map(r => {
+    const d = r.avgPay - avgSal;
+    return `<tr class="${r.isPlayer ? 'me' : ''}">
+        <td><span style="color:${r.color}">■</span> ${r.name}</td>
+        <td><b>${man(r.avgPay)}</b></td>
+        <td class="${r.isPlayer ? 'flat' : d > 0 ? 'down' : 'up'}">${r.isPlayer ? '—' : (d > 0 ? '+' : '−') + man(Math.abs(d))}</td>
+        <td>${r.avgAge > 0 ? r.avgAge.toFixed(1) + '歳' : '—'}</td>
+        <td>${r.avgTenure > 0 ? r.avgTenure.toFixed(1) + '年' : '—'}</td>
+        <td>${num(r.employees)}</td>
+      </tr>`;
+  }).join('')}
+    </table>
+    <div class="hint">当社より年収の高い会社は、こちらの社員を引き抜きにくる。逆に当社が上回っていれば、中途採用でも新卒採用でも通りやすくなる。各社の数値はこの架空の業界の設定値である。</div>
+  `)}
 
   ${section('報酬制度', `市場比 ${pct(payIndex(g), 0)}`, `
     <div class="card">

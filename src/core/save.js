@@ -12,6 +12,7 @@ import { RANKS } from '../data/hrdata.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
 import { costEquilibrium } from '../sim/market.js';
+import { grantExisting } from '../sim/company.js';
 import { clamp } from './format.js';
 import { syncCalendar } from './time.js';
 
@@ -25,7 +26,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 /** 保存用にゲーム状態を文字列化する（一時データは除く） */
 export function serialize(g) {
@@ -158,6 +159,21 @@ const STEPS = [
     if (!m || !(m.costIdx > 0)) return;
     const eq = costEquilibrium(g);
     if (m.costIdx > eq * 1.12) m.costIdx = Math.round(eq * 1.06 * 1000) / 1000;
+  },
+
+  // 地盤（創業の地）と、売上に応じた解禁を後から足す。
+  // 地盤が決まっていないセーブは、いちばん多く区画を持っている地区を地盤とみなす
+  g => {
+    if (!g.company) return;
+    if (!g.company.home) {
+      const n = {};
+      for (const c of g.cells || []) if (c.owner === 'player' && c.d) n[c.d] = (n[c.d] || 0) + 1;
+      for (const a of g.assets || []) if (a.district) n[a.district] = (n[a.district] || 0) + 2;
+      const top = Object.entries(n).sort((x, y) => y[1] - x[1])[0];
+      g.company.home = top ? top[0] : 'W';
+    }
+    // すでに使っている機能は、売上が段階に届いていなくても取り上げない
+    grantExisting(g);
   },
 ];
 

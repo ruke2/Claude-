@@ -3,7 +3,7 @@
 // ============================================================
 import { money, num, pct, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
-import { DISTRICTS, USES, GRADES } from '../data/city.js';
+import { DISTRICTS, USES, GRADES, CITIES, cityOf } from '../data/city.js';
 import { feasibility, feasibilityStack, canStart } from '../sim/project.js';
 import { landAppraisal, maxFloorsFor, STACK_RULE } from '../sim/valuation.js';
 import { weeksLabel } from '../core/time.js';
@@ -110,10 +110,17 @@ export function recommendStack(g, cell) {
 export function openPlan(g, cell, ctx) {
   const d = DISTRICTS[cell.d];
   const rec = bestPlan(g, cell);
-  let use = rec.use, grade = rec.grade, brandId = null;
+  const pg = cell.program;                       // 公共案件の条件（あれば）
+  let use = pg ? pg.use : rec.use;
+  let grade = rec.grade;
+  if (pg && pg.minGrade) {
+    const order = ['standard', 'high', 'luxury'];
+    if (order.indexOf(grade) < order.indexOf(pg.minGrade)) grade = pg.minGrade;
+  }
+  let brandId = null;
   let stack = recommendStack(g, cell);
 
-  openModal(`事業計画 — ${d.name} ${num(cell.area)}坪`, build(), []);
+  openModal(`事業計画 — ${cityOf(cell.d) === 'minato' ? '' : CITIES[cityOf(cell.d)].short + '・'}${d.name} ${num(cell.area)}坪`, build(), []);
   bind();
 
   function build() {
@@ -123,7 +130,7 @@ export function openPlan(g, cell, ctx) {
     const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId) : feasibility(g, cell, use, grade, brandId);
     const bf = brandEffect(g, brandId);
     if (!plan) return '<div class="empty">構成を1つ以上指定すること</div>';
-    const err = canStart(g, cell);
+    const err = canStart(g, cell, use, grade);
     const equity = Math.max(0, plan.buildCost - Math.max(0, g.cash - 500));
     const risks = (cell.risks || []).filter(r => r.bad);
     const goods = (cell.risks || []).filter(r => !r.bad);
@@ -137,8 +144,8 @@ export function openPlan(g, cell, ctx) {
 
     <div class="sec">
       <div class="sec-t"><span>商品の設計</span></div>
-      <div class="field"><label>用途</label>
-        <select id="selUse">${Object.values(USES).map(u => `<option value="${u.id}" ${u.id === use ? 'selected' : ''}>${u.icon} ${u.name}（適合 ${(d.fit[u.id] ?? .3).toFixed(2)}）</option>`).join('')}</select>
+      <div class="field"><label>用途${pg ? '（公募条件により変更できない）' : ''}</label>
+        <select id="selUse"${pg ? ' disabled' : ''}>${Object.values(USES).map(u => `<option value="${u.id}" ${u.id === use ? 'selected' : ''}>${u.icon} ${u.name}（適合 ${(d.fit[u.id] ?? .3).toFixed(2)}）</option>`).join('')}</select>
       </div>
       <div class="hint">${USES[use].desc}</div>
       <div class="field" style="margin-top:10px"><label>グレード</label>
@@ -158,6 +165,18 @@ export function openPlan(g, cell, ctx) {
     </div>
 
     ${isMixed ? stackEditor(plan) : ''}
+
+    ${pg ? `<div class="sec">
+      <div class="sec-t"><span>公募条件</span><span class="note">${pg.name}</span></div>
+      <div class="card" style="border-color:rgba(13,126,168,.35)">
+        <div class="card-t"><span class="card-n">${pg.icon} ${pg.name}</span></div>
+        <div class="card-s">${pg.desc}</div>
+        ${kv('指定用途', USES[pg.use].name)}
+        ${kv('仕様の下限', GRADES[pg.minGrade] ? GRADES[pg.minGrade].name : '—')}
+        ${plan.programCost ? kv('公共貢献施設の負担', `<span class="down">${money(plan.programCost)}</span>`) : ''}
+        <div class="hint">この条件を外した計画では着工できない。負担は事業費に織り込み済みである。</div>
+      </div>
+    </div>` : ''}
 
     ${risks.length || goods.length ? `<div class="sec">
       <div class="sec-t"><span>この土地の条件</span></div>

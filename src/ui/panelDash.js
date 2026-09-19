@@ -8,6 +8,7 @@ import { personnelCost, payIndex, projectCapacity } from '../sim/hr.js';
 import { ranking } from '../sim/rivals.js';
 import { orgPower } from '../sim/hr.js';
 import { USES, DISTRICTS } from '../data/city.js';
+import { TIERS, UNLOCK_INFO, tierOf, nextTier, unlocked, ttmRevenue } from '../sim/company.js';
 
 export const title = '経営ダッシュボード';
 
@@ -51,6 +52,8 @@ export function render(g) {
     <div style="margin-top:12px">${spark(revSeries, { color: '#b0781a' })}</div>
     <div class="hint">売上高の推移（直近16四半期）</div>
   `)}
+
+  ${growth(g)}
 
   ${section('財務ポジション', `格付 ${k.rating.id}`, `
     <div class="grid2">
@@ -157,4 +160,48 @@ function row(r) {
     <td>${money(r.op)}</td>
     <td>${money(r.np)}</td>
   </tr>`;
+}
+
+// ------------------------------------------------------------
+//  成長段階 — 売上が伸びると何ができるようになるか
+// ------------------------------------------------------------
+function growth(g) {
+  const now = tierOf(g);
+  const nx = nextTier(g);
+  const rev = ttmRevenue(g);
+  const home = DISTRICTS[g.company.home];
+
+  const rows = TIERS.map(t => {
+    const done = rev >= t.rev;
+    const isNow = t === now;
+    const gained = t.unlock.map(k => UNLOCK_INFO[k]).filter(Boolean);
+    return `<div class="tierrow ${isNow ? 'now' : done ? 'done' : ''}">
+      <span class="tr-m">${isNow ? '▶' : done ? '✓' : '·'}</span>
+      <span class="tr-b">
+        <span class="tr-n">${t.name}</span>
+        <span class="tr-d">売上高 ${t.rev ? Math.round(t.rev / 100).toLocaleString() + '億円〜' : '創業時'}　${
+      gained.length ? gained.map(x => `${x.icon} ${x.name}`).join('／') : '用地取得・開発・分譲'}</span>
+      </span>
+    </div>`;
+  }).join('');
+
+  const waiting = [];
+  for (const t of TIERS) for (const key of t.unlock) {
+    if (unlocked(g, key)) continue;
+    const info = UNLOCK_INFO[key];
+    if (info) waiting.push({ key, info, need: t.rev });
+  }
+
+  return section('成長段階', now.name, `
+    <div class="card" style="border-color:rgba(227,181,88,.3);background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n">${now.name}</span>${
+    chip(`地盤 ${home ? home.short : '—'}`, 'gold')}</div>
+      <div class="card-s">${now.desc}${home ? `<br>${home.name}では分譲単価と募集賃料に上乗せがつき、稼働率も入札の評価も有利になる。` : ''}</div>
+      ${nx ? `<div class="kv" style="margin-top:8px"><span class="k">次は「${nx.name}」まで</span>
+        <span class="v">${money(Math.max(0, nx.rev - rev))} 足りない</span></div>
+        ${bar(Math.min(1, nx.rev > 0 ? rev / nx.rev : 1), 'gold')}` : '<div class="hint">最上位の段階に到達している。</div>'}
+    </div>
+    <div style="margin-top:10px">${rows}</div>
+    ${waiting.length ? `<div class="hint">解禁待ち：${waiting.map(w => `${w.info.icon} ${w.info.name}（${Math.round(w.need / 100).toLocaleString()}億円）`).join('、 ')}</div>` : '<div class="hint">すべての機能が解禁されている。</div>'}
+  `);
 }

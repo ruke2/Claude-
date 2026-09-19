@@ -29,6 +29,13 @@ export function stepRivalsQuarter(g, rng, news) {
     rv.debt = Math.max(0, Math.round(rv.assets - rv.equity));
     rv.cash = Math.round(rv.cash + rv.np * 0.5 - rv.rev * 0.02);
     rv.employees = Math.round(rv.employees * (1 + growth * 0.35));
+    // 平均年収は業績に半年〜1年遅れて付いていく（賞与で振れる）
+    if (typeof rv.avgPay === 'number') {
+      rv.avgPay = Math.round(clamp(rv.avgPay * (1 + growth * 0.5 + rng.normal(0, 0.008)), 4.0, 32.0) * 10) / 10;
+    }
+    if (typeof rv.avgAge === 'number') {
+      rv.avgAge = Math.round(clamp(rv.avgAge + (growth > 0.012 ? -0.03 : 0.04), 33, 50) * 10) / 10;
+    }
     rv.stock = Math.round(rv.stock * (1 + growth * 1.6 + cyc * 0.03 + rng.normal(0, 0.03)) * 100) / 100;
     rv.momentum = Math.max(0, (rv.momentum || 0) - 0.34);
     rv.history.push({ week: g.week, rev: rv.rev, op: rv.op, np: rv.np });
@@ -129,21 +136,47 @@ function interfere(g, rng, news) {
   }
 }
 
+/** 自社の人材指標（他社と同じ土俵で比べるための値） */
+export function playerHR(g) {
+  const n = g.staff.length;
+  if (!n) return { avgPay: 0, avgAge: 0, avgTenure: 0 };
+  const sum = (f) => g.staff.reduce((a, s) => a + (f(s) || 0), 0);
+  return {
+    avgPay: Math.round(sum(s => s.salary) / n * 10) / 10,
+    avgAge: Math.round(sum(s => s.age) / n * 10) / 10,
+    avgTenure: Math.round(sum(s => s.tenure) / n * 10) / 10,
+  };
+}
+
+/** 業界の平均年収（他社の従業員数で加重した平均） */
+export function industryPay(g) {
+  let w = 0, v = 0;
+  for (const r of g.rivals) {
+    if (!(r.avgPay > 0)) continue;
+    w += r.employees; v += r.avgPay * r.employees;
+  }
+  return w ? Math.round(v / w * 10) / 10 : 0;
+}
+
 /** 業界ランキング（プレイヤーを含む） */
 export function ranking(g, key = 'rev') {
   const t = ttm(g);
   const bs = buildBS(g);
+  const hr = playerHR(g);
   const me = {
     id: 'player', name: g.company.name, short: g.company.name, color: '#e3b558',
     rev: t.revenue, op: t.op, np: t.net, assets: bs.total, equity: bs.equity,
     debt: g.debt, employees: g.staff.length, brand: g.company.brand, isPlayer: true,
     stock: g.company.listed ? Math.round(marketCap(g) / 100) / 100 : 0,
+    avgPay: hr.avgPay, avgAge: hr.avgAge, avgTenure: hr.avgTenure, home: g.company.home,
+    listed: g.company.listed,
   };
   const all = [...g.rivals.map(r => ({
     id: r.id, name: r.name, short: r.short, color: r.color, rev: r.rev, op: r.op, np: r.np,
     assets: r.assets, equity: r.equity, debt: r.debt, employees: r.employees, brand: r.brand,
     stock: r.stock, tagline: r.tagline, profile: r.profile, focus: r.focus, listed: r.listed,
     history: r.history, style: r.style, aggression: r.aggression,
+    avgPay: r.avgPay, avgAge: r.avgAge, avgTenure: r.avgTenure, home: r.home,
   })), me];
   all.sort((a, b) => (b[key] || 0) - (a[key] || 0));
   all.forEach((x, i) => x.rank = i + 1);

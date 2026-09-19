@@ -33,6 +33,7 @@
   <button class="vbtn" data-view="rotate" title="回転">⟳</button>
   <button class="vbtn" data-view="reset" title="リセット">⌂</button>
   <button class="vbtn" data-view="layer" title="表示レイヤー">◐</button>
+  <button class="vbtn" data-view="city" title="都市を切り替える">🗺</button>
 </div>
 
 <!-- ============ ヘッダー ============ -->
@@ -128,7 +129,11 @@
           <option value="hard">きびしい（自己資本 120億／競合が攻撃的）</option>
         </select>
       </label>
+      <label>地盤（創業の地）
+        <select id="inpHome"></select>
+      </label>
     </div>
+    <div id="homeNote" class="title-note"></div>
     <button id="btnStart" class="btn primary huge">新しく創業する</button>
     <div id="titleSaves"></div>
     <div class="title-credit">v1.0 ／ Canvas 2D・ビルド不要のブラウザゲーム</div>

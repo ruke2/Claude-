@@ -2,7 +2,8 @@
 //  ブランドパネル — 自社ブランドの創設と育成
 // ============================================================
 import { money, num, pct } from '../core/format.js';
-import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
+import { section, kv, mini, chip, bar, empty, lockCard, openModal, closeModal, toast } from './dom.js';
+import { unlocked, needFor, ttmRevenue, UNLOCK_INFO } from '../sim/company.js';
 import { BRAND_CATEGORIES, BRAND_GRADES, createBrand, brandEffect, brandPortfolioScore } from '../sim/brands.js';
 import { USES } from '../data/city.js';
 
@@ -62,10 +63,10 @@ export function render(g, ctx) {
   ${section('保有ブランド', '', cards)}
 
   ${section('新しいブランドを立ち上げる', '', `
-    <div class="card">
+    ${unlocked(g, 'brand') ? `<div class="card">
       <div class="card-s">カテゴリごとにブランドを持てる。立ち上げには初期の広告宣伝費がかかり、格が高いほど育成に時間はかかるが、最終的な効果は大きい。</div>
       <div class="btnrow"><button class="btn primary" data-act="brand.new">ブランドを立ち上げる</button></div>
-    </div>
+    </div>` : lockCard(UNLOCK_INFO.brand, needFor(g, 'brand'), ttmRevenue(g))}
     ${Object.values(BRAND_GRADES).map(G => `
       <div class="card">
         <div class="card-t"><span class="card-n">${G.name}</span>${chip(money(G.cost), 'gold')}</div>

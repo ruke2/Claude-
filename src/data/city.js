@@ -7,6 +7,7 @@ import { hash2 } from '../core/rng.js';
 /** 地区定義 */
 export const DISTRICTS = {
   T: {
+    city: 'minato',
     id: 'T', lotSize: 1900, name: '常盤ビジネス地区', short: '常盤', kana: 'TOKIWA CBD',
     desc: '大手町・丸の内に比肩する国内屈指のビジネス街。超高層オフィスが林立し、一区画の取得が数百億円規模になる。',
     landPrice: 20.0,          // 百万円/坪（更地の相場）
@@ -25,6 +26,7 @@ export const DISTRICTS = {
     hue: 208, elev: 2,
   },
   B: {
+    city: 'minato',
     id: 'B', lotSize: 1650, name: '汐見ベイフロント', short: '汐見', kana: 'SHIOMI BAY',
     desc: '再開発が進む湾岸エリア。タワーマンションと大型商業の主戦場で、供給過多リスクと隣り合わせ。',
     landPrice: 7.3, farRange: [400, 900],
@@ -37,6 +39,7 @@ export const DISTRICTS = {
     hue: 194, elev: 0,
   },
   A: {
+    city: 'minato',
     id: 'A', lotSize: 420, name: '青葉台レジデンス', short: '青葉台', kana: 'AOBADAI',
     desc: '高台の邸宅街。厳しい高さ制限と住民協定があり、低層・高単価の商品開発が求められる。',
     landPrice: 3.1, farRange: [150, 300],
@@ -49,6 +52,7 @@ export const DISTRICTS = {
     hue: 138, elev: 3,
   },
   K: {
+    city: 'minato',
     id: 'K', lotSize: 380, name: '神楽坂旧市街', short: '神楽坂', kana: 'KAGURAZAKA',
     desc: '路地と老舗が残る商業地。地権者が多く用地はまとまりにくいが、ホテル・商業の収益性は高い。',
     landPrice: 6.4, farRange: [300, 700],
@@ -61,6 +65,7 @@ export const DISTRICTS = {
     hue: 28, elev: 1,
   },
   N: {
+    city: 'minato',
     id: 'N', lotSize: 640, name: '北野ニュータウン', short: '北野', kana: 'KITANO NT',
     desc: '郊外のファミリー層向け住宅地。用地は安いが単価も低く、量で稼ぐ薄利のエリア。',
     landPrice: 1.25, farRange: [150, 400],
@@ -73,6 +78,7 @@ export const DISTRICTS = {
     hue: 96, elev: 1,
   },
   I: {
+    city: 'minato',
     id: 'I', lotSize: 1500, name: '港南インターナショナル', short: '港南', kana: 'KONAN INTL',
     desc: '外資系企業のアジア拠点と大使館が集まる国際地区。高級ホテルの需要が突出して高く、地価も常盤に次ぐ。',
     landPrice: 12.3, farRange: [500, 1000],
@@ -85,6 +91,7 @@ export const DISTRICTS = {
     hue: 252, elev: 1,
   },
   S: {
+    city: 'minato',
     id: 'S', lotSize: 900, name: '桜川イノベーション', short: '桜川', kana: 'SAKURAGAWA',
     desc: '大学と研究機関を核に再編が進む新興地区。研究開発型オフィスと若年層向け賃貸の需要が伸び続けている。',
     landPrice: 3.2, farRange: [300, 600],
@@ -97,6 +104,7 @@ export const DISTRICTS = {
     hue: 168, elev: 1,
   },
   J: {
+    city: 'minato',
     id: 'J', lotSize: 2600, name: '城東ロジスティクス', short: '城東', kana: 'JOTO LOGI',
     desc: '工場跡地が広がる湾岸北部。大規模物流施設の適地で、EC需要を背景に賃料が上昇中。',
     landPrice: 0.62, farRange: [200, 400],
@@ -110,6 +118,7 @@ export const DISTRICTS = {
 
   // ---- ここから拡張された地区 ----
   F: {
+    city: 'minato',
     id: 'F', lotSize: 360, name: '藤ヶ丘ガーデンヒル', short: '藤ヶ丘', kana: 'FUJIGAOKA',
     desc: '市内でもっとも地価の高い低層住宅街。厳しい高さ制限と景観協定があり、戸建と低層の高級分譲しか成り立たないが、単価は市内随一である。',
     landPrice: 5.9,
@@ -128,6 +137,7 @@ export const DISTRICTS = {
     hue: 334, elev: 4,
   },
   M: {
+    city: 'minato',
     id: 'M', lotSize: 1200, name: '南雲メディカル・リサーチパーク', short: '南雲', kana: 'NAGUMO MRP',
     desc: '大学病院と製薬・医療機器の研究拠点が集まる特区。研究開発型オフィスと、研究者向けの賃貸レジデンス、患者家族の長期滞在ホテルに需要がある。',
     landPrice: 4.9,
@@ -146,6 +156,7 @@ export const DISTRICTS = {
     hue: 176, elev: 1,
   },
   E: {
+    city: 'minato',
     id: 'E', lotSize: 2200, name: '湊都エアポートシティ', short: '空港', kana: 'AIRPORT CITY',
     desc: '湊都空港に隣接する埋立地。連絡橋で本土とつながる。航空法の高さ制限があって高層は建てられないが、区画は市内最大で、航空貨物の物流施設と乗継客向けのホテルが主役になる。',
     landPrice: 0.85,
@@ -164,6 +175,7 @@ export const DISTRICTS = {
     hue: 268, elev: 0,
   },
   W: {
+    city: 'minato',
     id: 'W', lotSize: 300, name: '若葉町（対岸の旧市街）', short: '若葉町', kana: 'WAKABACHO',
     desc: '湊川の対岸に残る古い商店街と長屋の街。区画は小さく地価も安い。小ぶりな賃貸レジデンスと近隣型商業を数で積み上げる、駆け出しのデベロッパー向けの土地である。',
     landPrice: 1.05,
@@ -181,51 +193,159 @@ export const DISTRICTS = {
     usePool: ['retail', 'rental', 'rental', 'resi', 'house', 'office'],
     hue: 62, elev: 0,
   },
+
+  // ---- ここから鶴見野市（海峡を挟んだ隣の市） ----
+  //  地価も賃料も湊都市より低いが、そのぶん利回りは高く、
+  //  大手が地盤を築いていないので腰を据えて取りにいける。
+  Y: {
+    city: 'tsurumino',
+    id: 'Y', lotSize: 1100, name: '鶴見野駅前', short: '鶴見野', kana: 'TSURUMINO EKIMAE',
+    desc: '人口60万の中核市・鶴見野の中心。新幹線の停車駅を核に、県庁と地方銀行の本店、百貨店が並ぶ。湊都市ほどの賃料は取れないが、キャップレートが高く利回りで稼げる。',
+    landPrice: 2.3,
+    farRange: [400, 700],
+    rentOffice: 19500,
+    rentRetail: 22500,
+    rentResi: 12500,
+    rentHotel: 23000,
+    rentLogi: 4800,
+    priceResi: 2.9,
+    capRate: 0.055,
+    station: 0.86,
+    fit: { office: 0.92, retail: 0.96, resi: 0.70, rental: 0.78, hotel: 0.62, logi: 0.20, house: 0.26, mixed: 0.84 },
+    height: [3, 18],
+    usePool: ['retail', 'office', 'retail', 'mixed', 'rental', 'hotel'],
+    hue: 18, elev: 1,
+  },
+  H: {
+    city: 'tsurumino',
+    id: 'H', lotSize: 520, name: '花園台', short: '花園台', kana: 'HANAZONODAI',
+    desc: '鶴見野駅からバスで20分の丘陵住宅地。区画は広く、庭付きの戸建がよく売れる。土地が安いので、数を捌けば確実に利益が積み上がる。',
+    landPrice: 0.69,
+    farRange: [150, 300],
+    rentOffice: 8500,
+    rentRetail: 12500,
+    rentResi: 10500,
+    rentHotel: 12000,
+    rentLogi: 4000,
+    priceResi: 2.05,
+    capRate: 0.058,
+    station: 0.38,
+    fit: { office: 0.16, retail: 0.48, resi: 0.82, rental: 0.78, hotel: 0.14, logi: 0.28, house: 1.00, mixed: 0.34 },
+    height: [2, 8],
+    usePool: ['house', 'house', 'resi', 'rental', 'retail'],
+    hue: 108, elev: 3,
+  },
+  R: {
+    city: 'tsurumino',
+    id: 'R', lotSize: 2400, name: '鶴見野臨港地区', short: '臨港', kana: 'RINKO',
+    desc: '重要港湾に面した広大な埋立地。高速道路のインターに直結し、広域配送の拠点に向く。区画あたりの面積は市内最大で、物流施設以外はまず成り立たない。',
+    landPrice: 0.37,
+    farRange: [200, 400],
+    rentOffice: 7500,
+    rentRetail: 8500,
+    rentResi: 7800,
+    rentHotel: 10500,
+    rentLogi: 5000,
+    priceResi: 1.55,
+    capRate: 0.048,
+    station: 0.22,
+    fit: { office: 0.14, retail: 0.22, resi: 0.30, rental: 0.32, hotel: 0.10, logi: 1.00, house: 0.38, mixed: 0.24 },
+    height: [1, 5],
+    usePool: ['logi', 'logi', 'logi', 'retail', 'house'],
+    hue: 38, elev: 0,
+  },
+  G: {
+    city: 'tsurumino',
+    id: 'G', lotSize: 760, name: '鶴見野学園都市', short: '学園都市', kana: 'GAKUEN CITY',
+    desc: '国立大学と高専、大学病院が集まる学園地区。学生と研究者の賃貸需要が途切れず、空室が出にくい。単身向けを数で積むのがこの街の定石である。',
+    landPrice: 1.24,
+    farRange: [250, 500],
+    rentOffice: 13500,
+    rentRetail: 15000,
+    rentResi: 12200,
+    rentHotel: 14500,
+    rentLogi: 4400,
+    priceResi: 2.1,
+    capRate: 0.052,
+    station: 0.62,
+    fit: { office: 0.58, retail: 0.74, resi: 0.80, rental: 1.00, hotel: 0.34, logi: 0.30, house: 0.56, mixed: 0.56 },
+    height: [3, 12],
+    usePool: ['rental', 'rental', 'retail', 'resi', 'office'],
+    hue: 152, elev: 1,
+  },
 };
+
+/** 都市（地区の上位のまとまり） */
+export const CITIES = {
+  minato: {
+    id: 'minato', name: '湊都市', short: '湊都市',
+    desc: '国内最大手デベロッパーがひしめく巨大都市。地価も賃料も高いが、キャップレートは低い。',
+  },
+  tsurumino: {
+    id: 'tsurumino', name: '鶴見野市', short: '鶴見野',
+    desc: '海峡を挟んだ人口60万の中核市。地価と賃料は湊都市の半分以下だが、キャップレートが高く、利回りで稼げる。大手が地盤にしていないので、腰を据えて取りにいける。',
+  },
+};
+
+/** その地区が属する都市 */
+export const cityOf = d => (DISTRICTS[d] && DISTRICTS[d].city) || 'minato';
+/** その都市に属する地区の一覧 */
+export const districtsOfCity = city => Object.values(DISTRICTS).filter(d => (d.city || 'minato') === city);
 
 
 /**
- * 都市レイアウト（32×32）
- *  T/B/A/K/N/J/I/S/F/M/E/W=地区区画  .=道路  =:幹線  ~=水域  #=公園  ^=緑地/丘
+ * 都市レイアウト（40×40）
+ *  湊都市　  T/B/A/K/N/J/I/S/F/M/E/W
+ *  鶴見野市　Y/H/R/G（32行目より下。海峡を挟んだ隣の市）
+ *  .=道路  =:幹線  ~=水域  #=公園  ^=緑地/丘
  *
  *  ◆ 左上の 24×24（0〜23行の先頭24文字）は変更しないこと ◆
- *    ここを動かすと、古いセーブの区画と対応が取れなくなる。
- *    地図を広げるときは、右側と下側に足していく。
+ *    区画のIDは `p{x}_{y}` なので、既存の区画の座標が動かないかぎり
+ *    古いセーブはそのまま引き継げる。
+ *    地図を広げるときは、右側と下側にだけ足していく。
  */
-export const MAP_W = 32, MAP_H = 32;
+export const MAP_W = 40, MAP_H = 40;
 export const MAP_ROWS = [
-  'AAA.AAA.NNN.N#N.SSS.SSS.' + 'FFF.FFF.',
-  'A#A.AAA.NNN.NNN.SSS.SSS.' + 'FFF.F#F.',
-  'AAA.AAA.NNN.NNN.SSS.S^S.' + 'FF^.FFF.',
-  '========================' + '========',
-  'AAA.AAA.N^N.NNN.SSS.SSS.' + 'FFF.FFF.',
-  'AAA.A^A.NNN.NNN.SSS.SSS.' + 'F#F.FFF.',
-  'AAA.AAA.NNN.NNN.S#S.SSS.' + 'FFF.FF^.',
-  '........................' + '........',
-  'KKK.KKK.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.',
-  'KKK.KKK.T#T.TTT.JJJ.JJJ.' + 'MMM.M#M.',
-  'KK#.KKK.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.',
-  '========================' + '========',
-  'KKK.KKK.TTT.TTT.JJJ.J#J.' + 'MMM.MMM.',
-  'KKK.KKK.TTT.TT#.JJJ.JJJ.' + 'M#M.MMM.',
-  'KKK.KK^.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.',
-  '........................' + '........',
-  'III.III.BBB.BBB.BBB.JJJ.' + 'EEE.EEE.',
-  'I#I.III.BBB.BBB.BBB.JJJ.' + 'EEE.EEE.',
-  'III.III.BBB.BBB.BB#.JJJ~' + 'EEE.E#E.',
-  '===========~~~~=======~~' + '========',
-  '~II.BBB.BBB~~~~.BBB.~~~~' + 'EEE.EEE.',
-  '~~I.BBB.BB#~~~~.BB~~~~~~' + 'EEE.EE^.',
-  '~~~~~~~~~~~~~~~~~~~~~~~~' + '~~~~~~~~',
-  '~~~~~~~~~~~~~~~~~~~~~~~~' + '~~~~~~~~',
-  '~~~~~~~~~~~~~~~~~~~~~~~~' + '========',
-  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.',
-  'W#W.WWW.WWW.WWW.~~~~~~~~' + 'EEE.E#E.',
-  'WWW.WWW.WW^.WWW.~~~~~~~~' + 'EEE.EEE.',
-  '================~~~~~~~~' + '========',
-  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.',
-  'WWW.W#W.WWW.W^W.~~~~~~~~' + 'E^E.EEE.',
-  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.',
+  'AAA.AAA.NNN.N#N.SSS.SSS.' + 'FFF.FFF.~~~~~~~~',
+  'A#A.AAA.NNN.NNN.SSS.SSS.' + 'FFF.F#F.~~~~~~~~',
+  'AAA.AAA.NNN.NNN.SSS.S^S.' + 'FF^.FFF.~~~~~~~~',
+  '========================' + '========~~~~~~~~',
+  'AAA.AAA.N^N.NNN.SSS.SSS.' + 'FFF.FFF.~~~~~~~~',
+  'AAA.A^A.NNN.NNN.SSS.SSS.' + 'F#F.FFF.~~~~~~~~',
+  'AAA.AAA.NNN.NNN.S#S.SSS.' + 'FFF.FF^.~~~~~~~~',
+  '........................' + '........~~~~~~~~',
+  'KKK.KKK.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.~~~~~~~~',
+  'KKK.KKK.T#T.TTT.JJJ.JJJ.' + 'MMM.M#M.~~~~~~~~',
+  'KK#.KKK.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.~~~~~~~~',
+  '========================' + '========~~~~~~~~',
+  'KKK.KKK.TTT.TTT.JJJ.J#J.' + 'MMM.MMM.~~~~~~~~',
+  'KKK.KKK.TTT.TT#.JJJ.JJJ.' + 'M#M.MMM.~~~~~~~~',
+  'KKK.KK^.TTT.TTT.JJJ.JJJ.' + 'MMM.MMM.~~~~~~~~',
+  '........................' + '........~~~~~~~~',
+  'III.III.BBB.BBB.BBB.JJJ.' + 'EEE.EEE.~~~~~~~~',
+  'I#I.III.BBB.BBB.BBB.JJJ.' + 'EEE.EEE.~~~~~~~~',
+  'III.III.BBB.BBB.BB#.JJJ~' + 'EEE.E#E.~~~~~~~~',
+  '===========~~~~=======~~' + '========~~~~~~~~',
+  '~II.BBB.BBB~~~~.BBB.~~~~' + 'EEE.EEE.~~~~~~~~',
+  '~~I.BBB.BB#~~~~.BB~~~~~~' + 'EEE.EE^.~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~' + '~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~' + '~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~' + '========~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.~~~~~~~~',
+  'W#W.WWW.WWW.WWW.~~~~~~~~' + 'EEE.E#E.~~~~~~~~',
+  'WWW.WWW.WW^.WWW.~~~~~~~~' + 'EEE.EEE.~~~~~~~~',
+  '================~~~~~~~~' + '========~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.~~~~~~~~',
+  'WWW.W#W.WWW.W^W.~~~~~~~~' + 'E^E.EEE.~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~' + 'EEE.EEE.~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '========================================',
+  'RRR.RRR.RRR.YYY.YYY.YYY.GGG.GGG.HHH.HHH.',
+  'RRR.RR^.RRR.Y#Y.YYY.YYY.GGG.G#G.HHH.HH^.',
+  '========================================',
+  'RRR.RRR.~~~.YYY.YYY.Y#Y.GGG.GGG.HHH.HHH.',
+  'RR~.RRR.~~~.YYY.YYY.YYY.G#G.GGG.HHH.HHH.',
+  '~~~~~~~~~~~~YYY.YYY.YYY.GGG.GGG.HHH.HHH.',
 ];
 
 export const TERRAIN = { ROAD: 'road', AVENUE: 'avenue', WATER: 'water', PARK: 'park', GREEN: 'green', LOT: 'lot' };
