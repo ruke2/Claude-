@@ -9,9 +9,20 @@ import { renderBuilding } from './buildings.js';
 
 export const ZOOM_STEPS = [0.30, 0.40, 0.52, 0.66, 0.84, 1.06, 1.34];
 
-// スマートフォンは描画性能が低いので、1フレームで作り直す建物数を減らす
+/**
+ * 標高1段ぶんの高さ(m)。
+ * **大きくしすぎないこと。** 以前6mあり、地区ごとの段差が最大24mの崖になって、
+ * 街が段々畑のように見えていた。地形の起伏は感じられるが、
+ * 街区が高台から落ちない程度にとどめる
+ */
+const ELEV_M = 2.2;
+
+// スマートフォンは描画性能が低いので、1フレームで作り直す建物数を減らす。
+// **大きくしすぎないこと。** 倍率を変えた直後はここに書いた枚数ぶんの
+// 建物を毎フレーム描き直すので、そのあいだだけ1フレームが跳ね上がる。
+// 足りないぶんは直前のスプライトを拡大縮小してつないでいる
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer:coarse)').matches;
-const SPRITE_BUDGET = COARSE ? 8 : 18;
+const SPRITE_BUDGET = COARSE ? 5 : 14;
 
 export class CityRenderer {
   constructor(canvas, game) {
@@ -330,8 +341,8 @@ export class CityRenderer {
   tileColor(c) {
     const T = this.time;
     if (c.terrain === TERRAIN.WATER) return null;
-    if (c.terrain === TERRAIN.ROAD) return shade(220, 4, 38, T.faceTop);
-    if (c.terrain === TERRAIN.AVENUE) return shade(220, 3, 42, T.faceTop);
+    if (c.terrain === TERRAIN.ROAD) return shade(220, 3, 47, T.faceTop);
+    if (c.terrain === TERRAIN.AVENUE) return shade(220, 2, 50, T.faceTop);
     if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) return shade(118, 26, 40, T.faceTop);
     const d = DISTRICTS[c.d];
     if (this.layer === 'owner') {
@@ -346,14 +357,16 @@ export class CityRenderer {
       const v = Math.min(1, c.baseValue / 42000);
       return shade(240 - v * 240, 62, 20 + v * 26, T.faceTop);
     }
-    return shade(d ? d.hue : 210, 6, c.vacant ? 46 : 38, T.faceTop);
+    // **敷地を暗くしないこと。** 以前ここが明度38で、道路より暗い穴のように見えていた。
+    // 実際の敷地はアスファルトかタイル貼りで、道路より明るい
+    return shade(d ? d.hue : 210, 5, c.vacant ? 58 : 62, T.faceTop);
   }
 
   drawTile(c, px, py) {
     const { ctx } = this;
     const z = this.zoom, T = this.time;
     const w = TILE_W * z, h = TILE_H * z;
-    const eh = (c.elev || 0) * 6 * Z_UNIT * z;
+    const eh = (c.elev || 0) * ELEV_M * Z_UNIT * z;
 
     if (c.terrain === TERRAIN.WATER) {
       diamond(ctx, px, py, w + 1, h + 1);
@@ -380,11 +393,11 @@ export class CityRenderer {
       ctx.beginPath();
       ctx.moveTo(px - w / 2, py); ctx.lineTo(px, py + h / 2);
       ctx.lineTo(px, py + h / 2 + eh); ctx.lineTo(px - w / 2, py + eh);
-      ctx.closePath(); ctx.fillStyle = shade(28, 18, 20, T.faceL); ctx.fill();
+      ctx.closePath(); ctx.fillStyle = shade(30, 8, 42, T.faceL); ctx.fill();
       ctx.beginPath();
       ctx.moveTo(px, py + h / 2); ctx.lineTo(px + w / 2, py);
       ctx.lineTo(px + w / 2, py + eh); ctx.lineTo(px, py + h / 2 + eh);
-      ctx.closePath(); ctx.fillStyle = shade(28, 18, 16, T.faceR); ctx.fill();
+      ctx.closePath(); ctx.fillStyle = shade(30, 8, 34, T.faceR); ctx.fill();
     }
 
     diamond(ctx, px, py, w + 0.8, h + 0.8);
@@ -395,32 +408,43 @@ export class CityRenderer {
     } else if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) {
       this.drawPark(c, px, py, w, h);
     } else if (this.layer === 'normal') {
-      // 歩道（区画の外周）
+      // 歩道は**道路に面した辺だけ**に付ける。
+      // 区画をぐるりと縁取ると、街区が盤面の升目のように見える
       ctx.save();
       diamond(ctx, px, py, w + 0.8, h + 0.8); ctx.clip();
-      diamond(ctx, px, py, w + 0.8, h + 0.8);
-      ctx.fillStyle = shade(212, 4, 58, T.faceTop); ctx.fill();
-      diamond(ctx, px, py, w * 0.86, h * 0.86);
-      ctx.fillStyle = this.tileColor(c); ctx.fill();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nb = (c.gx + dx >= 0 && c.gy + dy >= 0 && c.gx + dx < MAP_W && c.gy + dy < MAP_H)
+          ? this.g.cells[(c.gy + dy) * MAP_W + (c.gx + dx)] : null;
+        if (!nb || (nb.terrain !== TERRAIN.ROAD && nb.terrain !== TERRAIN.AVENUE)) continue;
+        const d = this.isoDir(dx, dy), q = this.isoDir(dy ? 1 : 0, dy ? 0 : 1);
+        const P = (t, u) => [px + d[0] * t + q[0] * u, py + d[1] * t + q[1] * u];
+        const a = P(0.5, -0.55), b = P(0.5, 0.55), cc = P(0.33, 0.55), dd = P(0.33, -0.55);
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(cc[0], cc[1]); ctx.lineTo(dd[0], dd[1]);
+        ctx.closePath();
+        ctx.fillStyle = shade(36, 5, 70, T.faceTop); ctx.fill();
+        ctx.strokeStyle = shade(36, 4, 84, T.faceTop, 0.6); ctx.lineWidth = Math.max(0.4, z * 0.55);
+        ctx.beginPath(); ctx.moveTo(dd[0], dd[1]); ctx.lineTo(cc[0], cc[1]); ctx.stroke();
+      }
       ctx.restore();
-      // 縁石
-      ctx.strokeStyle = shade(212, 3, 72, T.faceTop, 0.5); ctx.lineWidth = Math.max(0.4, z * 0.55);
-      diamond(ctx, px, py, w * 0.86, h * 0.86); ctx.stroke();
       // 敷地内の舗装と植栽
       if (z > 0.5 && c.building) {
         const r = hash2(c.gx, c.gy, 44);
-        if (r > 0.6) {
-          ctx.save(); diamond(ctx, px, py, w * 0.84, h * 0.84); ctx.clip();
-          ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = Math.max(0.4, z * 0.5);
+        if (r > 0.55) {
+          // 駐車場の白線
+          ctx.save(); diamond(ctx, px, py, w * 0.88, h * 0.88); ctx.clip();
+          ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = Math.max(0.4, z * 0.5);
+          const d = this.isoDir(1, 0), q = this.isoDir(0, 1);
           for (let i = -2; i <= 2; i++) {
+            const u = i * 0.10;
             ctx.beginPath();
-            ctx.moveTo(px - w * 0.3 + i * w * 0.08, py + h * 0.28);
-            ctx.lineTo(px - w * 0.06 + i * w * 0.08, py + h * 0.4);
+            ctx.moveTo(px + d[0] * 0.18 + q[0] * u, py + d[1] * 0.18 + q[1] * u);
+            ctx.lineTo(px + d[0] * 0.40 + q[0] * u, py + d[1] * 0.40 + q[1] * u);
             ctx.stroke();
           }
           ctx.restore();
         }
-        if (r < 0.42 && z > 0.6) {
+        if (r < 0.45 && z > 0.6) {
           this.drawTree(px + (r - 0.2) * w * 0.5, py + h * 0.30, z * 0.7, c.gx * 3, c.gy * 5);
         }
       }
@@ -440,6 +464,36 @@ export class CityRenderer {
     ctx.fillStyle = T.groundTint; ctx.fill();
   }
 
+  /**
+   * グリッドの移動 → 画面上の向き（1タイルぶん）。
+   * **道路の線を画面の水平・垂直に引かないこと。**
+   * グリッドの x軸 は画面では斜めに走るので、水平に引くと
+   * 道路を横切る梯子のような模様になる。回転にも追従させる。
+   */
+  isoDir(dx, dy) {
+    let X, Y;
+    switch (this.cam.rot & 3) {
+      case 1: X = dy; Y = -dx; break;
+      case 2: X = -dx; Y = -dy; break;
+      case 3: X = -dy; Y = dx; break;
+      default: X = dx; Y = dy;
+    }
+    const z = this.zoom;
+    return [(X - Y) * (TILE_W / 2) * z, (X + Y) * (TILE_H / 2) * z];
+  }
+
+  /** 区画の四辺のうち、道路に面している辺（画面上の向き）を返す */
+  roadSides(c) {
+    const g = this.g;
+    const at = (x, y) => (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H) ? g.cells[y * MAP_W + x] : null;
+    const isRoad = cc => cc && (cc.terrain === TERRAIN.ROAD || cc.terrain === TERRAIN.AVENUE);
+    const out = [];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (isRoad(at(c.gx + dx, c.gy + dy))) out.push(this.isoDir(dx, dy));
+    }
+    return out;
+  }
+
   drawRoad(c, px, py, w, h) {
     const { ctx } = this;
     const z = this.zoom, T = this.time;
@@ -447,75 +501,163 @@ export class CityRenderer {
     const g = this.g;
     const at = (x, y) => (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H) ? g.cells[y * MAP_W + x] : null;
     const isRoad = cc => cc && (cc.terrain === TERRAIN.ROAD || cc.terrain === TERRAIN.AVENUE);
-    const n = isRoad(at(c.gx, c.gy - 1)), s = isRoad(at(c.gx, c.gy + 1));
-    const e = isRoad(at(c.gx + 1, c.gy)), ww = isRoad(at(c.gx - 1, c.gy));
+    // グリッドの4方向。画面上の向きは isoDir が持つ。
+    // q は道路に直交する向き。**画面座標で90度回して作らないこと。**
+    // アイソメでは x軸 と y軸 のなす角が90度ではないので、斜めにずれる
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({
+      d: this.isoDir(dx, dy),
+      q: this.isoDir(dy ? 1 : 0, dy ? 0 : 1),
+      road: isRoad(at(c.gx + dx, c.gy + dy)),
+    }));
+    const links = dirs.filter(x => x.road);
+    const cross = links.length >= 3;
 
-    ctx.save(); diamond(ctx, px, py, w, h); ctx.clip();
-    // 舗装の質感
-    ctx.fillStyle = 'rgba(0,0,0,.05)';
+    ctx.save(); diamond(ctx, px, py, w + 1, h + 1); ctx.clip();
+
+    // 舗装の継ぎ当てとひび（一様な灰色は路面に見えない）
+    ctx.fillStyle = 'rgba(0,0,0,.055)';
     for (let i = 0; i < 6; i++) {
       const rx = hash2(c.gx * 7 + i, c.gy * 3), ry = hash2(c.gx, c.gy * 11 + i);
       ctx.fillRect(px - w / 2 + rx * w, py - h / 2 + ry * h, w * 0.1, h * 0.12);
     }
-    // 中央線
-    ctx.strokeStyle = avenue ? 'rgba(235,200,90,0.55)' : 'rgba(250,252,255,0.42)';
-    ctx.lineWidth = Math.max(0.6, z * (avenue ? 1.2 : 0.9));
-    ctx.setLineDash(avenue ? [] : [z * 5, z * 5]);
-    if (e || ww) { ctx.beginPath(); ctx.moveTo(px - w / 2, py); ctx.lineTo(px + w / 2, py); ctx.stroke(); }
-    if (n || s) { ctx.beginPath(); ctx.moveTo(px, py - h / 2); ctx.lineTo(px, py + h / 2); ctx.stroke(); }
-    ctx.setLineDash([]);
-    // 交差点には横断歩道を引く
-    if ((n || s) && (e || ww)) {
-      ctx.fillStyle = 'rgba(250,252,255,0.5)';
-      for (let i = 0; i < 4; i++) {
-        const t0 = 0.18 + i * 0.12;
-        // 北東の辺に沿って
-        ctx.beginPath();
-        ctx.moveTo(px + w * 0.5 * t0, py - h * 0.5 * t0);
-        ctx.lineTo(px + w * 0.5 * (t0 + 0.06), py - h * 0.5 * (t0 + 0.06));
-        ctx.lineTo(px + w * 0.5 * (t0 + 0.06) + w * 0.1, py - h * 0.5 * (t0 + 0.06) + h * 0.1);
-        ctx.lineTo(px + w * 0.5 * t0 + w * 0.1, py - h * 0.5 * t0 + h * 0.1);
-        ctx.closePath(); ctx.fill();
+
+    // --- 歩道：道路に面していない辺に付く ---
+    let d0 = null, q0 = null;
+    const P = (t, u) => [px + d0[0] * t + q0[0] * u, py + d0[1] * t + q0[1] * u];
+    for (const dir of dirs) {
+      if (dir.road) continue;
+      d0 = dir.d; q0 = dir.q;
+      const a = P(0.5, -0.55), b = P(0.5, 0.55), cc = P(0.31, 0.55), dd = P(0.31, -0.55);
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(cc[0], cc[1]); ctx.lineTo(dd[0], dd[1]);
+      ctx.closePath();
+      ctx.fillStyle = shade(36, 5, 68, T.faceTop);
+      ctx.fill();
+      // 縁石
+      ctx.strokeStyle = shade(36, 4, 82, T.faceTop, 0.75);
+      ctx.lineWidth = Math.max(0.5, z * 0.6);
+      ctx.beginPath(); ctx.moveTo(dd[0], dd[1]); ctx.lineTo(cc[0], cc[1]); ctx.stroke();
+    }
+
+    // --- 車線 ---
+    const paint = avenue ? 'rgba(240,206,96,0.62)' : 'rgba(250,252,255,0.50)';
+    ctx.lineWidth = Math.max(0.6, z * (avenue ? 1.1 : 0.85));
+    // 対になる方向どうしで1本の線にする
+    const pairs = [[dirs[0], dirs[1]], [dirs[2], dirs[3]]];
+    for (const [a, b] of pairs) {
+      if (!a.road && !b.road) continue;
+      ctx.strokeStyle = paint;
+      ctx.setLineDash(cross ? [] : avenue ? [] : [z * 5, z * 4]);
+      const from = a.road ? [px + a.d[0] * 0.5, py + a.d[1] * 0.5] : [px, py];
+      const to = b.road ? [px + b.d[0] * 0.5, py + b.d[1] * 0.5] : [px, py];
+      // 交差点の中では車線を引かない
+      const t0 = cross ? 0.42 : 0;
+      const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      if (cross) {
+        for (const [s0, e0] of [[from, lerp(from, to, 0.5 - t0)], [lerp(from, to, 0.5 + t0), to]]) {
+          ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(e0[0], e0[1]); ctx.stroke();
+        }
+      } else {
+        ctx.beginPath(); ctx.moveTo(from[0], from[1]); ctx.lineTo(to[0], to[1]); ctx.stroke();
       }
     }
-    // 街灯と光溜まり
+    ctx.setLineDash([]);
+
+    // --- 交差点：停止線と横断歩道 ---
+    if (cross && z > 0.38) {
+      ctx.fillStyle = 'rgba(250,252,255,0.58)';
+      for (const { d, q } of links) {
+        for (let i = 0; i < 5; i++) {
+          const t = 0.27 + i * 0.048, u = 0.028;
+          const p1 = [px + d[0] * t + q[0] * 0.30, py + d[1] * t + q[1] * 0.30];
+          const p2 = [px + d[0] * (t + u) + q[0] * 0.30, py + d[1] * (t + u) + q[1] * 0.30];
+          const p3 = [px + d[0] * (t + u) - q[0] * 0.30, py + d[1] * (t + u) - q[1] * 0.30];
+          const p4 = [px + d[0] * t - q[0] * 0.30, py + d[1] * t - q[1] * 0.30];
+          ctx.beginPath();
+          ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]);
+          ctx.lineTo(p3[0], p3[1]); ctx.lineTo(p4[0], p4[1]);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+
+    // 街灯の光溜まり
     if (T.street > 0) {
-      const lit = `rgba(255,214,150,${0.13 * T.street})`;
-      ctx.fillStyle = lit;
-      ctx.beginPath(); ctx.ellipse(px - w * 0.26, py + h * 0.1, w * 0.2, h * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(px + w * 0.26, py - h * 0.1, w * 0.2, h * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,214,150,${0.14 * T.street})`;
+      for (const { d } of links) {
+        ctx.beginPath();
+        ctx.ellipse(px + d[0] * 0.30, py + d[1] * 0.30, w * 0.20, h * 0.36, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
 
-    // 街路樹（幹線のみ／密度は決定的）
+    // --- 街路樹（幹線のみ。歩道の上に立たせる） ---
     if (avenue && z > 0.5) {
-      for (const sgn of [-1, 1]) {
-        if (hash2(c.gx * 7 + sgn, c.gy * 11) > 0.45) {
-          this.drawTree(px + sgn * w * 0.3, py + sgn * h * 0.3, z * 0.85, c.gx + sgn, c.gy);
+      for (const { d, road } of dirs) {
+        if (road) continue;
+        if (hash2(c.gx * 7 + d[0], c.gy * 11 + d[1]) > 0.42) {
+          this.drawTree(px + d[0] * 0.40, py + d[1] * 0.40, z * 0.8, c.gx + d[0], c.gy);
         }
       }
     }
-    // 車
-    if (z > 0.45 && (avenue || hash2(c.gx, c.gy, 5) > 0.5)) {
+
+    // --- 電柱と電線（幹線以外。日本の街はこれが無いと嘘になる） ---
+    if (!avenue && z > 0.62) {
+      for (const { d, road } of dirs) {
+        if (road) continue;
+        if (hash2(c.gx * 5 + d[0] * 3, c.gy * 9 + d[1] * 3, 2) < 0.45) continue;
+        const bx = px + d[0] * 0.42, by = py + d[1] * 0.42;
+        const ph = 9.5 * z;
+        ctx.strokeStyle = shade(34, 6, 52, T.faceR);
+        ctx.lineWidth = Math.max(0.7, z * 1.0);
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, by - ph); ctx.stroke();
+        // 腕金
+        ctx.lineWidth = Math.max(0.5, z * 0.7);
+        ctx.beginPath(); ctx.moveTo(bx - 2.4 * z, by - ph * 0.86); ctx.lineTo(bx + 2.4 * z, by - ph * 0.86); ctx.stroke();
+        // 電線は道路の向きに沿って、区画の端まで垂れる。
+        // 隣の区画でも同じように引くので、つながって見える
+        for (const other of links) {
+          const ox = px + other.d[0] * 0.5, oy = py + other.d[1] * 0.5;
+          ctx.strokeStyle = 'rgba(40,46,58,0.26)';
+          ctx.lineWidth = Math.max(0.4, z * 0.45);
+          ctx.beginPath();
+          ctx.moveTo(bx, by - ph * 0.86);
+          ctx.quadraticCurveTo((bx + ox) / 2, (by + oy) / 2 - ph * 0.70, ox, oy - ph * 0.80);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // --- 車 ---
+    if (z > 0.45 && links.length) {
       const cars = avenue ? 2 : 1;
       for (let i = 0; i < cars; i++) {
         const sd = hash2(c.gx * 3 + i, c.gy * 5);
-        const horiz = (e || ww) && (sd > 0.5 || !(n || s));
+        const link = links[Math.floor(sd * links.length) % links.length];
+        const ax = link.d, q = link.q;
         const speed = 0.12 + sd * 0.1;
-        let p = ((this.t * speed + sd) % 1);
-        const dir = sd > 0.5 ? 1 : -1;
-        if (dir < 0) p = 1 - p;
-        const off = (i === 0 ? -1 : 1) * (horiz ? h : w) * 0.11;
-        const cxp = horiz ? px - w / 2 + p * w : px + off * 0.6;
-        const cyp = horiz ? py + off : py - h / 2 + p * h;
-        const cl = ['#d8dde6', '#2f3644', '#b03a3a', '#3a6fb0', '#d8b23a'][Math.floor(sd * 5)];
+        let p = ((this.t * speed + sd) % 1) * 2 - 1;      // -1..1 でタイルを通り抜ける
+        if (sd > 0.5) p = -p;
+        const lane = (i === 0 ? -0.11 : 0.11);
+        const cxp = px + ax[0] * p * 0.5 + q[0] * lane;
+        const cyp = py + ax[1] * p * 0.5 + q[1] * lane;
+        const cl = ['#e6eaf0', '#2f3644', '#b03a3a', '#3a6fb0', '#d8b23a'][Math.floor(sd * 5)];
+        ctx.save();
+        ctx.translate(cxp, cyp);
         ctx.fillStyle = cl;
-        const cwid = Math.max(2, z * 4.2), chei = Math.max(1.4, z * 2.4);
-        ctx.fillRect(cxp - cwid / 2, cyp - chei / 2, cwid, chei);
+        const cwid = Math.max(2.4, z * 5.0), chei = Math.max(1.6, z * 2.8);
+        roundRect(ctx, -cwid / 2, -chei / 2, cwid, chei, Math.max(0.6, z * 0.8));
+        ctx.fill();
+        // 屋根のハイライト
+        ctx.fillStyle = 'rgba(255,255,255,0.20)';
+        roundRect(ctx, -cwid * 0.30, -chei * 0.32, cwid * 0.60, chei * 0.40, Math.max(0.4, z * 0.5));
+        ctx.fill();
         if (T.street > 0.3) {
-          ctx.fillStyle = `rgba(255,230,170,${0.5 * T.street})`;
-          ctx.fillRect(cxp + (horiz ? dir * cwid / 2 : 0) - 1, cyp - 0.8, 2.2, 1.6);
+          ctx.fillStyle = `rgba(255,230,170,${0.55 * T.street})`;
+          ctx.fillRect(cwid * 0.34, -1, 2.4, 1.8);
         }
+        ctx.restore();
       }
     }
   }
@@ -561,22 +703,29 @@ export class CityRenderer {
   //  建物
   // --------------------------------------------------------
   buildingSprite(c) {
-    const key = `${c.id}|${this.cam.zoomIdx}|${this.time.key}`;
     const pj = c.projectId ? this.g.projects.find(p => p.id === c.projectId) : null;
+    // **何も建っていない区画で budget を減らさないこと。**
+    // 画面には海も道路も更地も入っているので、ここで先に帰さないと
+    // 1フレームぶんの作り直し枠を空の区画が食いつぶし、
+    // 拡大したときに建物がいつまでも古い（小さくて暗い）ままになる
+    if (!c.building && !(pj && pj.status !== 'done')) return null;
+
+    const key = `${c.id}|${this.cam.zoomIdx}|${this.time.key}`;
     const fullKey = pj ? `${key}|c${Math.round(pj.progress * 10)}` : key;
     let s = this.cache.get(fullKey);
     if (s) return s;
     if (this.budget <= 0) {
       const old = this.last.get(c.id);
-      if (old) return old;
+      if (old) return old;     // つなぎ。倍率が違えば draw() 側で拡大縮小する
     }
     this.budget--;
     if (pj && pj.status !== 'done') {
       const pseudo = { use: pj.use, floors: pj.floors, grade: pj.grade, facade: 'grid', height: pj.heightM, seed: pj.seed, lit: 0.4, antenna: false, crown: 0 };
       s = renderBuilding(pseudo, this.time, this.zoom, { construction: pj.progress });
-    } else if (c.building) {
+    } else {
       s = renderBuilding(c.building, this.time, this.zoom);
-    } else return null;
+    }
+    s.z = this.zoom;
     this.cache.set(fullKey, s);
     this.last.set(c.id, s);
     return s;
@@ -646,7 +795,7 @@ export class CityRenderer {
     }
     const pad = TILE_W * z;
     mx0 -= pad; mx1 += pad;
-    my0 -= 7 * 6 * Z_UNIT * z + pad;     // 最大標高ぶん上に伸ばす
+    my0 -= 7 * ELEV_M * Z_UNIT * z + pad;     // 最大標高ぶん上に伸ばす
     my1 += pad;
 
     // 焼くのは「画面の少し外まで」。マップ全体を焼こうとすると、
@@ -686,7 +835,7 @@ export class CityRenderer {
     this.ctx = c2;
     try {
       for (const { c } of order) {
-        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
         // 焼く範囲の外は描かない
         if (p.x < x0 - margin || p.x > x1 + margin || p.y < y0 - margin || p.y > y1 + margin) continue;
         this.drawTile(c, p.x, p.y);
@@ -725,7 +874,7 @@ export class CityRenderer {
       ctx.drawImage(ground.canvas, ground.x, ground.y, ground.w, ground.h);
     } else {
       for (const { c } of order) {
-        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
         const px = p.x, py = p.y;
         const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
         if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
@@ -742,7 +891,7 @@ export class CityRenderer {
       for (const { c } of order) {
         const hh = this.heightOf(c);
         if (hh < 1) continue;
-        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
         const scX = p.x + w / 2 + this.cam.x, scY = p.y + h / 2 + this.cam.y;
         if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
         this.drawShadow(p.x, p.y, hh, c);
@@ -752,13 +901,21 @@ export class CityRenderer {
 
     // 建物・ハイライト
     for (const { c } of order) {
-      const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+      const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
       const px = p.x, py = p.y;
       const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
       if (scX < -margin || scX > w + margin || scY < -margin * 2 || scY > h + margin * 1.6) continue;
       this.drawOverlay(c, px, py);
       const sp = this.buildingSprite(c);
-      if (sp) ctx.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
+      if (sp) {
+        if (sp.z && sp.z !== z) {
+          // つなぎで出している別倍率のスプライト。そのまま貼ると
+          // 拡大したときだけ細く小さい建物が混ざる
+          const k = z / sp.z;
+          ctx.drawImage(sp.canvas, px - sp.ax * k, py - sp.ay * k,
+            sp.canvas.width * k, sp.canvas.height * k);
+        } else ctx.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
+      }
       this.drawMarker(c, px, py);
     }
 

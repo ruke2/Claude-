@@ -5512,7 +5512,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       glow: 0.2,
       fog: "rgba(150,175,210,0.16)",
       street: 0,
-      glass: [206, 22, 56]
+      glass: [208, 26, 64]
     },
     noon: {
       key: "noon",
@@ -5532,7 +5532,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       glow: 0.05,
       fog: "rgba(200,225,245,0.10)",
       street: 0,
-      glass: [204, 26, 64]
+      glass: [205, 30, 73]
     },
     evening: {
       key: "evening",
@@ -5600,15 +5600,33 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return hsl(h, s * (mul > 1 ? 0.92 : 1), Math.max(2, Math.min(96, l * mul)), a);
   }
   var USE_HSL = {
-    office: [208, 9, 73],
-    resi: [34, 7, 77],
-    rental: [200, 7, 75],
-    retail: [28, 11, 74],
-    hotel: [345, 7, 75],
-    logi: [206, 4, 70],
-    house: [38, 11, 79],
-    mixed: [248, 6, 74]
+    office: [212, 7, 82],
+    resi: [40, 6, 85],
+    rental: [206, 5, 84],
+    retail: [24, 8, 83],
+    hotel: [350, 6, 84],
+    logi: [204, 5, 79],
+    house: [36, 9, 86],
+    mixed: [224, 5, 83]
   };
+  var WALL_TONES = [
+    { h: 0, s: 0.25, l: 1.09, g: 1.02 },
+    // 白い吹付け
+    { h: 10, s: 1.4, l: 0.99, g: 0.96 },
+    // 生成りのタイル
+    { h: -5, s: 0.65, l: 0.9, g: 0.94 },
+    // 灰色のPC板
+    { h: 18, s: 2.1, l: 0.81, g: 0.88 },
+    // 茶系のタイル
+    { h: -16, s: 1.9, l: 0.87, g: 1 },
+    // 青灰のパネル
+    { h: 3, s: 0.35, l: 0.96, g: 0.92 },
+    // 打ち放し
+    { h: -2, s: 0.8, l: 0.71, g: 0.72 },
+    // 濃い石張り
+    { h: 14, s: 1.15, l: 1.05, g: 1.06 }
+    // 白いタイル
+  ];
 
   // src/render/iso.js
   var TILE_W = 74;
@@ -5663,13 +5681,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
 
   // src/render/buildings.js
-  var FOOT = { office: 0.9, resi: 0.86, rental: 0.86, retail: 0.95, hotel: 0.86, logi: 0.96, house: 0.66, mixed: 0.93 };
+  var FOOT = { office: 0.96, resi: 0.94, rental: 0.94, retail: 0.99, hotel: 0.94, logi: 0.99, house: 0.97, mixed: 0.97 };
   var BAYS = { office: 7, resi: 6, rental: 6, retail: 5, hotel: 6, logi: 4, house: 3, mixed: 7 };
-  function facePath(ctx2, o, side, u0, u1, v0, v1, H) {
+  function facePath(ctx2, o, side, u0, u1, v0, v1, H, append) {
     const { cx, cy, w, h } = o;
-    const p = (u, v) => side === "L" ? [cx - w / 2 + u * w / 2, cy + u * h / 2 - v * H] : [cx + u * w / 2, cy + h / 2 - u * h / 2 - v * H];
+    const sk = o.sk || 0;
+    const p = (u, v) => side === "L" ? [cx - w / 2 + u * (w / 2) * (1 - sk), cy + h / 2 * sk + u * (h / 2) * (1 - sk) - v * H] : [cx - w / 2 * sk + u * (w / 2) * (1 + sk), cy + h / 2 - u * (h / 2) * (1 + sk) - v * H];
     const a = p(u0, v0), b = p(u1, v0), c = p(u1, v1), d = p(u0, v1);
-    ctx2.beginPath();
+    if (!append) ctx2.beginPath();
     ctx2.moveTo(a[0], a[1]);
     ctx2.lineTo(b[0], b[1]);
     ctx2.lineTo(c[0], c[1]);
@@ -5678,13 +5697,116 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
   function topDiamond(ctx2, o, H, inset = 0) {
     const { cx, cy, w, h } = o;
+    const sk = o.sk || 0;
     const ww = w * (1 - inset), hh = h * (1 - inset);
     ctx2.beginPath();
-    ctx2.moveTo(cx, cy - hh / 2 - H);
-    ctx2.lineTo(cx + ww / 2, cy - H);
-    ctx2.lineTo(cx, cy + hh / 2 - H);
-    ctx2.lineTo(cx - ww / 2, cy - H);
+    ctx2.moveTo(cx + ww / 2 * sk, cy - hh / 2 - H);
+    ctx2.lineTo(cx + ww / 2, cy - hh / 2 * sk - H);
+    ctx2.lineTo(cx - ww / 2 * sk, cy + hh / 2 - H);
+    ctx2.lineTo(cx - ww / 2, cy + hh / 2 * sk - H);
     ctx2.closePath();
+  }
+  function volBox(cx, cy, w, h, u0, u1, v0, v1) {
+    const du = u1 - u0, dv = v1 - v0;
+    const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+    return {
+      cx: cx + (cu - cv) * w / 2,
+      cy: cy + (cu + cv - 1) * h / 2,
+      w: (du + dv) * w / 2,
+      h: (du + dv) * h / 2,
+      sk: (dv - du) / (dv + du),
+      depth: cu + cv
+    };
+  }
+  function stripCount(r) {
+    return r < 0.3 ? 2 : r < 0.72 ? 3 : 4;
+  }
+  function massingOf(b) {
+    const use = b.use, fl = Math.max(1, b.floors);
+    const S = b.seed;
+    const R2 = (k) => hash2(S, k, 3);
+    const out = [];
+    const push = (u0, u1, v0, v1, floors, u2, role, add) => out.push({ u0, u1, v0, v1, floors: Math.max(1, Math.round(floors)), use: u2 || use, role, seedAdd: add || 0 });
+    if (use === "house") {
+      const n = R2(1) < 0.28 ? 2 : R2(1) < 0.78 ? 3 : 4;
+      const cols = n <= 2 ? 1 : 2, rows = Math.ceil(n / cols);
+      const m = 0.1;
+      const cw = (1 - m * 2) / cols, ch = (1 - m * 2) / rows;
+      let k = 0;
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+        if (k >= n) break;
+        const jx = hash2(S, k * 13 + 5, 7), jy = hash2(S, k * 13 + 9, 7);
+        const gw = cw * (0.62 + jx * 0.16), gh = ch * (0.62 + jy * 0.16);
+        const ox = m + i * cw + (cw - gw) * (0.2 + jx * 0.6);
+        const oy = m + j * ch + (ch - gh) * (0.2 + jy * 0.6);
+        push(ox, ox + gw, oy, oy + gh, 1 + Math.round(jx * 1.4), "house", "house", k * 101);
+        k++;
+      }
+      return out;
+    }
+    if (use === "logi") {
+      push(0.03, 0.97, 0.03, 0.88, fl, "logi", "main", 0);
+      if (R2(2) > 0.35) push(0.1, 0.4, 0.88, 0.99, 1, "office", "annex", 311);
+      return out;
+    }
+    if (fl <= 5) {
+      const n = stripCount(R2(3));
+      const along = R2(4) > 0.5;
+      const m = 0.04;
+      const span = 1 - m * 2;
+      const ws = [];
+      let tot = 0;
+      for (let i = 0; i < n; i++) {
+        const t = 0.72 + hash2(S, i * 17 + 3, 11) * 0.66;
+        ws.push(t);
+        tot += t;
+      }
+      let acc = m;
+      for (let i = 0; i < n; i++) {
+        const wgt = ws[i] / tot * span;
+        const depth = 0.68 + hash2(S, i * 23, 13) * 0.28;
+        const f = Math.max(1, Math.round(fl * (0.55 + hash2(S, i * 29, 17) * 0.85)));
+        const back = m + (span * 0 + 0);
+        if (along) push(acc, acc + wgt - 4e-3, back, back + depth, f, use, "strip", i * 211);
+        else push(back, back + depth, acc, acc + wgt - 4e-3, f, use, "strip", i * 211);
+        acc += wgt;
+      }
+      return out;
+    }
+    if (fl <= 14) {
+      const m = 0.06 + R2(5) * 0.05;
+      const skew = (R2(6) - 0.5) * 0.12;
+      const u0 = m + Math.max(0, skew), u1 = 1 - m + Math.min(0, skew);
+      const v0 = m - Math.min(0, skew), v1 = 1 - m - Math.max(0, skew);
+      if (R2(7) > 0.55) {
+        const cut = v0 + (v1 - v0) * (0.62 + R2(8) * 0.14);
+        push(u0, u1, v0, cut, fl, use, "main", 0);
+        push(u0 + 0.02, u1 - 0.02, cut, v1, Math.max(1, Math.round(fl * 0.2)), use === "office" ? "retail" : use, "podium", 407);
+      } else {
+        push(u0, u1, v0, v1, fl, use, "main", 0);
+      }
+      return out;
+    }
+    const pm = 0.03 + R2(9) * 0.03;
+    const pf = Math.max(2, Math.min(6, Math.round(fl * 0.09)));
+    push(pm, 1 - pm, pm, 1 - pm, pf, use === "logi" ? use : "retail", "podium", 0);
+    const tw = 0.64 + R2(10) * 0.2, th = 0.64 + R2(11) * 0.2;
+    const ou = (1 - tw) * (0.15 + R2(12) * 0.7), ov = (1 - th) * (0.15 + R2(13) * 0.7);
+    push(ou, ou + tw, ov, ov + th, fl, use, "tower", 0);
+    if (fl >= 34 && R2(14) > 0.42) {
+      const ins = 0.09 + R2(15) * 0.07;
+      push(
+        ou + tw * ins,
+        ou + tw * (1 - ins),
+        ov + th * ins,
+        ov + th * (1 - ins),
+        fl + Math.round(fl * (0.1 + R2(16) * 0.08)),
+        use,
+        "crown",
+        613
+      );
+    }
+    return out;
   }
   function facadeOf(use, given) {
     if (given && given !== "auto") return given;
@@ -5727,16 +5849,18 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const facade = facadeOf(use, b.stack ? "auto" : b.facade);
     const seed = b.seed + segIndex * 977;
     const base = USE_HSL[use] || USE_HSL.office;
-    const jitter = hash2(b.seed, segIndex, 5);
-    const hu = base[0] + (jitter - 0.5) * 22;
-    const sa = Math.max(2, base[1] * (0.7 + jitter * 0.7));
-    const li = base[2] * (0.92 + hash2(b.seed, segIndex, 9) * 0.16);
+    const tone = WALL_TONES[Math.floor(hash2(b.seed, segIndex, 5) * WALL_TONES.length) % WALL_TONES.length];
+    const jitter = hash2(b.seed, segIndex, 9);
+    const hu = base[0] + tone.h + (jitter - 0.5) * 10;
+    const sa = Math.max(1.5, base[1] * tone.s * (0.85 + jitter * 0.3));
+    const li = Math.min(94, base[2] * tone.l * (0.97 + jitter * 0.06));
     const mul = side === "L" ? T.faceL : T.faceR;
     const bays = Math.max(2, Math.round((BAYS[use] || 6) * (o.w / (TILE_W * zoom))));
     const span = Math.max(1e-3, vB - vA);
     const fh = span / Math.max(1, floors);
     const winLit = T.windowLit * (b.lit ?? 0.6);
-    const G2 = T.glass || [206, 20, 55];
+    const G0 = T.glass || [206, 20, 55];
+    const G2 = [G0[0] + tone.h * 0.4, G0[1] * (0.85 + jitter * 0.4), G0[2] * tone.g];
     const darkWin = shade(G2[0], G2[1], G2[2], mul * 1);
     facePath(ctx2, o, side, 0, 1, vA, vB, H);
     const wallTop = o.cy + o.h / 2 - H * vB, wallBot = o.cy + o.h / 2 - H * vA;
@@ -5786,16 +5910,16 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fill();
       ctx2.strokeStyle = shade(hu, sa, li, mul * 1.26, 0.7);
       ctx2.lineWidth = Math.max(0.4, zoom * 0.55);
+      ctx2.beginPath();
       for (let i = 0; i < floors; i += step) {
         const v = vA + (i + 1) * fh;
-        facePath(ctx2, o, side, 0.03, 0.97, v, v, H);
-        ctx2.stroke();
+        facePath(ctx2, o, side, 0.03, 0.97, v, v, H, true);
       }
       for (let bx = 1; bx < bays; bx++) {
         const u = bx / bays;
-        facePath(ctx2, o, side, u, u, vA, vB, H);
-        ctx2.stroke();
+        facePath(ctx2, o, side, u, u, vA, vB, H, true);
       }
+      ctx2.stroke();
       for (let i = 0; i < floors; i += step) {
         for (let bx = 0; bx < bays; bx++) {
           const r = hash2(seed + i * 31, bx * 7, side === "L" ? 3 : 9);
@@ -5835,22 +5959,41 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.shadowBlur = 0;
       }
     } else if (facade === "terrace") {
+      ctx2.beginPath();
+      const lits = [];
       for (let i = 0; i < floors; i += step) {
         const base2 = vA + i * fh;
         for (let bx = 0; bx < bays; bx++) {
           const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.8) / bays * 0.88;
           const r = hash2(seed + i * 17, bx * 13, side === "L" ? 1 : 5);
-          facePath(ctx2, o, side, u0, u1, base2 + fh * 0.2, base2 + fh * 0.72, H);
-          ctx2.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 887) % 6] : darkWin;
-          ctx2.fill();
+          if (r < winLit) {
+            lits.push([u0, u1, base2 + fh * 0.2, base2 + fh * 0.72, r]);
+            continue;
+          }
+          facePath(ctx2, o, side, u0, u1, base2 + fh * 0.2, base2 + fh * 0.72, H, true);
         }
-        facePath(ctx2, o, side, -0.01, 1.01, base2 + fh * 0.02, base2 + fh * 0.13, H);
-        ctx2.fillStyle = shade(hu, sa - 4, li, mul * 1.2);
-        ctx2.fill();
-        facePath(ctx2, o, side, 0.02, 0.98, base2 + fh * 0.13, base2 + fh * 0.3, H);
-        ctx2.fillStyle = shade(200, 10, 58, mul * 0.9, 0.45);
+      }
+      ctx2.fillStyle = darkWin;
+      ctx2.fill();
+      for (const [u0, u1, v0, v1, r] of lits) {
+        facePath(ctx2, o, side, u0, u1, v0, v1, H);
+        ctx2.fillStyle = LIT_COLORS[Math.floor(r * 887) % 6];
         ctx2.fill();
       }
+      ctx2.beginPath();
+      for (let i = 0; i < floors; i += step) {
+        const base2 = vA + i * fh;
+        facePath(ctx2, o, side, -0.01, 1.01, base2 + fh * 0.02, base2 + fh * 0.13, H, true);
+      }
+      ctx2.fillStyle = shade(hu, sa - 4, li, mul * 1.2);
+      ctx2.fill();
+      ctx2.beginPath();
+      for (let i = 0; i < floors; i += step) {
+        const base2 = vA + i * fh;
+        facePath(ctx2, o, side, 0.02, 0.98, base2 + fh * 0.13, base2 + fh * 0.3, H, true);
+      }
+      ctx2.fillStyle = shade(200, 10, 58, mul * 0.9, 0.45);
+      ctx2.fill();
     } else if (facade === "panel") {
       ctx2.strokeStyle = shade(hu, sa, li, mul * 0.86);
       ctx2.lineWidth = Math.max(0.4, zoom * 0.5);
@@ -5870,29 +6013,54 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fill();
     } else if (facade === "brick" || facade === "stone") {
       const wide = facade === "stone" ? 0.6 : 0.48;
+      ctx2.beginPath();
+      const lits = [];
       for (let i = 0; i < floors; i += step) {
         const v0 = vA + i * fh + fh * 0.24, v1 = vA + i * fh + fh * 0.76;
         for (let bx = 0; bx < bays; bx++) {
           const u0 = 0.08 + bx / bays * 0.84, u1 = 0.08 + (bx + wide) / bays * 0.84;
           const r = hash2(seed + i * 23, bx * 11, side === "L" ? 2 : 6);
-          facePath(ctx2, o, side, u0, u1, v0, v1, H);
-          ctx2.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 577) % 6] : darkWin;
-          ctx2.fill();
+          if (r < winLit) {
+            lits.push([u0, u1, v0, v1, r]);
+            continue;
+          }
+          facePath(ctx2, o, side, u0, u1, v0, v1, H, true);
         }
-        facePath(ctx2, o, side, -0.01, 1.01, vA + i * fh + fh * 0.86, vA + i * fh + fh * 0.96, H);
-        ctx2.fillStyle = shade(hu, sa - 6, li, mul * 1.14);
+      }
+      ctx2.fillStyle = darkWin;
+      ctx2.fill();
+      for (const [u0, u1, v0, v1, r] of lits) {
+        facePath(ctx2, o, side, u0, u1, v0, v1, H);
+        ctx2.fillStyle = LIT_COLORS[Math.floor(r * 577) % 6];
         ctx2.fill();
       }
+      ctx2.beginPath();
+      for (let i = 0; i < floors; i += step) {
+        facePath(ctx2, o, side, -0.01, 1.01, vA + i * fh + fh * 0.86, vA + i * fh + fh * 0.96, H, true);
+      }
+      ctx2.fillStyle = shade(hu, sa - 6, li, mul * 1.14);
+      ctx2.fill();
     } else {
+      ctx2.beginPath();
+      const lits = [];
       for (let i = 0; i < floors; i += step) {
         const v0 = vA + i * fh + fh * 0.22, v1 = vA + i * fh + fh * 0.78;
         for (let bx = 0; bx < bays; bx++) {
           const u0 = 0.06 + bx / bays * 0.88, u1 = 0.06 + (bx + 0.74) / bays * 0.88;
           const r = hash2(seed + i * 29, bx * 19, side === "L" ? 4 : 8);
-          facePath(ctx2, o, side, u0, u1, v0, v1, H);
-          ctx2.fillStyle = r < winLit ? LIT_COLORS[Math.floor(r * 733) % 6] : darkWin;
-          ctx2.fill();
+          if (r < winLit) {
+            lits.push([u0, u1, v0, v1, r]);
+            continue;
+          }
+          facePath(ctx2, o, side, u0, u1, v0, v1, H, true);
         }
+      }
+      ctx2.fillStyle = darkWin;
+      ctx2.fill();
+      for (const [u0, u1, v0, v1, r] of lits) {
+        facePath(ctx2, o, side, u0, u1, v0, v1, H);
+        ctx2.fillStyle = LIT_COLORS[Math.floor(r * 733) % 6];
+        ctx2.fill();
       }
       ctx2.strokeStyle = shade(hu, sa, li, mul * 1.18, 0.5);
       ctx2.lineWidth = Math.max(0.35, zoom * 0.45);
@@ -5916,7 +6084,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     facePath(ctx2, o, side, 0, 1, vA, vB, H);
     ctx2.stroke();
   }
-  function drawRoof(ctx2, o, H, b, T, zoom) {
+  function drawRoof(ctx2, o, H, b, T, zoom, top = true) {
     const { use, floors, seed } = b;
     const [hu, sa, li] = USE_HSL[use] || USE_HSL.office;
     const { cx, cy, w, h } = o;
@@ -5949,16 +6117,27 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       return;
     }
     topDiamond(ctx2, o, H);
-    ctx2.fillStyle = shade(hu, sa - 6, li, T.faceTop * 0.86);
+    ctx2.fillStyle = shade(212, 4, 54, T.faceTop);
     ctx2.fill();
-    ctx2.strokeStyle = shade(hu, sa, li, T.faceTop * 1.2, 0.6);
-    ctx2.lineWidth = Math.max(0.5, zoom * 0.7);
-    ctx2.stroke();
+    if (w > 22) {
+      ctx2.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx2.lineWidth = Math.max(0.4, zoom * 0.5);
+      for (let i = 1; i < 4; i++) {
+        const t = i / 4;
+        ctx2.beginPath();
+        ctx2.moveTo(cx - w / 2 + w * t / 2, cy - H + h * t / 2 - h / 2 + h / 2);
+        ctx2.lineTo(cx + w * t / 2, cy - H + h / 2 - h * t / 2);
+        ctx2.stroke();
+      }
+    }
     topDiamond(ctx2, o, H + 2.2 * zoom);
-    ctx2.fillStyle = shade(hu, sa, li, T.faceTop * 1.06);
+    ctx2.fillStyle = shade(hu, sa, li, T.faceTop * 0.94);
     ctx2.fill();
+    ctx2.strokeStyle = shade(hu, sa, li, T.faceTop * 1.12, 0.5);
+    ctx2.lineWidth = Math.max(0.4, zoom * 0.6);
+    ctx2.stroke();
     if (w < 16) return;
-    const hi = floors > 26;
+    const hi = top && floors > 26;
     const nEq = 1 + Math.floor(hash2(seed, 5) * 3);
     for (let i = 0; i < nEq; i++) {
       const r1 = hash2(seed + i * 41, 13), r2 = hash2(seed + i * 41, 27), r3 = hash2(seed + i * 41, 31);
@@ -5976,7 +6155,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fillStyle = shade(hu, 6, 56, T.faceTop);
       ctx2.fill();
     }
-    if (hi && hash2(seed, 71) > 0.55) {
+    if (top && hi && hash2(seed, 71) > 0.55) {
       ctx2.save();
       ctx2.translate(cx, cy - H - 2.2 * zoom);
       ctx2.scale(1, TILE_H / TILE_W);
@@ -5994,7 +6173,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fillText("H", 0, 0);
       ctx2.restore();
     }
-    if (b.antenna) {
+    if (top && b.antenna && floors >= 14) {
       const ah = (10 + hash2(seed, 91) * 22) * zoom;
       ctx2.strokeStyle = shade(hu, 4, 62, T.faceTop);
       ctx2.lineWidth = Math.max(0.8, zoom * 1.1);
@@ -6010,7 +6189,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fill();
       ctx2.shadowBlur = 0;
     }
-    if (hi && b.crown > 1) {
+    if (top && hi && b.crown > 1) {
       let cz = H;
       for (let i = 0; i < b.crown - 1; i++) {
         const ins = 0.24 + i * 0.18;
@@ -6031,7 +6210,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         cz += sz;
       }
     }
-    if (T.glow > 0.4 && (use === "retail" || use === "hotel" || use === "office") && hash2(seed, 55) > 0.45) {
+    if (top && T.glow > 0.4 && (use === "retail" || use === "hotel" || use === "office") && hash2(seed, 55) > 0.45) {
       const nc = ["#ff6aa0", "#5fe0ff", "#ffd45f", "#8affa0"][Math.floor(hash2(seed, 57) * 4)];
       ctx2.save();
       ctx2.globalAlpha = 0.6 + T.glow * 0.4;
@@ -6142,31 +6321,64 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
   function renderBuilding(b, T, zoom, opt = {}) {
     const w = TILE_W * zoom, h = TILE_H * zoom;
-    const foot = (FOOT[b.use] || 0.82) * (opt.footMul || 1);
-    const bw = w * foot, bh = h * foot;
-    const H = Math.max(2, b.height * Z_UNIT * zoom * (opt.heightMul ?? 1));
+    const footMul = opt.footMul || 1;
+    const fhM = b.height / Math.max(1, b.floors);
+    const topH = Math.max(2, b.height * Z_UNIT * zoom * (opt.heightMul ?? 1));
     const pad = Math.max(30, 44 * zoom);
-    const cw = Math.ceil(w + pad * 2), ch = Math.ceil(H + h + pad * 2);
+    const cw = Math.ceil(w + pad * 2), ch = Math.ceil(topH + h + pad * 2);
     const cv = document.createElement("canvas");
     cv.width = cw;
     cv.height = ch;
     const ctx2 = cv.getContext("2d");
     const cx = cw / 2, cy = ch - pad - h / 2;
-    const o = { cx, cy, w: bw, h: bh };
     if (opt.construction !== void 0) {
-      drawConstruction(ctx2, o, H, opt.construction, b.seed, T, zoom);
-    } else {
-      drawFacade(ctx2, o, "L", H, b, T, zoom);
-      drawFacade(ctx2, o, "R", H, b, T, zoom);
-      drawRoof(ctx2, o, H, b, T, zoom);
+      const foot = (FOOT[b.use] || 0.82) * footMul;
+      drawConstruction(ctx2, { cx, cy, w: w * foot, h: h * foot }, topH, opt.construction, b.seed, T, zoom);
+      return { canvas: cv, ax: cx, ay: cy };
+    }
+    const vols = massingOf(b);
+    const shrink = (FOOT[b.use] || 0.86) * footMul;
+    const boxes = vols.map((v) => {
+      const k = (t) => 0.5 + (t - 0.5) * shrink;
+      const o = volBox(cx, cy, w, h, k(v.u0), k(v.u1), k(v.v0), k(v.v1));
+      return { v, o, H: Math.max(1.6, v.floors * fhM * Z_UNIT * zoom * (opt.heightMul ?? 1)) };
+    }).sort((a, x) => a.o.depth - x.o.depth || a.H - x.H);
+    let maxH = 0;
+    for (const bx of boxes) maxH = Math.max(maxH, bx.H);
+    for (const { v, o, H } of boxes) {
+      const vb = {
+        use: v.use,
+        floors: v.floors,
+        grade: b.grade,
+        facade: v.role === "podium" ? "glassbox" : b.facade,
+        seed: b.seed + v.seedAdd | 0,
+        lit: b.lit,
+        antenna: b.antenna,
+        crown: b.crown,
+        height: v.floors * fhM,
+        stack: v.role === "main" && v.floors === b.floors ? b.stack : null
+      };
+      if (H > 3) {
+        const a = 0.1 + (1 - T.faceTop) * 0.1;
+        topDiamond(ctx2, o, 0, -0.2);
+        ctx2.fillStyle = `rgba(12,18,30,${a * 0.6})`;
+        ctx2.fill();
+        topDiamond(ctx2, o, 0, -0.07);
+        ctx2.fillStyle = `rgba(12,18,30,${a})`;
+        ctx2.fill();
+      }
+      drawFacade(ctx2, o, "L", H, vb, T, zoom);
+      drawFacade(ctx2, o, "R", H, vb, T, zoom);
+      drawRoof(ctx2, o, H, vb, T, zoom, H >= maxH - 0.5);
     }
     return { canvas: cv, ax: cx, ay: cy };
   }
 
   // src/render/city.js
   var ZOOM_STEPS = [0.3, 0.4, 0.52, 0.66, 0.84, 1.06, 1.34];
+  var ELEV_M = 2.2;
   var COARSE = typeof matchMedia === "function" && matchMedia("(pointer:coarse)").matches;
-  var SPRITE_BUDGET = COARSE ? 8 : 18;
+  var SPRITE_BUDGET = COARSE ? 5 : 14;
   var CityRenderer = class {
     constructor(canvas, game) {
       this.cv = canvas;
@@ -6488,8 +6700,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     tileColor(c) {
       const T = this.time;
       if (c.terrain === TERRAIN.WATER) return null;
-      if (c.terrain === TERRAIN.ROAD) return shade(220, 4, 38, T.faceTop);
-      if (c.terrain === TERRAIN.AVENUE) return shade(220, 3, 42, T.faceTop);
+      if (c.terrain === TERRAIN.ROAD) return shade(220, 3, 47, T.faceTop);
+      if (c.terrain === TERRAIN.AVENUE) return shade(220, 2, 50, T.faceTop);
       if (c.terrain === TERRAIN.PARK || c.terrain === TERRAIN.GREEN) return shade(118, 26, 40, T.faceTop);
       const d = DISTRICTS[c.d];
       if (this.layer === "owner") {
@@ -6507,13 +6719,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         const v = Math.min(1, c.baseValue / 42e3);
         return shade(240 - v * 240, 62, 20 + v * 26, T.faceTop);
       }
-      return shade(d ? d.hue : 210, 6, c.vacant ? 46 : 38, T.faceTop);
+      return shade(d ? d.hue : 210, 5, c.vacant ? 58 : 62, T.faceTop);
     }
     drawTile(c, px, py) {
       const { ctx: ctx2 } = this;
       const z = this.zoom, T = this.time;
       const w = TILE_W * z, h = TILE_H * z;
-      const eh = (c.elev || 0) * 6 * Z_UNIT * z;
+      const eh = (c.elev || 0) * ELEV_M * Z_UNIT * z;
       if (c.terrain === TERRAIN.WATER) {
         diamond(ctx2, px, py, w + 1, h + 1);
         const g = ctx2.createLinearGradient(px, py - h / 2, px, py + h / 2);
@@ -6541,7 +6753,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.lineTo(px, py + h / 2 + eh);
         ctx2.lineTo(px - w / 2, py + eh);
         ctx2.closePath();
-        ctx2.fillStyle = shade(28, 18, 20, T.faceL);
+        ctx2.fillStyle = shade(30, 8, 42, T.faceL);
         ctx2.fill();
         ctx2.beginPath();
         ctx2.moveTo(px, py + h / 2);
@@ -6549,7 +6761,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.lineTo(px + w / 2, py + eh);
         ctx2.lineTo(px, py + h / 2 + eh);
         ctx2.closePath();
-        ctx2.fillStyle = shade(28, 18, 16, T.faceR);
+        ctx2.fillStyle = shade(30, 8, 34, T.faceR);
         ctx2.fill();
       }
       diamond(ctx2, px, py, w + 0.8, h + 0.8);
@@ -6563,34 +6775,47 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.save();
         diamond(ctx2, px, py, w + 0.8, h + 0.8);
         ctx2.clip();
-        diamond(ctx2, px, py, w + 0.8, h + 0.8);
-        ctx2.fillStyle = shade(212, 4, 58, T.faceTop);
-        ctx2.fill();
-        diamond(ctx2, px, py, w * 0.86, h * 0.86);
-        ctx2.fillStyle = this.tileColor(c);
-        ctx2.fill();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nb = c.gx + dx >= 0 && c.gy + dy >= 0 && c.gx + dx < MAP_W && c.gy + dy < MAP_H ? this.g.cells[(c.gy + dy) * MAP_W + (c.gx + dx)] : null;
+          if (!nb || nb.terrain !== TERRAIN.ROAD && nb.terrain !== TERRAIN.AVENUE) continue;
+          const d = this.isoDir(dx, dy), q = this.isoDir(dy ? 1 : 0, dy ? 0 : 1);
+          const P = (t, u) => [px + d[0] * t + q[0] * u, py + d[1] * t + q[1] * u];
+          const a = P(0.5, -0.55), b = P(0.5, 0.55), cc = P(0.33, 0.55), dd = P(0.33, -0.55);
+          ctx2.beginPath();
+          ctx2.moveTo(a[0], a[1]);
+          ctx2.lineTo(b[0], b[1]);
+          ctx2.lineTo(cc[0], cc[1]);
+          ctx2.lineTo(dd[0], dd[1]);
+          ctx2.closePath();
+          ctx2.fillStyle = shade(36, 5, 70, T.faceTop);
+          ctx2.fill();
+          ctx2.strokeStyle = shade(36, 4, 84, T.faceTop, 0.6);
+          ctx2.lineWidth = Math.max(0.4, z * 0.55);
+          ctx2.beginPath();
+          ctx2.moveTo(dd[0], dd[1]);
+          ctx2.lineTo(cc[0], cc[1]);
+          ctx2.stroke();
+        }
         ctx2.restore();
-        ctx2.strokeStyle = shade(212, 3, 72, T.faceTop, 0.5);
-        ctx2.lineWidth = Math.max(0.4, z * 0.55);
-        diamond(ctx2, px, py, w * 0.86, h * 0.86);
-        ctx2.stroke();
         if (z > 0.5 && c.building) {
           const r = hash2(c.gx, c.gy, 44);
-          if (r > 0.6) {
+          if (r > 0.55) {
             ctx2.save();
-            diamond(ctx2, px, py, w * 0.84, h * 0.84);
+            diamond(ctx2, px, py, w * 0.88, h * 0.88);
             ctx2.clip();
-            ctx2.strokeStyle = "rgba(255,255,255,.18)";
+            ctx2.strokeStyle = "rgba(255,255,255,.22)";
             ctx2.lineWidth = Math.max(0.4, z * 0.5);
+            const d = this.isoDir(1, 0), q = this.isoDir(0, 1);
             for (let i = -2; i <= 2; i++) {
+              const u = i * 0.1;
               ctx2.beginPath();
-              ctx2.moveTo(px - w * 0.3 + i * w * 0.08, py + h * 0.28);
-              ctx2.lineTo(px - w * 0.06 + i * w * 0.08, py + h * 0.4);
+              ctx2.moveTo(px + d[0] * 0.18 + q[0] * u, py + d[1] * 0.18 + q[1] * u);
+              ctx2.lineTo(px + d[0] * 0.4 + q[0] * u, py + d[1] * 0.4 + q[1] * u);
               ctx2.stroke();
             }
             ctx2.restore();
           }
-          if (r < 0.42 && z > 0.6) {
+          if (r < 0.45 && z > 0.6) {
             this.drawTree(px + (r - 0.2) * w * 0.5, py + h * 0.3, z * 0.7, c.gx * 3, c.gy * 5);
           }
         }
@@ -6610,6 +6835,45 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       ctx2.fillStyle = T.groundTint;
       ctx2.fill();
     }
+    /**
+     * グリッドの移動 → 画面上の向き（1タイルぶん）。
+     * **道路の線を画面の水平・垂直に引かないこと。**
+     * グリッドの x軸 は画面では斜めに走るので、水平に引くと
+     * 道路を横切る梯子のような模様になる。回転にも追従させる。
+     */
+    isoDir(dx, dy) {
+      let X, Y;
+      switch (this.cam.rot & 3) {
+        case 1:
+          X = dy;
+          Y = -dx;
+          break;
+        case 2:
+          X = -dx;
+          Y = -dy;
+          break;
+        case 3:
+          X = -dy;
+          Y = dx;
+          break;
+        default:
+          X = dx;
+          Y = dy;
+      }
+      const z = this.zoom;
+      return [(X - Y) * (TILE_W / 2) * z, (X + Y) * (TILE_H / 2) * z];
+    }
+    /** 区画の四辺のうち、道路に面している辺（画面上の向き）を返す */
+    roadSides(c) {
+      const g = this.g;
+      const at = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H ? g.cells[y * MAP_W + x] : null;
+      const isRoad = (cc) => cc && (cc.terrain === TERRAIN.ROAD || cc.terrain === TERRAIN.AVENUE);
+      const out = [];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (isRoad(at(c.gx + dx, c.gy + dy))) out.push(this.isoDir(dx, dy));
+      }
+      return out;
+    }
     drawRoad(c, px, py, w, h) {
       const { ctx: ctx2 } = this;
       const z = this.zoom, T = this.time;
@@ -6617,83 +6881,160 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const g = this.g;
       const at = (x, y) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H ? g.cells[y * MAP_W + x] : null;
       const isRoad = (cc) => cc && (cc.terrain === TERRAIN.ROAD || cc.terrain === TERRAIN.AVENUE);
-      const n = isRoad(at(c.gx, c.gy - 1)), s = isRoad(at(c.gx, c.gy + 1));
-      const e = isRoad(at(c.gx + 1, c.gy)), ww = isRoad(at(c.gx - 1, c.gy));
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({
+        d: this.isoDir(dx, dy),
+        q: this.isoDir(dy ? 1 : 0, dy ? 0 : 1),
+        road: isRoad(at(c.gx + dx, c.gy + dy))
+      }));
+      const links = dirs.filter((x) => x.road);
+      const cross = links.length >= 3;
       ctx2.save();
-      diamond(ctx2, px, py, w, h);
+      diamond(ctx2, px, py, w + 1, h + 1);
       ctx2.clip();
-      ctx2.fillStyle = "rgba(0,0,0,.05)";
+      ctx2.fillStyle = "rgba(0,0,0,.055)";
       for (let i = 0; i < 6; i++) {
         const rx = hash2(c.gx * 7 + i, c.gy * 3), ry = hash2(c.gx, c.gy * 11 + i);
         ctx2.fillRect(px - w / 2 + rx * w, py - h / 2 + ry * h, w * 0.1, h * 0.12);
       }
-      ctx2.strokeStyle = avenue ? "rgba(235,200,90,0.55)" : "rgba(250,252,255,0.42)";
-      ctx2.lineWidth = Math.max(0.6, z * (avenue ? 1.2 : 0.9));
-      ctx2.setLineDash(avenue ? [] : [z * 5, z * 5]);
-      if (e || ww) {
+      let d0 = null, q0 = null;
+      const P = (t, u) => [px + d0[0] * t + q0[0] * u, py + d0[1] * t + q0[1] * u];
+      for (const dir of dirs) {
+        if (dir.road) continue;
+        d0 = dir.d;
+        q0 = dir.q;
+        const a = P(0.5, -0.55), b = P(0.5, 0.55), cc = P(0.31, 0.55), dd = P(0.31, -0.55);
         ctx2.beginPath();
-        ctx2.moveTo(px - w / 2, py);
-        ctx2.lineTo(px + w / 2, py);
+        ctx2.moveTo(a[0], a[1]);
+        ctx2.lineTo(b[0], b[1]);
+        ctx2.lineTo(cc[0], cc[1]);
+        ctx2.lineTo(dd[0], dd[1]);
+        ctx2.closePath();
+        ctx2.fillStyle = shade(36, 5, 68, T.faceTop);
+        ctx2.fill();
+        ctx2.strokeStyle = shade(36, 4, 82, T.faceTop, 0.75);
+        ctx2.lineWidth = Math.max(0.5, z * 0.6);
+        ctx2.beginPath();
+        ctx2.moveTo(dd[0], dd[1]);
+        ctx2.lineTo(cc[0], cc[1]);
         ctx2.stroke();
       }
-      if (n || s) {
-        ctx2.beginPath();
-        ctx2.moveTo(px, py - h / 2);
-        ctx2.lineTo(px, py + h / 2);
-        ctx2.stroke();
+      const paint = avenue ? "rgba(240,206,96,0.62)" : "rgba(250,252,255,0.50)";
+      ctx2.lineWidth = Math.max(0.6, z * (avenue ? 1.1 : 0.85));
+      const pairs = [[dirs[0], dirs[1]], [dirs[2], dirs[3]]];
+      for (const [a, b] of pairs) {
+        if (!a.road && !b.road) continue;
+        ctx2.strokeStyle = paint;
+        ctx2.setLineDash(cross ? [] : avenue ? [] : [z * 5, z * 4]);
+        const from = a.road ? [px + a.d[0] * 0.5, py + a.d[1] * 0.5] : [px, py];
+        const to = b.road ? [px + b.d[0] * 0.5, py + b.d[1] * 0.5] : [px, py];
+        const t0 = cross ? 0.42 : 0;
+        const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+        if (cross) {
+          for (const [s0, e0] of [[from, lerp(from, to, 0.5 - t0)], [lerp(from, to, 0.5 + t0), to]]) {
+            ctx2.beginPath();
+            ctx2.moveTo(s0[0], s0[1]);
+            ctx2.lineTo(e0[0], e0[1]);
+            ctx2.stroke();
+          }
+        } else {
+          ctx2.beginPath();
+          ctx2.moveTo(from[0], from[1]);
+          ctx2.lineTo(to[0], to[1]);
+          ctx2.stroke();
+        }
       }
       ctx2.setLineDash([]);
-      if ((n || s) && (e || ww)) {
-        ctx2.fillStyle = "rgba(250,252,255,0.5)";
-        for (let i = 0; i < 4; i++) {
-          const t0 = 0.18 + i * 0.12;
-          ctx2.beginPath();
-          ctx2.moveTo(px + w * 0.5 * t0, py - h * 0.5 * t0);
-          ctx2.lineTo(px + w * 0.5 * (t0 + 0.06), py - h * 0.5 * (t0 + 0.06));
-          ctx2.lineTo(px + w * 0.5 * (t0 + 0.06) + w * 0.1, py - h * 0.5 * (t0 + 0.06) + h * 0.1);
-          ctx2.lineTo(px + w * 0.5 * t0 + w * 0.1, py - h * 0.5 * t0 + h * 0.1);
-          ctx2.closePath();
-          ctx2.fill();
+      if (cross && z > 0.38) {
+        ctx2.fillStyle = "rgba(250,252,255,0.58)";
+        for (const { d, q } of links) {
+          for (let i = 0; i < 5; i++) {
+            const t = 0.27 + i * 0.048, u = 0.028;
+            const p1 = [px + d[0] * t + q[0] * 0.3, py + d[1] * t + q[1] * 0.3];
+            const p2 = [px + d[0] * (t + u) + q[0] * 0.3, py + d[1] * (t + u) + q[1] * 0.3];
+            const p3 = [px + d[0] * (t + u) - q[0] * 0.3, py + d[1] * (t + u) - q[1] * 0.3];
+            const p4 = [px + d[0] * t - q[0] * 0.3, py + d[1] * t - q[1] * 0.3];
+            ctx2.beginPath();
+            ctx2.moveTo(p1[0], p1[1]);
+            ctx2.lineTo(p2[0], p2[1]);
+            ctx2.lineTo(p3[0], p3[1]);
+            ctx2.lineTo(p4[0], p4[1]);
+            ctx2.closePath();
+            ctx2.fill();
+          }
         }
       }
       if (T.street > 0) {
-        const lit = `rgba(255,214,150,${0.13 * T.street})`;
-        ctx2.fillStyle = lit;
-        ctx2.beginPath();
-        ctx2.ellipse(px - w * 0.26, py + h * 0.1, w * 0.2, h * 0.4, 0, 0, Math.PI * 2);
-        ctx2.fill();
-        ctx2.beginPath();
-        ctx2.ellipse(px + w * 0.26, py - h * 0.1, w * 0.2, h * 0.4, 0, 0, Math.PI * 2);
-        ctx2.fill();
+        ctx2.fillStyle = `rgba(255,214,150,${0.14 * T.street})`;
+        for (const { d } of links) {
+          ctx2.beginPath();
+          ctx2.ellipse(px + d[0] * 0.3, py + d[1] * 0.3, w * 0.2, h * 0.36, 0, 0, Math.PI * 2);
+          ctx2.fill();
+        }
       }
       ctx2.restore();
       if (avenue && z > 0.5) {
-        for (const sgn of [-1, 1]) {
-          if (hash2(c.gx * 7 + sgn, c.gy * 11) > 0.45) {
-            this.drawTree(px + sgn * w * 0.3, py + sgn * h * 0.3, z * 0.85, c.gx + sgn, c.gy);
+        for (const { d, road } of dirs) {
+          if (road) continue;
+          if (hash2(c.gx * 7 + d[0], c.gy * 11 + d[1]) > 0.42) {
+            this.drawTree(px + d[0] * 0.4, py + d[1] * 0.4, z * 0.8, c.gx + d[0], c.gy);
           }
         }
       }
-      if (z > 0.45 && (avenue || hash2(c.gx, c.gy, 5) > 0.5)) {
+      if (!avenue && z > 0.62) {
+        for (const { d, road } of dirs) {
+          if (road) continue;
+          if (hash2(c.gx * 5 + d[0] * 3, c.gy * 9 + d[1] * 3, 2) < 0.45) continue;
+          const bx = px + d[0] * 0.42, by = py + d[1] * 0.42;
+          const ph = 9.5 * z;
+          ctx2.strokeStyle = shade(34, 6, 52, T.faceR);
+          ctx2.lineWidth = Math.max(0.7, z * 1);
+          ctx2.beginPath();
+          ctx2.moveTo(bx, by);
+          ctx2.lineTo(bx, by - ph);
+          ctx2.stroke();
+          ctx2.lineWidth = Math.max(0.5, z * 0.7);
+          ctx2.beginPath();
+          ctx2.moveTo(bx - 2.4 * z, by - ph * 0.86);
+          ctx2.lineTo(bx + 2.4 * z, by - ph * 0.86);
+          ctx2.stroke();
+          for (const other of links) {
+            const ox = px + other.d[0] * 0.5, oy = py + other.d[1] * 0.5;
+            ctx2.strokeStyle = "rgba(40,46,58,0.26)";
+            ctx2.lineWidth = Math.max(0.4, z * 0.45);
+            ctx2.beginPath();
+            ctx2.moveTo(bx, by - ph * 0.86);
+            ctx2.quadraticCurveTo((bx + ox) / 2, (by + oy) / 2 - ph * 0.7, ox, oy - ph * 0.8);
+            ctx2.stroke();
+          }
+        }
+      }
+      if (z > 0.45 && links.length) {
         const cars = avenue ? 2 : 1;
         for (let i = 0; i < cars; i++) {
           const sd = hash2(c.gx * 3 + i, c.gy * 5);
-          const horiz = (e || ww) && (sd > 0.5 || !(n || s));
+          const link = links[Math.floor(sd * links.length) % links.length];
+          const ax = link.d, q = link.q;
           const speed = 0.12 + sd * 0.1;
-          let p = (this.t * speed + sd) % 1;
-          const dir = sd > 0.5 ? 1 : -1;
-          if (dir < 0) p = 1 - p;
-          const off = (i === 0 ? -1 : 1) * (horiz ? h : w) * 0.11;
-          const cxp = horiz ? px - w / 2 + p * w : px + off * 0.6;
-          const cyp = horiz ? py + off : py - h / 2 + p * h;
-          const cl = ["#d8dde6", "#2f3644", "#b03a3a", "#3a6fb0", "#d8b23a"][Math.floor(sd * 5)];
+          let p = (this.t * speed + sd) % 1 * 2 - 1;
+          if (sd > 0.5) p = -p;
+          const lane = i === 0 ? -0.11 : 0.11;
+          const cxp = px + ax[0] * p * 0.5 + q[0] * lane;
+          const cyp = py + ax[1] * p * 0.5 + q[1] * lane;
+          const cl = ["#e6eaf0", "#2f3644", "#b03a3a", "#3a6fb0", "#d8b23a"][Math.floor(sd * 5)];
+          ctx2.save();
+          ctx2.translate(cxp, cyp);
           ctx2.fillStyle = cl;
-          const cwid = Math.max(2, z * 4.2), chei = Math.max(1.4, z * 2.4);
-          ctx2.fillRect(cxp - cwid / 2, cyp - chei / 2, cwid, chei);
+          const cwid = Math.max(2.4, z * 5), chei = Math.max(1.6, z * 2.8);
+          roundRect(ctx2, -cwid / 2, -chei / 2, cwid, chei, Math.max(0.6, z * 0.8));
+          ctx2.fill();
+          ctx2.fillStyle = "rgba(255,255,255,0.20)";
+          roundRect(ctx2, -cwid * 0.3, -chei * 0.32, cwid * 0.6, chei * 0.4, Math.max(0.4, z * 0.5));
+          ctx2.fill();
           if (T.street > 0.3) {
-            ctx2.fillStyle = `rgba(255,230,170,${0.5 * T.street})`;
-            ctx2.fillRect(cxp + (horiz ? dir * cwid / 2 : 0) - 1, cyp - 0.8, 2.2, 1.6);
+            ctx2.fillStyle = `rgba(255,230,170,${0.55 * T.street})`;
+            ctx2.fillRect(cwid * 0.34, -1, 2.4, 1.8);
           }
+          ctx2.restore();
         }
       }
     }
@@ -6744,8 +7085,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     //  建物
     // --------------------------------------------------------
     buildingSprite(c) {
-      const key = `${c.id}|${this.cam.zoomIdx}|${this.time.key}`;
       const pj = c.projectId ? this.g.projects.find((p) => p.id === c.projectId) : null;
+      if (!c.building && !(pj && pj.status !== "done")) return null;
+      const key = `${c.id}|${this.cam.zoomIdx}|${this.time.key}`;
       const fullKey = pj ? `${key}|c${Math.round(pj.progress * 10)}` : key;
       let s = this.cache.get(fullKey);
       if (s) return s;
@@ -6757,9 +7099,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (pj && pj.status !== "done") {
         const pseudo = { use: pj.use, floors: pj.floors, grade: pj.grade, facade: "grid", height: pj.heightM, seed: pj.seed, lit: 0.4, antenna: false, crown: 0 };
         s = renderBuilding(pseudo, this.time, this.zoom, { construction: pj.progress });
-      } else if (c.building) {
+      } else {
         s = renderBuilding(c.building, this.time, this.zoom);
-      } else return null;
+      }
+      s.z = this.zoom;
       this.cache.set(fullKey, s);
       this.last.set(c.id, s);
       return s;
@@ -6822,7 +7165,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const pad = TILE_W * z;
       mx0 -= pad;
       mx1 += pad;
-      my0 -= 7 * 6 * Z_UNIT * z + pad;
+      my0 -= 7 * ELEV_M * Z_UNIT * z + pad;
       my1 += pad;
       const mgx = this.w * 0.3, mgy = this.h * 0.3;
       const cov = { x0: vx0 - mgx, y0: vy0 - mgy, x1: vx1 + mgx, y1: vy1 + mgy };
@@ -6864,7 +7207,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       this.ctx = c2;
       try {
         for (const { c } of order) {
-          const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+          const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
           if (p.x < x0 - margin || p.x > x1 + margin || p.y < y0 - margin || p.y > y1 + margin) continue;
           this.drawTile(c, p.x, p.y);
         }
@@ -6895,7 +7238,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.drawImage(ground.canvas, ground.x, ground.y, ground.w, ground.h);
       } else {
         for (const { c } of order) {
-          const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+          const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
           const px = p.x, py = p.y;
           const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
           if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
@@ -6909,7 +7252,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         for (const { c } of order) {
           const hh = this.heightOf(c);
           if (hh < 1) continue;
-          const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+          const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
           const scX = p.x + w / 2 + this.cam.x, scY = p.y + h / 2 + this.cam.y;
           if (scX < -margin || scX > w + margin || scY < -margin || scY > h + margin * 1.6) continue;
           this.drawShadow(p.x, p.y, hh, c);
@@ -6917,13 +7260,24 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ctx2.restore();
       }
       for (const { c } of order) {
-        const p = toScreen(c.gx, c.gy, (c.elev || 0) * 6, this.cam.rot, z);
+        const p = toScreen(c.gx, c.gy, (c.elev || 0) * ELEV_M, this.cam.rot, z);
         const px = p.x, py = p.y;
         const scX = px + w / 2 + this.cam.x, scY = py + h / 2 + this.cam.y;
         if (scX < -margin || scX > w + margin || scY < -margin * 2 || scY > h + margin * 1.6) continue;
         this.drawOverlay(c, px, py);
         const sp = this.buildingSprite(c);
-        if (sp) ctx2.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
+        if (sp) {
+          if (sp.z && sp.z !== z) {
+            const k = z / sp.z;
+            ctx2.drawImage(
+              sp.canvas,
+              px - sp.ax * k,
+              py - sp.ay * k,
+              sp.canvas.width * k,
+              sp.canvas.height * k
+            );
+          } else ctx2.drawImage(sp.canvas, px - sp.ax, py - sp.ay);
+        }
         this.drawMarker(c, px, py);
       }
       ctx2.restore();
