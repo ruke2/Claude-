@@ -9,6 +9,7 @@ import { orgPower, payIndex } from './hr.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { cultureEffects, cultureMatch, randomPreference } from './culture.js';
 import { ttm } from './finance.js';
+import { rivalPull } from './jobrank.js';
 
 /** 新卒採用の年間スケジュール（週番号は年初からの通算） */
 export const NG_SCHEDULE = {
@@ -193,7 +194,8 @@ function makeGrad(g, rng, appeal) {
     pref, cultureFit,
     interest: clamp01(rng.range(0.22, 0.56) + appeal.score * 0.42
       + (g.recruit.ng.invest.intern > 200 ? 0.10 : 0) + (cultureFit - 0.5) * 0.34),
-    rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull),
+    // 他社に引っ張られやすさ。就職人気ランキングで当社より上の会社が多いほど強くなる
+    rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull * rivalPull(g, appeal.score)),
     stage: 0,
     status: 'entry',
     expected: Math.round((5.0 + (pot / 100) * 1.6) * 10) / 10,

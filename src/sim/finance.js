@@ -8,6 +8,7 @@ import { holdingCost } from './land.js';
 import { landAppraisal, assetValue } from './valuation.js';
 import { TERRAIN } from '../data/city.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
+import { planPremium } from './midplan.js';
 
 export const RATINGS = [
   { id: 'AAA', min: 0.50, spread: 0.0020, label: '最上級。調達コストは業界最安水準。' },
@@ -154,7 +155,8 @@ export function sharePrice(g) {
   const ug = unrealizedGain(g).gain * 1e6 / g.company.shares;
   const byEarn = eps * per;
   const byAsset = (bps + ug * 0.5) * clamp(0.65 + g.company.brand / 200, 0.6, 1.25);
-  return Math.max(30, Math.round(byEarn * 0.58 + byAsset * 0.42));
+  // 中期経営計画を掲げていると、その進捗ぶんだけ市場が織り込む
+  return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g)));
 }
 
 export function marketCap(g) { return Math.round(sharePrice(g) * g.company.shares / 1e6); }

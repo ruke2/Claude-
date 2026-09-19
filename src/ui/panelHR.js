@@ -3,7 +3,8 @@
 // ============================================================
 import { money, num, pct, man, clamp, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
-import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
+import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS,
+  CEO_RANK, OFFICER_RANKS, TOP_STAFF_RANK, rankName, rankShort, defaultRankNames } from '../data/hrdata.js';
 import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salaryFairness, projectCapacity } from '../sim/hr.js';
 import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp, allocateQuota } from '../sim/recruit.js';
 import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
@@ -11,6 +12,10 @@ import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor, stdSalary, rankPayOf, defaultRankPay } from '../core/state.js';
 import { RNG } from '../core/rng.js';
 import { ranking, industryPay } from '../sim/rivals.js';
+import { jobRanking, selfRank, rivalPull } from '../sim/jobrank.js';
+import { INDUSTRIES } from '../data/employers.js';
+import { officers, officerRoom, canAppoint, appoint as appointFn, dismiss as dismissFn,
+  setOversight as setOversightFn, oversightOf, uncovered, ceo, ceoPay, payGapView, boardStrength } from '../sim/officers.js';
 
 export const title = '人事・組織';
 
@@ -34,20 +39,26 @@ export function render(g, ctx) {
     </tr>`;
   }).join('');
 
-  // 組織図
-  const org = RANKS.slice().reverse().map(r => {
-    const members = active.filter(s => s.rank === r.id);
-    if (!members.length) return '';
-    if (r.id >= 3) {
-      return `<div class="org-lv">${members.map(s => nodeHTML(s)).join('')}</div><div class="org-conn"></div>`;
-    }
-    const byDept = {};
-    for (const s of members) byDept[s.dept] = (byDept[s.dept] || 0) + 1;
-    return `<div class="org-lv">${Object.entries(byDept).map(([d, n]) => `
+  // 組織図。頂点は社長＝プレイヤー本人
+  const me = ceo(g);
+  const org = `<div class="org-lv"><div class="org-node me" data-act="hr.ceo">
+      <div class="on-r">${rankName(g, CEO_RANK)}</div>
+      <div class="on-n">${me.name}</div>
+      <div class="on-d">あなた・${g.year - (me.since || g.year) + (me.age || 42)}歳</div>
+    </div></div><div class="org-conn"></div>`
+    + RANKS.slice().reverse().filter(r => r.id < CEO_RANK).map(r => {
+      const members = active.filter(s => s.rank === r.id);
+      if (!members.length) return '';
+      if (r.id >= 3) {
+        return `<div class="org-lv">${members.map(x => nodeHTML(g, x)).join('')}</div><div class="org-conn"></div>`;
+      }
+      const byDept = {};
+      for (const x of members) byDept[x.dept] = (byDept[x.dept] || 0) + 1;
+      return `<div class="org-lv">${Object.entries(byDept).map(([d, n]) => `
       <div class="org-node" data-act="hr.dept" data-id="${d}">
-        <div class="on-r">${r.name}</div><div class="on-n">${n}名</div><div class="on-d">${DEPTS[d].short}</div>
+        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${n}名</div><div class="on-d">${DEPTS[d].short}</div>
       </div>`).join('')}</div><div class="org-conn"></div>`;
-  }).join('');
+    }).join('');
 
   const progs = HR_PROGRAMS.map(pr => `
     <div class="card click" data-act="hr.prog" data-id="${pr.field}">
@@ -79,9 +90,13 @@ export function render(g, ctx) {
 
   ${cultureSection(g)}
 
+  ${boardSection(g)}
+
   ${section('組織図', '課長以上は個人を表示', `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
+
+  ${jobRankSection(g, ctx)}
 
   ${section('他社との比較', `業界平均 ${man(industryPay(g))}`, `
     <table class="tbl">
@@ -109,7 +124,7 @@ export function render(g, ctx) {
     const n = active.filter(s => s.rank === r.id).length;
     const mine = rankPayOf(g, r.id), mkt = r.baseSalary;
     const d = mine / mkt - 1;
-    return `<tr><td>${r.name}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ''}</td>
+    return `<tr><td>${rankName(g, r.id)}${r.id === CEO_RANK ? '（あなた）' : ''}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ''}</td>
           <td><b>${man(mine)}</b></td>
           <td>${man(mkt)}</td>
           <td class="${Math.abs(d) < 0.005 ? 'flat' : d > 0 ? 'up' : 'down'}">${Math.abs(d) < 0.005 ? '—' : (d > 0 ? '+' : '') + (d * 100).toFixed(0) + '%'}</td>
@@ -118,7 +133,10 @@ export function render(g, ctx) {
       </table>
       <div class="hint">実際の年収は、この基準額に本人の能力と勤続年数を上乗せして決まる。
       業界標準を下回るとモチベーションが落ち、離職と引き抜きが増える。</div>
-      <div class="btnrow"><button class="btn sm primary" data-act="hr.salary">役職ごとの年収を改定する</button></div>
+      <div class="btnrow">
+        <button class="btn sm primary" data-act="hr.salary">役職ごとの年収を改定する</button>
+        <button class="btn sm" data-act="hr.ranknames">役職名を改称する</button>
+      </div>
     </div>
   `)}
 
@@ -223,11 +241,12 @@ function recruitSection(g) {
   `);
 }
 
-function nodeHTML(s) {
+function nodeHTML(g, s) {
+  const ov = Array.isArray(s.oversee) ? s.oversee.filter(d => DEPTS[d]) : [];
   return `<div class="org-node" data-act="hr.staff" data-id="${s.id}">
-    <div class="on-r">${RANKS[s.rank].name}</div>
+    <div class="on-r">${rankName(g, s.rank)}</div>
     <div class="on-n">${s.name}</div>
-    <div class="on-d">${DEPTS[s.dept].short}・${s.age}歳</div>
+    <div class="on-d">${ov.length ? '管掌 ' + ov.map(d => DEPTS[d].short).join('・') : DEPTS[s.dept].short + '・' + s.age + '歳'}</div>
   </div>`;
 }
 
@@ -241,7 +260,7 @@ export function listTable(g, list, sort = 'ability') {
   return `<table class="tbl">
     <tr><th>氏名</th><th>部署</th><th>役職</th><th>年齢</th><th>能力</th><th>年収</th><th>意欲</th></tr>
     ${sorted.map(s => `<tr class="click" data-act="hr.staff" data-id="${s.id}">
-      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${RANKS[s.rank].short}</td>
+      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
       <td>${s.age}</td><td>${avgAbility(s).toFixed(0)}</td><td>${man(s.salary)}</td>
       <td style="color:${s.morale < 0.5 ? 'var(--red)' : s.morale > 0.78 ? 'var(--green)' : 'inherit'}">${(s.morale * 100).toFixed(0)}</td>
     </tr>`).join('')}
@@ -254,10 +273,12 @@ export function listTable(g, list, sort = 'ability') {
 export function openStaff(g, s, ctx) {
   const fair = salaryFairness(g, s);
   const nextRank = RANKS[s.rank + 1];
-  const canPromote = nextRank && avgAbility(s) >= nextRank.minAbility
+  // 役員（執行役員・取締役）は昇格ボタンではなく「役員人事」から任命する
+  const canPromote = nextRank && nextRank.id < CEO_RANK && !nextRank.appoint
+    && avgAbility(s) >= nextRank.minAbility
     && (nextRank.slots === Infinity || g.staff.filter(x => x.rank === s.rank + 1).length < nextRank.slots);
 
-  openModal(`${s.name}（${RANKS[s.rank].name}）`, `
+  openModal(`${s.name}（${rankName(g, s.rank)}）`, `
     <div class="grid3" style="margin-bottom:12px">
       ${mini('年齢', s.age + '歳', `勤続 ${s.tenure.toFixed(1)}年`)}
       ${mini('総合能力', avgAbility(s).toFixed(0), `潜在 ${s.potential}`)}
@@ -304,11 +325,13 @@ export function openStaff(g, s, ctx) {
       }
     },
     {
-      label: canPromote ? `${nextRank.name}に昇格` : '昇格要件を満たさない', cls: 'primary', disabled: !canPromote,
+      label: canPromote ? `${rankName(g, nextRank.id)}に昇格`
+        : (nextRank && nextRank.appoint) ? `${rankName(g, nextRank.id)}は役員人事から任命する` : '昇格要件を満たさない',
+      cls: 'primary', disabled: !canPromote,
       onClick: () => {
         s.rank++; s.salary = Math.max(s.salary, stdSalary(g, s));
         s.morale = Math.min(1, s.morale + 0.16);
-        toast(`${s.name}を${RANKS[s.rank].name}に昇格させた`, 'good');
+        toast(`${s.name}を${rankName(g, s.rank)}に昇格させた`, 'good');
         ctx.refresh();
       }
     },
@@ -567,7 +590,7 @@ export function openMid(g, channelId, ctx) {
     ${list.length ? list.map((s, i) => `
       <div class="card">
         <div class="card-t">
-          <span class="card-n">${s.name}（${s.age}歳・${RANKS[s.rank].name}相当）</span>
+          <span class="card-n">${s.name}（${s.age}歳・${rankName(g, s.rank)}相当）</span>
           ${chip(`総合 ${avgAbility(s).toFixed(0)}`, avgAbility(s) > 72 ? 'gold' : 'grey')}
         </div>
         <div class="card-s">前職：${s.prevCompany}／適性：${DEPTS[s.dept].name}</div>
@@ -739,4 +762,316 @@ export function openSalaryPolicy(g, ctx) {
     sync();
   };
   bind();
+}
+
+// ------------------------------------------------------------
+//  役員人事 — 社長（プレイヤー）が自分で決める
+// ------------------------------------------------------------
+function boardSection(g) {
+  const me = ceo(g);
+  const list = officers(g).sort((a, b) => b.rank - a.rank || avgAbility(b) - avgAbility(a));
+  const ov = oversightOf(g);
+  const open = uncovered(g);
+  const gap = payGapView(g);
+
+  const rows = list.map(s => {
+    const mine = Array.isArray(s.oversee) ? s.oversee.filter(d => DEPTS[d]) : [];
+    const ab = avgAbility(s);
+    const def = RANKS[s.rank];
+    return `<div class="card">
+      <div class="card-t">
+        <span class="card-n">${s.name}</span>
+        ${chip(rankName(g, s.rank), s.rank >= 6 ? 'gold' : 'violet')}
+        ${ab < def.minAbility ? chip('力不足', 'red') : ''}
+      </div>
+      <div class="card-s">${s.age}歳／総合能力 ${ab.toFixed(0)}（目安 ${def.minAbility}）／統率 ${s.abil.lead.toFixed(0)}／年収 ${man(s.salary)}</div>
+      ${kv('管掌部門', mine.length ? mine.map(d => DEPTS[d].name).join('・') : '<span style="color:var(--ink-mute)">なし（効果が出ていない）</span>')}
+      ${mine.length ? `<div class="hint">担当部門の質 +${(ov[mine[0]].quality * 100).toFixed(0)}%／処理能力 +${(ov[mine[0]].capacity * 100).toFixed(0)}%${
+      mine.length > 1 ? '（兼務のぶん1部門あたりの効きは薄まる）' : ''}</div>` : ''}
+      <div class="btnrow">
+        <button class="btn sm" data-act="hr.oversee" data-id="${s.id}">管掌部門を決める</button>
+        <button class="btn sm danger" data-act="hr.dismiss" data-id="${s.id}">解任する</button>
+      </div>
+    </div>`;
+  }).join('') || empty('まだ役員を任命していない。<br>執行役員と取締役は自動では決まらない。社長であるあなたが指名する。');
+
+  const roomRows = OFFICER_RANKS.map(r => {
+    const room = officerRoom(g, r);
+    return `<div class="kv"><span class="k">${rankName(g, r)}</span>
+      <span class="v">${g.staff.filter(x => x.rank === r && !x.subsidiary).length} / ${RANKS[r].slots}名　
+      ${room ? `<span class="up">空き ${room}</span>` : '<span style="color:var(--ink-mute)">満席</span>'}</span></div>`;
+  }).join('');
+
+  return section('役員人事', `執行役員 ${g.staff.filter(x => x.rank === 5 && !x.subsidiary).length}名／取締役 ${g.staff.filter(x => x.rank === 6 && !x.subsidiary).length}名`, `
+    <div class="card" style="border-color:rgba(227,181,88,.4);background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n">👑 ${me.name}</span>${chip(rankName(g, CEO_RANK), 'gold')}</div>
+      <div class="card-s">この会社の社長はあなた自身である。役員は自動では決まらない。誰を引き上げ、どの部門を任せるかがそのまま組織力になる。</div>
+      ${kv('役員報酬（年）', `${man(ceoPay(g))}　<span class="${gap.tone === 'bad' ? 'down' : gap.tone === 'warn' ? '' : 'up'}">社員の${gap.ratio.toFixed(1)}倍</span>`)}
+      ${kv('役員体制の充実度', `${(boardStrength(g) * 100).toFixed(0)} / 100`)}
+      ${bar(boardStrength(g), 'gold')}
+      <div class="hint">${gap.text}</div>
+    </div>
+    <div class="card">
+      <div class="card-t"><span class="card-n">役職の枠</span></div>
+      ${roomRows}
+      ${open.length ? `<div class="hint" style="color:var(--amber)">管掌役員がいない部門：${open.map(d => DEPTS[d].name).join('・')}。役員を置けば、その部門の質と処理能力が上がる。</div>`
+      : '<div class="hint">すべての部門に管掌役員がいる。</div>'}
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.appoint">役員を任命する</button></div>
+    </div>
+    ${rows}
+  `);
+}
+
+// ------------------------------------------------------------
+//  役員の任命
+// ------------------------------------------------------------
+export function openAppoint(g, ctx) {
+  let rank = OFFICER_RANKS[0];
+  openModal('役員の任命', build(), []);
+  bind();
+
+  function build() {
+    const def = RANKS[rank];
+    const room = officerRoom(g, rank);
+    const cands = g.staff
+      .filter(s => !s.subsidiary && !canAppoint(g, s, rank))
+      .sort((a, b) => (avgAbility(b) + b.abil.lead * 0.5) - (avgAbility(a) + a.abil.lead * 0.5))
+      .slice(0, 24);
+    return `
+    <div class="btnrow" style="margin-bottom:10px">
+      ${OFFICER_RANKS.map(r => `<button class="btn sm ${r === rank ? 'primary' : ''}" data-rank="${r}">${rankName(g, r)}</button>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-t"><span class="card-n">${rankName(g, rank)}</span>${chip(`空き ${room} / ${def.slots}名`, room ? 'green' : 'red')}</div>
+      <div class="card-s">能力の目安は ${def.minAbility}。ひとつ下の役職を経ている者から選ぶ。
+      目安に届かない人物を引き上げると、本人は喜ぶが、実力のある社員の士気が下がる。</div>
+    </div>
+    ${cands.length ? `<table class="tbl">
+      <tr><th>氏名</th><th>現職</th><th>部署</th><th>年齢</th><th>能力</th><th>統率</th><th></th></tr>
+      ${cands.map(s => {
+      const ab = avgAbility(s);
+      return `<tr>
+        <td>${s.name}</td><td>${rankShort(g, s.rank)}</td><td>${DEPTS[s.dept].short}</td>
+        <td>${s.age}</td>
+        <td class="${ab >= def.minAbility ? 'up' : 'down'}">${ab.toFixed(0)}</td>
+        <td>${s.abil.lead.toFixed(0)}</td>
+        <td><button class="btn sm primary" data-pick="${s.id}">任命</button></td>
+      </tr>`;
+    }).join('')}
+    </table>` : empty(room ? `${rankName(g, rank)}に任命できる人材がいない。<br>ひとつ下の役職まで育てる必要がある。` : `${rankName(g, rank)}の枠が埋まっている。`)}
+    `;
+  }
+
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-rank]').forEach(b => b.onclick = () => { rank = +b.dataset.rank; refresh(); });
+    body.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+      const s = g.staff.find(x => x.id === b.dataset.pick);
+      if (!s) return;
+      const err = appointFn(g, s, rank, g.news);
+      if (err) return toast(err, 'bad');
+      toast(`${s.name}を${rankName(g, rank)}に任命した`, 'good');
+      ctx.refresh(); closeModal();
+      openOversee(g, s, ctx);        // 続けて管掌部門を決めてもらう
+    });
+  }
+}
+
+// ------------------------------------------------------------
+//  管掌部門の割り当て
+// ------------------------------------------------------------
+export function openOversee(g, s, ctx) {
+  const cap = s.rank >= 6 ? 4 : 2;
+  let pick = (Array.isArray(s.oversee) ? s.oversee.filter(d => DEPTS[d]) : []).slice(0, cap);
+  openModal(`${s.name}の管掌部門`, build(), []);
+  bind();
+
+  function build() {
+    return `
+    <div class="card">
+      <div class="card-s">${rankName(g, s.rank)}は最大 ${cap} 部門まで見られる。
+      兼務させると1部門あたりの効きは薄まるので、手薄なところに絞るほうが効く。</div>
+      ${kv('統率', s.abil.lead.toFixed(0))}
+      ${kv('総合能力', avgAbility(s).toFixed(0))}
+    </div>
+    <div class="selgrid">
+      ${DEPT_IDS.map(d => {
+      const other = officers(g).find(x => x !== s && (x.oversee || []).includes(d));
+      const on = pick.includes(d);
+      return `<button class="selbtn ${on ? 'on' : ''}" data-d="${d}">
+        <b>${DEPTS[d].icon} ${DEPTS[d].name}</b>
+        <span>${other ? `${other.name}が管掌中` : '管掌者なし'}</span>
+      </button>`;
+    }).join('')}
+    </div>
+    <div class="hint">選択中：${pick.length ? pick.map(d => DEPTS[d].name).join('・') : 'なし'}（${pick.length} / ${cap}）</div>
+    <div class="btnrow"><button class="btn primary wide" data-save="1">この体制で決める</button></div>`;
+  }
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+      const d = b.dataset.d;
+      if (pick.includes(d)) pick = pick.filter(x => x !== d);
+      else if (pick.length < cap) pick.push(d);
+      else return toast(`${rankName(g, s.rank)}が見られるのは ${cap} 部門までである`, 'bad');
+      refresh();
+    });
+    body.querySelector('[data-save]').onclick = () => {
+      setOversightFn(g, s, pick);
+      toast(`${s.name}の管掌を ${pick.length ? pick.map(d => DEPTS[d].short).join('・') : 'なし'} にした`);
+      ctx.refresh(); closeModal();
+    };
+  }
+}
+
+// ------------------------------------------------------------
+//  役職名の改称
+// ------------------------------------------------------------
+export function openRankNames(g, ctx) {
+  let draft = RANKS.map(r => rankName(g, r.id));
+  openModal('役職名の改称', build(), []);
+  bind();
+
+  function build() {
+    return `
+    <div class="card">
+      <div class="card-s">この会社での呼び方を決める。等級の意味や給与テーブルは変わらない。
+      「シニアマネージャー」「ディレクター」「パートナー」のように、自社らしい呼び方にできる。</div>
+    </div>
+    ${RANKS.map(r => `
+      <div class="field">
+        <label>等級 ${r.id}${r.id === CEO_RANK ? '（あなた）' : r.appoint ? '（社長が任命する）' : ''}　既定：${r.name}</label>
+        <input type="text" class="rn" data-i="${r.id}" maxlength="10" value="${draft[r.id]}">
+      </div>`).join('')}
+    <div class="btnrow">
+      <button class="btn primary" data-save="1">改称する</button>
+      <button class="btn ghost" data-reset="1">既定に戻す</button>
+    </div>`;
+  }
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('.rn').forEach(el => el.oninput = e => { draft[+el.dataset.i] = e.target.value; });
+    body.querySelector('[data-reset]').onclick = () => { draft = defaultRankNames(); refresh(); };
+    body.querySelector('[data-save]').onclick = () => {
+      g.hrPolicy.rankNames = draft.map((v, i) => (v && v.trim()) ? v.trim().slice(0, 10) : RANKS[i].name);
+      toast('役職名を改称した', 'good');
+      ctx.refresh(); closeModal();
+    };
+  }
+}
+
+// ------------------------------------------------------------
+//  社長（プレイヤー本人）
+// ------------------------------------------------------------
+export function openCeo(g, ctx) {
+  const me = ceo(g);
+  const gap = payGapView(g);
+  const list = officers(g);
+  const open = uncovered(g);
+  let name = me.name;
+  let pay = Math.round(ceoPay(g) * 100);
+
+  openModal(`${rankName(g, CEO_RANK)}　${me.name}`, `
+    <div class="card" style="border-color:rgba(227,181,88,.4);background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n">👑 ${me.name}</span>${chip(`${me.since}年 就任`, 'gold')}</div>
+      <div class="card-s">${g.company.name}の代表取締役社長。
+      役員の指名も、報酬の決定も、経営計画の公表も、すべてこの席の仕事である。</div>
+    </div>
+    <div class="grid3" style="margin:12px 0">
+      ${mini('在任', `${Math.max(0, g.year - me.since)}年`, `${me.since}年〜`)}
+      ${mini('役員', list.length + '名', `管掌なしの部門 ${open.length}`)}
+      ${mini('役員体制', (boardStrength(g) * 100).toFixed(0), '充実度')}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>氏名</span></div>
+      <div class="field"><input type="text" id="inpCeoName" maxlength="12" value="${me.name}"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>自分の役員報酬</span></div>
+      <div class="field"><label>年額（万円）</label>
+        <input type="number" id="inpCeoPay" value="${pay}" step="50" min="0">
+      </div>
+      <div id="ceoInfo" class="hint">${gap.text}（社員の${gap.ratio.toFixed(1)}倍）</div>
+      <div class="hint">高く取りすぎると社員の士気が落ちる。低すぎても経営責任に見合わないと見られる。
+      報酬は人件費として毎週計上される。</div>
+    </div>
+  `, [
+    { label: '閉じる', cls: 'ghost' },
+    {
+      label: '変更を適用', cls: 'primary', onClick: () => {
+        const n = (document.getElementById('inpCeoName').value || '').trim().slice(0, 12);
+        const p2 = +document.getElementById('inpCeoPay').value;
+        if (n) me.name = n;
+        if (isFinite(p2) && p2 >= 0) {
+          if (!Array.isArray(g.hrPolicy.rankPay)) g.hrPolicy.rankPay = [];
+          g.hrPolicy.rankPay[CEO_RANK] = Math.round(p2) / 100;
+        }
+        toast('社長の情報を更新した');
+        ctx.refresh();
+      }
+    },
+  ]);
+  const inp = document.getElementById('inpCeoPay');
+  const info = document.getElementById('ceoInfo');
+  if (inp && info) {
+    inp.oninput = () => {
+      const rp = g.hrPolicy.rankPay || [];
+      const base = (typeof rp[0] === 'number' && rp[0] > 0) ? rp[0] : RANKS[0].baseSalary;
+      const ratio = (+inp.value / 100) / Math.max(0.1, base);
+      info.textContent = `社員の${ratio.toFixed(1)}倍`
+        + (ratio > 22 ? '　開きが大きすぎる。士気が落ちる。'
+          : ratio > 15 ? '　やや大きい。業績が伴わないと批判される。'
+            : ratio < 4 ? '　低すぎる。経営責任に見合っていないと見られる。' : '　常識の範囲である。');
+    };
+  }
+}
+
+// ------------------------------------------------------------
+//  就職先人気ランキング
+// ------------------------------------------------------------
+function jobRankSection(g, ctx) {
+  const ap = employerAppeal(g).score;
+  const mode = (ctx && ctx.jobRankMode) || 'pop';
+  const r = jobRanking(g, ap);
+  const me = r.byPop.find(x => x.isPlayer);
+  const list = (mode === 'pop' ? r.byPop : r.byHard);
+  // 自社の前後が見えるように、上位12社＋自社の周辺を出す
+  const idx = list.indexOf(me);
+  const head = list.slice(0, 12);
+  const near = list.slice(Math.max(12, idx - 2), Math.min(list.length, idx + 3));
+  const shown = head.concat(near.filter(x => !head.includes(x)));
+  const gapRow = shown.length > 12 && idx > 14;
+
+  const row = x => `<tr class="${x.isPlayer ? 'me' : ''}">
+    <td>${mode === 'pop' ? x.popRank : x.hardRank}</td>
+    <td>${x.name}<br><span style="font-size:10px;color:var(--ink-mute)">${INDUSTRIES[x.ind].icon} ${INDUSTRIES[x.ind].short}</span></td>
+    ${mode === 'pop'
+      ? `<td>${x.pop.toFixed(0)}</td><td>${man(x.pay)}</td><td>${num(x.hire)}</td>`
+      : `<td><b>${x.ratio.toFixed(1)}倍</b></td><td>${num(x.applicants)}</td><td>${num(x.hire)}</td>`}
+  </tr>`;
+
+  return section('就職先ランキング', `${mode === 'pop' ? '学生人気' : '入社難易度'}　全${r.total}社`, `
+    <div class="grid3">
+      ${mini('学生人気', `${me.popRank}位`, `/ ${r.total}社`, me.popRank <= 10 ? 'var(--gold)' : '')}
+      ${mini('入社難易度', `${me.hardRank}位`, `応募倍率 ${me.ratio.toFixed(1)}倍`)}
+      ${mini('推定エントリー', num(me.applicants) + '名', `採用予定 ${num(me.hire)}名`)}
+    </div>
+    <div class="btnrow" style="margin:9px 0">
+      <button class="btn sm ${mode === 'pop' ? 'primary' : ''}" data-act="hr.jobrank" data-id="pop">人気順</button>
+      <button class="btn sm ${mode === 'hard' ? 'primary' : ''}" data-act="hr.jobrank" data-id="hard">入社難易度順</button>
+    </div>
+    <table class="tbl">
+      <tr><th>順位</th><th>企業</th>
+        ${mode === 'pop' ? '<th>人気度</th><th>平均年収</th><th>採用</th>' : '<th>応募倍率</th><th>応募</th><th>採用</th>'}</tr>
+      ${shown.map((x, i) => (gapRow && i === 12 ? '<tr><td colspan="5" style="text-align:center;color:var(--ink-mute)">…</td></tr>' : '') + row(x)).join('')}
+    </table>
+    <div class="hint">デベロッパー以外の業界も含めた序列である。人気は知名度・平均年収・直近の勢いで決まり、
+    入社難易度はエントリー数を採用予定数で割った応募倍率で見る。
+    いま同業他社に学生を引っ張られる強さは ×${rivalPull(g, ap).toFixed(2)}。
+    順位が上がるほど内定辞退が減り、上位校の学生が集まる。<br>
+    掲載している企業はすべて架空であり、実在の企業の数値ではない。</div>
+  `);
 }

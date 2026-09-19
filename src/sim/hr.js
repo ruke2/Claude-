@@ -2,10 +2,12 @@
 //  人事シミュレーション — 組織力・採用・昇進・離職・給与
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
-import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS } from '../data/hrdata.js';
+import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS,
+  CEO_RANK, OFFICER_RANKS, TOP_STAFF_RANK, rankName } from '../data/hrdata.js';
 import { makeStaff, baseSalaryFor, stdSalary, rankPayOf, avgAbility, uid } from '../core/state.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR, isYearStart, isAprilFirstWeek } from '../core/time.js';
 import { cultureEffects } from './culture.js';
+import { oversightOf, ceoPayMorale, ceoPay } from './officers.js';
 
 /** 部署ごとの「質」と「量」を集計する */
 export function orgPower(g) {
@@ -39,6 +41,13 @@ export function orgPower(g) {
     if (a.kind === 'pm') out.lease.quality *= 1.06;
   }
   if (g.hrPolicy.programs.dx) for (const d of DEPT_IDS) out[d].capacity *= 1.12;
+  // 役員の管掌。見てもらえている部門は質も処理能力も上がる
+  const ov = oversightOf(g);
+  for (const d of DEPT_IDS) {
+    out[d].quality *= (1 + ov[d].quality);
+    out[d].capacity *= (1 + ov[d].capacity);
+    out[d].officer = ov[d].by || null;
+  }
   // 企業カルチャーによる補正
   const ce = cultureEffects(g);
   for (const d of DEPT_IDS) {
@@ -59,7 +68,8 @@ export function projectCapacity(g) {
 
 /** 1週あたりの人件費（百万円） */
 export function personnelCost(g) {
-  const salary = g.staff.reduce((a, s) => a + s.salary, 0) / WEEKS_PER_YEAR;
+  // 社長（プレイヤー）は社員ではないので、役員報酬をここで足す
+  const salary = (g.staff.reduce((a, s) => a + s.salary, 0) + ceoPay(g)) / WEEKS_PER_YEAR;
   const welfare = salary * 0.16;                              // 法定福利
   const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
   return salary + welfare + programs;
@@ -136,7 +146,7 @@ export function stepHR(g, rng, news) {
   for (const s of leavers) {
     g.staff.splice(g.staff.indexOf(s), 1);
     const why = s.age > 60 ? '定年退職' : salaryFairness(g, s) < 0.92 ? '待遇への不満' : s.morale < 0.45 ? 'モチベーション低下' : '他社への転職';
-    news.push({ icon: '🚪', type: 'hr', major: s.rank >= 4, text: `${DEPTS[s.dept].name}の${RANKS[s.rank].name}・${s.name}が退職した（${why}）。` });
+    news.push({ icon: '🚪', type: 'hr', major: s.rank >= 4, text: `${DEPTS[s.dept].name}の${rankName(g, s.rank)}・${s.name}が退職した（${why}）。` });
   }
 
   // --- 定期昇給・昇格（年度初め） ---
@@ -147,7 +157,9 @@ export function stepHR(g, rng, news) {
       const std = stdSalary(g, s);
       s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
     }
-    for (let r = RANKS.length - 2; r >= 1; r--) {
+    // 自動で上がるのは部長まで。執行役員から上は社長が任命する
+    for (let r = TOP_STAFF_RANK; r >= 1; r--) {
+      if (OFFICER_RANKS.includes(r)) continue;
       const rank = RANKS[r];
       const cur = g.staff.filter(s => s.rank === r).length;
       const room = rank.slots === Infinity ? 99 : Math.max(0, rank.slots - cur);
@@ -159,18 +171,19 @@ export function stepHR(g, rng, news) {
         const s = cands[i]; if (!s) break;
         s.rank = r; s.salary = Math.max(s.salary, stdSalary(g, s));
         s.morale = clamp01(s.morale + 0.14); promoted++;
-        if (r >= 5) news.push({ icon: '⬆', type: 'hr', major: true, text: `${s.name}が${rank.name}に昇格した。` });
+        if (r >= 4) news.push({ icon: '⬆', type: 'hr', major: true, text: `${s.name}が${rankName(g, r)}に昇格した。` });
       }
     }
     if (promoted) news.push({ icon: '📋', type: 'hr', major: true, text: `${g.year}年の定期人事で${promoted}名が昇格し、全社員の給与を改定した。` });
   }
 
-  // --- 社長が不在なら後継者を立てる ---
-  if (!g.staff.some(s => s.rank === 7) && g.staff.length) {
-    const next = g.staff.slice().sort((a, b) => (avgAbility(b) + b.abil.lead) - (avgAbility(a) + a.abil.lead))[0];
-    next.rank = 7; next.salary = stdSalary(g, next);
-    news.push({ icon: '👑', type: 'hr', major: true, text: `${next.name}が新社長に就任した。` });
-  }
+  // 社長はプレイヤー本人なので、後継者を立てる処理は無い。
+  // 万一、社員が社長の席に座っていたら（旧セーブ）一段下ろす
+  for (const s of g.staff) if (s.rank >= CEO_RANK) s.rank = TOP_STAFF_RANK;
+
+  // --- 社長の報酬が社内にどう映るか ---
+  const gap = ceoPayMorale(g);
+  if (gap) for (const s of g.staff) s.morale = clamp01(s.morale + gap);
 }
 
 /** 中途・ヘッドハントの候補者を生成 */
@@ -202,7 +215,7 @@ export function hireStaff(g, s, news) {
   s.tenure = 0;
   delete s.hireCost;
   g.staff.push(s);
-  news && news.push({ icon: '🤝', type: 'hr', text: `${s.prevCompany || '他社'}から${s.name}（${RANKS[s.rank].name}相当）を採用した。` });
+  news && news.push({ icon: '🤝', type: 'hr', text: `${s.prevCompany || '他社'}から${s.name}（${rankName(g, s.rank)}相当）を採用した。` });
 }
 
 /** 組織図データを作る */

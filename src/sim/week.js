@@ -17,6 +17,7 @@ import { stepRivalsWeekly, stepRivalsQuarter, ranking } from './rivals.js';
 import { weeklyCosts, closeQuarter, kpis } from './finance.js';
 import { DISTRICTS } from '../data/city.js';
 import { stepTier } from './company.js';
+import { stepPlan } from './midplan.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -98,6 +99,8 @@ export function nextWeek(g) {
     const before = (g.unlocked || []).length;
     stepTier(g, news);
     rep.unlocked = (g.unlocked || []).slice(before);
+    // 中期経営計画の期限が来ていれば成否を確定させる
+    rep.planDone = stepPlan(g, news);
     rep.quarterEnd = true;
     rep.rank = ranking(g, 'rev').find(x => x.isPlayer);
     rep.kpi = kpis(g);

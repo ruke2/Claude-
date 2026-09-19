@@ -344,6 +344,18 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 .empty{text-align:center;color:var(--ink-mute);font-size:12px;padding:32px 12px;line-height:1.9}
 .lockcard{border-style:dashed;background:var(--surface-2)}
 .publiccard{border-color:rgba(13,126,168,.4);background:#f4fafd}
+.org-node.me{border-color:var(--gold);background:var(--gold-soft)}
+.org-node.me .on-n{color:var(--gold-2);font-weight:800}
+.selgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin:10px 0}
+.selbtn{
+  display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;
+  padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--surface);
+  font-size:12px;transition:.14s;
+}
+.selbtn b{font-size:12.5px}
+.selbtn span{font-size:10px;color:var(--ink-mute)}
+.selbtn.on{border-color:var(--accent);background:var(--accent-soft)}
+.selbtn.on span{color:var(--accent)}
 .lockcard .card-n{color:var(--ink-dim)}
 .tierrow{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--line-soft)}
 .tierrow:last-child{border-bottom:none}
@@ -789,9 +801,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   <div class="title-inner">
     <div class="title-kicker">URBAN DEVELOPER SIMULATOR</div>
     <h1 class="title-logo">摩天楼の設計図</h1>
-    <p class="title-lead">湊都（みなと）市。国内最大手デベロッパーがひしめくこの街で、<br>あなたは新興デベロッパー「常盤地所」の社長に就任した。<br>用地を仕入れ、街をつくり、売り、組織を育て、頂点を獲れ。</p>
+    <p class="title-lead">湊都（みなと）市。国内最大手デベロッパーがひしめくこの街で、<br>あなたは新興デベロッパーを起こし、自ら社長の椅子に座る。<br>用地を仕入れ、街をつくり、売り、組織を育て、頂点を獲れ。</p>
     <div class="title-form">
       <label>会社名<input id="inpCompany" maxlength="12" value="常盤地所"></label>
+      <label>あなたの名前（代表取締役社長）<input id="inpCeo" maxlength="12" value="常盤 宗一郎"></label>
       <label>難易度
         <select id="inpDiff">
           <option value="easy">やさしい（自己資本 300億／地価安定）</option>
@@ -2091,10 +2104,25 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     { id: 2, name: "\u4FC2\u9577", short: "\u4FC2\u9577", baseSalary: 8.6, slots: Infinity, minAbility: 55, span: 4 },
     { id: 3, name: "\u8AB2\u9577", short: "\u8AB2\u9577", baseSalary: 11.2, slots: 16, minAbility: 64, span: 8 },
     { id: 4, name: "\u90E8\u9577", short: "\u90E8\u9577", baseSalary: 15.4, slots: 8, minAbility: 72, span: 20 },
-    { id: 5, name: "\u57F7\u884C\u5F79\u54E1", short: "\u57F7\u884C", baseSalary: 22, slots: 5, minAbility: 79, span: 40 },
-    { id: 6, name: "\u53D6\u7DE0\u5F79", short: "\u53D6\u7DE0", baseSalary: 32, slots: 3, minAbility: 85, span: 70 },
-    { id: 7, name: "\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577", short: "\u793E\u9577", baseSalary: 52, slots: 1, minAbility: 88, span: 999 }
+    { id: 5, name: "\u57F7\u884C\u5F79\u54E1", short: "\u57F7\u884C", baseSalary: 22, slots: 5, minAbility: 76, span: 40, appoint: true },
+    { id: 6, name: "\u53D6\u7DE0\u5F79", short: "\u53D6\u7DE0", baseSalary: 32, slots: 3, minAbility: 82, span: 70, appoint: true },
+    { id: 7, name: "\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577", short: "\u793E\u9577", baseSalary: 52, slots: 1, minAbility: 88, span: 999, ceo: true }
   ];
+  var CEO_RANK = 7;
+  var OFFICER_RANKS = RANKS.filter((r) => r.appoint).map((r) => r.id);
+  var TOP_STAFF_RANK = CEO_RANK - 1;
+  function rankName(g, id) {
+    const custom = g && g.hrPolicy && g.hrPolicy.rankNames;
+    const v = custom && custom[id];
+    return typeof v === "string" && v.trim() ? v.trim() : RANKS[id].name;
+  }
+  function rankShort(g, id) {
+    const n = rankName(g, id);
+    return n.length <= 4 ? n : n.slice(0, 4);
+  }
+  function defaultRankNames() {
+    return RANKS.map((r) => r.name);
+  }
   var ABILITIES = {
     land: { id: "land", name: "\u7528\u5730", desc: "\u5730\u6A29\u8005\u4EA4\u6E09\u30FB\u5165\u672D\u5224\u65AD" },
     plan: { id: "plan", name: "\u4F01\u753B", desc: "\u5546\u54C1\u8A2D\u8A08\u30FB\u30DE\u30FC\u30B1\u30C6\u30A3\u30F3\u30B0" },
@@ -2421,7 +2449,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     for (const k of ABILITY_IDS) {
       abil[k] = Math.round(clamp(rng.normal(base * (k === spec ? 1.18 : 0.82), 9), 8, 99));
     }
-    const rk = rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4));
+    const rk = Math.min(
+      TOP_STAFF_RANK,
+      rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4))
+    );
     const s = {
       id: uid("s"),
       name: name2 || rng.pick(LAST_NAMES) + " " + rng.pick(FIRST_NAMES_CLEAN),
@@ -2437,7 +2468,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       joined: null,
       channel: opt.channel || "legacy",
       eval: 3,
-      note: ""
+      note: "",
+      oversee: [],
+      officerSince: null
+      // 役員になったときの管掌部門
     };
     s.salary = baseSalaryFor(s);
     return s;
@@ -2483,7 +2517,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       news: []
     }));
   }
-  function createGame({ companyName = "\u5E38\u76E4\u5730\u6240", difficulty = "normal", home = "W", seed = Date.now() } = {}) {
+  function createGame({
+    companyName = "\u5E38\u76E4\u5730\u6240",
+    difficulty = "normal",
+    home = "W",
+    ceoName = "\u5E38\u76E4 \u5B97\u4E00\u90CE",
+    ceoAge = 42,
+    seed = Date.now()
+  } = {}) {
     const rng = new RNG(seed);
     const diff = DIFFICULTY[difficulty] ?? DIFFICULTY.normal;
     const rivals = initRivals(rng, diff);
@@ -2498,7 +2539,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
     const staff = [];
     const initialOrg = [
-      { dept: "corp", rank: 7, n: 1 },
+      { dept: "corp", rank: 6, n: 1 },
       { dept: "land", rank: 4, n: 1 },
       { dept: "sales", rank: 4, n: 1 },
       { dept: "land", rank: 2, n: 2 },
@@ -2526,10 +2567,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
           loyalty: 0.74
         });
         s.joined = { year: Math.round(2026 - s.tenure), week: 0 };
-        if (o.rank === 7) {
-          s.name = "\u5E38\u76E4 \u5B97\u4E00\u90CE";
-          s.note = "\u5275\u696D\u793E\u9577";
-          s.abil.lead = Math.max(s.abil.lead, 82);
+        if (o.rank === 6) {
+          s.note = "\u5275\u696D\u30E1\u30F3\u30D0\u30FC";
+          s.abil.lead = Math.max(s.abil.lead, 74);
+          s.oversee = ["corp", "fin"];
         }
         staff.push(s);
       }
@@ -2547,6 +2588,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       weekOfQuarter: 0,
       company: {
         name: companyName,
+        // 社長はプレイヤー本人。架空の人物を据えない
+        ceo: { name: (ceoName || "\u793E\u9577").slice(0, 12), age: ceoAge, since: 2026 },
         brand: 22,
         // ブランド力 0-100
         // 地盤（創業の地）。ここでは商品力も入札も有利になる。
@@ -2566,6 +2609,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       goodwill: 0,
       // 売上に応じて解禁した機能（一度入ったら消えない）
       unlocked: [],
+      // 中期経営計画（策定していなければ null）と、終わった計画の記録
+      midPlan: null,
+      planHistory: [],
       cells,
       listings: [],
       projects: [],
@@ -2579,6 +2625,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       hrPolicy: {
         // 役職ごとの基準年収（百万円）。人事タブでいつでも改定できる
         rankPay: defaultRankPay(),
+        // 役職名。社長が自由に付け替えられる
+        rankNames: defaultRankNames(),
         salaryMul: 1,
         // 旧版との互換用。いまは rankPay が給与テーブルを決める
         programs: { training: false, welfare: false, dx: false, brandpr: false },
@@ -2656,6 +2704,153 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return g.cells.find((c) => c.id === id);
   }
 
+  // src/sim/officers.js
+  var OVERSIGHT = {
+    quality: 0.16,
+    // 部門の質への上乗せ率
+    capacity: 0.1,
+    // 部門の処理能力への上乗せ率
+    spread: 0.55
+    // 2部門目以降は薄まる（1部門なら1.0、2部門なら0.55ずつ…）
+  };
+  function officers(g) {
+    return g.staff.filter((s) => !s.subsidiary && OFFICER_RANKS.includes(s.rank));
+  }
+  function officerRoom(g, rank) {
+    const def = RANKS[rank];
+    if (!def) return 0;
+    const cur = g.staff.filter((s) => !s.subsidiary && s.rank === rank).length;
+    return def.slots === Infinity ? 99 : Math.max(0, def.slots - cur);
+  }
+  function canAppoint(g, s, rank) {
+    if (!s) return "\u5BFE\u8C61\u304C\u3044\u306A\u3044";
+    if (!OFFICER_RANKS.includes(rank)) return "\u305D\u306E\u5F79\u8077\u306F\u4EFB\u547D\u306E\u5BFE\u8C61\u3067\u306F\u306A\u3044";
+    if (s.subsidiary) return "\u5B50\u4F1A\u793E\u3078\u51FA\u5411\u4E2D\u3067\u3042\u308B";
+    if (s.rank === rank) return "\u3059\u3067\u306B\u305D\u306E\u5F79\u8077\u3067\u3042\u308B";
+    if (s.rank > rank) return "\u73FE\u5728\u306E\u5F79\u8077\u3088\u308A\u4E0B\u306B\u306F\u4EFB\u547D\u3067\u304D\u306A\u3044";
+    if (s.rank < rank - 1) return `${rankName(g, rank - 1)}\u3092\u7D4C\u3066\u3044\u306A\u3044`;
+    if (!officerRoom(g, rank)) return `${rankName(g, rank)}\u306E\u67A0\u304C\u57CB\u307E\u3063\u3066\u3044\u308B\uFF08${RANKS[rank].slots}\u540D\u307E\u3067\uFF09`;
+    return null;
+  }
+  function appoint(g, s, rank, news) {
+    const err = canAppoint(g, s, rank);
+    if (err) return err;
+    const def = RANKS[rank];
+    const ab = avgAbility(s);
+    const from = s.rank;
+    s.rank = rank;
+    s.officerSince = g.week;
+    if (!Array.isArray(s.oversee)) s.oversee = [];
+    s.morale = clamp01(s.morale + 0.18);
+    s.loyalty = clamp01(s.loyalty + 0.1);
+    const short = Math.max(0, def.minAbility - ab);
+    if (short > 0) {
+      for (const x of g.staff) {
+        if (x === s || x.subsidiary) continue;
+        if (avgAbility(x) > ab && x.rank >= from) x.morale = clamp01(x.morale - Math.min(0.12, short / 90));
+      }
+      news && news.push({
+        icon: "\u26A0",
+        type: "hr",
+        major: true,
+        text: `${s.name}\u3092${rankName(g, rank)}\u306B\u4EFB\u547D\u3057\u305F\u3002\u80FD\u529B\u306F${rankName(g, rank)}\u306E\u76EE\u5B89\uFF08${def.minAbility}\uFF09\u306B${short.toFixed(0)}\u5C4A\u3044\u3066\u304A\u3089\u305A\u3001\u793E\u5185\u306B\u4E0D\u6E80\u304C\u6B8B\u3063\u305F\u3002`
+      });
+    } else {
+      news && news.push({
+        icon: "\u{1F454}",
+        type: "hr",
+        major: true,
+        text: `${s.name}\u3092${rankName(g, rank)}\u306B\u4EFB\u547D\u3057\u305F\u3002`
+      });
+    }
+    return null;
+  }
+  function dismiss(g, s, news) {
+    if (!s || !OFFICER_RANKS.includes(s.rank)) return "\u5F79\u54E1\u3067\u306F\u306A\u3044";
+    const was = s.rank;
+    s.rank = Math.max(0, s.rank - 1);
+    s.oversee = [];
+    s.officerSince = null;
+    s.morale = clamp01(s.morale - 0.34);
+    s.loyalty = clamp01(s.loyalty - 0.22);
+    news && news.push({
+      icon: "\u{1F4C9}",
+      type: "hr",
+      major: true,
+      text: `${s.name}\u3092${rankName(g, was)}\u304B\u3089\u89E3\u4EFB\u3057\u305F\u3002\u672C\u4EBA\u306E\u58EB\u6C17\u306F\u5927\u304D\u304F\u843D\u3061\u305F\u3002`
+    });
+    return null;
+  }
+  function setOversight(g, s, depts) {
+    if (!s || !OFFICER_RANKS.includes(s.rank)) return "\u5F79\u54E1\u3067\u306F\u306A\u3044";
+    const list = (depts || []).filter((d) => DEPTS[d]);
+    const cap = s.rank >= 6 ? 4 : 2;
+    s.oversee = list.slice(0, cap);
+    return null;
+  }
+  function oversightOf(g) {
+    const out = {};
+    for (const d of DEPT_IDS) out[d] = { quality: 0, capacity: 0, by: null };
+    for (const s of officers(g)) {
+      const list = Array.isArray(s.oversee) ? s.oversee.filter((d) => DEPTS[d]) : [];
+      if (!list.length) continue;
+      const spread = list.length <= 1 ? 1 : Math.pow(OVERSIGHT.spread, list.length - 1);
+      const lead = (avgAbility(s) * 0.45 + s.abil.lead * 0.55) / 100;
+      const rankMul = s.rank >= 6 ? 1.25 : 1;
+      for (const d of list) {
+        const q = OVERSIGHT.quality * lead * spread * rankMul;
+        if (q > out[d].quality) out[d] = { quality: q, capacity: OVERSIGHT.capacity * lead * spread * rankMul, by: s };
+      }
+    }
+    return out;
+  }
+  function uncovered(g) {
+    const ov = oversightOf(g);
+    return DEPT_IDS.filter((d) => !ov[d].by);
+  }
+  function ceo(g) {
+    if (!g.company.ceo) {
+      g.company.ceo = { name: "\u793E\u9577", since: g.year || 2026, age: 42 };
+    }
+    return g.company.ceo;
+  }
+  function ceoPay(g) {
+    const rp = g.hrPolicy && g.hrPolicy.rankPay;
+    const v = rp && rp[CEO_RANK];
+    return typeof v === "number" && isFinite(v) ? v : RANKS[CEO_RANK].baseSalary;
+  }
+  function payGapView(g) {
+    const rp = g.hrPolicy && g.hrPolicy.rankPay || [];
+    const staffPay = typeof rp[0] === "number" && rp[0] > 0 ? rp[0] : RANKS[0].baseSalary;
+    const ratio = ceoPay(g) / Math.max(0.1, staffPay);
+    let tone = "ok", text = "\u793E\u54E1\u3068\u306E\u958B\u304D\u306F\u5E38\u8B58\u306E\u7BC4\u56F2\u3067\u3042\u308B\u3002";
+    if (ratio > 22) {
+      tone = "bad";
+      text = "\u793E\u54E1\u3068\u306E\u958B\u304D\u304C\u5927\u304D\u3059\u304E\u308B\u3002\u682A\u4E3B\u306B\u3082\u793E\u54E1\u306B\u3082\u8AAC\u660E\u304C\u3064\u304B\u306A\u3044\u3002";
+    } else if (ratio > 15) {
+      tone = "warn";
+      text = "\u793E\u54E1\u3068\u306E\u958B\u304D\u304C\u3084\u3084\u5927\u304D\u3044\u3002\u696D\u7E3E\u304C\u4F34\u308F\u306A\u3044\u3068\u6279\u5224\u3055\u308C\u308B\u3002";
+    } else if (ratio < 4) {
+      tone = "warn";
+      text = "\u793E\u9577\u306E\u5831\u916C\u304C\u4F4E\u3059\u304E\u308B\u3002\u7D4C\u55B6\u8CAC\u4EFB\u306E\u91CD\u3055\u306B\u898B\u5408\u3063\u3066\u3044\u306A\u3044\u3068\u898B\u3089\u308C\u308B\u3002";
+    }
+    return { ratio, tone, text };
+  }
+  function ceoPayMorale(g) {
+    const { ratio } = payGapView(g);
+    if (ratio > 22) return -22e-4;
+    if (ratio > 15) return -8e-4;
+    if (ratio < 4) return -6e-4;
+    return 0;
+  }
+  function boardStrength(g) {
+    const list = officers(g);
+    if (!list.length) return 0;
+    const need = RANKS[5].slots + RANKS[6].slots;
+    const power = list.reduce((a, s) => a + avgAbility(s) / 100, 0);
+    return clamp01(power / Math.max(1, need * 0.62));
+  }
+
   // src/sim/hr.js
   function orgPower(g) {
     const out = {};
@@ -2688,6 +2883,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (a.kind === "pm") out.lease.quality *= 1.06;
     }
     if (g.hrPolicy.programs.dx) for (const d of DEPT_IDS) out[d].capacity *= 1.12;
+    const ov = oversightOf(g);
+    for (const d of DEPT_IDS) {
+      out[d].quality *= 1 + ov[d].quality;
+      out[d].capacity *= 1 + ov[d].capacity;
+      out[d].officer = ov[d].by || null;
+    }
     const ce = cultureEffects(g);
     for (const d of DEPT_IDS) {
       out[d].capacity *= ce.capacityMul;
@@ -2703,7 +2904,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return Math.max(3, Math.floor(base) + 1 + g.subsidiaries.filter((s) => s.type === "construction").length * 2);
   }
   function personnelCost(g) {
-    const salary = g.staff.reduce((a, s) => a + s.salary, 0) / WEEKS_PER_YEAR;
+    const salary = (g.staff.reduce((a, s) => a + s.salary, 0) + ceoPay(g)) / WEEKS_PER_YEAR;
     const welfare = salary * 0.16;
     const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
     return salary + welfare + programs;
@@ -2761,7 +2962,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     for (const s of leavers) {
       g.staff.splice(g.staff.indexOf(s), 1);
       const why = s.age > 60 ? "\u5B9A\u5E74\u9000\u8077" : salaryFairness(g, s) < 0.92 ? "\u5F85\u9047\u3078\u306E\u4E0D\u6E80" : s.morale < 0.45 ? "\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u4F4E\u4E0B" : "\u4ED6\u793E\u3078\u306E\u8EE2\u8077";
-      news.push({ icon: "\u{1F6AA}", type: "hr", major: s.rank >= 4, text: `${DEPTS[s.dept].name}\u306E${RANKS[s.rank].name}\u30FB${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08${why}\uFF09\u3002` });
+      news.push({ icon: "\u{1F6AA}", type: "hr", major: s.rank >= 4, text: `${DEPTS[s.dept].name}\u306E${rankName(g, s.rank)}\u30FB${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08${why}\uFF09\u3002` });
     }
     if (isYearStart(g) && g.week > 0) {
       let promoted = 0;
@@ -2770,7 +2971,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         const std = stdSalary(g, s);
         s.salary = Math.round((s.salary * 0.62 + std * 0.38) * 10) / 10;
       }
-      for (let r = RANKS.length - 2; r >= 1; r--) {
+      for (let r = TOP_STAFF_RANK; r >= 1; r--) {
+        if (OFFICER_RANKS.includes(r)) continue;
         const rank = RANKS[r];
         const cur = g.staff.filter((s) => s.rank === r).length;
         const room = rank.slots === Infinity ? 99 : Math.max(0, rank.slots - cur);
@@ -2783,24 +2985,21 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
           s.salary = Math.max(s.salary, stdSalary(g, s));
           s.morale = clamp01(s.morale + 0.14);
           promoted++;
-          if (r >= 5) news.push({ icon: "\u2B06", type: "hr", major: true, text: `${s.name}\u304C${rank.name}\u306B\u6607\u683C\u3057\u305F\u3002` });
+          if (r >= 4) news.push({ icon: "\u2B06", type: "hr", major: true, text: `${s.name}\u304C${rankName(g, r)}\u306B\u6607\u683C\u3057\u305F\u3002` });
         }
       }
       if (promoted) news.push({ icon: "\u{1F4CB}", type: "hr", major: true, text: `${g.year}\u5E74\u306E\u5B9A\u671F\u4EBA\u4E8B\u3067${promoted}\u540D\u304C\u6607\u683C\u3057\u3001\u5168\u793E\u54E1\u306E\u7D66\u4E0E\u3092\u6539\u5B9A\u3057\u305F\u3002` });
     }
-    if (!g.staff.some((s) => s.rank === 7) && g.staff.length) {
-      const next = g.staff.slice().sort((a, b) => avgAbility(b) + b.abil.lead - (avgAbility(a) + a.abil.lead))[0];
-      next.rank = 7;
-      next.salary = stdSalary(g, next);
-      news.push({ icon: "\u{1F451}", type: "hr", major: true, text: `${next.name}\u304C\u65B0\u793E\u9577\u306B\u5C31\u4EFB\u3057\u305F\u3002` });
-    }
+    for (const s of g.staff) if (s.rank >= CEO_RANK) s.rank = TOP_STAFF_RANK;
+    const gap = ceoPayMorale(g);
+    if (gap) for (const s of g.staff) s.morale = clamp01(s.morale + gap);
   }
   function hireStaff(g, s, news) {
     s.joined = { year: g.year, q: g.quarter };
     s.tenure = 0;
     delete s.hireCost;
     g.staff.push(s);
-    news && news.push({ icon: "\u{1F91D}", type: "hr", text: `${s.prevCompany || "\u4ED6\u793E"}\u304B\u3089${s.name}\uFF08${RANKS[s.rank].name}\u76F8\u5F53\uFF09\u3092\u63A1\u7528\u3057\u305F\u3002` });
+    news && news.push({ icon: "\u{1F91D}", type: "hr", text: `${s.prevCompany || "\u4ED6\u793E"}\u304B\u3089${s.name}\uFF08${rankName(g, s.rank)}\u76F8\u5F53\uFF09\u3092\u63A1\u7528\u3057\u305F\u3002` });
   }
 
   // src/sim/brands.js
@@ -4487,6 +4686,29 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         rv.avgPay = Math.round(def.avgPay * Math.pow(grow, 0.45) * 10) / 10;
         rv.avgAge = def.avgAge;
         rv.avgTenure = def.avgTenure;
+      }
+    },
+    // 社長をプレイヤー本人にした。
+    // 旧セーブでは架空の社員が社長の席に座っているので、その人を取締役に下ろし、
+    // 名前を社長（プレイヤー）として引き継ぐ
+    (g) => {
+      if (!g.company) return;
+      const sitting = (g.staff || []).filter((s) => s.rank >= CEO_RANK);
+      if (!g.company.ceo) {
+        const top = sitting[0];
+        g.company.ceo = {
+          name: top && top.name || "\u793E\u9577",
+          age: top && top.age || 46,
+          since: g.company.founded || 2026
+        };
+      }
+      for (const s of sitting) {
+        s.rank = TOP_STAFF_RANK;
+        s.note = s.note || "\u5275\u696D\u30E1\u30F3\u30D0\u30FC";
+      }
+      if (!Array.isArray(g.hrPolicy.rankNames)) g.hrPolicy.rankNames = defaultRankNames();
+      for (const s of g.staff || []) {
+        if (!Array.isArray(s.oversee)) s.oversee = [];
       }
     }
   ];
@@ -6850,6 +7072,279 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     news.push({ icon: "\u{1F5D1}", type: "ma", text: `${sub.name}\u3092\u6E05\u7B97\u3057\u305F\u3002${Math.round(recover / 100).toLocaleString()}\u5104\u5186\u3092\u56DE\u53CE\u3057\u3001\u5DEE\u984D\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` });
   }
 
+  // src/sim/midplan.js
+  var PLAN_METRICS = {
+    revenue: {
+      id: "revenue",
+      name: "\u58F2\u4E0A\u9AD8",
+      icon: "\xA5",
+      unit: "\u5104\u5186",
+      scale: 100,
+      hard: 1,
+      desc: "\u76F4\u8FD14\u56DB\u534A\u671F\u306E\u58F2\u4E0A\u9AD8\u3002\u5206\u8B72\u306E\u5F15\u304D\u6E21\u3057\u304C\u4E57\u308B\u306E\u3067\u3001\u671F\u672B\u306B\u5C71\u304C\u6765\u308B\u3002",
+      get: (g) => ttmOf(g, "revenue")
+    },
+    op: {
+      id: "op",
+      name: "\u55B6\u696D\u5229\u76CA",
+      icon: "\u{1F4C8}",
+      unit: "\u5104\u5186",
+      scale: 100,
+      hard: 1.15,
+      desc: "\u76F4\u8FD14\u56DB\u534A\u671F\u306E\u55B6\u696D\u5229\u76CA\u3002\u539F\u4FA1\u3068\u8CA9\u7BA1\u8CBB\u3092\u6291\u3048\u306A\u3044\u3068\u4F38\u3073\u306A\u3044\u3002",
+      get: (g) => ttmOf(g, "op")
+    },
+    opMargin: {
+      id: "opMargin",
+      name: "\u55B6\u696D\u5229\u76CA\u7387",
+      icon: "%",
+      unit: "%",
+      scale: 0.01,
+      hard: 1.3,
+      desc: "\u58F2\u4E0A\u9AD8\u306B\u5BFE\u3059\u308B\u55B6\u696D\u5229\u76CA\u306E\u6BD4\u7387\u3002\u898F\u6A21\u3092\u8FFD\u3046\u3060\u3051\u3067\u306F\u4E0A\u304C\u3089\u306A\u3044\u3002",
+      get: (g) => {
+        const r = ttmOf(g, "revenue");
+        return r > 0 ? ttmOf(g, "op") / r : 0;
+      }
+    },
+    roe: {
+      id: "roe",
+      name: "ROE",
+      icon: "\u25CE",
+      unit: "%",
+      scale: 0.01,
+      hard: 1.35,
+      desc: "\u7D14\u8CC7\u7523\u306B\u5BFE\u3059\u308B\u5F53\u671F\u7D14\u5229\u76CA\u3002\u8CC7\u672C\u3092\u539A\u304F\u3059\u308B\u307B\u3069\u9054\u6210\u306F\u96E3\u3057\u304F\u306A\u308B\u3002",
+      get: (g) => {
+        const bs = g.finance.bs;
+        return bs && bs.equity > 0 ? ttmOf(g, "net") / bs.equity : 0;
+      }
+    },
+    leaseNoi: {
+      id: "leaseNoi",
+      name: "\u8CC3\u8CB8\u4E8B\u696D\u306ENOI",
+      icon: "\u25A4",
+      unit: "\u5104\u5186",
+      scale: 100,
+      hard: 1.1,
+      desc: "\u4FDD\u6709\u3057\u3066\u3044\u308B\u8CC3\u8CB8\u7269\u4EF6\u306E\u5E74\u9593NOI\u306E\u5408\u8A08\u3002\u30B9\u30C8\u30C3\u30AF\u3092\u3069\u308C\u3060\u3051\u7A4D\u3093\u3060\u304B\u3067\u6C7A\u307E\u308B\u3002",
+      get: (g) => (g.assets || []).reduce((a, x) => a + (x.noi || 0), 0)
+    },
+    assetCount: {
+      id: "assetCount",
+      name: "\u4FDD\u6709\u7269\u4EF6\u6570",
+      icon: "\u{1F3E2}",
+      unit: "\u4EF6",
+      scale: 1,
+      hard: 1,
+      desc: "\u8CC3\u8CB8\u3068\u3057\u3066\u4FDD\u6709\u3057\u3066\u3044\u308B\u7269\u4EF6\u306E\u6570\u3002",
+      get: (g) => (g.assets || []).length
+    },
+    soldUnits: {
+      id: "soldUnits",
+      name: "\u7D2F\u8A08\u5F15\u6E21\u6238\u6570",
+      icon: "\u{1F511}",
+      unit: "\u6238",
+      scale: 1,
+      hard: 1,
+      desc: "\u5275\u696D\u304B\u3089\u306E\u7D2F\u8A08\u3002\u5206\u8B72\u3092\u56DE\u3057\u7D9A\u3051\u306A\u3044\u3068\u7A4D\u307F\u4E0A\u304C\u3089\u306A\u3044\u3002",
+      get: (g) => g.kpi && g.kpi.soldUnits || 0
+    },
+    lots: {
+      id: "lots",
+      name: "\u4FDD\u6709\u533A\u753B\u6570",
+      icon: "\u25C8",
+      unit: "\u533A\u753B",
+      scale: 1,
+      hard: 1,
+      desc: "\u81EA\u793E\u304C\u6301\u3063\u3066\u3044\u308B\u571F\u5730\u306E\u6570\u3002\u4ED5\u5165\u308C\u306E\u529B\u304C\u305D\u306E\u307E\u307E\u51FA\u308B\u3002",
+      get: (g) => (g.cells || []).filter((c) => c.owner === "player" && c.terrain === TERRAIN.LOT).length
+    },
+    brand: {
+      id: "brand",
+      name: "\u4F01\u696D\u30D6\u30E9\u30F3\u30C9",
+      icon: "\u25C6",
+      unit: "\u70B9",
+      scale: 1,
+      hard: 1.25,
+      desc: "0\u301C100\u3002\u826F\u3044\u7269\u4EF6\u3092\u4F9B\u7D66\u3057\u3001\u516C\u5171\u6848\u4EF6\u3092\u53D6\u308A\u3001\u4E0A\u5834\u3059\u308B\u3053\u3068\u3067\u4E0A\u304C\u308B\u3002",
+      get: (g) => g.company.brand
+    },
+    equityRatio: {
+      id: "equityRatio",
+      name: "\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387",
+      icon: "\u2696",
+      unit: "%",
+      scale: 0.01,
+      hard: 1.2,
+      desc: "\u7DCF\u8CC7\u7523\u306B\u5BFE\u3059\u308B\u7D14\u8CC7\u7523\u3002\u501F\u5165\u3067\u898F\u6A21\u3092\u8FFD\u3046\u3068\u4E0B\u304C\u308B\u3002",
+      get: (g) => {
+        const bs = g.finance.bs;
+        return bs && bs.total > 0 ? bs.equity / bs.total : 0;
+      }
+    },
+    staff: {
+      id: "staff",
+      name: "\u5F93\u696D\u54E1\u6570",
+      icon: "\u2617",
+      unit: "\u540D",
+      scale: 1,
+      hard: 0.9,
+      desc: "\u9023\u7D50\u306E\u5F93\u696D\u54E1\u6570\u3002\u63A1\u7528\u3068\u5B9A\u7740\u306E\u4E21\u65B9\u304C\u8981\u308B\u3002",
+      get: (g) => (g.staff || []).length
+    }
+  };
+  var PLAN_METRIC_IDS = Object.keys(PLAN_METRICS);
+  var PLAN_SPANS = [
+    { years: 3, weeks: WEEKS_PER_YEAR * 3, name: "3\u304B\u5E74\u8A08\u753B", reward: 1 },
+    { years: 5, weeks: WEEKS_PER_YEAR * 5, name: "5\u304B\u5E74\u8A08\u753B", reward: 1.45 }
+  ];
+  function ttmOf(g, key) {
+    const h = g.finance && g.finance.history || [];
+    let v = 0;
+    for (const x of h.slice(-4)) v += x.pl && x.pl[key] || 0;
+    return v;
+  }
+  function valueOf(g, id) {
+    const m = PLAN_METRICS[id];
+    return m ? m.get(g) : 0;
+  }
+  function stretchOf(base, target, hard) {
+    if (!(target > 0)) return 0;
+    if (base <= 0) return clamp(1.6 * hard, 0, 4);
+    return clamp((target / base - 1) * hard + 1, 0.2, 4);
+  }
+  function ambitionOf(plan) {
+    if (!plan || !plan.targets.length) return 0;
+    const s = plan.targets.reduce((a, t) => a + Math.max(0, t.stretch - 1), 0) / plan.targets.length;
+    return clamp(s, 0, 2.2);
+  }
+  function progressOf(g, t) {
+    const now = valueOf(g, t.id);
+    const base = t.base;
+    const span = t.target - base;
+    if (Math.abs(span) < 1e-9) return now >= t.target ? 1 : 0;
+    return (now - base) / span;
+  }
+  function planProgress(g, plan) {
+    if (!plan || !plan.targets.length) return 0;
+    return plan.targets.reduce((a, t) => a + clamp(progressOf(g, t), 0, 1.4), 0) / plan.targets.length;
+  }
+  function weeksLeft(g, plan) {
+    return Math.max(0, plan.endWeek - g.week);
+  }
+  function startPlan(g, { name: name2, spanIdx, targets }, news) {
+    const span = PLAN_SPANS[spanIdx] || PLAN_SPANS[0];
+    const list = (targets || []).filter((t) => PLAN_METRICS[t.id] && t.target > 0).slice(0, 4).map((t) => {
+      const base = valueOf(g, t.id);
+      return {
+        id: t.id,
+        base,
+        target: t.target,
+        stretch: stretchOf(base, t.target, PLAN_METRICS[t.id].hard)
+      };
+    });
+    if (!list.length) return "\u76EE\u6A19\u30921\u3064\u4EE5\u4E0A\u6C7A\u3081\u308B\u3053\u3068";
+    g.midPlan = {
+      name: (name2 || `${g.year}\u5E74\u5EA6 \u4E2D\u671F\u7D4C\u55B6\u8A08\u753B`).slice(0, 24),
+      startWeek: g.week,
+      startYear: g.year,
+      endWeek: g.week + span.weeks,
+      years: span.years,
+      reward: span.reward,
+      targets: list,
+      status: "running",
+      announced: true
+    };
+    const amb = ambitionOf(g.midPlan);
+    for (const s of g.staff) s.morale = clamp01(s.morale + 0.05 + amb * 0.02);
+    news && news.push({
+      icon: "\u{1F4CB}",
+      type: "plan",
+      major: true,
+      text: `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${g.midPlan.name}\u300D\u3092\u516C\u8868\u3057\u305F\u3002${span.years}\u5E74\u5F8C\u306B\u5411\u3051\u3066\u3001${list.map((t) => `${PLAN_METRICS[t.id].name} ${fmtTarget(t.id, t.target)}`).join("\u3001")}\u3092\u63B2\u3052\u308B\u3002`
+    });
+    return null;
+  }
+  function abandonPlan(g, news) {
+    const p = g.midPlan;
+    if (!p || p.status !== "running") return "\u9032\u884C\u4E2D\u306E\u8A08\u753B\u304C\u306A\u3044";
+    p.status = "abandoned";
+    p.endedWeek = g.week;
+    g.company.brand = clamp(g.company.brand - 3.5, 0, 100);
+    for (const s of g.staff) s.morale = clamp01(s.morale - 0.12);
+    g.planHistory = g.planHistory || [];
+    g.planHistory.push(summarize(g, p));
+    g.midPlan = null;
+    news && news.push({
+      icon: "\u{1F5D1}",
+      type: "plan",
+      major: true,
+      text: `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${p.name}\u300D\u3092\u53D6\u308A\u4E0B\u3052\u305F\u3002\u63B2\u3052\u305F\u76EE\u6A19\u3092\u81EA\u3089\u4E0B\u308D\u3057\u305F\u3053\u3068\u3067\u3001\u793E\u5185\u5916\u306E\u4FE1\u983C\u304C\u50B7\u3064\u3044\u305F\u3002`
+    });
+    return null;
+  }
+  function summarize(g, p) {
+    return {
+      name: p.name,
+      years: p.years,
+      startYear: p.startYear,
+      endYear: g.year,
+      status: p.status,
+      score: planProgress(g, p),
+      targets: p.targets.map((t) => ({ id: t.id, base: t.base, target: t.target, actual: valueOf(g, t.id) }))
+    };
+  }
+  function stepPlan(g, news) {
+    const p = g.midPlan;
+    if (!p || p.status !== "running") return null;
+    if (g.week < p.endWeek) return null;
+    const score = planProgress(g, p);
+    const hit = p.targets.filter((t) => progressOf(g, t) >= 1).length;
+    const amb = ambitionOf(p);
+    const mul = p.reward * (1 + amb * 0.55);
+    p.status = score >= 1 ? "achieved" : score >= 0.8 ? "partial" : "missed";
+    p.endedWeek = g.week;
+    p.score = score;
+    let brand = 0, morale = 0, text = "";
+    if (p.status === "achieved") {
+      brand = 5.5 * mul;
+      morale = 0.16;
+      text = `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${p.name}\u300D\u3092\u9054\u6210\u3057\u305F\uFF08${hit}/${p.targets.length}\u9805\u76EE\uFF09\u3002\u793E\u5185\u306F\u6CB8\u304D\u3001\u5E02\u5834\u306E\u8A55\u4FA1\u3082\u4E0A\u304C\u3063\u305F\u3002`;
+    } else if (p.status === "partial") {
+      brand = 1.2 * mul;
+      morale = 0.03;
+      text = `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${p.name}\u300D\u306F${hit}/${p.targets.length}\u9805\u76EE\u306E\u9054\u6210\u306B\u3068\u3069\u307E\u3063\u305F\uFF08\u9032\u6357 ${(score * 100).toFixed(0)}%\uFF09\u3002\u304A\u304A\u3080\u306D\u8A55\u4FA1\u3055\u308C\u305F\u304C\u3001\u5BBF\u984C\u3082\u6B8B\u3063\u305F\u3002`;
+    } else {
+      brand = -4.5 * (1 + amb * 0.4);
+      morale = -0.14;
+      text = `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${p.name}\u300D\u306F\u672A\u9054\u306B\u7D42\u308F\u3063\u305F\uFF08\u9032\u6357 ${(score * 100).toFixed(0)}%\uFF09\u3002\u63B2\u3052\u305F\u6570\u5B57\u306B\u5C4A\u304B\u305A\u3001\u7D4C\u55B6\u8CAC\u4EFB\u3092\u554F\u3046\u58F0\u304C\u51FA\u3066\u3044\u308B\u3002`;
+    }
+    g.company.brand = clamp(g.company.brand + brand, 0, 100);
+    for (const s of g.staff) s.morale = clamp01(s.morale + morale);
+    g.planHistory = g.planHistory || [];
+    g.planHistory.push(summarize(g, p));
+    news && news.push({ icon: p.status === "missed" ? "\u{1F4C9}" : "\u{1F3C1}", type: "plan", major: true, text });
+    const done = { ...p };
+    g.midPlan = null;
+    return done;
+  }
+  function fmtTarget(id, v) {
+    const m = PLAN_METRICS[id];
+    if (!m) return String(v);
+    if (m.scale === 0.01) return `${(v * 100).toFixed(1)}%`;
+    if (m.scale === 100) return `${Math.round(v / 100).toLocaleString()}\u5104\u5186`;
+    return `${Math.round(v).toLocaleString()}${m.unit}`;
+  }
+  function planPremium(g) {
+    const p = g.midPlan;
+    if (!p || p.status !== "running") return 1;
+    const score = planProgress(g, p);
+    const elapsed = clamp01((g.week - p.startWeek) / Math.max(1, p.endWeek - p.startWeek));
+    const expect = 0.03 * (1 - elapsed) + (score - elapsed) * 0.1;
+    return clamp(1 + expect, 0.92, 1.12);
+  }
+
   // src/sim/finance.js
   var RATINGS = [
     { id: "AAA", min: 0.5, spread: 2e-3, label: "\u6700\u4E0A\u7D1A\u3002\u8ABF\u9054\u30B3\u30B9\u30C8\u306F\u696D\u754C\u6700\u5B89\u6C34\u6E96\u3002" },
@@ -6990,7 +7485,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const ug = unrealizedGain(g).gain * 1e6 / g.company.shares;
     const byEarn = eps * per;
     const byAsset = (bps + ug * 0.5) * clamp(0.65 + g.company.brand / 200, 0.6, 1.25);
-    return Math.max(30, Math.round(byEarn * 0.58 + byAsset * 0.42));
+    return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g)));
   }
   function marketCap(g) {
     return Math.round(sharePrice(g) * g.company.shares / 1e6);
@@ -7155,6 +7650,139 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       room: Math.max(0, debtCapacity(g) - g.debt),
       unrealized: unrealizedGain(g)
     };
+  }
+
+  // src/data/employers.js
+  var INDUSTRIES = {
+    dev: { id: "dev", name: "\u4E0D\u52D5\u7523\u30FB\u30C7\u30D9\u30ED\u30C3\u30D1\u30FC", short: "\u4E0D\u52D5\u7523", icon: "\u{1F3E2}" },
+    trade: { id: "trade", name: "\u7DCF\u5408\u5546\u793E", short: "\u5546\u793E", icon: "\u{1F30F}" },
+    bank: { id: "bank", name: "\u9280\u884C\u30FB\u8A3C\u5238", short: "\u91D1\u878D", icon: "\u{1F3E6}" },
+    insure: { id: "insure", name: "\u4FDD\u967A", short: "\u4FDD\u967A", icon: "\u{1F6E1}" },
+    consult: { id: "consult", name: "\u30B3\u30F3\u30B5\u30EB\u30C6\u30A3\u30F3\u30B0", short: "\u30B3\u30F3\u30B5\u30EB", icon: "\u{1F4D0}" },
+    it: { id: "it", name: "IT\u30FB\u30A4\u30F3\u30BF\u30FC\u30CD\u30C3\u30C8", short: "IT", icon: "\u{1F4BB}" },
+    maker: { id: "maker", name: "\u30E1\u30FC\u30AB\u30FC", short: "\u30E1\u30FC\u30AB\u30FC", icon: "\u2699" },
+    infra: { id: "infra", name: "\u30A4\u30F3\u30D5\u30E9\u30FB\u9244\u9053", short: "\u30A4\u30F3\u30D5\u30E9", icon: "\u{1F684}" },
+    media: { id: "media", name: "\u30DE\u30B9\u30B3\u30DF\u30FB\u5E83\u544A", short: "\u30DE\u30B9\u30B3\u30DF", icon: "\u{1F4FA}" },
+    const_: { id: "const_", name: "\u5EFA\u8A2D\u30FB\u30BC\u30CD\u30B3\u30F3", short: "\u5EFA\u8A2D", icon: "\u2692" },
+    gov: { id: "gov", name: "\u5B98\u516C\u5E81\u30FB\u516C\u793E", short: "\u516C\u52D9", icon: "\u2691" }
+  };
+  var EMPLOYERS = [
+    // ---- 総合商社 ----
+    { id: "mitsuba", name: "\u4E09\u8449\u5546\u4E8B", ind: "trade", pop: 96, pay: 17.2, hire: 140, hard: 1.35 },
+    { id: "itoyama", name: "\u4F0A\u85E4\u5C71\u5546\u4E8B", ind: "trade", pop: 94, pay: 16.4, hire: 130, hard: 1.32 },
+    { id: "marutomo", name: "\u4E38\u53CB\u5546\u4E8B", ind: "trade", pop: 90, pay: 15.8, hire: 110, hard: 1.3 },
+    { id: "sumiyoshi", name: "\u4F4F\u5409\u5546\u4E8B", ind: "trade", pop: 86, pay: 15.1, hire: 100, hard: 1.26 },
+    // ---- コンサル ----
+    { id: "mckinnon", name: "\u30DE\u30C3\u30AD\u30CE\u30F3\uFF06\u30AB\u30F3\u30D1\u30CB\u30FC", ind: "consult", pop: 88, pay: 19.5, hire: 40, hard: 1.6 },
+    { id: "bostonhill", name: "\u30DC\u30B9\u30C8\u30F3\u30D2\u30EB\u30FB\u30B0\u30EB\u30FC\u30D7", ind: "consult", pop: 84, pay: 18.8, hire: 35, hard: 1.58 },
+    { id: "nomuraken", name: "\u91CE\u9091\u7DCF\u5408\u7814\u7A76\u6240", ind: "consult", pop: 74, pay: 12.6, hire: 90, hard: 1.18 },
+    // ---- 金融 ----
+    { id: "mitsuwabk", name: "\u4E09\u548C\u9280\u884C", ind: "bank", pop: 80, pay: 11.4, hire: 380, hard: 1.05 },
+    { id: "tokiwabk", name: "\u5E38\u78D0\u30D5\u30A3\u30CA\u30F3\u30B7\u30E3\u30EB", ind: "bank", pop: 77, pay: 11, hire: 340, hard: 1.03 },
+    { id: "daiwasec", name: "\u5927\u8F2A\u8A3C\u5238", ind: "bank", pop: 70, pay: 12.8, hire: 260, hard: 1.02 },
+    { id: "meijilife", name: "\u660E\u6210\u751F\u547D", ind: "insure", pop: 72, pay: 10.6, hire: 300, hard: 0.98 },
+    { id: "tokiomar", name: "\u6771\u4EAC\u6D77\u9678\u706B\u707D", ind: "insure", pop: 78, pay: 11.8, hire: 250, hard: 1.06 },
+    // ---- IT ----
+    { id: "kazamidori", name: "\u98A8\u898B\u3069\u308A\u30C6\u30C3\u30AF", ind: "it", pop: 85, pay: 13.9, hire: 200, hard: 1.22 },
+    { id: "aozoranet", name: "\u30A2\u30AA\u30BE\u30E9\u30CD\u30C3\u30C8", ind: "it", pop: 79, pay: 12.2, hire: 240, hard: 1.1 },
+    { id: "hoshiden", name: "\u30DB\u30B7\u30C7\u30F3\u30FB\u30B7\u30B9\u30C6\u30E0\u30BA", ind: "it", pop: 63, pay: 9.4, hire: 420, hard: 0.88 },
+    // ---- メーカー ----
+    { id: "toyosu", name: "\u8C4A\u6D32\u81EA\u52D5\u8ECA", ind: "maker", pop: 89, pay: 10.2, hire: 520, hard: 1.12 },
+    { id: "sunwave", name: "\u30B5\u30F3\u30A6\u30A7\u30FC\u30D6\u96FB\u6A5F", ind: "maker", pop: 76, pay: 9.6, hire: 460, hard: 1 },
+    { id: "kirinza", name: "\u9E92\u9E9F\u5EA7\u30D3\u30D0\u30EC\u30C3\u30B8", ind: "maker", pop: 82, pay: 10.9, hire: 90, hard: 1.24 },
+    { id: "shiseiran", name: "\u8CC7\u751F\u862D", ind: "maker", pop: 81, pay: 9.8, hire: 80, hard: 1.22 },
+    // ---- インフラ・鉄道 ----
+    { id: "chuoRail", name: "\u4E2D\u592E\u65C5\u5BA2\u9244\u9053", ind: "infra", pop: 83, pay: 9.2, hire: 600, hard: 1.04 },
+    { id: "minatoGas", name: "\u6E4A\u90FD\u30AC\u30B9", ind: "infra", pop: 75, pay: 10.4, hire: 130, hard: 1.08 },
+    { id: "kanpower", name: "\u95A2\u90FD\u96FB\u529B", ind: "infra", pop: 71, pay: 9.9, hire: 180, hard: 1 },
+    { id: "skyAir", name: "\u30B9\u30AB\u30A4\u822A\u7A7A", ind: "infra", pop: 80, pay: 8.4, hire: 320, hard: 1.06 },
+    // ---- マスコミ・広告 ----
+    { id: "dentaku", name: "\u96FB\u62D3", ind: "media", pop: 87, pay: 14.6, hire: 60, hard: 1.45 },
+    { id: "hakuun", name: "\u767D\u96F2\u5802", ind: "media", pop: 79, pay: 12.4, hire: 50, hard: 1.38 },
+    { id: "nihonTV", name: "\u65E5\u90A6\u30C6\u30EC\u30D3", ind: "media", pop: 84, pay: 15.2, hire: 25, hard: 1.55 },
+    // ---- 建設 ----
+    { id: "obashi", name: "\u5927\u6A4B\u7D44", ind: "const_", pop: 68, pay: 10.8, hire: 300, hard: 0.94 },
+    { id: "kajiyama", name: "\u68B6\u5C71\u5EFA\u8A2D", ind: "const_", pop: 66, pay: 10.5, hire: 280, hard: 0.92 },
+    // ---- 官公庁 ----
+    { id: "kokudo", name: "\u56FD\u571F\u4EA4\u901A\u7701", ind: "gov", pop: 73, pay: 7.8, hire: 90, hard: 1.28 },
+    { id: "minatoCity", name: "\u6E4A\u90FD\u5E02\u5F79\u6240", ind: "gov", pop: 64, pay: 7.2, hire: 210, hard: 0.96 },
+    { id: "urbanAgency", name: "\u90FD\u5E02\u518D\u751F\u6A5F\u69CB", ind: "gov", pop: 69, pay: 8.6, hire: 70, hard: 1.1 },
+    // ---- デベロッパー（競合各社と連動する） ----
+    { id: "yotsui", name: "\u56DB\u4E95\u4E0D\u52D5\u7523", ind: "dev", rivalId: "yotsui", pop: 93, hire: 60, hard: 1.42 },
+    { id: "sanryo", name: "\u4E09\u9675\u5730\u6240", ind: "dev", rivalId: "sanryo", pop: 92, hire: 45, hard: 1.44 },
+    { id: "sumikura", name: "\u4F4F\u5009\u4E0D\u52D5\u7523", ind: "dev", rivalId: "sumikura", pop: 78, hire: 55, hard: 1.16 },
+    { id: "nobayashi", name: "\u91CE\u6797\u4E0D\u52D5\u7523", ind: "dev", rivalId: "nobayashi", pop: 70, hire: 40, hard: 1.08 },
+    { id: "morib", name: "\u675C\u30D3\u30EB\u30C7\u30A3\u30F3\u30B0", ind: "dev", rivalId: "morib", pop: 82, hire: 18, hard: 1.4 },
+    { id: "toyokyu", name: "\u6771\u6D0B\u6025\u884C\u4E0D\u52D5\u7523", ind: "dev", rivalId: "toyokyu", pop: 74, hire: 70, hard: 1.04 },
+    { id: "taiga", name: "\u5927\u6CB3\u30CF\u30A6\u30B9\u5DE5\u696D", ind: "dev", rivalId: "taiga", pop: 67, hire: 180, hard: 0.9 },
+    { id: "kyobashi", name: "\u4EAC\u6A4B\u5EFA\u7269", ind: "dev", rivalId: "kyobashi", pop: 61, hire: 22, hard: 1 }
+  ];
+
+  // src/sim/jobrank.js
+  function popularityOf(g, e) {
+    let pop = e.pop;
+    let pay2 = e.pay ?? 10;
+    let hire = e.hire;
+    if (e.rivalId) {
+      const rv = (g.rivals || []).find((r) => r.id === e.rivalId);
+      if (rv) {
+        pay2 = rv.avgPay || pay2;
+        const grow = rv.lastRev > 0 ? rv.rev / rv.lastRev : 1;
+        const margin = rv.op / Math.max(1, rv.rev);
+        pop += clamp((grow - 1) * 120, -6, 8) + clamp((margin - 0.12) * 70, -5, 7);
+        hire = Math.max(6, Math.round(e.hire * clamp(rv.employees / 8e3, 0.4, 2.2)));
+      }
+    }
+    pop += clamp((pay2 - 11) * 1.6, -9, 11);
+    return { pop: clamp(pop, 5, 120), pay: pay2, hire };
+  }
+  function applicantsOf(pop) {
+    return Math.round(Math.pow(Math.max(1, pop) / 10, 2.6) * 6);
+  }
+  function selfRow(g, appealScore) {
+    const rev = ttmRevenue(g);
+    const hr = (g.staff || []).length;
+    const pay2 = g.recruit && g.recruit.ng && g.recruit.ng.salary || 5.4;
+    const pop = clamp(6 + (appealScore ?? 0.1) * 96 + Math.log10(Math.max(1, rev / 100)) * 5, 3, 120);
+    const plan = g.recruit && g.recruit.ng && g.recruit.ng.plan || 0;
+    return {
+      id: "player",
+      name: g.company.name,
+      ind: "dev",
+      isPlayer: true,
+      pop,
+      pay: g.staff.length ? g.staff.reduce((a, s) => a + s.salary, 0) / g.staff.length : pay2,
+      hire: Math.max(1, plan || Math.max(1, Math.round(hr * 0.08))),
+      hard: 1
+    };
+  }
+  function jobRanking(g, appealScore) {
+    const rows = EMPLOYERS.map((e) => {
+      const { pop, pay: pay2, hire } = popularityOf(g, e);
+      return { ...e, pop, pay: pay2, hire };
+    });
+    rows.push(selfRow(g, appealScore));
+    for (const r of rows) {
+      r.applicants = applicantsOf(r.pop);
+      r.ratio = r.applicants / Math.max(1, r.hire) * (r.hard || 1);
+    }
+    const byPop = rows.slice().sort((a, b) => b.pop - a.pop);
+    byPop.forEach((r, i) => {
+      r.popRank = i + 1;
+    });
+    const byHard = rows.slice().sort((a, b) => b.ratio - a.ratio);
+    byHard.forEach((r, i) => {
+      r.hardRank = i + 1;
+    });
+    return { rows, byPop, byHard, total: rows.length };
+  }
+  function rivalPull(g, appealScore) {
+    const { rows } = jobRanking(g, appealScore);
+    const devs = rows.filter((r) => r.ind === "dev" && !r.isPlayer);
+    const me = rows.find((r) => r.isPlayer);
+    if (!devs.length || !me) return 1;
+    const avg = devs.reduce((a, r) => a + r.pop, 0) / devs.length;
+    return clamp(0.72 + avg / Math.max(8, me.pop) * 0.32, 0.72, 1.55);
   }
 
   // src/sim/recruit.js
@@ -7373,7 +8001,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       pref,
       cultureFit,
       interest: clamp01(rng.range(0.22, 0.56) + appeal.score * 0.42 + (g.recruit.ng.invest.intern > 200 ? 0.1 : 0) + (cultureFit - 0.5) * 0.34),
-      rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull),
+      // 他社に引っ張られやすさ。就職人気ランキングで当社より上の会社が多いほど強くなる
+      rivalAppeal: clamp01(rng.range(0.4, 0.95) * T.rivalPull * rivalPull(g, appeal.score)),
       stage: 0,
       status: "entry",
       expected: Math.round((5 + pot / 100 * 1.6) * 10) / 10
@@ -7889,6 +8518,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const before2 = (g.unlocked || []).length;
       stepTier(g, news);
       rep.unlocked = (g.unlocked || []).slice(before2);
+      rep.planDone = stepPlan(g, news);
       rep.quarterEnd = true;
       rep.rank = ranking(g, "rev").find((x) => x.isPlayer);
       rep.kpi = kpis(g);
@@ -7998,6 +8628,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   // src/ui/panelDash.js
   var panelDash_exports = {};
   __export(panelDash_exports, {
+    openPlan: () => openPlan,
     render: () => render,
     title: () => title
   });
@@ -8036,6 +8667,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div style="margin-top:12px">${spark(revSeries, { color: "#b0781a" })}</div>
     <div class="hint">\u58F2\u4E0A\u9AD8\u306E\u63A8\u79FB\uFF08\u76F4\u8FD116\u56DB\u534A\u671F\uFF09</div>
   `)}
+
+  ${midPlanSection(g)}
 
   ${growth(g)}
 
@@ -8168,6 +8801,163 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     <div style="margin-top:10px">${rows}</div>
     ${waiting.length ? `<div class="hint">\u89E3\u7981\u5F85\u3061\uFF1A${waiting.map((w) => `${w.info.icon} ${w.info.name}\uFF08${Math.round(w.need / 100).toLocaleString()}\u5104\u5186\uFF09`).join("\u3001 ")}</div>` : '<div class="hint">\u3059\u3079\u3066\u306E\u6A5F\u80FD\u304C\u89E3\u7981\u3055\u308C\u3066\u3044\u308B\u3002</div>'}
   `);
+  }
+  function midPlanSection(g) {
+    const p = g.midPlan;
+    const hist = (g.planHistory || []).slice(-3).reverse();
+    const histHTML = hist.length ? `<div style="margin-top:10px">
+    <div class="sec-t" style="border:none;padding:0;margin-bottom:4px"><span>\u904E\u53BB\u306E\u8A08\u753B</span></div>
+    ${hist.map((h) => `<div class="kv">
+      <span class="k">${h.name}\uFF08${h.startYear}\u301C${h.endYear}\u5E74\uFF09</span>
+      <span class="v ${h.status === "achieved" ? "up" : h.status === "missed" || h.status === "abandoned" ? "down" : ""}">${{ achieved: "\u9054\u6210", partial: "\u4E00\u90E8\u9054\u6210", missed: "\u672A\u9054", abandoned: "\u53D6\u308A\u4E0B\u3052" }[h.status] || "\u2014"}\u3000${(h.score * 100).toFixed(0)}%</span>
+    </div>`).join("")}
+  </div>` : "";
+    if (!p) {
+      return section("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B", "\u672A\u7B56\u5B9A", `
+      <div class="card">
+        <div class="card-t"><span class="card-n">\u{1F4CB} \u8A08\u753B\u3092\u63B2\u3052\u3066\u3044\u306A\u3044</span></div>
+        <div class="card-s">\u793E\u9577\u3068\u3057\u30663\u5E74\u307E\u305F\u306F5\u5E74\u306E\u6570\u5024\u76EE\u6A19\u3092\u6C7A\u3081\u3001\u793E\u5185\u5916\u306B\u516C\u8868\u3067\u304D\u308B\u3002
+        \u516C\u8868\u3059\u308B\u3068\u793E\u54E1\u306E\u76EE\u7DDA\u304C\u63C3\u3063\u3066\u58EB\u6C17\u304C\u4E0A\u304C\u308A\u3001\u682A\u4FA1\u306B\u3082\u671F\u5F85\u304C\u4E57\u308B\u3002
+        \u9054\u6210\u3059\u308C\u3070\u4F01\u696D\u30D6\u30E9\u30F3\u30C9\u304C\u5927\u304D\u304F\u4F38\u3073\u308B\u304C\u3001\u672A\u9054\u306A\u3089\u7D4C\u55B6\u8CAC\u4EFB\u3092\u554F\u308F\u308C\u308B\u3002</div>
+        <div class="btnrow"><button class="btn primary" data-act="plan.new">\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u3092\u7B56\u5B9A\u3059\u308B</button></div>
+      </div>
+      ${histHTML}
+    `);
+    }
+    const score = planProgress(g, p);
+    const left = weeksLeft(g, p);
+    const elapsed = 1 - left / Math.max(1, p.endWeek - p.startWeek);
+    const onTrack = score >= elapsed - 0.06;
+    const rows = p.targets.map((t) => {
+      const m = PLAN_METRICS[t.id];
+      const pr = progressOf(g, t);
+      return `<div class="kv" style="margin-top:7px">
+      <span class="k">${m.icon} ${m.name}</span>
+      <span class="v">${fmtTarget(t.id, valueOf(g, t.id))} / <b>${fmtTarget(t.id, t.target)}</b>
+        <span class="${pr >= 1 ? "up" : pr >= elapsed - 0.06 ? "" : "down"}">\uFF08${(pr * 100).toFixed(0)}%\uFF09</span></span>
+    </div>${bar(Math.max(0, Math.min(1, pr)), pr >= 1 ? "" : pr >= elapsed - 0.06 ? "gold" : "red")}`;
+    }).join("");
+    return section("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B", p.name, `
+    <div class="card" style="border-color:${onTrack ? "rgba(15,138,85,.35)" : "rgba(255,107,122,.4)"}">
+      <div class="card-t"><span class="card-n">\u{1F4CB} ${p.name}</span>${chip(onTrack ? "\u8A08\u753B\u3069\u304A\u308A" : "\u9045\u308C\u3066\u3044\u308B", onTrack ? "green" : "red")}</div>
+      <div class="card-s">${p.startYear}\u5E74\u306B\u516C\u8868\u3057\u305F${p.years}\u304B\u5E74\u8A08\u753B\u3002\u6B8B\u308A ${Math.ceil(left / 13)} \u56DB\u534A\u671F\uFF08${left}\u9031\uFF09\u3002</div>
+      ${kv("\u5168\u4F53\u306E\u9032\u6357", `<b>${(score * 100).toFixed(0)}%</b>\u3000<span style="color:var(--ink-mute)">\u7D4C\u904E ${(elapsed * 100).toFixed(0)}%</span>`, "big")}
+      ${bar(Math.min(1, score), onTrack ? "" : "red")}
+      ${rows}
+      <div class="hint">\u91CE\u5FC3\u5EA6 ${ambitionOf(p).toFixed(2)}\u3002\u9AD8\u3044\u76EE\u6A19\u307B\u3069\u9054\u6210\u6642\u306E\u898B\u8FD4\u308A\u306F\u5927\u304D\u3044\u304C\u3001\u672A\u9054\u306E\u50B7\u3082\u6DF1\u304F\u306A\u308B\u3002</div>
+      <div class="btnrow"><button class="btn sm danger" data-act="plan.abandon">\u8A08\u753B\u3092\u53D6\u308A\u4E0B\u3052\u308B</button></div>
+    </div>
+    ${histHTML}
+  `);
+  }
+  function openPlan(g, ctx2) {
+    const me = ceo(g);
+    let spanIdx = 0;
+    let name2 = `${g.year}\u5E74\u5EA6 \u4E2D\u671F\u7D4C\u55B6\u8A08\u753B`;
+    const picked = {};
+    for (const id of ["revenue", "op", "leaseNoi"]) {
+      const base = valueOf(g, id);
+      picked[id] = Math.max(base * 1.6, PLAN_METRICS[id].scale === 100 ? 5e3 : base + 1);
+    }
+    openModal("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u306E\u7B56\u5B9A", build(), []);
+    bind();
+    function build() {
+      const span = PLAN_SPANS[spanIdx];
+      const list = Object.keys(picked);
+      const preview = list.map((id) => {
+        const m = PLAN_METRICS[id];
+        const base = valueOf(g, id);
+        const target = picked[id];
+        const st = base > 0 ? target / base : 99;
+        return `<div class="kv"><span class="k">${m.icon} ${m.name}</span>
+        <span class="v">${fmtTarget(id, base)} \u2192 <b>${fmtTarget(id, target)}</b>
+        <span style="color:var(--ink-mute)">${base > 0 ? `\xD7${st.toFixed(2)}` : "\u65B0\u898F"}</span></span></div>`;
+      }).join("");
+      return `
+    <div class="card" style="background:var(--gold-soft);border-color:rgba(227,181,88,.4)">
+      <div class="card-t"><span class="card-n">\u{1F451} ${me.name}</span>${chip("\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577", "gold")}</div>
+      <div class="card-s">\u63B2\u3052\u305F\u6570\u5B57\u306F\u793E\u5185\u306B\u3082\u5E02\u5834\u306B\u3082\u6B8B\u308B\u3002
+      \u80CC\u4F38\u3073\u3057\u305F\u76EE\u6A19\u307B\u3069\u9054\u6210\u6642\u306E\u8A55\u4FA1\u306F\u9AD8\u3044\u304C\u3001\u5C4A\u304B\u306A\u3051\u308C\u3070\u30D6\u30E9\u30F3\u30C9\u3082\u58EB\u6C17\u3082\u843D\u3061\u308B\u3002</div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>\u8A08\u753B\u306E\u540D\u79F0</label>
+      <input type="text" id="inpPlanName" maxlength="24" value="${name2}">
+    </div>
+    <div class="field" style="margin-top:10px">
+      <label>\u8A08\u753B\u671F\u9593</label>
+      <div class="btnrow">
+        ${PLAN_SPANS.map((sp, i) => `<button class="btn sm ${i === spanIdx ? "primary" : ""}" data-span="${i}">${sp.name}</button>`).join("")}
+      </div>
+      <div class="hint">${span.years}\u5E74\u5F8C\uFF08${g.year + span.years}\u5E74\uFF09\u306B\u5224\u5B9A\u3059\u308B\u3002\u9577\u3044\u8A08\u753B\u307B\u3069\u898B\u8FD4\u308A\u306F\u5927\u304D\u3044\uFF08\xD7${span.reward.toFixed(2)}\uFF09\u3002</div>
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u63B2\u3052\u308B\u76EE\u6A19</span><span class="note">\u6700\u59274\u3064</span></div>
+      <div class="selgrid">
+        ${PLAN_METRIC_IDS.map((id) => {
+        const m = PLAN_METRICS[id];
+        const on = picked[id] !== void 0;
+        return `<button class="selbtn ${on ? "on" : ""}" data-m="${id}">
+          <b>${m.icon} ${m.name}</b><span>\u3044\u307E ${fmtTarget(id, valueOf(g, id))}</span>
+        </button>`;
+      }).join("")}
+      </div>
+    </div>
+    ${Object.keys(picked).map((id) => {
+        const m = PLAN_METRICS[id];
+        const shown = m.scale === 0.01 ? (picked[id] * 100).toFixed(1) : m.scale === 100 ? Math.round(picked[id] / 100) : Math.round(picked[id]);
+        return `<div class="field">
+        <label>${m.icon} ${m.name}\u306E\u76EE\u6A19\uFF08${m.unit}\uFF09\u3000\u3044\u307E ${fmtTarget(id, valueOf(g, id))}</label>
+        <input type="number" class="tg" data-m="${id}" value="${shown}" step="${m.scale === 0.01 ? "0.5" : "1"}">
+        <div class="hint">${m.desc}</div>
+      </div>`;
+      }).join("")}
+    <div class="card" style="margin-top:10px">
+      <div class="card-t"><span class="card-n">\u8A08\u753B\u306E\u9AA8\u5B50</span></div>
+      ${preview || '<div class="hint">\u76EE\u6A19\u30921\u3064\u4EE5\u4E0A\u9078\u3076\u3053\u3068\u3002</div>'}
+    </div>
+    <div class="btnrow">
+      <button class="btn primary wide" data-go="1" ${Object.keys(picked).length ? "" : "disabled"}>\u3053\u306E\u8A08\u753B\u3092\u516C\u8868\u3059\u308B</button>
+    </div>`;
+    }
+    function refresh2() {
+      document.getElementById("modalBody").innerHTML = build();
+      bind();
+    }
+    function bind() {
+      const body = document.getElementById("modalBody");
+      body.querySelector("#inpPlanName").oninput = (e) => {
+        name2 = e.target.value;
+      };
+      body.querySelectorAll("[data-span]").forEach((b) => b.onclick = () => {
+        spanIdx = +b.dataset.span;
+        refresh2();
+      });
+      body.querySelectorAll("[data-m]").forEach((b) => {
+        if (b.classList.contains("tg")) {
+          b.oninput = (e) => {
+            const m = PLAN_METRICS[b.dataset.m];
+            const v = +e.target.value;
+            picked[b.dataset.m] = m.scale === 0.01 ? v / 100 : m.scale === 100 ? v * 100 : v;
+          };
+          return;
+        }
+        b.onclick = () => {
+          const id = b.dataset.m;
+          if (picked[id] !== void 0) delete picked[id];
+          else if (Object.keys(picked).length >= 4) return toast("\u76EE\u6A19\u306F4\u3064\u307E\u3067\u3067\u3042\u308B", "bad");
+          else picked[id] = Math.max(valueOf(g, id) * 1.6, PLAN_METRICS[id].scale === 100 ? 5e3 : valueOf(g, id) + 1);
+          refresh2();
+        };
+      });
+      body.querySelector("[data-go]").onclick = () => {
+        const targets = Object.entries(picked).map(([id, target]) => ({ id, target }));
+        const err = startPlan(g, { name: name2, spanIdx, targets }, g.news);
+        if (err) return toast(err, "bad");
+        toast("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u3092\u516C\u8868\u3057\u305F", "good");
+        ctx2.refresh();
+        closeModal();
+      };
+    }
   }
 
   // src/ui/panelLand.js
@@ -8464,7 +9254,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var panelDev_exports = {};
   __export(panelDev_exports, {
     bestPlan: () => bestPlan,
-    openPlan: () => openPlan,
+    openPlan: () => openPlan2,
     openPricing: () => openPricing,
     recommendStack: () => recommendStack,
     render: () => render3,
@@ -8558,7 +9348,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     });
     return st.filter((x) => x.floors > 0);
   }
-  function openPlan(g, cell, ctx2) {
+  function openPlan2(g, cell, ctx2) {
     const d = DISTRICTS[cell.d];
     const rec = bestPlan(g, cell);
     const pg = cell.program;
@@ -9215,9 +10005,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var panelHR_exports = {};
   __export(panelHR_exports, {
     listTable: () => listTable,
+    openAppoint: () => openAppoint,
+    openCeo: () => openCeo,
     openCulture: () => openCulture,
     openMid: () => openMid,
     openNewGrad: () => openNewGrad,
+    openOversee: () => openOversee,
+    openRankNames: () => openRankNames,
     openSalaryPolicy: () => openSalaryPolicy,
     openStaff: () => openStaff,
     render: () => render7,
@@ -9242,17 +10036,22 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       <td>${list.length ? man(list.reduce((a, s) => a + s.salary, 0) / list.length) : "\u2014"}</td>
     </tr>`;
     }).join("");
-    const org = RANKS.slice().reverse().map((r) => {
+    const me = ceo(g);
+    const org = `<div class="org-lv"><div class="org-node me" data-act="hr.ceo">
+      <div class="on-r">${rankName(g, CEO_RANK)}</div>
+      <div class="on-n">${me.name}</div>
+      <div class="on-d">\u3042\u306A\u305F\u30FB${g.year - (me.since || g.year) + (me.age || 42)}\u6B73</div>
+    </div></div><div class="org-conn"></div>` + RANKS.slice().reverse().filter((r) => r.id < CEO_RANK).map((r) => {
       const members = active.filter((s) => s.rank === r.id);
       if (!members.length) return "";
       if (r.id >= 3) {
-        return `<div class="org-lv">${members.map((s) => nodeHTML(s)).join("")}</div><div class="org-conn"></div>`;
+        return `<div class="org-lv">${members.map((x) => nodeHTML(g, x)).join("")}</div><div class="org-conn"></div>`;
       }
       const byDept = {};
-      for (const s of members) byDept[s.dept] = (byDept[s.dept] || 0) + 1;
+      for (const x of members) byDept[x.dept] = (byDept[x.dept] || 0) + 1;
       return `<div class="org-lv">${Object.entries(byDept).map(([d, n]) => `
       <div class="org-node" data-act="hr.dept" data-id="${d}">
-        <div class="on-r">${r.name}</div><div class="on-n">${n}\u540D</div><div class="on-d">${DEPTS[d].short}</div>
+        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${n}\u540D</div><div class="on-d">${DEPTS[d].short}</div>
       </div>`).join("")}</div><div class="org-conn"></div>`;
     }).join("");
     const progs = HR_PROGRAMS.map((pr) => `
@@ -9283,9 +10082,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 
   ${cultureSection(g)}
 
+  ${boardSection(g)}
+
   ${section("\u7D44\u7E54\u56F3", "\u8AB2\u9577\u4EE5\u4E0A\u306F\u500B\u4EBA\u3092\u8868\u793A", `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
+
+  ${jobRankSection(g, ctx2)}
 
   ${section("\u4ED6\u793E\u3068\u306E\u6BD4\u8F03", `\u696D\u754C\u5E73\u5747 ${man(industryPay(g))}`, `
     <table class="tbl">
@@ -9313,7 +10116,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const n = active.filter((s) => s.rank === r.id).length;
       const mine = rankPayOf(g, r.id), mkt = r.baseSalary;
       const d = mine / mkt - 1;
-      return `<tr><td>${r.name}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ""}</td>
+      return `<tr><td>${rankName(g, r.id)}${r.id === CEO_RANK ? "\uFF08\u3042\u306A\u305F\uFF09" : ""}</td><td>${n}${r.slots !== Infinity ? ` / ${r.slots}` : ""}</td>
           <td><b>${man(mine)}</b></td>
           <td>${man(mkt)}</td>
           <td class="${Math.abs(d) < 5e-3 ? "flat" : d > 0 ? "up" : "down"}">${Math.abs(d) < 5e-3 ? "\u2014" : (d > 0 ? "+" : "") + (d * 100).toFixed(0) + "%"}</td>
@@ -9322,7 +10125,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       </table>
       <div class="hint">\u5B9F\u969B\u306E\u5E74\u53CE\u306F\u3001\u3053\u306E\u57FA\u6E96\u984D\u306B\u672C\u4EBA\u306E\u80FD\u529B\u3068\u52E4\u7D9A\u5E74\u6570\u3092\u4E0A\u4E57\u305B\u3057\u3066\u6C7A\u307E\u308B\u3002
       \u696D\u754C\u6A19\u6E96\u3092\u4E0B\u56DE\u308B\u3068\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u304C\u843D\u3061\u3001\u96E2\u8077\u3068\u5F15\u304D\u629C\u304D\u304C\u5897\u3048\u308B\u3002</div>
-      <div class="btnrow"><button class="btn sm primary" data-act="hr.salary">\u5F79\u8077\u3054\u3068\u306E\u5E74\u53CE\u3092\u6539\u5B9A\u3059\u308B</button></div>
+      <div class="btnrow">
+        <button class="btn sm primary" data-act="hr.salary">\u5F79\u8077\u3054\u3068\u306E\u5E74\u53CE\u3092\u6539\u5B9A\u3059\u308B</button>
+        <button class="btn sm" data-act="hr.ranknames">\u5F79\u8077\u540D\u3092\u6539\u79F0\u3059\u308B</button>
+      </div>
     </div>
   `)}
 
@@ -9419,11 +10225,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     ${midCards}
   `);
   }
-  function nodeHTML(s) {
+  function nodeHTML(g, s) {
+    const ov = Array.isArray(s.oversee) ? s.oversee.filter((d) => DEPTS[d]) : [];
     return `<div class="org-node" data-act="hr.staff" data-id="${s.id}">
-    <div class="on-r">${RANKS[s.rank].name}</div>
+    <div class="on-r">${rankName(g, s.rank)}</div>
     <div class="on-n">${s.name}</div>
-    <div class="on-d">${DEPTS[s.dept].short}\u30FB${s.age}\u6B73</div>
+    <div class="on-d">${ov.length ? "\u7BA1\u638C " + ov.map((d) => DEPTS[d].short).join("\u30FB") : DEPTS[s.dept].short + "\u30FB" + s.age + "\u6B73"}</div>
   </div>`;
   }
   function listTable(g, list, sort = "ability") {
@@ -9436,7 +10243,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return `<table class="tbl">
     <tr><th>\u6C0F\u540D</th><th>\u90E8\u7F72</th><th>\u5F79\u8077</th><th>\u5E74\u9F62</th><th>\u80FD\u529B</th><th>\u5E74\u53CE</th><th>\u610F\u6B32</th></tr>
     ${sorted.map((s) => `<tr class="click" data-act="hr.staff" data-id="${s.id}">
-      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${RANKS[s.rank].short}</td>
+      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
       <td>${s.age}</td><td>${avgAbility(s).toFixed(0)}</td><td>${man(s.salary)}</td>
       <td style="color:${s.morale < 0.5 ? "var(--red)" : s.morale > 0.78 ? "var(--green)" : "inherit"}">${(s.morale * 100).toFixed(0)}</td>
     </tr>`).join("")}
@@ -9445,8 +10252,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   function openStaff(g, s, ctx2) {
     const fair = salaryFairness(g, s);
     const nextRank = RANKS[s.rank + 1];
-    const canPromote = nextRank && avgAbility(s) >= nextRank.minAbility && (nextRank.slots === Infinity || g.staff.filter((x) => x.rank === s.rank + 1).length < nextRank.slots);
-    openModal(`${s.name}\uFF08${RANKS[s.rank].name}\uFF09`, `
+    const canPromote = nextRank && nextRank.id < CEO_RANK && !nextRank.appoint && avgAbility(s) >= nextRank.minAbility && (nextRank.slots === Infinity || g.staff.filter((x) => x.rank === s.rank + 1).length < nextRank.slots);
+    openModal(`${s.name}\uFF08${rankName(g, s.rank)}\uFF09`, `
     <div class="grid3" style="margin-bottom:12px">
       ${mini("\u5E74\u9F62", s.age + "\u6B73", `\u52E4\u7D9A ${s.tenure.toFixed(1)}\u5E74`)}
       ${mini("\u7DCF\u5408\u80FD\u529B", avgAbility(s).toFixed(0), `\u6F5C\u5728 ${s.potential}`)}
@@ -9496,14 +10303,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         }
       },
       {
-        label: canPromote ? `${nextRank.name}\u306B\u6607\u683C` : "\u6607\u683C\u8981\u4EF6\u3092\u6E80\u305F\u3055\u306A\u3044",
+        label: canPromote ? `${rankName(g, nextRank.id)}\u306B\u6607\u683C` : nextRank && nextRank.appoint ? `${rankName(g, nextRank.id)}\u306F\u5F79\u54E1\u4EBA\u4E8B\u304B\u3089\u4EFB\u547D\u3059\u308B` : "\u6607\u683C\u8981\u4EF6\u3092\u6E80\u305F\u3055\u306A\u3044",
         cls: "primary",
         disabled: !canPromote,
         onClick: () => {
           s.rank++;
           s.salary = Math.max(s.salary, stdSalary(g, s));
           s.morale = Math.min(1, s.morale + 0.16);
-          toast(`${s.name}\u3092${RANKS[s.rank].name}\u306B\u6607\u683C\u3055\u305B\u305F`, "good");
+          toast(`${s.name}\u3092${rankName(g, s.rank)}\u306B\u6607\u683C\u3055\u305B\u305F`, "good");
           ctx2.refresh();
         }
       },
@@ -9770,7 +10577,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     ${list.length ? list.map((s, i) => `
       <div class="card">
         <div class="card-t">
-          <span class="card-n">${s.name}\uFF08${s.age}\u6B73\u30FB${RANKS[s.rank].name}\u76F8\u5F53\uFF09</span>
+          <span class="card-n">${s.name}\uFF08${s.age}\u6B73\u30FB${rankName(g, s.rank)}\u76F8\u5F53\uFF09</span>
           ${chip(`\u7DCF\u5408 ${avgAbility(s).toFixed(0)}`, avgAbility(s) > 72 ? "gold" : "grey")}
         </div>
         <div class="card-s">\u524D\u8077\uFF1A${s.prevCompany}\uFF0F\u9069\u6027\uFF1A${DEPTS[s.dept].name}</div>
@@ -9937,6 +10744,295 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       sync();
     };
     bind();
+  }
+  function boardSection(g) {
+    const me = ceo(g);
+    const list = officers(g).sort((a, b) => b.rank - a.rank || avgAbility(b) - avgAbility(a));
+    const ov = oversightOf(g);
+    const open = uncovered(g);
+    const gap = payGapView(g);
+    const rows = list.map((s) => {
+      const mine = Array.isArray(s.oversee) ? s.oversee.filter((d) => DEPTS[d]) : [];
+      const ab = avgAbility(s);
+      const def = RANKS[s.rank];
+      return `<div class="card">
+      <div class="card-t">
+        <span class="card-n">${s.name}</span>
+        ${chip(rankName(g, s.rank), s.rank >= 6 ? "gold" : "violet")}
+        ${ab < def.minAbility ? chip("\u529B\u4E0D\u8DB3", "red") : ""}
+      </div>
+      <div class="card-s">${s.age}\u6B73\uFF0F\u7DCF\u5408\u80FD\u529B ${ab.toFixed(0)}\uFF08\u76EE\u5B89 ${def.minAbility}\uFF09\uFF0F\u7D71\u7387 ${s.abil.lead.toFixed(0)}\uFF0F\u5E74\u53CE ${man(s.salary)}</div>
+      ${kv("\u7BA1\u638C\u90E8\u9580", mine.length ? mine.map((d) => DEPTS[d].name).join("\u30FB") : '<span style="color:var(--ink-mute)">\u306A\u3057\uFF08\u52B9\u679C\u304C\u51FA\u3066\u3044\u306A\u3044\uFF09</span>')}
+      ${mine.length ? `<div class="hint">\u62C5\u5F53\u90E8\u9580\u306E\u8CEA +${(ov[mine[0]].quality * 100).toFixed(0)}%\uFF0F\u51E6\u7406\u80FD\u529B +${(ov[mine[0]].capacity * 100).toFixed(0)}%${mine.length > 1 ? "\uFF08\u517C\u52D9\u306E\u3076\u30931\u90E8\u9580\u3042\u305F\u308A\u306E\u52B9\u304D\u306F\u8584\u307E\u308B\uFF09" : ""}</div>` : ""}
+      <div class="btnrow">
+        <button class="btn sm" data-act="hr.oversee" data-id="${s.id}">\u7BA1\u638C\u90E8\u9580\u3092\u6C7A\u3081\u308B</button>
+        <button class="btn sm danger" data-act="hr.dismiss" data-id="${s.id}">\u89E3\u4EFB\u3059\u308B</button>
+      </div>
+    </div>`;
+    }).join("") || empty("\u307E\u3060\u5F79\u54E1\u3092\u4EFB\u547D\u3057\u3066\u3044\u306A\u3044\u3002<br>\u57F7\u884C\u5F79\u54E1\u3068\u53D6\u7DE0\u5F79\u306F\u81EA\u52D5\u3067\u306F\u6C7A\u307E\u3089\u306A\u3044\u3002\u793E\u9577\u3067\u3042\u308B\u3042\u306A\u305F\u304C\u6307\u540D\u3059\u308B\u3002");
+    const roomRows = OFFICER_RANKS.map((r) => {
+      const room = officerRoom(g, r);
+      return `<div class="kv"><span class="k">${rankName(g, r)}</span>
+      <span class="v">${g.staff.filter((x) => x.rank === r && !x.subsidiary).length} / ${RANKS[r].slots}\u540D\u3000
+      ${room ? `<span class="up">\u7A7A\u304D ${room}</span>` : '<span style="color:var(--ink-mute)">\u6E80\u5E2D</span>'}</span></div>`;
+    }).join("");
+    return section("\u5F79\u54E1\u4EBA\u4E8B", `\u57F7\u884C\u5F79\u54E1 ${g.staff.filter((x) => x.rank === 5 && !x.subsidiary).length}\u540D\uFF0F\u53D6\u7DE0\u5F79 ${g.staff.filter((x) => x.rank === 6 && !x.subsidiary).length}\u540D`, `
+    <div class="card" style="border-color:rgba(227,181,88,.4);background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n">\u{1F451} ${me.name}</span>${chip(rankName(g, CEO_RANK), "gold")}</div>
+      <div class="card-s">\u3053\u306E\u4F1A\u793E\u306E\u793E\u9577\u306F\u3042\u306A\u305F\u81EA\u8EAB\u3067\u3042\u308B\u3002\u5F79\u54E1\u306F\u81EA\u52D5\u3067\u306F\u6C7A\u307E\u3089\u306A\u3044\u3002\u8AB0\u3092\u5F15\u304D\u4E0A\u3052\u3001\u3069\u306E\u90E8\u9580\u3092\u4EFB\u305B\u308B\u304B\u304C\u305D\u306E\u307E\u307E\u7D44\u7E54\u529B\u306B\u306A\u308B\u3002</div>
+      ${kv("\u5F79\u54E1\u5831\u916C\uFF08\u5E74\uFF09", `${man(ceoPay(g))}\u3000<span class="${gap.tone === "bad" ? "down" : gap.tone === "warn" ? "" : "up"}">\u793E\u54E1\u306E${gap.ratio.toFixed(1)}\u500D</span>`)}
+      ${kv("\u5F79\u54E1\u4F53\u5236\u306E\u5145\u5B9F\u5EA6", `${(boardStrength(g) * 100).toFixed(0)} / 100`)}
+      ${bar(boardStrength(g), "gold")}
+      <div class="hint">${gap.text}</div>
+    </div>
+    <div class="card">
+      <div class="card-t"><span class="card-n">\u5F79\u8077\u306E\u67A0</span></div>
+      ${roomRows}
+      ${open.length ? `<div class="hint" style="color:var(--amber)">\u7BA1\u638C\u5F79\u54E1\u304C\u3044\u306A\u3044\u90E8\u9580\uFF1A${open.map((d) => DEPTS[d].name).join("\u30FB")}\u3002\u5F79\u54E1\u3092\u7F6E\u3051\u3070\u3001\u305D\u306E\u90E8\u9580\u306E\u8CEA\u3068\u51E6\u7406\u80FD\u529B\u304C\u4E0A\u304C\u308B\u3002</div>` : '<div class="hint">\u3059\u3079\u3066\u306E\u90E8\u9580\u306B\u7BA1\u638C\u5F79\u54E1\u304C\u3044\u308B\u3002</div>'}
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.appoint">\u5F79\u54E1\u3092\u4EFB\u547D\u3059\u308B</button></div>
+    </div>
+    ${rows}
+  `);
+  }
+  function openAppoint(g, ctx2) {
+    let rank = OFFICER_RANKS[0];
+    openModal("\u5F79\u54E1\u306E\u4EFB\u547D", build(), []);
+    bind();
+    function build() {
+      const def = RANKS[rank];
+      const room = officerRoom(g, rank);
+      const cands = g.staff.filter((s) => !s.subsidiary && !canAppoint(g, s, rank)).sort((a, b) => avgAbility(b) + b.abil.lead * 0.5 - (avgAbility(a) + a.abil.lead * 0.5)).slice(0, 24);
+      return `
+    <div class="btnrow" style="margin-bottom:10px">
+      ${OFFICER_RANKS.map((r) => `<button class="btn sm ${r === rank ? "primary" : ""}" data-rank="${r}">${rankName(g, r)}</button>`).join("")}
+    </div>
+    <div class="card">
+      <div class="card-t"><span class="card-n">${rankName(g, rank)}</span>${chip(`\u7A7A\u304D ${room} / ${def.slots}\u540D`, room ? "green" : "red")}</div>
+      <div class="card-s">\u80FD\u529B\u306E\u76EE\u5B89\u306F ${def.minAbility}\u3002\u3072\u3068\u3064\u4E0B\u306E\u5F79\u8077\u3092\u7D4C\u3066\u3044\u308B\u8005\u304B\u3089\u9078\u3076\u3002
+      \u76EE\u5B89\u306B\u5C4A\u304B\u306A\u3044\u4EBA\u7269\u3092\u5F15\u304D\u4E0A\u3052\u308B\u3068\u3001\u672C\u4EBA\u306F\u559C\u3076\u304C\u3001\u5B9F\u529B\u306E\u3042\u308B\u793E\u54E1\u306E\u58EB\u6C17\u304C\u4E0B\u304C\u308B\u3002</div>
+    </div>
+    ${cands.length ? `<table class="tbl">
+      <tr><th>\u6C0F\u540D</th><th>\u73FE\u8077</th><th>\u90E8\u7F72</th><th>\u5E74\u9F62</th><th>\u80FD\u529B</th><th>\u7D71\u7387</th><th></th></tr>
+      ${cands.map((s) => {
+        const ab = avgAbility(s);
+        return `<tr>
+        <td>${s.name}</td><td>${rankShort(g, s.rank)}</td><td>${DEPTS[s.dept].short}</td>
+        <td>${s.age}</td>
+        <td class="${ab >= def.minAbility ? "up" : "down"}">${ab.toFixed(0)}</td>
+        <td>${s.abil.lead.toFixed(0)}</td>
+        <td><button class="btn sm primary" data-pick="${s.id}">\u4EFB\u547D</button></td>
+      </tr>`;
+      }).join("")}
+    </table>` : empty(room ? `${rankName(g, rank)}\u306B\u4EFB\u547D\u3067\u304D\u308B\u4EBA\u6750\u304C\u3044\u306A\u3044\u3002<br>\u3072\u3068\u3064\u4E0B\u306E\u5F79\u8077\u307E\u3067\u80B2\u3066\u308B\u5FC5\u8981\u304C\u3042\u308B\u3002` : `${rankName(g, rank)}\u306E\u67A0\u304C\u57CB\u307E\u3063\u3066\u3044\u308B\u3002`)}
+    `;
+    }
+    function refresh2() {
+      document.getElementById("modalBody").innerHTML = build();
+      bind();
+    }
+    function bind() {
+      const body = document.getElementById("modalBody");
+      body.querySelectorAll("[data-rank]").forEach((b) => b.onclick = () => {
+        rank = +b.dataset.rank;
+        refresh2();
+      });
+      body.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => {
+        const s = g.staff.find((x) => x.id === b.dataset.pick);
+        if (!s) return;
+        const err = appoint(g, s, rank, g.news);
+        if (err) return toast(err, "bad");
+        toast(`${s.name}\u3092${rankName(g, rank)}\u306B\u4EFB\u547D\u3057\u305F`, "good");
+        ctx2.refresh();
+        closeModal();
+        openOversee(g, s, ctx2);
+      });
+    }
+  }
+  function openOversee(g, s, ctx2) {
+    const cap = s.rank >= 6 ? 4 : 2;
+    let pick = (Array.isArray(s.oversee) ? s.oversee.filter((d) => DEPTS[d]) : []).slice(0, cap);
+    openModal(`${s.name}\u306E\u7BA1\u638C\u90E8\u9580`, build(), []);
+    bind();
+    function build() {
+      return `
+    <div class="card">
+      <div class="card-s">${rankName(g, s.rank)}\u306F\u6700\u5927 ${cap} \u90E8\u9580\u307E\u3067\u898B\u3089\u308C\u308B\u3002
+      \u517C\u52D9\u3055\u305B\u308B\u30681\u90E8\u9580\u3042\u305F\u308A\u306E\u52B9\u304D\u306F\u8584\u307E\u308B\u306E\u3067\u3001\u624B\u8584\u306A\u3068\u3053\u308D\u306B\u7D5E\u308B\u307B\u3046\u304C\u52B9\u304F\u3002</div>
+      ${kv("\u7D71\u7387", s.abil.lead.toFixed(0))}
+      ${kv("\u7DCF\u5408\u80FD\u529B", avgAbility(s).toFixed(0))}
+    </div>
+    <div class="selgrid">
+      ${DEPT_IDS.map((d) => {
+        const other = officers(g).find((x) => x !== s && (x.oversee || []).includes(d));
+        const on = pick.includes(d);
+        return `<button class="selbtn ${on ? "on" : ""}" data-d="${d}">
+        <b>${DEPTS[d].icon} ${DEPTS[d].name}</b>
+        <span>${other ? `${other.name}\u304C\u7BA1\u638C\u4E2D` : "\u7BA1\u638C\u8005\u306A\u3057"}</span>
+      </button>`;
+      }).join("")}
+    </div>
+    <div class="hint">\u9078\u629E\u4E2D\uFF1A${pick.length ? pick.map((d) => DEPTS[d].name).join("\u30FB") : "\u306A\u3057"}\uFF08${pick.length} / ${cap}\uFF09</div>
+    <div class="btnrow"><button class="btn primary wide" data-save="1">\u3053\u306E\u4F53\u5236\u3067\u6C7A\u3081\u308B</button></div>`;
+    }
+    function refresh2() {
+      document.getElementById("modalBody").innerHTML = build();
+      bind();
+    }
+    function bind() {
+      const body = document.getElementById("modalBody");
+      body.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
+        const d = b.dataset.d;
+        if (pick.includes(d)) pick = pick.filter((x) => x !== d);
+        else if (pick.length < cap) pick.push(d);
+        else return toast(`${rankName(g, s.rank)}\u304C\u898B\u3089\u308C\u308B\u306E\u306F ${cap} \u90E8\u9580\u307E\u3067\u3067\u3042\u308B`, "bad");
+        refresh2();
+      });
+      body.querySelector("[data-save]").onclick = () => {
+        setOversight(g, s, pick);
+        toast(`${s.name}\u306E\u7BA1\u638C\u3092 ${pick.length ? pick.map((d) => DEPTS[d].short).join("\u30FB") : "\u306A\u3057"} \u306B\u3057\u305F`);
+        ctx2.refresh();
+        closeModal();
+      };
+    }
+  }
+  function openRankNames(g, ctx2) {
+    let draft = RANKS.map((r) => rankName(g, r.id));
+    openModal("\u5F79\u8077\u540D\u306E\u6539\u79F0", build(), []);
+    bind();
+    function build() {
+      return `
+    <div class="card">
+      <div class="card-s">\u3053\u306E\u4F1A\u793E\u3067\u306E\u547C\u3073\u65B9\u3092\u6C7A\u3081\u308B\u3002\u7B49\u7D1A\u306E\u610F\u5473\u3084\u7D66\u4E0E\u30C6\u30FC\u30D6\u30EB\u306F\u5909\u308F\u3089\u306A\u3044\u3002
+      \u300C\u30B7\u30CB\u30A2\u30DE\u30CD\u30FC\u30B8\u30E3\u30FC\u300D\u300C\u30C7\u30A3\u30EC\u30AF\u30BF\u30FC\u300D\u300C\u30D1\u30FC\u30C8\u30CA\u30FC\u300D\u306E\u3088\u3046\u306B\u3001\u81EA\u793E\u3089\u3057\u3044\u547C\u3073\u65B9\u306B\u3067\u304D\u308B\u3002</div>
+    </div>
+    ${RANKS.map((r) => `
+      <div class="field">
+        <label>\u7B49\u7D1A ${r.id}${r.id === CEO_RANK ? "\uFF08\u3042\u306A\u305F\uFF09" : r.appoint ? "\uFF08\u793E\u9577\u304C\u4EFB\u547D\u3059\u308B\uFF09" : ""}\u3000\u65E2\u5B9A\uFF1A${r.name}</label>
+        <input type="text" class="rn" data-i="${r.id}" maxlength="10" value="${draft[r.id]}">
+      </div>`).join("")}
+    <div class="btnrow">
+      <button class="btn primary" data-save="1">\u6539\u79F0\u3059\u308B</button>
+      <button class="btn ghost" data-reset="1">\u65E2\u5B9A\u306B\u623B\u3059</button>
+    </div>`;
+    }
+    function refresh2() {
+      document.getElementById("modalBody").innerHTML = build();
+      bind();
+    }
+    function bind() {
+      const body = document.getElementById("modalBody");
+      body.querySelectorAll(".rn").forEach((el) => el.oninput = (e) => {
+        draft[+el.dataset.i] = e.target.value;
+      });
+      body.querySelector("[data-reset]").onclick = () => {
+        draft = defaultRankNames();
+        refresh2();
+      };
+      body.querySelector("[data-save]").onclick = () => {
+        g.hrPolicy.rankNames = draft.map((v, i) => v && v.trim() ? v.trim().slice(0, 10) : RANKS[i].name);
+        toast("\u5F79\u8077\u540D\u3092\u6539\u79F0\u3057\u305F", "good");
+        ctx2.refresh();
+        closeModal();
+      };
+    }
+  }
+  function openCeo(g, ctx2) {
+    const me = ceo(g);
+    const gap = payGapView(g);
+    const list = officers(g);
+    const open = uncovered(g);
+    let name2 = me.name;
+    let pay2 = Math.round(ceoPay(g) * 100);
+    openModal(`${rankName(g, CEO_RANK)}\u3000${me.name}`, `
+    <div class="card" style="border-color:rgba(227,181,88,.4);background:var(--gold-soft)">
+      <div class="card-t"><span class="card-n">\u{1F451} ${me.name}</span>${chip(`${me.since}\u5E74 \u5C31\u4EFB`, "gold")}</div>
+      <div class="card-s">${g.company.name}\u306E\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577\u3002
+      \u5F79\u54E1\u306E\u6307\u540D\u3082\u3001\u5831\u916C\u306E\u6C7A\u5B9A\u3082\u3001\u7D4C\u55B6\u8A08\u753B\u306E\u516C\u8868\u3082\u3001\u3059\u3079\u3066\u3053\u306E\u5E2D\u306E\u4ED5\u4E8B\u3067\u3042\u308B\u3002</div>
+    </div>
+    <div class="grid3" style="margin:12px 0">
+      ${mini("\u5728\u4EFB", `${Math.max(0, g.year - me.since)}\u5E74`, `${me.since}\u5E74\u301C`)}
+      ${mini("\u5F79\u54E1", list.length + "\u540D", `\u7BA1\u638C\u306A\u3057\u306E\u90E8\u9580 ${open.length}`)}
+      ${mini("\u5F79\u54E1\u4F53\u5236", (boardStrength(g) * 100).toFixed(0), "\u5145\u5B9F\u5EA6")}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u6C0F\u540D</span></div>
+      <div class="field"><input type="text" id="inpCeoName" maxlength="12" value="${me.name}"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u81EA\u5206\u306E\u5F79\u54E1\u5831\u916C</span></div>
+      <div class="field"><label>\u5E74\u984D\uFF08\u4E07\u5186\uFF09</label>
+        <input type="number" id="inpCeoPay" value="${pay2}" step="50" min="0">
+      </div>
+      <div id="ceoInfo" class="hint">${gap.text}\uFF08\u793E\u54E1\u306E${gap.ratio.toFixed(1)}\u500D\uFF09</div>
+      <div class="hint">\u9AD8\u304F\u53D6\u308A\u3059\u304E\u308B\u3068\u793E\u54E1\u306E\u58EB\u6C17\u304C\u843D\u3061\u308B\u3002\u4F4E\u3059\u304E\u3066\u3082\u7D4C\u55B6\u8CAC\u4EFB\u306B\u898B\u5408\u308F\u306A\u3044\u3068\u898B\u3089\u308C\u308B\u3002
+      \u5831\u916C\u306F\u4EBA\u4EF6\u8CBB\u3068\u3057\u3066\u6BCE\u9031\u8A08\u4E0A\u3055\u308C\u308B\u3002</div>
+    </div>
+  `, [
+      { label: "\u9589\u3058\u308B", cls: "ghost" },
+      {
+        label: "\u5909\u66F4\u3092\u9069\u7528",
+        cls: "primary",
+        onClick: () => {
+          const n = (document.getElementById("inpCeoName").value || "").trim().slice(0, 12);
+          const p2 = +document.getElementById("inpCeoPay").value;
+          if (n) me.name = n;
+          if (isFinite(p2) && p2 >= 0) {
+            if (!Array.isArray(g.hrPolicy.rankPay)) g.hrPolicy.rankPay = [];
+            g.hrPolicy.rankPay[CEO_RANK] = Math.round(p2) / 100;
+          }
+          toast("\u793E\u9577\u306E\u60C5\u5831\u3092\u66F4\u65B0\u3057\u305F");
+          ctx2.refresh();
+        }
+      }
+    ]);
+    const inp = document.getElementById("inpCeoPay");
+    const info = document.getElementById("ceoInfo");
+    if (inp && info) {
+      inp.oninput = () => {
+        const rp = g.hrPolicy.rankPay || [];
+        const base = typeof rp[0] === "number" && rp[0] > 0 ? rp[0] : RANKS[0].baseSalary;
+        const ratio = +inp.value / 100 / Math.max(0.1, base);
+        info.textContent = `\u793E\u54E1\u306E${ratio.toFixed(1)}\u500D` + (ratio > 22 ? "\u3000\u958B\u304D\u304C\u5927\u304D\u3059\u304E\u308B\u3002\u58EB\u6C17\u304C\u843D\u3061\u308B\u3002" : ratio > 15 ? "\u3000\u3084\u3084\u5927\u304D\u3044\u3002\u696D\u7E3E\u304C\u4F34\u308F\u306A\u3044\u3068\u6279\u5224\u3055\u308C\u308B\u3002" : ratio < 4 ? "\u3000\u4F4E\u3059\u304E\u308B\u3002\u7D4C\u55B6\u8CAC\u4EFB\u306B\u898B\u5408\u3063\u3066\u3044\u306A\u3044\u3068\u898B\u3089\u308C\u308B\u3002" : "\u3000\u5E38\u8B58\u306E\u7BC4\u56F2\u3067\u3042\u308B\u3002");
+      };
+    }
+  }
+  function jobRankSection(g, ctx2) {
+    const ap = employerAppeal(g).score;
+    const mode = ctx2 && ctx2.jobRankMode || "pop";
+    const r = jobRanking(g, ap);
+    const me = r.byPop.find((x) => x.isPlayer);
+    const list = mode === "pop" ? r.byPop : r.byHard;
+    const idx = list.indexOf(me);
+    const head = list.slice(0, 12);
+    const near = list.slice(Math.max(12, idx - 2), Math.min(list.length, idx + 3));
+    const shown = head.concat(near.filter((x) => !head.includes(x)));
+    const gapRow = shown.length > 12 && idx > 14;
+    const row2 = (x) => `<tr class="${x.isPlayer ? "me" : ""}">
+    <td>${mode === "pop" ? x.popRank : x.hardRank}</td>
+    <td>${x.name}<br><span style="font-size:10px;color:var(--ink-mute)">${INDUSTRIES[x.ind].icon} ${INDUSTRIES[x.ind].short}</span></td>
+    ${mode === "pop" ? `<td>${x.pop.toFixed(0)}</td><td>${man(x.pay)}</td><td>${num(x.hire)}</td>` : `<td><b>${x.ratio.toFixed(1)}\u500D</b></td><td>${num(x.applicants)}</td><td>${num(x.hire)}</td>`}
+  </tr>`;
+    return section("\u5C31\u8077\u5148\u30E9\u30F3\u30AD\u30F3\u30B0", `${mode === "pop" ? "\u5B66\u751F\u4EBA\u6C17" : "\u5165\u793E\u96E3\u6613\u5EA6"}\u3000\u5168${r.total}\u793E`, `
+    <div class="grid3">
+      ${mini("\u5B66\u751F\u4EBA\u6C17", `${me.popRank}\u4F4D`, `/ ${r.total}\u793E`, me.popRank <= 10 ? "var(--gold)" : "")}
+      ${mini("\u5165\u793E\u96E3\u6613\u5EA6", `${me.hardRank}\u4F4D`, `\u5FDC\u52DF\u500D\u7387 ${me.ratio.toFixed(1)}\u500D`)}
+      ${mini("\u63A8\u5B9A\u30A8\u30F3\u30C8\u30EA\u30FC", num(me.applicants) + "\u540D", `\u63A1\u7528\u4E88\u5B9A ${num(me.hire)}\u540D`)}
+    </div>
+    <div class="btnrow" style="margin:9px 0">
+      <button class="btn sm ${mode === "pop" ? "primary" : ""}" data-act="hr.jobrank" data-id="pop">\u4EBA\u6C17\u9806</button>
+      <button class="btn sm ${mode === "hard" ? "primary" : ""}" data-act="hr.jobrank" data-id="hard">\u5165\u793E\u96E3\u6613\u5EA6\u9806</button>
+    </div>
+    <table class="tbl">
+      <tr><th>\u9806\u4F4D</th><th>\u4F01\u696D</th>
+        ${mode === "pop" ? "<th>\u4EBA\u6C17\u5EA6</th><th>\u5E73\u5747\u5E74\u53CE</th><th>\u63A1\u7528</th>" : "<th>\u5FDC\u52DF\u500D\u7387</th><th>\u5FDC\u52DF</th><th>\u63A1\u7528</th>"}</tr>
+      ${shown.map((x, i) => (gapRow && i === 12 ? '<tr><td colspan="5" style="text-align:center;color:var(--ink-mute)">\u2026</td></tr>' : "") + row2(x)).join("")}
+    </table>
+    <div class="hint">\u30C7\u30D9\u30ED\u30C3\u30D1\u30FC\u4EE5\u5916\u306E\u696D\u754C\u3082\u542B\u3081\u305F\u5E8F\u5217\u3067\u3042\u308B\u3002\u4EBA\u6C17\u306F\u77E5\u540D\u5EA6\u30FB\u5E73\u5747\u5E74\u53CE\u30FB\u76F4\u8FD1\u306E\u52E2\u3044\u3067\u6C7A\u307E\u308A\u3001
+    \u5165\u793E\u96E3\u6613\u5EA6\u306F\u30A8\u30F3\u30C8\u30EA\u30FC\u6570\u3092\u63A1\u7528\u4E88\u5B9A\u6570\u3067\u5272\u3063\u305F\u5FDC\u52DF\u500D\u7387\u3067\u898B\u308B\u3002
+    \u3044\u307E\u540C\u696D\u4ED6\u793E\u306B\u5B66\u751F\u3092\u5F15\u3063\u5F35\u3089\u308C\u308B\u5F37\u3055\u306F \xD7${rivalPull(g, ap).toFixed(2)}\u3002
+    \u9806\u4F4D\u304C\u4E0A\u304C\u308B\u307B\u3069\u5185\u5B9A\u8F9E\u9000\u304C\u6E1B\u308A\u3001\u4E0A\u4F4D\u6821\u306E\u5B66\u751F\u304C\u96C6\u307E\u308B\u3002<br>
+    \u63B2\u8F09\u3057\u3066\u3044\u308B\u4F01\u696D\u306F\u3059\u3079\u3066\u67B6\u7A7A\u3067\u3042\u308A\u3001\u5B9F\u5728\u306E\u4F01\u696D\u306E\u6570\u5024\u3067\u306F\u306A\u3044\u3002</div>
+  `);
   }
 
   // src/ui/panelMA.js
@@ -10645,6 +11741,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     refresh,
     rivalKey: "rev",
     hrSort: "ability",
+    jobRankMode: "pop",
     startProject: startProject2,
     acquireNow,
     focusCell
@@ -10726,11 +11823,12 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       const name2 = ($("#inpCompany").value || "\u5E38\u76E4\u5730\u6240").slice(0, 12);
       const diff = $("#inpDiff").value;
       const home = $("#inpHome") && $("#inpHome").value || "W";
-      G = createGame({ companyName: name2, difficulty: diff, home, seed: Date.now() & 2147483647 });
+      const ceoName = ($("#inpCeo") && $("#inpCeo").value || "\u5E38\u76E4 \u5B97\u4E00\u90CE").slice(0, 12);
+      G = createGame({ companyName: name2, difficulty: diff, home, ceoName, seed: Date.now() & 2147483647 });
       G.news = [{
         icon: "\u{1F3E2}",
         type: "market",
-        text: `${name2}\u304C\u5275\u696D\u3057\u305F\u3002${DISTRICTS[G.company.home].name}\u3092\u5730\u76E4\u306B\u3001\u6E4A\u90FD\u5E02\u3067\u306E\u4E8B\u696D\u3092\u958B\u59CB\u3059\u308B\u3002`
+        text: `${name2}\u304C\u5275\u696D\u3057\u305F\u3002${DISTRICTS[G.company.home].name}\u3092\u5730\u76E4\u306B\u3001${ceoName}\u304C\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577\u3068\u3057\u3066\u4E8B\u696D\u3092\u958B\u59CB\u3059\u308B\u3002`
       }];
       const rng0 = new RNG(G.rngState ^ 12345);
       generateListings(G, rng0, G.news);
@@ -11013,7 +12111,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       return;
     }
     if (c.owner === "player" && !c.building && !c.projectId) {
-      openPlan(G, c, ctx);
+      openPlan2(G, c, ctx);
       return;
     }
     if (c.projectId) {
@@ -11102,7 +12200,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         const c = cellById(G, id);
         if (c) {
           focusCell(c);
-          openPlan(G, c, ctx);
+          openPlan2(G, c, ctx);
         }
         break;
       }
@@ -11172,6 +12270,66 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       case "hr.salary":
         openSalaryPolicy(G, ctx);
         break;
+      case "hr.ranknames":
+        openRankNames(G, ctx);
+        break;
+      case "hr.appoint":
+        openAppoint(G, ctx);
+        break;
+      case "hr.oversee": {
+        const s = G.staff.find((x) => x.id === id);
+        if (s) openOversee(G, s, ctx);
+        break;
+      }
+      case "hr.dismiss": {
+        const s = G.staff.find((x) => x.id === id);
+        if (!s) break;
+        openModal("\u5F79\u54E1\u306E\u89E3\u4EFB", `
+        <div class="card" style="border-color:rgba(255,107,122,.4)">
+          <div class="card-t"><span class="card-n">${s.name}</span></div>
+          <div class="card-s">${s.name}\u3092\u5F79\u8077\u304B\u3089\u5916\u3057\u3001\u3072\u3068\u3064\u4E0B\u306E\u7B49\u7D1A\u306B\u623B\u3059\u3002
+          \u672C\u4EBA\u306E\u58EB\u6C17\u3068\u5B9A\u7740\u5EA6\u306F\u5927\u304D\u304F\u843D\u3061\u3001\u9000\u8077\u306B\u3064\u306A\u304C\u308B\u3053\u3068\u3082\u3042\u308B\u3002</div>
+        </div>`, [
+          { label: "\u3084\u3081\u308B", cls: "ghost" },
+          {
+            label: "\u89E3\u4EFB\u3059\u308B",
+            cls: "danger",
+            onClick: () => {
+              const err = dismiss(G, s, G.news);
+              if (err) return toast(err, "bad");
+              toast(`${s.name}\u3092\u89E3\u4EFB\u3057\u305F`, "bad");
+              refresh();
+            }
+          }
+        ]);
+        break;
+      }
+      case "hr.ceo":
+        openCeo(G, ctx);
+        break;
+      case "plan.new":
+        openPlan(G, ctx);
+        break;
+      case "plan.abandon": {
+        openModal("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u306E\u53D6\u308A\u4E0B\u3052", `
+        <div class="card" style="border-color:rgba(255,107,122,.4)">
+          <div class="card-s">\u63B2\u3052\u305F\u8A08\u753B\u3092\u81EA\u3089\u4E0B\u308D\u3059\u3053\u3068\u306B\u306A\u308B\u3002
+          \u4F01\u696D\u30D6\u30E9\u30F3\u30C9\u304C\u4E0B\u304C\u308A\u3001\u793E\u54E1\u306E\u58EB\u6C17\u3082\u843D\u3061\u308B\u3002</div>
+        </div>`, [
+          { label: "\u3084\u3081\u308B", cls: "ghost" },
+          {
+            label: "\u53D6\u308A\u4E0B\u3052\u308B",
+            cls: "danger",
+            onClick: () => {
+              const err = abandonPlan(G, G.news);
+              if (err) return toast(err, "bad");
+              toast("\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u3092\u53D6\u308A\u4E0B\u3052\u305F", "bad");
+              refresh();
+            }
+          }
+        ]);
+        break;
+      }
       case "hr.culture":
         openCulture(G, ctx);
         break;
@@ -11180,6 +12338,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         break;
       case "hr.list":
         ctx.hrSort = id;
+        refresh();
+        break;
+      case "hr.jobrank":
+        ctx.jobRankMode = id;
         refresh();
         break;
       case "hr.dept": {
@@ -11383,7 +12545,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       closeModal();
       if (c) {
         focusCell(c);
-        openPlan(G, c, ctx);
+        openPlan2(G, c, ctx);
       }
     });
     refresh();

@@ -21,6 +21,8 @@ import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
 import { sellAsset } from './sim/sales.js';
 import { foundSubsidiary, liquidate, generateTargets as genTargets } from './sim/ma.js';
 import { orgPower } from './sim/hr.js';
+import { dismiss as dismissOfficer } from './sim/officers.js';
+import { abandonPlan } from './sim/midplan.js';
 import { ranking } from './sim/rivals.js';
 import { unlocked } from './sim/company.js';
 import { SUB_TYPES, RIVAL_DEFS } from './data/companies.js';
@@ -46,7 +48,7 @@ let G = null, R = null;
 let currentPanel = null;
 let lastT = 0;
 const ctx = {
-  refresh, rivalKey: 'rev', hrSort: 'ability',
+  refresh, rivalKey: 'rev', hrSort: 'ability', jobRankMode: 'pop',
   startProject, acquireNow, focusCell,
 };
 
@@ -134,10 +136,11 @@ function startGame(saved) {
     const name = ($('#inpCompany').value || '常盤地所').slice(0, 12);
     const diff = $('#inpDiff').value;
     const home = ($('#inpHome') && $('#inpHome').value) || 'W';
-    G = createGame({ companyName: name, difficulty: diff, home, seed: Date.now() & 0x7fffffff });
+    const ceoName = (($('#inpCeo') && $('#inpCeo').value) || '常盤 宗一郎').slice(0, 12);
+    G = createGame({ companyName: name, difficulty: diff, home, ceoName, seed: Date.now() & 0x7fffffff });
     G.news = [{
       icon: '🏢', type: 'market',
-      text: `${name}が創業した。${DISTRICTS[G.company.home].name}を地盤に、湊都市での事業を開始する。`,
+      text: `${name}が創業した。${DISTRICTS[G.company.home].name}を地盤に、${ceoName}が代表取締役社長として事業を開始する。`,
     }];
     // 初期の売却情報と買収候補を用意する
     const rng0 = new RNG(G.rngState ^ 12345);
@@ -535,9 +538,56 @@ function handleAction(act, id) {
     }
     case 'hr.mid': HR.openMid(G, id, ctx); break;
     case 'hr.salary': HR.openSalaryPolicy(G, ctx); break;
+    case 'hr.ranknames': HR.openRankNames(G, ctx); break;
+    case 'hr.appoint': HR.openAppoint(G, ctx); break;
+    case 'hr.oversee': {
+      const s = G.staff.find(x => x.id === id);
+      if (s) HR.openOversee(G, s, ctx);
+      break;
+    }
+    case 'hr.dismiss': {
+      const s = G.staff.find(x => x.id === id);
+      if (!s) break;
+      openModal('役員の解任', `
+        <div class="card" style="border-color:rgba(255,107,122,.4)">
+          <div class="card-t"><span class="card-n">${s.name}</span></div>
+          <div class="card-s">${s.name}を役職から外し、ひとつ下の等級に戻す。
+          本人の士気と定着度は大きく落ち、退職につながることもある。</div>
+        </div>`, [
+        { label: 'やめる', cls: 'ghost' },
+        {
+          label: '解任する', cls: 'danger', onClick: () => {
+            const err = dismissOfficer(G, s, G.news);
+            if (err) return toast(err, 'bad');
+            toast(`${s.name}を解任した`, 'bad'); refresh();
+          }
+        },
+      ]);
+      break;
+    }
+    case 'hr.ceo': HR.openCeo(G, ctx); break;
+    case 'plan.new': Dash.openPlan(G, ctx); break;
+    case 'plan.abandon': {
+      openModal('中期経営計画の取り下げ', `
+        <div class="card" style="border-color:rgba(255,107,122,.4)">
+          <div class="card-s">掲げた計画を自ら下ろすことになる。
+          企業ブランドが下がり、社員の士気も落ちる。</div>
+        </div>`, [
+        { label: 'やめる', cls: 'ghost' },
+        {
+          label: '取り下げる', cls: 'danger', onClick: () => {
+            const err = abandonPlan(G, G.news);
+            if (err) return toast(err, 'bad');
+            toast('中期経営計画を取り下げた', 'bad'); refresh();
+          }
+        },
+      ]);
+      break;
+    }
     case 'hr.culture': HR.openCulture(G, ctx); break;
     case 'hr.newgrad': HR.openNewGrad(G, ctx); break;
     case 'hr.list': ctx.hrSort = id; refresh(); break;
+    case 'hr.jobrank': ctx.jobRankMode = id; refresh(); break;
     case 'hr.dept': {
       const list = G.staff.filter(s => s.dept === id && !s.subsidiary);
       const p = orgPower(G)[id];

@@ -2,13 +2,16 @@
 //  経営ダッシュボード
 // ============================================================
 import { money, moneyHTML, pct, pctDelta, num, dcls, arrow, stars, moneyUnit } from '../core/format.js';
-import { section, kv, mini, chip, bar, spark, empty } from './dom.js';
+import { section, kv, mini, chip, bar, spark, empty, openModal, closeModal, toast } from './dom.js';
 import { kpis, ttm, unrealizedGain, buildBS, overdraft, debtCapacity, effectiveRate } from '../sim/finance.js';
 import { personnelCost, payIndex, projectCapacity } from '../sim/hr.js';
 import { ranking } from '../sim/rivals.js';
 import { orgPower } from '../sim/hr.js';
 import { USES, DISTRICTS } from '../data/city.js';
 import { TIERS, UNLOCK_INFO, tierOf, nextTier, unlocked, ttmRevenue } from '../sim/company.js';
+import { PLAN_METRICS, PLAN_METRIC_IDS, PLAN_SPANS, valueOf, fmtTarget, progressOf,
+  planProgress, weeksLeft, ambitionOf, startPlan, abandonPlan } from '../sim/midplan.js';
+import { ceo } from '../sim/officers.js';
 
 export const title = '経営ダッシュボード';
 
@@ -52,6 +55,8 @@ export function render(g) {
     <div style="margin-top:12px">${spark(revSeries, { color: '#b0781a' })}</div>
     <div class="hint">売上高の推移（直近16四半期）</div>
   `)}
+
+  ${midPlanSection(g)}
 
   ${growth(g)}
 
@@ -204,4 +209,170 @@ function growth(g) {
     <div style="margin-top:10px">${rows}</div>
     ${waiting.length ? `<div class="hint">解禁待ち：${waiting.map(w => `${w.info.icon} ${w.info.name}（${Math.round(w.need / 100).toLocaleString()}億円）`).join('、 ')}</div>` : '<div class="hint">すべての機能が解禁されている。</div>'}
   `);
+}
+
+// ------------------------------------------------------------
+//  中期経営計画
+// ------------------------------------------------------------
+function midPlanSection(g) {
+  const p = g.midPlan;
+  const hist = (g.planHistory || []).slice(-3).reverse();
+  const histHTML = hist.length ? `<div style="margin-top:10px">
+    <div class="sec-t" style="border:none;padding:0;margin-bottom:4px"><span>過去の計画</span></div>
+    ${hist.map(h => `<div class="kv">
+      <span class="k">${h.name}（${h.startYear}〜${h.endYear}年）</span>
+      <span class="v ${h.status === 'achieved' ? 'up' : h.status === 'missed' || h.status === 'abandoned' ? 'down' : ''}">${
+    { achieved: '達成', partial: '一部達成', missed: '未達', abandoned: '取り下げ' }[h.status] || '—'}　${(h.score * 100).toFixed(0)}%</span>
+    </div>`).join('')}
+  </div>` : '';
+
+  if (!p) {
+    return section('中期経営計画', '未策定', `
+      <div class="card">
+        <div class="card-t"><span class="card-n">📋 計画を掲げていない</span></div>
+        <div class="card-s">社長として3年または5年の数値目標を決め、社内外に公表できる。
+        公表すると社員の目線が揃って士気が上がり、株価にも期待が乗る。
+        達成すれば企業ブランドが大きく伸びるが、未達なら経営責任を問われる。</div>
+        <div class="btnrow"><button class="btn primary" data-act="plan.new">中期経営計画を策定する</button></div>
+      </div>
+      ${histHTML}
+    `);
+  }
+
+  const score = planProgress(g, p);
+  const left = weeksLeft(g, p);
+  const elapsed = 1 - left / Math.max(1, p.endWeek - p.startWeek);
+  const onTrack = score >= elapsed - 0.06;
+  const rows = p.targets.map(t => {
+    const m = PLAN_METRICS[t.id];
+    const pr = progressOf(g, t);
+    return `<div class="kv" style="margin-top:7px">
+      <span class="k">${m.icon} ${m.name}</span>
+      <span class="v">${fmtTarget(t.id, valueOf(g, t.id))} / <b>${fmtTarget(t.id, t.target)}</b>
+        <span class="${pr >= 1 ? 'up' : pr >= elapsed - 0.06 ? '' : 'down'}">（${(pr * 100).toFixed(0)}%）</span></span>
+    </div>${bar(Math.max(0, Math.min(1, pr)), pr >= 1 ? '' : pr >= elapsed - 0.06 ? 'gold' : 'red')}`;
+  }).join('');
+
+  return section('中期経営計画', p.name, `
+    <div class="card" style="border-color:${onTrack ? 'rgba(15,138,85,.35)' : 'rgba(255,107,122,.4)'}">
+      <div class="card-t"><span class="card-n">📋 ${p.name}</span>${
+    chip(onTrack ? '計画どおり' : '遅れている', onTrack ? 'green' : 'red')}</div>
+      <div class="card-s">${p.startYear}年に公表した${p.years}か年計画。残り ${Math.ceil(left / 13)} 四半期（${left}週）。</div>
+      ${kv('全体の進捗', `<b>${(score * 100).toFixed(0)}%</b>　<span style="color:var(--ink-mute)">経過 ${(elapsed * 100).toFixed(0)}%</span>`, 'big')}
+      ${bar(Math.min(1, score), onTrack ? '' : 'red')}
+      ${rows}
+      <div class="hint">野心度 ${ambitionOf(p).toFixed(2)}。高い目標ほど達成時の見返りは大きいが、未達の傷も深くなる。</div>
+      <div class="btnrow"><button class="btn sm danger" data-act="plan.abandon">計画を取り下げる</button></div>
+    </div>
+    ${histHTML}
+  `);
+}
+
+// ------------------------------------------------------------
+//  計画の策定
+// ------------------------------------------------------------
+export function openPlan(g, ctx) {
+  const me = ceo(g);
+  let spanIdx = 0;
+  let name = `${g.year}年度 中期経営計画`;
+  // 既定の3項目に、現状から2割増しの目標を置く
+  const picked = {};
+  for (const id of ['revenue', 'op', 'leaseNoi']) {
+    const base = valueOf(g, id);
+    picked[id] = Math.max(base * 1.6, PLAN_METRICS[id].scale === 100 ? 5000 : base + 1);
+  }
+  openModal('中期経営計画の策定', build(), []);
+  bind();
+
+  function build() {
+    const span = PLAN_SPANS[spanIdx];
+    const list = Object.keys(picked);
+    const preview = list.map(id => {
+      const m = PLAN_METRICS[id];
+      const base = valueOf(g, id);
+      const target = picked[id];
+      const st = base > 0 ? target / base : 99;
+      return `<div class="kv"><span class="k">${m.icon} ${m.name}</span>
+        <span class="v">${fmtTarget(id, base)} → <b>${fmtTarget(id, target)}</b>
+        <span style="color:var(--ink-mute)">${base > 0 ? `×${st.toFixed(2)}` : '新規'}</span></span></div>`;
+    }).join('');
+
+    return `
+    <div class="card" style="background:var(--gold-soft);border-color:rgba(227,181,88,.4)">
+      <div class="card-t"><span class="card-n">👑 ${me.name}</span>${chip('代表取締役社長', 'gold')}</div>
+      <div class="card-s">掲げた数字は社内にも市場にも残る。
+      背伸びした目標ほど達成時の評価は高いが、届かなければブランドも士気も落ちる。</div>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>計画の名称</label>
+      <input type="text" id="inpPlanName" maxlength="24" value="${name}">
+    </div>
+    <div class="field" style="margin-top:10px">
+      <label>計画期間</label>
+      <div class="btnrow">
+        ${PLAN_SPANS.map((sp, i) => `<button class="btn sm ${i === spanIdx ? 'primary' : ''}" data-span="${i}">${sp.name}</button>`).join('')}
+      </div>
+      <div class="hint">${span.years}年後（${g.year + span.years}年）に判定する。長い計画ほど見返りは大きい（×${span.reward.toFixed(2)}）。</div>
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>掲げる目標</span><span class="note">最大4つ</span></div>
+      <div class="selgrid">
+        ${PLAN_METRIC_IDS.map(id => {
+      const m = PLAN_METRICS[id];
+      const on = picked[id] !== undefined;
+      return `<button class="selbtn ${on ? 'on' : ''}" data-m="${id}">
+          <b>${m.icon} ${m.name}</b><span>いま ${fmtTarget(id, valueOf(g, id))}</span>
+        </button>`;
+    }).join('')}
+      </div>
+    </div>
+    ${Object.keys(picked).map(id => {
+      const m = PLAN_METRICS[id];
+      const shown = m.scale === 0.01 ? (picked[id] * 100).toFixed(1)
+        : m.scale === 100 ? Math.round(picked[id] / 100) : Math.round(picked[id]);
+      return `<div class="field">
+        <label>${m.icon} ${m.name}の目標（${m.unit}）　いま ${fmtTarget(id, valueOf(g, id))}</label>
+        <input type="number" class="tg" data-m="${id}" value="${shown}" step="${m.scale === 0.01 ? '0.5' : '1'}">
+        <div class="hint">${m.desc}</div>
+      </div>`;
+    }).join('')}
+    <div class="card" style="margin-top:10px">
+      <div class="card-t"><span class="card-n">計画の骨子</span></div>
+      ${preview || '<div class="hint">目標を1つ以上選ぶこと。</div>'}
+    </div>
+    <div class="btnrow">
+      <button class="btn primary wide" data-go="1" ${Object.keys(picked).length ? '' : 'disabled'}>この計画を公表する</button>
+    </div>`;
+  }
+
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelector('#inpPlanName').oninput = e => { name = e.target.value; };
+    body.querySelectorAll('[data-span]').forEach(b => b.onclick = () => { spanIdx = +b.dataset.span; refresh(); });
+    body.querySelectorAll('[data-m]').forEach(b => {
+      if (b.classList.contains('tg')) {
+        b.oninput = e => {
+          const m = PLAN_METRICS[b.dataset.m];
+          const v = +e.target.value;
+          picked[b.dataset.m] = m.scale === 0.01 ? v / 100 : m.scale === 100 ? v * 100 : v;
+        };
+        return;
+      }
+      b.onclick = () => {
+        const id = b.dataset.m;
+        if (picked[id] !== undefined) delete picked[id];
+        else if (Object.keys(picked).length >= 4) return toast('目標は4つまでである', 'bad');
+        else picked[id] = Math.max(valueOf(g, id) * 1.6, PLAN_METRICS[id].scale === 100 ? 5000 : valueOf(g, id) + 1);
+        refresh();
+      };
+    });
+    body.querySelector('[data-go]').onclick = () => {
+      const targets = Object.entries(picked).map(([id, target]) => ({ id, target }));
+      const err = startPlan(g, { name, spanIdx, targets }, g.news);
+      if (err) return toast(err, 'bad');
+      toast('中期経営計画を公表した', 'good');
+      ctx.refresh(); closeModal();
+    };
+  }
 }

@@ -8,7 +8,7 @@
 //    データの形を変えたときは SAVE_VERSION を上げて migrate() で吸収する。
 // ============================================================
 import { createGame, syncUid, defaultRankPay } from './state.js';
-import { RANKS } from '../data/hrdata.js';
+import { RANKS, CEO_RANK, TOP_STAFF_RANK, defaultRankNames } from '../data/hrdata.js';
 import { RIVAL_DEFS } from '../data/companies.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
@@ -205,6 +205,31 @@ const STEPS = [
       // 過去の推移に年収は残っていない。
       // ここで埋めると「ずっと横ばい」の折れ線になってしまうので、
       // 次の決算から本物の値だけを積む
+    }
+  },
+
+  // 社長をプレイヤー本人にした。
+  // 旧セーブでは架空の社員が社長の席に座っているので、その人を取締役に下ろし、
+  // 名前を社長（プレイヤー）として引き継ぐ
+  g => {
+    if (!g.company) return;
+    const sitting = (g.staff || []).filter(s => s.rank >= CEO_RANK);
+    if (!g.company.ceo) {
+      const top = sitting[0];
+      g.company.ceo = {
+        name: (top && top.name) || '社長',
+        age: (top && top.age) || 46,
+        since: g.company.founded || 2026,
+      };
+    }
+    for (const s of sitting) {
+      s.rank = TOP_STAFF_RANK;
+      s.note = s.note || '創業メンバー';
+    }
+    if (!Array.isArray(g.hrPolicy.rankNames)) g.hrPolicy.rankNames = defaultRankNames();
+    // 役員には管掌部門の枠を持たせる
+    for (const s of g.staff || []) {
+      if (!Array.isArray(s.oversee)) s.oversee = [];
     }
   },
 ];

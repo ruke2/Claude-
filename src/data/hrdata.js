@@ -15,17 +15,44 @@ export const DEPTS = {
 };
 export const DEPT_IDS = Object.keys(DEPTS);
 
-/** 役職（index が等級） */
+/**
+ * 役職（index が等級）
+ *  appoint … 自動昇格せず、社長（プレイヤー）が任命する役職
+ *  CEO_RANK は社長の席で、社員は誰も就かない。座るのはプレイヤー本人である
+ */
 export const RANKS = [
   { id: 0, name: '社員',     short: '社員', baseSalary: 5.4,  slots: Infinity, minAbility: 0,  span: 0 },
   { id: 1, name: '主任',     short: '主任', baseSalary: 7.0,  slots: Infinity, minAbility: 45, span: 0 },
   { id: 2, name: '係長',     short: '係長', baseSalary: 8.6,  slots: Infinity, minAbility: 55, span: 4 },
   { id: 3, name: '課長',     short: '課長', baseSalary: 11.2, slots: 16,       minAbility: 64, span: 8 },
   { id: 4, name: '部長',     short: '部長', baseSalary: 15.4, slots: 8,        minAbility: 72, span: 20 },
-  { id: 5, name: '執行役員', short: '執行', baseSalary: 22.0, slots: 5,        minAbility: 79, span: 40 },
-  { id: 6, name: '取締役',   short: '取締', baseSalary: 32.0, slots: 3,        minAbility: 85, span: 70 },
-  { id: 7, name: '代表取締役社長', short: '社長', baseSalary: 52.0, slots: 1,  minAbility: 88, span: 999 },
+  { id: 5, name: '執行役員', short: '執行', baseSalary: 22.0, slots: 5,        minAbility: 76, span: 40, appoint: true },
+  { id: 6, name: '取締役',   short: '取締', baseSalary: 32.0, slots: 3,        minAbility: 82, span: 70, appoint: true },
+  { id: 7, name: '代表取締役社長', short: '社長', baseSalary: 52.0, slots: 1,  minAbility: 88, span: 999, ceo: true },
 ];
+
+/** 社長の席（プレイヤー本人。社員は就かない） */
+export const CEO_RANK = 7;
+/** 社長が任命する役職 */
+export const OFFICER_RANKS = RANKS.filter(r => r.appoint).map(r => r.id);
+/** 社員が就ける最上位の役職 */
+export const TOP_STAFF_RANK = CEO_RANK - 1;
+
+/**
+ * 役職名。社長（プレイヤー）が改称できる。
+ * 表示に使う名前は必ずここを通すこと。RANKS[x].name を直接出さない。
+ */
+export function rankName(g, id) {
+  const custom = g && g.hrPolicy && g.hrPolicy.rankNames;
+  const v = custom && custom[id];
+  return (typeof v === 'string' && v.trim()) ? v.trim() : RANKS[id].name;
+}
+export function rankShort(g, id) {
+  const n = rankName(g, id);
+  return n.length <= 4 ? n : n.slice(0, 4);
+}
+/** 既定の役職名（改称をやめたときに戻す先） */
+export function defaultRankNames() { return RANKS.map(r => r.name); }
 
 /** 能力値の定義 */
 export const ABILITIES = {

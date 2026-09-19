@@ -8,7 +8,8 @@ import { syncCalendar } from './time.js';
 import { initCulture } from '../sim/culture.js';
 import { DISTRICTS, MAP_ROWS, MAP_W, MAP_H, TERRAIN, terrainOf, elevationAt, USES, FACADES } from '../data/city.js';
 import { RIVAL_DEFS } from '../data/companies.js';
-import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN, BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
+import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN,
+  BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX, defaultRankNames, TOP_STAFF_RANK } from '../data/hrdata.js';
 
 export const DIFFICULTY = {
   easy:   { equity: 30000, label: 'やさしい', costVol: 0.6, rivalAgg: 0.8, demand: 1.08, rate: 0.009 },
@@ -164,7 +165,9 @@ export function makeStaff(rng, opt = {}) {
   for (const k of ABILITY_IDS) {
     abil[k] = Math.round(clamp(rng.normal(base * (k === spec ? 1.18 : 0.82), 9), 8, 99));
   }
-  const rk = rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4));
+  // 社長の席（プレイヤー）には誰も座らせない
+  const rk = Math.min(TOP_STAFF_RANK,
+    rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4)));
   const s = {
     id: uid('s'),
     name: name || (rng.pick(LAST_NAMES) + ' ' + rng.pick(FIRST_NAMES_CLEAN)),
@@ -175,6 +178,7 @@ export function makeStaff(rng, opt = {}) {
     tenure: Math.max(0, age - 22 - rng.int(0, 8)),
     joined: null, channel: opt.channel || 'legacy',
     eval: 3, note: '',
+    oversee: [], officerSince: null,       // 役員になったときの管掌部門
   };
   s.salary = baseSalaryFor(s);
   return s;
@@ -232,7 +236,8 @@ function initRivals(rng, diff) {
 // ------------------------------------------------------------
 //  ゲーム生成
 // ------------------------------------------------------------
-export function createGame({ companyName = '常盤地所', difficulty = 'normal', home = 'W', seed = Date.now() } = {}) {
+export function createGame({ companyName = '常盤地所', difficulty = 'normal', home = 'W',
+  ceoName = '常盤 宗一郎', ceoAge = 42, seed = Date.now() } = {}) {
   const rng = new RNG(seed);
   const diff = DIFFICULTY[difficulty] ?? DIFFICULTY.normal;
   const rivals = initRivals(rng, diff);
@@ -247,9 +252,10 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     hq.isHQ = true;
   }
 
+  // 社長はプレイヤー本人なので、社員として作らない
   const staff = [];
   const initialOrg = [
-    { dept: 'corp', rank: 7, n: 1 }, { dept: 'land', rank: 4, n: 1 }, { dept: 'sales', rank: 4, n: 1 },
+    { dept: 'corp', rank: 6, n: 1 }, { dept: 'land', rank: 4, n: 1 }, { dept: 'sales', rank: 4, n: 1 },
     { dept: 'land', rank: 2, n: 2 }, { dept: 'plan', rank: 2, n: 2 }, { dept: 'cons', rank: 3, n: 1 },
     { dept: 'cons', rank: 1, n: 2 }, { dept: 'sales', rank: 1, n: 3 }, { dept: 'lease', rank: 2, n: 1 },
     { dept: 'fin', rank: 3, n: 1 }, { dept: 'fin', rank: 0, n: 1 }, { dept: 'hr', rank: 2, n: 1 },
@@ -265,7 +271,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
         loyalty: 0.74,
       });
       s.joined = { year: Math.round(2026 - s.tenure), week: 0 };
-      if (o.rank === 7) { s.name = '常盤 宗一郎'; s.note = '創業社長'; s.abil.lead = Math.max(s.abil.lead, 82); }
+      if (o.rank === 6) { s.note = '創業メンバー'; s.abil.lead = Math.max(s.abil.lead, 74); s.oversee = ['corp', 'fin']; }
       staff.push(s);
     }
   }
@@ -275,6 +281,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     week: 0, year: 2026, month: 1, weekOfMonth: 1, quarter: 1, weekOfYear: 0, weekOfQuarter: 0,
     company: {
       name: companyName,
+      // 社長はプレイヤー本人。架空の人物を据えない
+      ceo: { name: (ceoName || '社長').slice(0, 12), age: ceoAge, since: 2026 },
       brand: 22,            // ブランド力 0-100
       // 地盤（創業の地）。ここでは商品力も入札も有利になる。
       // 創業時は湊都市の中からしか選べない
@@ -292,6 +300,9 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     goodwill: 0,
     // 売上に応じて解禁した機能（一度入ったら消えない）
     unlocked: [],
+    // 中期経営計画（策定していなければ null）と、終わった計画の記録
+    midPlan: null,
+    planHistory: [],
     cells,
     listings: [],
     projects: [],
@@ -305,6 +316,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     hrPolicy: {
       // 役職ごとの基準年収（百万円）。人事タブでいつでも改定できる
       rankPay: defaultRankPay(),
+      // 役職名。社長が自由に付け替えられる
+      rankNames: defaultRankNames(),
       salaryMul: 1.0,        // 旧版との互換用。いまは rankPay が給与テーブルを決める
       programs: { training: false, welfare: false, dx: false, brandpr: false },
       evalStrict: 0.5,

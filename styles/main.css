@@ -324,6 +324,18 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 .empty{text-align:center;color:var(--ink-mute);font-size:12px;padding:32px 12px;line-height:1.9}
 .lockcard{border-style:dashed;background:var(--surface-2)}
 .publiccard{border-color:rgba(13,126,168,.4);background:#f4fafd}
+.org-node.me{border-color:var(--gold);background:var(--gold-soft)}
+.org-node.me .on-n{color:var(--gold-2);font-weight:800}
+.selgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin:10px 0}
+.selbtn{
+  display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;
+  padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--surface);
+  font-size:12px;transition:.14s;
+}
+.selbtn b{font-size:12.5px}
+.selbtn span{font-size:10px;color:var(--ink-mute)}
+.selbtn.on{border-color:var(--accent);background:var(--accent-soft)}
+.selbtn.on span{color:var(--accent)}
 .lockcard .card-n{color:var(--ink-dim)}
 .tierrow{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--line-soft)}
 .tierrow:last-child{border-bottom:none}
