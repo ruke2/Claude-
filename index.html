@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>摩天楼の設計図</title>
+<meta name="description" content="湊都市を舞台にした不動産デベロッパー経営シミュレーション。">
+<meta name="theme-color" content="#17457f">
+<meta name="color-scheme" content="light">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="摩天楼の設計図">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Oswald:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+
+<!-- ============ 都市ビュー ============ -->
+<canvas id="city"></canvas>
+<div id="cityHud">
+  <div class="cityhud-line" id="hudWeather">－</div>
+  <div class="cityhud-line dim" id="hudHover">区画にカーソルを合わせる</div>
+</div>
+<div id="viewControls">
+  <button class="vbtn" data-view="zoomin" title="拡大">＋</button>
+  <button class="vbtn" data-view="zoomout" title="縮小">−</button>
+  <button class="vbtn" data-view="rotate" title="回転">⟳</button>
+  <button class="vbtn" data-view="reset" title="リセット">⌂</button>
+  <button class="vbtn" data-view="layer" title="表示レイヤー">◐</button>
+  <button class="vbtn" data-view="city" title="都市を切り替える">🗺</button>
+</div>
+
+<!-- ============ ヘッダー ============ -->
+<header id="topbar">
+  <div class="brandbox">
+    <div class="brand-mark">TL</div>
+    <div class="brand-text">
+      <div class="brand-name" id="hdrCompany">常盤地所</div>
+      <div class="brand-sub">URBAN DEVELOPER SIMULATOR</div>
+    </div>
+  </div>
+  <div class="stat-strip" id="statStrip"></div>
+  <div class="turnbox">
+    <div class="turn-date">
+      <span id="hdrDate">2026年 1月 第1週</span>
+      <span class="turn-season" id="hdrSeason">冬・夜景</span>
+    </div>
+    <div class="turn-btns">
+      <button id="btnMenu" class="btn-next ghosty" title="セーブ／ロード">☰<small>メニュー</small></button>
+      <button id="btnWeek" class="btn-next" title="1週進める（スペース）">▶<small>1週</small></button>
+      <button id="btnMonth" class="btn-next ghosty" title="1ヶ月進める">▶▶<small>1ヶ月</small></button>
+      <button id="btnQuarter" class="btn-next ghosty" title="四半期末（決算）まで進める">▶▶▶<small>決算まで</small></button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 左タブ ============ -->
+<nav id="sidetabs">
+  <button class="tab" data-panel="dash"><i>▣</i><span>経営</span></button>
+  <button class="tab" data-panel="land"><i>◈</i><span>用地</span></button>
+  <button class="tab" data-panel="dev"><i>▲</i><span>開発</span></button>
+  <button class="tab" data-panel="sales"><i>¥</i><span>販売</span></button>
+  <button class="tab" data-panel="asset"><i>▤</i><span>保有</span></button>
+  <button class="tab" data-panel="fin"><i>◱</i><span>財務</span></button>
+  <button class="tab" data-panel="hr"><i>☗</i><span>人事</span></button>
+  <button class="tab" data-panel="brand"><i>◆</i><span>ブランド</span></button>
+  <button class="tab" data-panel="ma"><i>⚯</i><span>M&amp;A</span></button>
+  <button class="tab" data-panel="rival"><i>◎</i><span>競合</span></button>
+  <button class="tab" data-panel="disc"><i>📄</i><span>開示</span></button>
+</nav>
+
+<!-- ============ メインパネル ============ -->
+<aside id="panel" class="hidden">
+  <div class="panel-head">
+    <h2 id="panelTitle">経営ダッシュボード</h2>
+    <button id="panelClose">✕</button>
+  </div>
+  <div class="panel-body" id="panelBody"></div>
+</aside>
+
+<!-- ============ 週次フィード ============ -->
+<div id="feed">
+  <div class="feed-head"><span id="feedTitle">今週の動き</span><button id="feedToggle">▾</button></div>
+  <div class="feed-body" id="feedBody"></div>
+</div>
+
+<!-- ============ ティッカー ============ -->
+<div id="ticker"><div class="ticker-track" id="tickerTrack"></div></div>
+
+<!-- ============ モーダル ============ -->
+<div id="modalWrap" class="hidden">
+  <div id="modal">
+    <div class="modal-head"><h3 id="modalTitle"></h3><button id="modalClose">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<!-- ============ 四半期レポート ============ -->
+<div id="reportWrap" class="hidden">
+  <div id="report">
+    <div class="report-head">
+      <div class="report-kicker">QUARTERLY REPORT</div>
+      <h2 id="reportTitle">2026年 Q1 決算</h2>
+    </div>
+    <div class="report-body" id="reportBody"></div>
+    <div class="report-foot"><button id="reportOk" class="btn primary wide">承認して次へ</button></div>
+  </div>
+</div>
+
+<!-- ============ タイトル ============ -->
+<div id="titleScreen">
+  <canvas id="titleCanvas"></canvas>
+  <div class="title-inner">
+    <div class="title-kicker">URBAN DEVELOPER SIMULATOR</div>
+    <h1 class="title-logo">摩天楼の設計図</h1>
+    <p class="title-lead">湊都（みなと）市。国内最大手デベロッパーがひしめくこの街で、<br>あなたは新興デベロッパーを起こし、自ら社長の椅子に座る。<br>用地を仕入れ、街をつくり、売り、組織を育て、頂点を獲れ。</p>
+    <div class="title-form">
+      <label>会社名<input id="inpCompany" maxlength="12" value="常盤地所"></label>
+      <label>あなたの名前（代表取締役社長）<input id="inpCeo" maxlength="12" value="常盤 宗一郎"></label>
+      <label>難易度
+        <select id="inpDiff">
+          <option value="easy">やさしい（自己資本 300億／地価安定）</option>
+          <option value="normal" selected>ふつう（自己資本 200億）</option>
+          <option value="hard">きびしい（自己資本 120億／競合が攻撃的）</option>
+        </select>
+      </label>
+      <label>地盤（創業の地）
+        <select id="inpHome"></select>
+      </label>
+    </div>
+    <div id="homeNote" class="title-note"></div>
+    <button id="btnStart" class="btn primary huge">新しく創業する</button>
+    <div id="titleSaves"></div>
+    <div class="title-credit">v1.0 ／ Canvas 2D・ビルド不要のブラウザゲーム</div>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
