@@ -291,6 +291,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
       shares: 40000000,     // 発行済株式数（株）
       listed: false,
       creditRating: 'BBB',
+      // 決算説明会での受け答えの積み重ね
+      irTrust: 0, irPrice: 0, irLastWeek: -1,
     },
     cash: Math.round(diff.equity * 0.55),
     debt: Math.round(diff.equity * 0.4),
@@ -303,6 +305,14 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     // 中期経営計画（策定していなければ null）と、終わった計画の記録
     midPlan: null,
     planHistory: [],
+    // 年1回のエンゲージメントサーベイの記録
+    surveys: [],
+    awards: [],            // 受賞歴
+    disasters: [],         // 被災の記録
+    rails: [],             // 鉄道の整備計画
+    postings: [],          // 社内公募
+    ratingReport: null,    // 直近の格付けレポート
+    ratingHistory: [],
     cells,
     listings: [],
     projects: [],
@@ -318,6 +328,8 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
       rankPay: defaultRankPay(),
       // 役職名。社長が自由に付け替えられる
       rankNames: defaultRankNames(),
+      // 働き方への投資（フレックス・アウトソース・健康経営）
+      work: {},
       salaryMul: 1.0,        // 旧版との互換用。いまは rankPay が給与テーブルを決める
       programs: { training: false, welfare: false, dx: false, brandpr: false },
       evalStrict: 0.5,

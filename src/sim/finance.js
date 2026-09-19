@@ -9,6 +9,7 @@ import { landAppraisal, assetValue } from './valuation.js';
 import { TERRAIN } from '../data/city.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { planPremium } from './midplan.js';
+import { irPremium, outlookSpread } from './ir.js';
 
 export const RATINGS = [
   { id: 'AAA', min: 0.50, spread: 0.0020, label: '最上級。調達コストは業界最安水準。' },
@@ -34,7 +35,8 @@ export function ratingOf(g) {
 export function effectiveRate(g) {
   const od = overdraft(g);
   const penalty = g.debt > 0 ? (od / g.debt) * 0.035 : 0;
-  return g.market.rate + ratingOf(g).spread + penalty;
+  // 格付けそのものに加え、見通し（ポジティブ／ネガティブ）も金利に効く
+  return g.market.rate + ratingOf(g).spread + outlookSpread(g) + penalty;
 }
 
 /** 借入可能上限（コーポレート枠＋不動産担保によるプロジェクト枠） */
@@ -156,7 +158,8 @@ export function sharePrice(g) {
   const byEarn = eps * per;
   const byAsset = (bps + ug * 0.5) * clamp(0.65 + g.company.brand / 200, 0.6, 1.25);
   // 中期経営計画を掲げていると、その進捗ぶんだけ市場が織り込む
-  return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g)));
+  // 中期経営計画の進捗と、決算説明会での受け答えが市場の見方を動かす
+  return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g) * irPremium(g)));
 }
 
 export function marketCap(g) { return Math.round(sharePrice(g) * g.company.shares / 1e6); }

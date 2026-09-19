@@ -344,6 +344,13 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
 .empty{text-align:center;color:var(--ink-mute);font-size:12px;padding:32px 12px;line-height:1.9}
 .lockcard{border-style:dashed;background:var(--surface-2)}
 .publiccard{border-color:rgba(13,126,168,.4);background:#f4fafd}
+.warnrow td{background:var(--red-soft)}
+.tl{display:flex;flex-direction:column}
+.tl-row{display:flex;gap:9px;align-items:flex-start;padding:7px 2px;border-bottom:1px solid var(--line-soft)}
+.tl-row:last-child{border-bottom:none}
+.tl-y{flex:0 0 52px;font-family:Oswald,sans-serif;font-size:12px;color:var(--ink-dim)}
+.tl-i{flex:0 0 18px;text-align:center}
+.tl-t{flex:1;font-size:11.5px;line-height:1.75}
 .org-node.me{border-color:var(--gold);background:var(--gold-soft)}
 .org-node.me .on-n{color:var(--gold-2);font-weight:800}
 .selgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin:10px 0}
@@ -754,6 +761,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   <button class="tab" data-panel="brand"><i>◆</i><span>ブランド</span></button>
   <button class="tab" data-panel="ma"><i>⚯</i><span>M&amp;A</span></button>
   <button class="tab" data-panel="rival"><i>◎</i><span>競合</span></button>
+  <button class="tab" data-panel="disc"><i>📄</i><span>開示</span></button>
 </nav>
 
 <!-- ============ メインパネル ============ -->
@@ -2599,7 +2607,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         shares: 4e7,
         // 発行済株式数（株）
         listed: false,
-        creditRating: "BBB"
+        creditRating: "BBB",
+        // 決算説明会での受け答えの積み重ね
+        irTrust: 0,
+        irPrice: 0,
+        irLastWeek: -1
       },
       cash: Math.round(diff.equity * 0.55),
       debt: Math.round(diff.equity * 0.4),
@@ -2612,6 +2624,19 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       // 中期経営計画（策定していなければ null）と、終わった計画の記録
       midPlan: null,
       planHistory: [],
+      // 年1回のエンゲージメントサーベイの記録
+      surveys: [],
+      awards: [],
+      // 受賞歴
+      disasters: [],
+      // 被災の記録
+      rails: [],
+      // 鉄道の整備計画
+      postings: [],
+      // 社内公募
+      ratingReport: null,
+      // 直近の格付けレポート
+      ratingHistory: [],
       cells,
       listings: [],
       projects: [],
@@ -2627,6 +2652,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         rankPay: defaultRankPay(),
         // 役職名。社長が自由に付け替えられる
         rankNames: defaultRankNames(),
+        // 働き方への投資（フレックス・アウトソース・健康経営）
+        work: {},
         salaryMul: 1,
         // 旧版との互換用。いまは rankPay が給与テーブルを決める
         programs: { training: false, welfare: false, dx: false, brandpr: false },
@@ -2851,6 +2878,268 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return clamp01(power / Math.max(1, need * 0.62));
   }
 
+  // src/sim/workload.js
+  var BASE_HOURS = 160;
+  var OVERTIME_DANGER = 60;
+  var OVERTIME_LIMIT = 80;
+  var OT_PREMIUM = 1.25;
+  function workOf(g) {
+    const projects = g.projects || [];
+    const running = projects.filter((p) => p.status === "construction").length;
+    const planning = projects.length - running;
+    const inv = g.inventory || [];
+    const assets = g.assets || [];
+    const lots = (g.cells || []).filter((c) => c.owner === "player" && c.terrain === TERRAIN.LOT);
+    const idleLots = lots.filter((c) => !c.building && !c.projectId).length;
+    const listings = (g.listings || []).length;
+    const staff = (g.staff || []).filter((s) => !s.subsidiary).length;
+    const subs = (g.subsidiaries || []).length + (g.acquisitions || []).filter((a) => !a.failed).length;
+    const units = inv.reduce((a, x) => a + (x.units || 0) * (1 - (x.soldRatio || 0)), 0);
+    const nra = assets.reduce((a, x) => a + (x.nra || 0), 0);
+    const has = (t) => (g.subsidiaries || []).some((x) => x.type === t);
+    const got = (k) => (g.acquisitions || []).some((a) => !a.failed && a.kind === k);
+    const relief = {
+      cons: (has("construction") ? 0.82 : 1) * (got("builder") ? 0.9 : 1),
+      sales: (has("sales") ? 0.78 : 1) * (got("broker") ? 0.88 : 1),
+      lease: (has("pm") ? 0.72 : 1) * (got("pm") ? 0.86 : 1),
+      fin: has("reit") ? 0.85 : 1
+    };
+    const mul = workEffects(g).workMul;
+    const W = (v, k) => v * mul * (relief[k] || 1);
+    return {
+      land: W(listings * 0.55 + idleLots * 0.9 + lots.length * 0.12, "land"),
+      plan: W(planning * 2.6 + projects.length * 0.8 + idleLots * 0.35, "plan"),
+      cons: W(running * 3.1 + projects.length * 0.5, "cons"),
+      sales: W(inv.length * 1.7 + units / 46, "sales"),
+      // 棟数と床。管理そのものは外に出せるので、伸び方はゆるやかにしてある
+      lease: W(assets.length * 0.85 + nra / 9e3, "lease"),
+      // 借入は残高そのものではなく、その平方根で効かせる。
+      // 1兆円の借入は100億円の10倍の手間ではない
+      fin: W(Math.sqrt(Math.max(0, g.debt || 0) / 9e3) * 1.2 + projects.length * 0.4 + assets.length * 0.18 + (g.company.listed ? 2.2 : 0), "fin"),
+      hr: W(staff / 26 + (g.recruit && g.recruit.ng && g.recruit.ng.pool || []).length / 34, "hr"),
+      corp: W(subs * 1.5 + (g.maTargets || []).length * 0.35 + (g.midPlan ? 1.6 : 0) + (g.company.listed ? 1.8 : 0), "corp")
+    };
+  }
+  function workload(g, power) {
+    const work = workOf(g);
+    const out = {};
+    let sumH = 0, sumN = 0;
+    for (const d of DEPT_IDS) {
+      const cap = Math.max(0.8, power[d].capacity);
+      const n = power[d].count;
+      const load = work[d] / cap;
+      const over = Math.max(0, load - 1);
+      const raw = Math.pow(over, 0.75) * 55 * (n ? clamp(1 + (3 - n) * 0.12, 0.85, 1.5) : 1);
+      const ot = n ? clamp(raw, 0, 140) : 0;
+      out[d] = {
+        work: work[d],
+        capacity: cap,
+        load,
+        overtime: Math.round(ot * 10) / 10,
+        hours: Math.round((BASE_HOURS + ot) * 10) / 10,
+        count: n,
+        danger: ot >= OVERTIME_DANGER,
+        illegal: ot > OVERTIME_LIMIT
+      };
+      if (n) {
+        sumH += ot * n;
+        sumN += n;
+      }
+    }
+    const avg = sumN ? sumH / sumN : 0;
+    out.total = {
+      overtime: Math.round(avg * 10) / 10,
+      hours: Math.round((BASE_HOURS + avg) * 10) / 10,
+      worst: DEPT_IDS.reduce((a, d) => out[d].overtime > (out[a] ? out[a].overtime : -1) ? d : a, DEPT_IDS[0]),
+      illegal: DEPT_IDS.some((d) => out[d].illegal),
+      headcount: sumN
+    };
+    return out;
+  }
+  function overtimeCost(g, power) {
+    const w = workload(g, power);
+    let yen = 0;
+    for (const d of DEPT_IDS) {
+      const list = g.staff.filter((s) => s.dept === d && !s.subsidiary);
+      for (const s of list) {
+        const hourly = s.salary / (BASE_HOURS * 12);
+        yen += hourly * w[d].overtime * 12 * OT_PREMIUM / WEEKS_PER_YEAR;
+      }
+    }
+    return yen;
+  }
+  function overtimeMorale(ot) {
+    if (ot <= 25) return 8e-4;
+    if (ot <= 45) return -4e-4;
+    if (ot <= OVERTIME_DANGER) return -22e-4;
+    if (ot <= OVERTIME_LIMIT) return -48e-4;
+    return -85e-4;
+  }
+  function overtimeAttrition(ot) {
+    if (ot <= 45) return 0;
+    return clamp((ot - 45) / 100, 0, 0.55);
+  }
+  var WORK_PROGRAMS = [
+    {
+      id: "flex",
+      name: "\u30D5\u30EC\u30C3\u30AF\u30B9\u30FB\u88C1\u91CF\u52B4\u50CD\u306E\u5C0E\u5165",
+      cost: 160,
+      icon: "\u{1F558}",
+      desc: "\u50CD\u304D\u65B9\u306E\u81EA\u7531\u5EA6\u304C\u4E0A\u304C\u308B\u3002\u6B8B\u696D\u306E\u4F53\u611F\u304C\u548C\u3089\u304E\u3001\u58EB\u6C17\u306E\u76EE\u6E1B\u308A\u304C3\u5272\u6E1B\u308B\u3002"
+    },
+    {
+      id: "outsource",
+      name: "\u5B9A\u578B\u696D\u52D9\u306E\u30A2\u30A6\u30C8\u30BD\u30FC\u30B9",
+      cost: 520,
+      icon: "\u{1F4E6}",
+      desc: "\u4E8B\u52D9\u51E6\u7406\u3092\u5916\u306B\u51FA\u3059\u3002\u5168\u90E8\u7F72\u306E\u4ED5\u4E8B\u91CF\u304C12%\u6E1B\u308B\u3002"
+    },
+    {
+      id: "health",
+      name: "\u7523\u696D\u533B\u30FB\u5065\u5EB7\u7D4C\u55B6",
+      cost: 210,
+      icon: "\u{1FA7A}",
+      desc: "\u9577\u6642\u9593\u52B4\u50CD\u306B\u3088\u308B\u96E2\u8077\u30924\u5272\u6291\u3048\u308B\u3002\u30A8\u30F3\u30B2\u30FC\u30B8\u30E1\u30F3\u30C8\u3082\u4E0A\u304C\u308B\u3002"
+    }
+  ];
+  function workEffects(g) {
+    const p = g.hrPolicy && g.hrPolicy.work || {};
+    return {
+      workMul: p.outsource ? 0.88 : 1,
+      moraleMul: p.flex ? 0.7 : 1,
+      attritionMul: p.health ? 0.6 : 1,
+      surveyBonus: (p.flex ? 3 : 0) + (p.health ? 4 : 0)
+    };
+  }
+  function overtimeCostYear(g, power) {
+    return overtimeCost(g, power) * WEEKS_PER_YEAR;
+  }
+
+  // src/sim/survey.js
+  var SURVEY_AXES = [
+    { id: "motivation", name: "\u4ED5\u4E8B\u306E\u3084\u308A\u304C\u3044", w: 0.26, desc: "\u4EFB\u3055\u308C\u3066\u3044\u308B\u4ED5\u4E8B\u306B\u624B\u5FDC\u3048\u304C\u3042\u308B\u304B" },
+    { id: "pay", name: "\u5831\u916C\u3078\u306E\u7D0D\u5F97\u611F", w: 0.2, desc: "\u50CD\u304D\u306B\u898B\u5408\u3063\u305F\u5831\u916C\u304C\u652F\u6255\u308F\u308C\u3066\u3044\u308B\u304B" },
+    { id: "hours", name: "\u50CD\u304D\u65B9\u30FB\u52B4\u50CD\u6642\u9593", w: 0.2, desc: "\u7121\u7406\u306E\u306A\u3044\u6642\u9593\u3067\u4ED5\u4E8B\u304C\u7D42\u308F\u3063\u3066\u3044\u308B\u304B" },
+    { id: "lead", name: "\u4E0A\u53F8\u30FB\u7D4C\u55B6\u3078\u306E\u4FE1\u983C", w: 0.16, desc: "\u65B9\u91DD\u304C\u793A\u3055\u308C\u3001\u898B\u3066\u3082\u3089\u3048\u3066\u3044\u308B\u3068\u611F\u3058\u308B\u304B" },
+    { id: "growth", name: "\u6210\u9577\u306E\u5B9F\u611F", w: 0.1, desc: "\u529B\u304C\u3064\u3044\u3066\u3044\u308B\u624B\u5FDC\u3048\u304C\u3042\u308B\u304B" },
+    { id: "culture", name: "\u8077\u5834\u306E\u96F0\u56F2\u6C17", w: 0.08, desc: "\u50CD\u304F\u5834\u3068\u3057\u3066\u5C45\u5FC3\u5730\u304C\u3088\u3044\u304B" }
+  ];
+  var score100 = (v) => Math.round(clamp01(v) * 1e3) / 10;
+  function hoursScore(ot) {
+    if (ot <= 10) return 1;
+    if (ot <= 25) return 0.88;
+    if (ot <= 45) return 0.66;
+    if (ot <= OVERTIME_DANGER) return 0.42;
+    if (ot <= 80) return 0.22;
+    return 0.08;
+  }
+  function surveyNow(g) {
+    const power = orgPower(g);
+    const wl = workload(g, power);
+    const ov = oversightOf(g);
+    const ce = cultureEffects(g);
+    const we = workEffects(g);
+    const depts = {};
+    for (const d of DEPT_IDS) {
+      const list = g.staff.filter((s) => s.dept === d && !s.subsidiary);
+      if (!list.length) {
+        depts[d] = null;
+        continue;
+      }
+      const n = list.length;
+      const morale = list.reduce((a, s) => a + s.morale, 0) / n;
+      const fair = list.reduce((a, s) => a + salaryFairness(g, s), 0) / n;
+      const loyalty = list.reduce((a, s) => a + s.loyalty, 0) / n;
+      const room = list.reduce((a, s) => a + Math.max(0, s.potential - avgAbility(s)), 0) / n;
+      const ot = wl[d].overtime;
+      const hasOfficer = !!ov[d].by;
+      const axes2 = {
+        motivation: clamp01(morale * 0.8 + (hasOfficer ? 0.08 : 0) + 0.08),
+        pay: clamp01(0.2 + (fair - 0.85) * 1.55),
+        hours: clamp01(hoursScore(ot) + we.surveyBonus / 100),
+        lead: clamp01(0.32 + (hasOfficer ? 0.26 : 0) + loyalty * 0.3 + (g.midPlan ? 0.08 : 0)),
+        growth: clamp01(0.34 + (g.hrPolicy.programs.training ? 0.18 : 0) + clamp(room / 46, 0, 0.34) + ce.growthMul * 0.08),
+        culture: clamp01(0.36 + morale * 0.3 + (g.hrPolicy.programs.welfare ? 0.14 : 0) + ce.appealShift * 1.2)
+      };
+      const total = SURVEY_AXES.reduce((a, x) => a + axes2[x.id] * x.w, 0);
+      depts[d] = {
+        id: d,
+        n,
+        axes: axes2,
+        score: score100(total),
+        overtime: ot,
+        officer: ov[d].by ? ov[d].by.name : null,
+        morale: score100(morale),
+        fair,
+        weakest: SURVEY_AXES.slice().sort((a, b) => axes2[a.id] - axes2[b.id])[0]
+      };
+    }
+    const live = DEPT_IDS.map((d) => depts[d]).filter(Boolean);
+    const head = live.reduce((a, x) => a + x.n, 0);
+    const score = head ? live.reduce((a, x) => a + x.score * x.n, 0) / head : 0;
+    const axes = {};
+    for (const x of SURVEY_AXES) {
+      axes[x.id] = head ? live.reduce((a, d) => a + d.axes[x.id] * d.n, 0) / head : 0;
+    }
+    return {
+      score: Math.round(score * 10) / 10,
+      axes,
+      depts,
+      headcount: head,
+      worst: live.slice().sort((a, b) => a.score - b.score)[0] || null,
+      best: live.slice().sort((a, b) => b.score - a.score)[0] || null,
+      weakest: SURVEY_AXES.slice().sort((a, b) => axes[a.id] - axes[b.id])[0]
+    };
+  }
+  function voices(g, res) {
+    const out = [];
+    const used = {};
+    const D = (d) => DEPTS[d].name;
+    const push = (kind, d, tone, text) => {
+      if ((used[kind] || 0) >= 2) return;
+      used[kind] = (used[kind] || 0) + 1;
+      out.push({ d, tone, text });
+    };
+    for (const d of DEPT_IDS) {
+      const x = res.depts[d];
+      if (!x) continue;
+      if (x.overtime > 60) push("hours", d, "bad", `${D(d)}\uFF1A\u300C\u3053\u306E\u4EBA\u6570\u3067\u3053\u306E\u6848\u4EF6\u6570\u306F\u56DE\u3089\u306A\u3044\u3002\u8AB0\u304B\u63A1\u3063\u3066\u307B\u3057\u3044\u300D`);
+      else if (x.axes.pay < 0.35) push("pay", d, "bad", `${D(d)}\uFF1A\u300C\u540C\u696D\u4ED6\u793E\u306E\u53CB\u4EBA\u3068\u6BD4\u3079\u3066\u3001\u660E\u3089\u304B\u306B\u4F4E\u3044\u300D`);
+      else if (!x.officer) push("lead", d, "warn", `${D(d)}\uFF1A\u300C\u8AB0\u304C\u3053\u306E\u90E8\u7F72\u3092\u898B\u3066\u3044\u308B\u306E\u304B\u3001\u6B63\u76F4\u308F\u304B\u3089\u306A\u3044\u300D`);
+      else if (x.axes.growth < 0.4) push("growth", d, "warn", `${D(d)}\uFF1A\u300C\u540C\u3058\u4ED5\u4E8B\u306E\u7E70\u308A\u8FD4\u3057\u3067\u3001\u529B\u304C\u3064\u3044\u3066\u3044\u308B\u6C17\u304C\u3057\u306A\u3044\u300D`);
+      else if (x.score > 76) push("good", d, "good", `${D(d)}\uFF1A\u300C\u4EFB\u3055\u308C\u308B\u7BC4\u56F2\u304C\u5E83\u304F\u3001\u3084\u308A\u304C\u3044\u304C\u3042\u308B\u300D`);
+    }
+    if (res.score < 45) out.push({ d: null, tone: "bad", text: "\u5168\u793E\uFF1A\u300C\u7D4C\u55B6\u304C\u4F55\u3092\u76EE\u6307\u3057\u3066\u3044\u308B\u306E\u304B\u3001\u73FE\u5834\u307E\u3067\u4E0B\u308A\u3066\u304D\u3066\u3044\u306A\u3044\u300D" });
+    if (g.midPlan) out.push({ d: null, tone: "good", text: "\u5168\u793E\uFF1A\u300C\u4E2D\u671F\u8A08\u753B\u306E\u6570\u5B57\u304C\u793A\u3055\u308C\u3066\u304B\u3089\u3001\u5224\u65AD\u306B\u8FF7\u3044\u304C\u6E1B\u3063\u305F\u300D" });
+    return out.slice(0, 6);
+  }
+  function runSurvey(g, news) {
+    const res = surveyNow(g);
+    g.surveys = g.surveys || [];
+    const prev = g.surveys[g.surveys.length - 1];
+    const rec = {
+      year: g.year,
+      week: g.week,
+      score: res.score,
+      headcount: res.headcount,
+      axes: { ...res.axes },
+      depts: Object.fromEntries(DEPT_IDS.map((d2) => [d2, res.depts[d2] ? res.depts[d2].score : null])),
+      worst: res.worst ? res.worst.id : null,
+      weakest: res.weakest.id
+    };
+    g.surveys.push(rec);
+    if (g.surveys.length > 40) g.surveys.shift();
+    const d = prev ? res.score - prev.score : 0;
+    const arrow2 = !prev ? "" : d > 1 ? `\uFF08\u524D\u5E74\u6BD4 +${d.toFixed(1)}\uFF09` : d < -1 ? `\uFF08\u524D\u5E74\u6BD4 ${d.toFixed(1)}\uFF09` : "\uFF08\u524D\u5E74\u4E26\u307F\uFF09";
+    news && news.push({
+      icon: "\u{1F4DD}",
+      type: "hr",
+      major: true,
+      text: `${g.year}\u5E74\u306E\u30A8\u30F3\u30B2\u30FC\u30B8\u30E1\u30F3\u30C8\u30B5\u30FC\u30D9\u30A4\u3092\u5B9F\u65BD\u3057\u305F\u3002\u5168\u793E\u30B9\u30B3\u30A2\u306F ${res.score.toFixed(1)} ${arrow2}\u3002` + (res.worst ? `\u3044\u3061\u3070\u3093\u4F4E\u3044\u306E\u306F${DEPTS[res.worst.id].name}\uFF08${res.worst.score.toFixed(1)}\uFF09\u3067\u3001${res.weakest.name}\u304C\u5F31\u3044\u3002` : "")
+    });
+    return rec;
+  }
+
   // src/sim/hr.js
   function orgPower(g) {
     const out = {};
@@ -2907,8 +3196,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const salary = (g.staff.reduce((a, s) => a + s.salary, 0) + ceoPay(g)) / WEEKS_PER_YEAR;
     const welfare = salary * 0.16;
     const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
-    return salary + welfare + programs;
+    const workProg = Object.entries(g.hrPolicy && g.hrPolicy.work || {}).reduce((a, [k, on]) => a + (on ? (WORK_COST[k] || 0) / WEEKS_PER_YEAR : 0), 0);
+    return salary + welfare + programs + workProg + overtimeCost(g, orgPower(g));
   }
+  var WORK_COST = { flex: 160, outsource: 520, health: 210 };
   function personnelCostYear(g) {
     return personnelCost(g) * WEEKS_PER_YEAR;
   }
@@ -2927,8 +3218,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const welfare = pol.programs.welfare ? 1 : 0;
     const W = WEEKS_PER_QUARTER;
     const ce = cultureEffects(g);
+    const we = workEffects(g);
+    const wl = workload(g, orgPower(g));
     const leavers = [];
     for (const s of g.staff) {
+      const ot = s.subsidiary ? 0 : wl[s.dept] ? wl[s.dept].overtime : 0;
       const youth = clamp(1.25 - (s.age - 22) * 0.028, 0.15, 1.25);
       for (const k of ABILITY_IDS) {
         const room = s.potential - s.abil[k];
@@ -2946,22 +3240,26 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (s.rank >= 3) dm += 0.012;
       if (g.market.sentiment > 0.65) dm += 8e-3;
       if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
+      const om = overtimeMorale(ot);
+      dm += (om < 0 ? om * we.moraleMul : om) * W;
       s.morale = clamp01(s.morale + (dm + rng.normal(0, 0.03)) / W);
-      let risk = 0.012;
-      risk += Math.max(0, 0.72 - s.morale) * 0.1;
-      risk += Math.max(0, 1 - fair) * 0.09;
-      risk += (1 - s.loyalty) * 0.022;
-      if (pol.programs.welfare) risk *= 0.7;
-      if (s.age > 60) risk += 0.16;
-      if (avgAbility(s) > 76 && s.rank < 3) risk += 0.02;
+      s.otHours = Math.round(ot * 10) / 10;
+      let risk2 = 0.012;
+      risk2 += Math.max(0, 0.72 - s.morale) * 0.1;
+      risk2 += Math.max(0, 1 - fair) * 0.09;
+      risk2 += (1 - s.loyalty) * 0.022;
+      if (pol.programs.welfare) risk2 *= 0.7;
+      if (s.age > 60) risk2 += 0.16;
+      if (avgAbility(s) > 76 && s.rank < 3) risk2 += 0.02;
       const rel = (avgAbility(s) - 55) / 45;
-      risk *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
-      risk *= ce.leaveMul;
-      if (rng.chance(clamp01(risk) / W)) leavers.push(s);
+      risk2 *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
+      risk2 *= ce.leaveMul;
+      risk2 += overtimeAttrition(ot) * we.attritionMul;
+      if (rng.chance(clamp01(risk2) / W)) leavers.push(s);
     }
     for (const s of leavers) {
       g.staff.splice(g.staff.indexOf(s), 1);
-      const why = s.age > 60 ? "\u5B9A\u5E74\u9000\u8077" : salaryFairness(g, s) < 0.92 ? "\u5F85\u9047\u3078\u306E\u4E0D\u6E80" : s.morale < 0.45 ? "\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u4F4E\u4E0B" : "\u4ED6\u793E\u3078\u306E\u8EE2\u8077";
+      const why = s.age > 60 ? "\u5B9A\u5E74\u9000\u8077" : (s.otHours || 0) > 55 ? "\u9577\u6642\u9593\u52B4\u50CD\u306B\u3088\u308B\u75B2\u5F0A" : salaryFairness(g, s) < 0.92 ? "\u5F85\u9047\u3078\u306E\u4E0D\u6E80" : s.morale < 0.45 ? "\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3\u4F4E\u4E0B" : "\u4ED6\u793E\u3078\u306E\u8EE2\u8077";
       news.push({ icon: "\u{1F6AA}", type: "hr", major: s.rank >= 4, text: `${DEPTS[s.dept].name}\u306E${rankName(g, s.rank)}\u30FB${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08${why}\uFF09\u3002` });
     }
     if (isYearStart(g) && g.week > 0) {
@@ -2990,6 +3288,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       }
       if (promoted) news.push({ icon: "\u{1F4CB}", type: "hr", major: true, text: `${g.year}\u5E74\u306E\u5B9A\u671F\u4EBA\u4E8B\u3067${promoted}\u540D\u304C\u6607\u683C\u3057\u3001\u5168\u793E\u54E1\u306E\u7D66\u4E0E\u3092\u6539\u5B9A\u3057\u305F\u3002` });
     }
+    if (g.weekOfYear === 39 && g.week > 26) runSurvey(g, news);
     for (const s of g.staff) if (s.rank >= CEO_RANK) s.rank = TOP_STAFF_RANK;
     const gap = ceoPayMorale(g);
     if (gap) for (const s of g.staff) s.morale = clamp01(s.morale + gap);
@@ -3229,6 +3528,263 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if ((g.acquisitions || []).length || (g.maTargets || []).length) add("ma");
   }
 
+  // src/sim/cityevents.js
+  var HAZARD = {
+    T: { quake: 0.85, storm: 0.7, flood: 0.55 },
+    // 常盤：地盤も対策も良い
+    B: { quake: 1.35, storm: 1.3, flood: 1.45 },
+    // 汐見：埋立の湾岸
+    A: { quake: 0.7, storm: 0.85, flood: 0.35 },
+    // 青葉台：高台
+    K: { quake: 1.15, storm: 0.95, flood: 0.9 },
+    // 神楽坂：古い街並み
+    N: { quake: 0.95, storm: 1, flood: 0.8 },
+    I: { quake: 1.05, storm: 1.1, flood: 1.05 },
+    S: { quake: 0.9, storm: 0.95, flood: 0.85 },
+    J: { quake: 1.45, storm: 1.25, flood: 1.55 },
+    // 城東：低地の埋立
+    F: { quake: 0.65, storm: 0.8, flood: 0.3 },
+    // 藤ヶ丘：丘陵
+    M: { quake: 0.85, storm: 0.9, flood: 0.7 },
+    E: { quake: 1.3, storm: 1.45, flood: 1.6 },
+    // 空港：海上の埋立
+    W: { quake: 1.2, storm: 1.15, flood: 1.35 },
+    // 若葉町：川沿いの旧市街
+    Y: { quake: 1, storm: 1.05, flood: 0.95 },
+    H: { quake: 0.75, storm: 0.9, flood: 0.45 },
+    R: { quake: 1.4, storm: 1.35, flood: 1.5 },
+    // 臨港：埋立
+    G: { quake: 0.9, storm: 0.95, flood: 0.75 }
+  };
+  var hazardOf = (d) => HAZARD[d] || { quake: 1, storm: 1, flood: 1 };
+  var DISASTERS = [
+    {
+      id: "quake",
+      name: "\u5730\u9707",
+      icon: "\u{1F30B}",
+      key: "quake",
+      p: 0.055,
+      minWeek: 52,
+      titles: ["\u6E4A\u90FD\u76F4\u4E0B\u5730\u9707", "\u6E7E\u5CB8\u6C96\u5730\u9707", "\u770C\u5357\u90E8\u3092\u9707\u6E90\u3068\u3059\u308B\u5730\u9707"],
+      seismicMatters: true,
+      desc: "\u5EFA\u7269\u306E\u640D\u50B7\u306B\u52A0\u3048\u3001\u30C6\u30CA\u30F3\u30C8\u306E\u9000\u53BB\u3068\u5FA9\u65E7\u5DE5\u4E8B\u304C\u767A\u751F\u3059\u308B\u3002"
+    },
+    {
+      id: "typhoon",
+      name: "\u53F0\u98A8",
+      icon: "\u{1F300}",
+      key: "storm",
+      p: 0.1,
+      months: [7, 8, 9, 10],
+      titles: ["\u5927\u578B\u53F0\u98A8\u306E\u76F4\u6483", "\u8A18\u9332\u7684\u66B4\u98A8\u96E8", "\u731B\u70C8\u306A\u53F0\u98A8\u306E\u63A5\u8FD1"],
+      seismicMatters: false,
+      desc: "\u5916\u88C5\u6750\u306E\u98DB\u6563\u3068\u6D78\u6C34\u3002\u5DE5\u4E8B\u4E2D\u306E\u6848\u4EF6\u306F\u5DE5\u671F\u304C\u5EF6\u3073\u308B\u3002"
+    },
+    {
+      id: "flood",
+      name: "\u8C6A\u96E8\u30FB\u6D78\u6C34",
+      icon: "\u{1F30A}",
+      key: "flood",
+      p: 0.075,
+      months: [6, 7, 8, 9],
+      titles: ["\u7DDA\u72B6\u964D\u6C34\u5E2F\u306B\u3088\u308B\u8C6A\u96E8", "\u8A18\u9332\u7684\u77ED\u6642\u9593\u5927\u96E8", "\u6CB3\u5DDD\u306E\u6C3E\u6FEB"],
+      seismicMatters: false,
+      desc: "\u5730\u4E0B\u3068\u4F4E\u5C64\u90E8\u304C\u6D78\u6C34\u3059\u308B\u3002\u4F4E\u5730\u306E\u7269\u4EF6\u307B\u3069\u88AB\u5BB3\u304C\u5927\u304D\u3044\u3002"
+    },
+    {
+      id: "snow",
+      name: "\u5927\u96EA",
+      icon: "\u2744",
+      key: "storm",
+      p: 0.05,
+      months: [12, 1, 2],
+      titles: ["\u8A18\u9332\u7684\u306A\u5927\u96EA", "\u5927\u96EA\u306B\u3088\u308B\u4EA4\u901A\u9EBB\u75FA"],
+      seismicMatters: false,
+      desc: "\u7269\u6D41\u3068\u5DE5\u4E8B\u304C\u6B62\u307E\u308B\u3002\u5EFA\u7269\u3078\u306E\u76F4\u63A5\u306E\u88AB\u5BB3\u306F\u5C0F\u3055\u3044\u3002"
+    }
+  ];
+  var RETROFIT = { cost: 0.085, gain: 0.45, weeks: 26 };
+  function seismicOf(a) {
+    if (typeof a.seismic === "number") return a.seismic;
+    const age = a.age || 0;
+    return clamp(1 - Math.max(0, age - 12) * 0.012, 0.55, 1);
+  }
+  function rollDisaster(g, rng, news) {
+    for (const D of DISASTERS) {
+      if (D.minWeek && g.week < D.minWeek) continue;
+      if (D.months && !D.months.includes(g.month)) continue;
+      if (!rng.chance(D.p / WEEKS_PER_QUARTER)) continue;
+      return applyDisaster(g, D, rng, news);
+    }
+    return null;
+  }
+  function applyDisaster(g, D, rng, news) {
+    const severity = rng.range(0.35, 1);
+    const title12 = rng.pick(D.titles);
+    const hits = [];
+    let loss = 0, vacancyHit = 0;
+    for (const a of g.assets || []) {
+      const h = hazardOf(a.district)[D.key];
+      const seis = D.seismicMatters ? seismicOf(a) : 1;
+      let rate = severity * h * 0.052 / Math.max(0.4, seis);
+      if (D.id === "flood") rate *= a.use === "logi" || a.use === "retail" ? 1.4 : 0.8;
+      if (D.id === "snow") rate *= 0.25;
+      rate = clamp(rate * rng.range(0.4, 1.6), 0, 0.42);
+      if (rate < 8e-3) continue;
+      const book = a.bookBuild || 0;
+      const cost = Math.round(book * rate);
+      if (cost <= 0) continue;
+      a.bookBuild = Math.max(0, book - cost);
+      a.damage = (a.damage || 0) + cost;
+      const occDrop = clamp(rate * 1.4, 0, 0.5);
+      a.occupancy = clamp01(a.occupancy - occDrop);
+      a.repairUntil = g.week + Math.round(6 + rate * 60);
+      loss += cost;
+      vacancyHit += occDrop;
+      hits.push({ name: a.name, district: a.district, cost, rate });
+    }
+    let delayed = 0;
+    for (const pj of g.projects || []) {
+      const h = hazardOf(pj.district)[D.key];
+      if (!rng.chance(clamp01(severity * h * 0.35))) continue;
+      const w = Math.round(1 + severity * h * 6);
+      pj.weeks += w;
+      delayed++;
+    }
+    if (loss > 0) {
+      g.cash -= loss;
+      g.finance.quarterAcc.extraordinary -= loss;
+    }
+    g.market.sentiment = clamp01(g.market.sentiment - severity * 0.12);
+    const rec = {
+      id: uid("D"),
+      kind: D.id,
+      name: D.name,
+      icon: D.icon,
+      title: title12,
+      year: g.year,
+      week: g.week,
+      severity,
+      loss,
+      hits: hits.length,
+      delayed,
+      worst: hits.sort((a, b) => b.cost - a.cost)[0] || null
+    };
+    g.disasters = g.disasters || [];
+    g.disasters.push(rec);
+    if (g.disasters.length > 60) g.disasters.shift();
+    news && news.push({
+      icon: D.icon,
+      type: "disaster",
+      major: true,
+      text: `\u3010${title12}\u3011${D.desc}` + (hits.length ? `\u4FDD\u6709${hits.length}\u4EF6\u304C\u88AB\u707D\u3057\u3001\u5FA9\u65E7\u8CBB${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` : "\u5F53\u793E\u306E\u4FDD\u6709\u7269\u4EF6\u306B\u5927\u304D\u306A\u88AB\u5BB3\u306F\u306A\u304B\u3063\u305F\u3002") + (delayed ? `\u5DE5\u4E8B\u4E2D\u306E${delayed}\u4EF6\u3067\u5DE5\u671F\u304C\u5EF6\u3073\u305F\u3002` : "")
+    });
+    return rec;
+  }
+  function retrofitTargets(g) {
+    return (g.assets || []).filter((a) => seismicOf(a) < 0.92 && !a.retrofitUntil);
+  }
+  function retrofitCost(a) {
+    return Math.round((a.bookBuild || 0) * RETROFIT.cost);
+  }
+  function retrofit(g, a, news) {
+    const cost = retrofitCost(a);
+    if (cost <= 0) return "\u6539\u4FEE\u306E\u5FC5\u8981\u304C\u306A\u3044";
+    if (g.cash < cost) return "\u8CC7\u91D1\u304C\u4E0D\u8DB3\u3057\u3066\u3044\u308B";
+    g.cash -= cost;
+    g.finance.quarterAcc.cogsLease += cost * 0.35;
+    a.bookBuild += Math.round(cost * 0.65);
+    a.seismic = clamp(seismicOf(a) + RETROFIT.gain, 0, 1.15);
+    a.retrofitUntil = g.week + RETROFIT.weeks;
+    news && news.push({
+      icon: "\u{1F527}",
+      type: "lease",
+      text: `\u300C${a.name}\u300D\u306E\u8010\u9707\u6539\u4FEE\u306B\u7740\u624B\u3057\u305F\uFF08\u5DE5\u4E8B\u8CBB${Math.round(cost / 100).toLocaleString()}\u5104\u5186\uFF09\u3002\u8010\u9707\u6027\u80FD\u304C${(a.seismic * 100).toFixed(0)}\u306B\u4E0A\u304C\u308B\u3002`
+    });
+    return null;
+  }
+  var RAIL_PLANS = [
+    { id: "r1", name: "\u6E4A\u90FD\u74B0\u72B6\u7DDA \u6C50\u898B\u5EF6\u4F38", districts: ["B", "J"], lift: 0.16, icon: "\u{1F687}" },
+    { id: "r2", name: "\u82E5\u8449\u753A\u30FB\u5317\u91CE\u9023\u7D61\u7DDA", districts: ["W", "N"], lift: 0.22, icon: "\u{1F683}" },
+    { id: "r3", name: "\u7A7A\u6E2F\u30A2\u30AF\u30BB\u30B9\u65B0\u7DDA", districts: ["E", "I"], lift: 0.2, icon: "\u{1F684}" },
+    { id: "r4", name: "\u5357\u96F2\u30EA\u30B5\u30FC\u30C1\u30E9\u30A4\u30F3", districts: ["M", "S"], lift: 0.15, icon: "\u{1F688}" },
+    { id: "r5", name: "\u85E4\u30F6\u4E18\u65B0\u99C5\u306E\u8A2D\u7F6E", districts: ["F", "A"], lift: 0.18, icon: "\u{1F689}" },
+    { id: "r6", name: "\u57CE\u6771\u8CA8\u7269\u7DDA\u306E\u65C5\u5BA2\u5316", districts: ["J", "W"], lift: 0.14, icon: "\u{1F69E}" },
+    { id: "r7", name: "\u9DB4\u898B\u91CE\u74B0\u72B6\u7DDA", districts: ["Y", "G", "H"], lift: 0.19, icon: "\u{1F69D}" }
+  ];
+  function railsOf(g) {
+    return g.rails || [];
+  }
+  function stepRails(g, rng, news) {
+    g.rails = g.rails || [];
+    const running = g.rails.filter((r) => r.status === "building");
+    if (running.length < 2 && rng.chance(0.3 / WEEKS_PER_QUARTER)) {
+      const done = new Set(g.rails.map((r) => r.id));
+      const pool = RAIL_PLANS.filter((p) => !done.has(p.id) && p.districts.every((d) => DISTRICTS[d]) && (cityOf(p.districts[0]) === "minato" || (g.unlocked || []).includes("city2")));
+      if (pool.length) {
+        const p = rng.pick(pool);
+        const years = rng.int(4, 7);
+        const rec = {
+          ...p,
+          status: "building",
+          announcedWeek: g.week,
+          announcedYear: g.year,
+          openWeek: g.week + years * WEEKS_PER_YEAR,
+          openYear: g.year + years
+        };
+        g.rails.push(rec);
+        news && news.push({
+          icon: p.icon,
+          type: "rail",
+          major: true,
+          text: `\u3010${p.name}\u3011\u306E\u4E8B\u696D\u8A08\u753B\u304C\u8A8D\u53EF\u3055\u308C\u305F\u3002${rec.openYear}\u5E74\u3054\u308D\u306E\u958B\u696D\u898B\u8FBC\u307F\u3067\u3001${p.districts.map((d) => DISTRICTS[d].name).join("\u30FB")}\u306E\u5229\u4FBF\u6027\u304C\u5927\u304D\u304F\u4E0A\u304C\u308B\u3002\u6CBF\u7DDA\u306E\u5730\u4FA1\u306F\u958B\u696D\u306B\u5411\u3051\u3066\u3058\u308F\u3058\u308F\u52D5\u304D\u306F\u3058\u3081\u308B\u3002`
+        });
+      }
+    }
+    for (const r of g.rails) {
+      if (r.status !== "building") continue;
+      const total = Math.max(1, r.openWeek - r.announcedWeek);
+      r.progress = clamp01((g.week - r.announcedWeek) / total);
+      if (g.week >= r.openWeek) {
+        r.status = "open";
+        r.openedWeek = g.week;
+        r.openedYear = g.year;
+        applyRail(g, r, 1);
+        news && news.push({
+          icon: r.icon,
+          type: "rail",
+          major: true,
+          text: `\u3010${r.name}\u3011\u304C\u958B\u696D\u3057\u305F\u3002${r.districts.map((d) => DISTRICTS[d].name).join("\u30FB")}\u306E\u99C5\u529B\u304C\u4E0A\u304C\u308A\u3001\u5730\u4FA1\u30FB\u8CC3\u6599\u3068\u3082\u306B\u4E0A\u6607\u3057\u305F\u3002\u6CBF\u7DDA\u306B\u4ED5\u8FBC\u3093\u3067\u3044\u305F\u7528\u5730\u306F\u542B\u307F\u76CA\u306B\u306A\u308B\u3002`
+        });
+      }
+    }
+    return null;
+  }
+  function applyRail(g, r, ratio) {
+    const lift = r.lift * ratio;
+    for (const c of g.cells || []) {
+      if (c.terrain !== TERRAIN.LOT || !c.d) continue;
+      if (!r.districts.includes(c.d)) continue;
+      const before = c.station;
+      c.station = clamp01(c.station + lift * (1 - c.station) * 1.1);
+      if (c.baseValue) c.baseValue = Math.round(c.baseValue * (1 + (c.station - before) * 0.85));
+    }
+  }
+  function railExpectation(g) {
+    const out = {};
+    for (const r of railsOf(g)) {
+      if (r.status !== "building") continue;
+      for (const d of r.districts) {
+        out[d] = (out[d] || 0) + r.lift * 0.35 * (r.progress || 0);
+      }
+    }
+    return out;
+  }
+  function railMul(g, d) {
+    const e = railExpectation(g);
+    return 1 + (e[d] || 0);
+  }
+
   // src/sim/valuation.js
   var COVER = { office: 0.38, resi: 0.28, rental: 0.3, retail: 0.68, hotel: 0.36, logi: 0.76, house: 0.46, mixed: 0.4 };
   var CAP_SPREAD = { office: 0, retail: 65e-4, hotel: 0.0105, logi: 18e-4, rental: 0, resi: 0, mixed: 25e-4, house: 4e-3 };
@@ -3243,7 +3799,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const d = DISTRICTS[c.d];
     const best = bestUseFit(c);
     const demand = g.market.demand[best] ?? 1;
-    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1));
+    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1) * railMul(g, c.d));
   }
   function bestUseFit(c) {
     const d = DISTRICTS[c.d];
@@ -4211,7 +4767,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         weeksOnSale: 0,
         completedWeek: g.week,
         impaired: 0,
-        discount: 0
+        discount: 0,
+        gfa: pj.gfa,
+        floors: pj.floors
+        // 表彰の審査に使う
       };
       const pre = clamp01(pj.preContract);
       if (pre > 0) {
@@ -4255,7 +4814,14 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         age: 0,
         lastRentReview: g.week,
         noi: 0,
-        cumNoi: 0
+        cumNoi: 0,
+        gfa: pj.gfa,
+        floors: pj.floors,
+        // 表彰の審査に使う
+        seismic: 1,
+        // 耐震性能（1.0 = 現行基準）
+        damage: 0
+        // 災害で受けた損傷の累計
       };
       const raw = Math.max(1, marketRentRaw(g, asset));
       const ask = rentOf(pj) || raw;
@@ -4536,7 +5102,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     slot3: "\u30B9\u30ED\u30C3\u30C8 3",
     autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
   };
-  var SAVE_VERSION = 5;
+  var SAVE_VERSION = 6;
   function serialize(g) {
     const { pendingReport, quarterNews, candidates, ...rest } = g;
     return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest });
@@ -4709,6 +5275,31 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (!Array.isArray(g.hrPolicy.rankNames)) g.hrPolicy.rankNames = defaultRankNames();
       for (const s of g.staff || []) {
         if (!Array.isArray(s.oversee)) s.oversee = [];
+      }
+    },
+    // 労働時間・サーベイ・表彰・災害・鉄道・IR を後から足す
+    (g) => {
+      g.hrPolicy = g.hrPolicy || {};
+      if (!g.hrPolicy.work) g.hrPolicy.work = {};
+      for (const k of ["surveys", "awards", "disasters", "rails", "postings", "ratingHistory", "planHistory"]) {
+        if (!Array.isArray(g[k])) g[k] = [];
+      }
+      if (g.ratingReport === void 0) g.ratingReport = null;
+      const c = g.company || {};
+      if (typeof c.irTrust !== "number") c.irTrust = 0;
+      if (typeof c.irPrice !== "number") c.irPrice = 0;
+      if (typeof c.irLastWeek !== "number") c.irLastWeek = -1;
+      for (const a of g.assets || []) {
+        if (typeof a.seismic !== "number") {
+          a.seismic = Math.max(0.55, Math.min(1, 1 - Math.max(0, (a.age || 0) - 12) * 0.012));
+        }
+        if (typeof a.damage !== "number") a.damage = 0;
+        if (!(a.gfa > 0)) a.gfa = Math.round((a.nra || 0) / 0.62);
+        if (!(a.floors > 0)) a.floors = Math.max(1, Math.round((a.gfa || 1e3) / 900));
+      }
+      for (const inv of g.inventory || []) {
+        if (!(inv.gfa > 0)) inv.gfa = Math.round((inv.area || 0) / 0.72);
+        if (!(inv.floors > 0)) inv.floors = Math.max(1, Math.round((inv.gfa || 1e3) / 900));
       }
     }
   ];
@@ -6683,6 +7274,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (a.use === "logi") target = clamp01(target * 1.06 + 0.04);
       if (a.use === "hotel") target = clamp01(target * (0.74 + dem * 0.34));
       if (a.age > 25) target *= 0.94;
+      if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
       a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 6e-3));
       if (g.week - a.lastRentReview >= 104) {
         const power = 0.35 + p.lease.quality / 260;
@@ -7345,6 +7937,336 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return clamp(1 + expect, 0.92, 1.12);
   }
 
+  // src/sim/ir.js
+  var OUTLOOKS = {
+    positive: { id: "positive", name: "\u30DD\u30B8\u30C6\u30A3\u30D6", tone: "green", spread: -15e-4, desc: "\u6B21\u306E\u898B\u76F4\u3057\u3067\u683C\u4E0A\u3052\u306E\u53EF\u80FD\u6027\u304C\u3042\u308B\u3002" },
+    stable: { id: "stable", name: "\u5B89\u5B9A\u7684", tone: "grey", spread: 0, desc: "\u5F53\u9762\u3001\u683C\u4ED8\u3051\u306E\u5909\u66F4\u306F\u60F3\u5B9A\u3057\u3066\u3044\u306A\u3044\u3002" },
+    negative: { id: "negative", name: "\u30CD\u30AC\u30C6\u30A3\u30D6", tone: "red", spread: 22e-4, desc: "\u6B21\u306E\u898B\u76F4\u3057\u3067\u683C\u4E0B\u3052\u306E\u53EF\u80FD\u6027\u304C\u3042\u308B\u3002" }
+  };
+  var AGENCY = { name: "\u6E4A\u90FD\u683C\u4ED8\u6295\u8CC7\u60C5\u5831\u30BB\u30F3\u30BF\u30FC", short: "MRI" };
+  function outlookFactors(g) {
+    const bs = g.finance.bs || buildBS(g);
+    const equityRatio = bs.total > 0 ? bs.equity / bs.total : 0;
+    const h = g.finance.history.slice(-4);
+    const prev = g.finance.history.slice(-8, -4);
+    const rev = h.reduce((a, x) => a + x.pl.revenue, 0);
+    const prevRev = prev.reduce((a, x) => a + x.pl.revenue, 0);
+    const op = h.reduce((a, x) => a + x.pl.op, 0);
+    const prevOp = prev.reduce((a, x) => a + x.pl.op, 0);
+    const growth2 = prevRev > 0 ? rev / prevRev - 1 : 0;
+    const opTrend = prevOp !== 0 ? (op - prevOp) / Math.abs(prevOp) : op > 0 ? 1 : 0;
+    const losses = h.filter((x) => x.pl.net < 0).length;
+    const od = overdraft(g);
+    const room = Math.max(0, debtCapacity(g) - g.debt);
+    return [
+      {
+        id: "equity",
+        name: "\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387",
+        v: equityRatio,
+        good: equityRatio >= 0.34,
+        bad: equityRatio < 0.2,
+        text: equityRatio >= 0.34 ? "\u8CC7\u672C\u306E\u539A\u307F\u306F\u5341\u5206\u3067\u3042\u308B\u3002" : equityRatio < 0.2 ? "\u8CC7\u672C\u304C\u8584\u304F\u3001\u5916\u90E8\u74B0\u5883\u306E\u5909\u5316\u306B\u8010\u3048\u308B\u4F59\u529B\u304C\u4E4F\u3057\u3044\u3002" : "\u8CC7\u672C\u306E\u539A\u307F\u306F\u6A19\u6E96\u7684\u3067\u3042\u308B\u3002"
+      },
+      {
+        id: "profit",
+        name: "\u53CE\u76CA\u306E\u5B89\u5B9A\u6027",
+        v: losses,
+        good: losses === 0 && op > 0,
+        bad: losses >= 2,
+        text: losses === 0 && op > 0 ? "\u76F4\u8FD14\u56DB\u534A\u671F\u306F\u3044\u305A\u308C\u3082\u9ED2\u5B57\u3092\u78BA\u4FDD\u3057\u3066\u3044\u308B\u3002" : losses >= 2 ? `\u76F4\u8FD14\u56DB\u534A\u671F\u306E\u3046\u3061${losses}\u671F\u304C\u8D64\u5B57\u3067\u3042\u308A\u3001\u53CE\u76CA\u57FA\u76E4\u306B\u4E0D\u5B89\u304C\u6B8B\u308B\u3002` : "\u53CE\u76CA\u306F\u6982\u306D\u5B89\u5B9A\u3057\u3066\u3044\u308B\u304C\u3001\u671F\u306B\u3088\u308B\u632F\u308C\u304C\u3042\u308B\u3002"
+      },
+      {
+        id: "growth",
+        name: "\u4E8B\u696D\u306E\u62E1\u5927",
+        v: growth2,
+        good: growth2 > 0.12,
+        bad: growth2 < -0.08,
+        text: growth2 > 0.12 ? `\u58F2\u4E0A\u9AD8\u306F\u524D\u5E74\u540C\u671F\u6BD4 +${(growth2 * 100).toFixed(0)}% \u3068\u9806\u8ABF\u306B\u62E1\u5927\u3057\u3066\u3044\u308B\u3002` : growth2 < -0.08 ? `\u58F2\u4E0A\u9AD8\u306F\u524D\u5E74\u540C\u671F\u6BD4 ${(growth2 * 100).toFixed(0)}% \u3068\u7E2E\u5C0F\u3057\u3066\u304A\u308A\u3001\u4E8B\u696D\u57FA\u76E4\u306E\u5F31\u307E\u308A\u304C\u61F8\u5FF5\u3055\u308C\u308B\u3002` : "\u4E8B\u696D\u898F\u6A21\u306F\u307B\u307C\u6A2A\u3070\u3044\u3067\u63A8\u79FB\u3057\u3066\u3044\u308B\u3002"
+      },
+      {
+        id: "margin",
+        name: "\u5229\u76CA\u7387\u306E\u65B9\u5411",
+        v: opTrend,
+        good: opTrend > 0.15,
+        bad: opTrend < -0.2,
+        text: opTrend > 0.15 ? "\u55B6\u696D\u5229\u76CA\u306F\u6539\u5584\u50BE\u5411\u306B\u3042\u308B\u3002" : opTrend < -0.2 ? "\u55B6\u696D\u5229\u76CA\u304C\u60AA\u5316\u3057\u3066\u304A\u308A\u3001\u539F\u4FA1\u7BA1\u7406\u306B\u8AB2\u984C\u304C\u3042\u308B\u3002" : "\u5229\u76CA\u6C34\u6E96\u306B\u5927\u304D\u306A\u5909\u5316\u306F\u306A\u3044\u3002"
+      },
+      {
+        id: "liquidity",
+        name: "\u6D41\u52D5\u6027",
+        v: room,
+        good: od === 0 && room > rev * 0.3,
+        bad: od > 0,
+        text: od > 0 ? "\u501F\u5165\u67A0\u3092\u8D85\u904E\u3057\u3066\u304A\u308A\u3001\u8CC7\u91D1\u7E70\u308A\u306B\u5F37\u3044\u8B66\u6212\u3092\u8981\u3059\u308B\u3002" : room > rev * 0.3 ? "\u8ABF\u9054\u4F59\u529B\u306F\u539A\u304F\u3001\u624B\u5143\u6D41\u52D5\u6027\u306B\u61F8\u5FF5\u306F\u306A\u3044\u3002" : "\u8ABF\u9054\u4F59\u529B\u306F\u3084\u3084\u9650\u3089\u308C\u3066\u3044\u308B\u3002"
+      },
+      {
+        id: "lease",
+        name: "\u30B9\u30C8\u30C3\u30AF\u53CE\u76CA",
+        v: (g.assets || []).length,
+        good: (g.assets || []).length >= 8,
+        bad: (g.assets || []).length === 0,
+        text: (g.assets || []).length >= 8 ? "\u8CC3\u8CB8\u30B9\u30C8\u30C3\u30AF\u304B\u3089\u306E\u5B89\u5B9A\u53CE\u76CA\u304C\u4E0B\u652F\u3048\u3068\u306A\u3063\u3066\u3044\u308B\u3002" : (g.assets || []).length === 0 ? "\u5206\u8B72\u306B\u4F9D\u5B58\u3057\u3066\u304A\u308A\u3001\u5E02\u6CC1\u60AA\u5316\u6642\u306E\u7DE9\u885D\u6750\u304C\u306A\u3044\u3002" : "\u8CC3\u8CB8\u30B9\u30C8\u30C3\u30AF\u306E\u7A4D\u307F\u4E0A\u304C\u308A\u306F\u9014\u4E0A\u306B\u3042\u308B\u3002"
+      }
+    ];
+  }
+  function outlookOf(g) {
+    const f = outlookFactors(g);
+    const good = f.filter((x) => x.good).length;
+    const bad = f.filter((x) => x.bad).length;
+    const ir = clamp(g.company.irTrust || 0, -1, 1);
+    const net = good - bad * 1.35 + ir * 0.9;
+    if (net >= 2.2) return OUTLOOKS.positive;
+    if (net <= -1.2) return OUTLOOKS.negative;
+    return OUTLOOKS.stable;
+  }
+  function outlookSpread(g) {
+    return outlookOf(g).spread;
+  }
+  function stepRating(g, news) {
+    const r = ratingOf(g);
+    const o = outlookOf(g);
+    const prev = g.ratingReport;
+    const f = outlookFactors(g);
+    const bs = g.finance.bs || buildBS(g);
+    const rep = {
+      year: g.year,
+      q: g.quarter,
+      week: g.week,
+      rating: r.id,
+      outlook: o.id,
+      agency: AGENCY.name,
+      summary: buildSummary(g, r, o, f),
+      factors: f.map((x) => ({ id: x.id, name: x.name, good: x.good, bad: x.bad, text: x.text })),
+      equityRatio: bs.total > 0 ? bs.equity / bs.total : 0,
+      de: bs.equity > 0 ? g.debt / bs.equity : 0,
+      rate: g.market.rate + r.spread + o.spread
+    };
+    g.ratingReport = rep;
+    g.ratingHistory = g.ratingHistory || [];
+    g.ratingHistory.push({ year: g.year, q: g.quarter, rating: r.id, outlook: o.id });
+    if (g.ratingHistory.length > 60) g.ratingHistory.shift();
+    if (prev && prev.rating !== r.id) {
+      const up = RANK_ORDER.indexOf(r.id) < RANK_ORDER.indexOf(prev.rating);
+      news && news.push({
+        icon: up ? "\u2B06" : "\u2B07",
+        type: "fin",
+        major: true,
+        text: `${AGENCY.name}\u306F\u5F53\u793E\u306E\u683C\u4ED8\u3051\u3092 ${prev.rating} \u304B\u3089 ${r.id} \u306B${up ? "\u5F15\u304D\u4E0A\u3052\u305F" : "\u5F15\u304D\u4E0B\u3052\u305F"}\u3002\u898B\u901A\u3057\u306F\u300C${o.name}\u300D\u3002${up ? "\u8ABF\u9054\u30B3\u30B9\u30C8\u304C\u4E0B\u304C\u308B\u3002" : "\u8ABF\u9054\u30B3\u30B9\u30C8\u304C\u4E0A\u304C\u308B\u3002"}`
+      });
+    } else if (prev && prev.outlook !== o.id) {
+      news && news.push({
+        icon: o.id === "positive" ? "\u{1F4C8}" : o.id === "negative" ? "\u{1F4C9}" : "\u{1F4C4}",
+        type: "fin",
+        major: o.id === "negative",
+        text: `${AGENCY.name}\u306F\u5F53\u793E\u306E\u683C\u4ED8\u3051\u898B\u901A\u3057\u3092\u300C${OUTLOOKS[prev.outlook].name}\u300D\u304B\u3089\u300C${o.name}\u300D\u306B\u5909\u66F4\u3057\u305F\u3002${o.desc}`
+      });
+    }
+    return rep;
+  }
+  var RANK_ORDER = ["AAA", "AA", "A", "BBB", "BB", "B", "CCC"];
+  function buildSummary(g, r, o, f) {
+    const bad = f.filter((x) => x.bad);
+    const good = f.filter((x) => x.good);
+    const head = `\u5F53\u793E\u306F${g.company.name}\u306E\u9577\u671F\u767A\u884C\u4F53\u683C\u4ED8\u3051\u3092\u300C${r.id}\u300D\u3001\u898B\u901A\u3057\u3092\u300C${o.name}\u300D\u3068\u3059\u308B\u3002`;
+    const body = good.length ? good.slice(0, 2).map((x) => x.text).join("") : "";
+    const risk2 = bad.length ? `\u4E00\u65B9\u3067\u3001${bad.slice(0, 2).map((x) => x.text).join("")}` : "";
+    const tail = o.id === "positive" ? "\u4ECA\u5F8C1\u301C2\u5E74\u3067\u53CE\u76CA\u57FA\u76E4\u306E\u539A\u307F\u304C\u78BA\u8A8D\u3067\u304D\u308C\u3070\u3001\u683C\u4E0A\u3052\u3092\u691C\u8A0E\u3059\u308B\u3002" : o.id === "negative" ? "\u8CA1\u52D9\u898F\u5F8B\u306E\u56DE\u5FA9\u304C\u78BA\u8A8D\u3067\u304D\u306A\u3044\u5834\u5408\u3001\u683C\u4E0B\u3052\u3092\u691C\u8A0E\u3059\u308B\u3002" : "\u5F53\u9762\u3001\u683C\u4ED8\u3051\u306E\u5909\u66F4\u306F\u60F3\u5B9A\u3057\u3066\u3044\u306A\u3044\u3002";
+    return head + body + risk2 + tail;
+  }
+  function questionsFor(g) {
+    const h = g.finance.history;
+    const last = h[h.length - 1];
+    const prev = h[h.length - 5];
+    const qs = [];
+    const revDown = prev && last && last.pl.revenue < prev.pl.revenue * 0.92;
+    const opNeg = last && last.pl.op < 0;
+    const od = overdraft(g) > 0;
+    if (opNeg) {
+      qs.push({
+        id: "op",
+        who: "\u6A5F\u95A2\u6295\u8CC7\u5BB6",
+        q: "\u4ECA\u671F\u306E\u55B6\u696D\u8D64\u5B57\u306B\u3064\u3044\u3066\u3001\u4E00\u6642\u7684\u306A\u3082\u306E\u306A\u306E\u304B\u3001\u69CB\u9020\u7684\u306A\u3082\u306E\u306A\u306E\u304B\u3002\u898B\u89E3\u3092\u4F3A\u3044\u305F\u3044\u3002",
+        answers: [
+          {
+            label: "\u4E00\u6642\u7684\u306A\u8981\u56E0\u3067\u3042\u308A\u3001\u6765\u671F\u306B\u306F\u623B\u308B\u3068\u8AAC\u660E\u3059\u308B",
+            trust: -0.35,
+            brand: 0,
+            price: 0.03,
+            say: "\u4ECA\u671F\u306E\u8D64\u5B57\u306F\u7AE3\u5DE5\u306E\u30BF\u30A4\u30DF\u30F3\u30B0\u306B\u3088\u308B\u4E00\u6642\u7684\u306A\u3082\u306E\u3067\u3042\u308A\u3001\u6765\u671F\u306B\u306F\u56DE\u5FA9\u3059\u308B\u898B\u8FBC\u307F\u3067\u3042\u308B\u3002",
+            after: "\u5E02\u5834\u306F\u984D\u9762\u3069\u304A\u308A\u306B\u306F\u53D7\u3051\u53D6\u3089\u306A\u304B\u3063\u305F\u3002\u6B21\u306E\u6C7A\u7B97\u3067\u623B\u3089\u306A\u3051\u308C\u3070\u3001\u4FE1\u983C\u306F\u5927\u304D\u304F\u524A\u3089\u308C\u308B\u3002"
+          },
+          {
+            label: "\u539F\u4FA1\u7BA1\u7406\u306B\u8AB2\u984C\u304C\u3042\u3063\u305F\u3068\u7387\u76F4\u306B\u8A8D\u3081\u308B",
+            trust: 0.42,
+            brand: -1.2,
+            price: -0.025,
+            say: "\u5EFA\u8A2D\u8CBB\u306E\u4E0A\u6607\u3092\u4FA1\u683C\u306B\u8EE2\u5AC1\u3057\u304D\u308C\u306A\u304B\u3063\u305F\u3002\u539F\u4FA1\u7BA1\u7406\u306E\u7518\u3055\u3067\u3042\u308A\u3001\u8CAC\u4EFB\u306F\u7D4C\u55B6\u306B\u3042\u308B\u3002",
+            after: "\u682A\u4FA1\u306F\u4E0B\u3052\u305F\u304C\u3001\u8AAC\u660E\u306E\u7387\u76F4\u3055\u306F\u8A55\u4FA1\u3055\u308C\u305F\u3002"
+          },
+          {
+            label: "\u8CEA\u554F\u306B\u306F\u76F4\u63A5\u7B54\u3048\u305A\u3001\u4E2D\u9577\u671F\u306E\u6210\u9577\u3092\u8A9E\u308B",
+            trust: -0.5,
+            brand: -0.6,
+            price: -0.01,
+            say: "\u5F53\u793E\u306F\u4E2D\u9577\u671F\u306E\u4F01\u696D\u4FA1\u5024\u5411\u4E0A\u3092\u76EE\u6307\u3057\u3066\u304A\u308A\u3001\u5358\u5E74\u5EA6\u306E\u6570\u5B57\u306B\u4E00\u559C\u4E00\u6182\u3057\u3066\u3044\u306A\u3044\u3002",
+            after: "\u4F1A\u5834\u306E\u7A7A\u6C17\u304C\u51B7\u3048\u305F\u3002\u30A2\u30CA\u30EA\u30B9\u30C8\u306F\u540C\u3058\u8CEA\u554F\u3092\u7E70\u308A\u8FD4\u3059\u3053\u3068\u306B\u306A\u308B\u3002"
+          }
+        ]
+      });
+    }
+    if (revDown) {
+      qs.push({
+        id: "rev",
+        who: "\u8A3C\u5238\u30A2\u30CA\u30EA\u30B9\u30C8",
+        q: "\u58F2\u4E0A\u9AD8\u304C\u524D\u5E74\u540C\u671F\u3092\u4E0B\u56DE\u3063\u3066\u3044\u308B\u3002\u4F9B\u7D66\u6238\u6570\u306E\u8A08\u753B\u306B\u5909\u66F4\u306F\u306A\u3044\u306E\u304B\u3002",
+        answers: [
+          {
+            label: "\u8A08\u753B\u306F\u5909\u3048\u306A\u3044\u3002\u4ED5\u8FBC\u307F\u306F\u9032\u3093\u3067\u3044\u308B\u3068\u8AAC\u660E\u3059\u308B",
+            trust: 0.2,
+            brand: 0.3,
+            price: 0.02,
+            say: "\u7528\u5730\u306E\u4ED5\u8FBC\u307F\u306F\u8A08\u753B\u3069\u304A\u308A\u9032\u3093\u3067\u304A\u308A\u3001\u5F15\u304D\u6E21\u3057\u6642\u671F\u306E\u305A\u308C\u306B\u3088\u308B\u3082\u306E\u3067\u3042\u308B\u3002",
+            after: "\u624B\u5143\u306E\u7528\u5730\u304C\u672C\u5F53\u306B\u3042\u308B\u304B\u3069\u3046\u304B\u3092\u3001\u6B21\u306E\u56DB\u534A\u671F\u3067\u898B\u3089\u308C\u308B\u3053\u3068\u306B\u306A\u308B\u3002"
+          },
+          {
+            label: "\u5E02\u6CC1\u3092\u8E0F\u307E\u3048\u3001\u3042\u3048\u3066\u4F9B\u7D66\u3092\u7D5E\u3063\u3066\u3044\u308B\u3068\u8AAC\u660E\u3059\u308B",
+            trust: 0.3,
+            brand: 0.2,
+            price: -5e-3,
+            say: "\u9AD8\u5024\u63B4\u307F\u3092\u907F\u3051\u308B\u305F\u3081\u3001\u610F\u56F3\u7684\u306B\u53D6\u5F97\u3092\u6291\u3048\u3066\u3044\u308B\u3002\u7121\u7406\u306B\u6570\u5B57\u3092\u4F5C\u308B\u3064\u3082\u308A\u306F\u306A\u3044\u3002",
+            after: "\u898F\u5F8B\u3042\u308B\u59FF\u52E2\u3068\u3057\u3066\u53D7\u3051\u6B62\u3081\u3089\u308C\u305F\u3002"
+          }
+        ]
+      });
+    }
+    if (od) {
+      qs.push({
+        id: "debt",
+        who: "\u9280\u884C\u7CFB\u30A2\u30CA\u30EA\u30B9\u30C8",
+        q: "\u6709\u5229\u5B50\u8CA0\u50B5\u304C\u501F\u5165\u67A0\u3092\u8D85\u904E\u3057\u3066\u3044\u308B\u3002\u8CA1\u52D9\u898F\u5F8B\u306B\u3064\u3044\u3066\u3069\u3046\u8003\u3048\u3066\u3044\u308B\u304B\u3002",
+        answers: [
+          {
+            label: "\u4FDD\u6709\u7269\u4EF6\u306E\u4E00\u90E8\u58F2\u5374\u3067\u5727\u7E2E\u3059\u308B\u3068\u660E\u8A00\u3059\u308B",
+            trust: 0.45,
+            brand: -0.4,
+            price: 0.02,
+            say: "\u4FDD\u6709\u8CC7\u7523\u306E\u4E00\u90E8\u3092\u58F2\u5374\u3057\u3001\u6B21\u306E1\u5E74\u3067D/E\u30EC\u30B7\u30AA\u3092\u6B63\u5E38\u5316\u3055\u305B\u308B\u3002",
+            after: "\u5177\u4F53\u7B56\u3092\u793A\u3057\u305F\u3053\u3068\u3067\u3001\u5F53\u9762\u306E\u61F8\u5FF5\u306F\u548C\u3089\u3044\u3060\u3002\u5B9F\u884C\u3057\u306A\u3051\u308C\u3070\u8DF3\u306D\u8FD4\u308B\u3002"
+          },
+          {
+            label: "\u4E0D\u52D5\u7523\u4E8B\u696D\u306E\u6027\u8CEA\u4E0A\u3001\u554F\u984C\u306A\u3044\u3068\u8AAC\u660E\u3059\u308B",
+            trust: -0.55,
+            brand: -0.3,
+            price: -0.04,
+            say: "\u4E0D\u52D5\u7523\u4E8B\u696D\u306F\u8CC7\u7523\u3092\u6301\u3064\u696D\u614B\u3067\u3042\u308A\u3001\u3053\u306E\u6C34\u6E96\u306E\u8CA0\u50B5\u306F\u554F\u984C\u3067\u306F\u306A\u3044\u3002",
+            after: "\u683C\u4ED8\u3051\u4F1A\u793E\u306E\u76EE\u304C\u53B3\u3057\u304F\u306A\u3063\u305F\u3002"
+          }
+        ]
+      });
+    }
+    if (g.midPlan) {
+      const pr = planProgress(g, g.midPlan);
+      const late = pr < 0.45;
+      qs.push({
+        id: "plan",
+        who: "\u9577\u671F\u4FDD\u6709\u306E\u6295\u8CC7\u5BB6",
+        q: `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${g.midPlan.name}\u300D\u306E\u9032\u6357\u306F${(pr * 100).toFixed(0)}%\u3067\u3042\u308B\u3002\u9054\u6210\u306E\u78BA\u5EA6\u3092\u3069\u3046\u898B\u3066\u3044\u308B\u304B\u3002`,
+        answers: late ? [
+          {
+            label: "\u76EE\u6A19\u306F\u4E0B\u65B9\u4FEE\u6B63\u305B\u305A\u3001\u3084\u308A\u5207\u308B\u3068\u5BA3\u8A00\u3059\u308B",
+            trust: 0.3,
+            brand: 0.8,
+            price: 0.035,
+            say: "\u63B2\u3052\u305F\u6570\u5B57\u306F\u4E0B\u308D\u3055\u306A\u3044\u3002\u6B8B\u308A\u306E\u671F\u9593\u3067\u5FC5\u305A\u5C4A\u304B\u305B\u308B\u3002",
+            after: "\u899A\u609F\u306F\u4F1D\u308F\u3063\u305F\u3002\u5C4A\u304B\u306A\u3051\u308C\u3070\u3001\u305D\u306E\u53CD\u52D5\u3082\u5927\u304D\u3044\u3002"
+          },
+          {
+            label: "\u524D\u63D0\u304C\u5909\u308F\u3063\u305F\u3068\u3057\u3066\u3001\u8A08\u753B\u306E\u898B\u76F4\u3057\u3092\u793A\u5506\u3059\u308B",
+            trust: -0.25,
+            brand: -1.4,
+            price: -0.03,
+            say: "\u5E02\u6CC1\u306E\u524D\u63D0\u304C\u5909\u308F\u3063\u3066\u304A\u308A\u3001\u8A08\u753B\u306E\u898B\u76F4\u3057\u3082\u9078\u629E\u80A2\u3067\u3042\u308B\u3002",
+            after: "\u63B2\u3052\u305F\u6570\u5B57\u3092\u81EA\u3089\u7DE9\u3081\u305F\u3053\u3068\u3067\u3001\u8A08\u753B\u305D\u306E\u3082\u306E\u306E\u91CD\u307F\u304C\u843D\u3061\u305F\u3002"
+          }
+        ] : [
+          {
+            label: "\u9032\u6357\u306F\u8A08\u753B\u7DDA\u4E0A\u306B\u3042\u308B\u3068\u8AAC\u660E\u3059\u308B",
+            trust: 0.35,
+            brand: 0.6,
+            price: 0.03,
+            say: "\u9032\u6357\u306F\u8A08\u753B\u7DDA\u4E0A\u306B\u3042\u308B\u3002\u6B8B\u308B\u8AB2\u984C\u306F\u660E\u78BA\u3067\u3001\u624B\u306F\u6253\u3063\u3066\u3042\u308B\u3002",
+            after: "\u843D\u3061\u7740\u3044\u305F\u8AAC\u660E\u3068\u3057\u3066\u53D7\u3051\u6B62\u3081\u3089\u308C\u305F\u3002"
+          },
+          {
+            label: "\u4E0A\u632F\u308C\u306E\u53EF\u80FD\u6027\u306B\u3082\u8A00\u53CA\u3059\u308B",
+            trust: 0.1,
+            brand: 0.4,
+            price: 0.05,
+            say: "\u8DB3\u5143\u306E\u53D7\u6CE8\u74B0\u5883\u3092\u8E0F\u307E\u3048\u308C\u3070\u3001\u8A08\u753B\u3092\u4E0A\u56DE\u308B\u53EF\u80FD\u6027\u3082\u3042\u308B\u3002",
+            after: "\u682A\u4FA1\u306F\u8DF3\u306D\u305F\u304C\u3001\u671F\u5F85\u3082\u4E0A\u304C\u3063\u305F\u3002"
+          }
+        ]
+      });
+    }
+    qs.push({
+      id: "strategy",
+      who: "\u696D\u754C\u7D19\u306E\u8A18\u8005",
+      q: "\u4ECA\u5F8C\u3001\u3069\u306E\u9818\u57DF\u306B\u8CC7\u672C\u3092\u632F\u308A\u5411\u3051\u308B\u306E\u304B\u3002\u65B9\u91DD\u3092\u4F3A\u3044\u305F\u3044\u3002",
+      answers: [
+        {
+          label: "\u8CC3\u8CB8\u30B9\u30C8\u30C3\u30AF\u306E\u7A4D\u307F\u4E0A\u3052\u3092\u6700\u512A\u5148\u3060\u3068\u7B54\u3048\u308B",
+          trust: 0.25,
+          brand: 0.5,
+          price: 0.015,
+          say: "\u8CC3\u8CB8\u30B9\u30C8\u30C3\u30AF\u3092\u7A4D\u307F\u4E0A\u3052\u3001\u53CE\u76CA\u306E\u632F\u308C\u3092\u5C0F\u3055\u304F\u3059\u308B\u3053\u3068\u3092\u6700\u512A\u5148\u3068\u3059\u308B\u3002",
+          after: "\u5B89\u5B9A\u5FD7\u5411\u3068\u3057\u3066\u53D7\u3051\u6B62\u3081\u3089\u308C\u305F\u3002"
+        },
+        {
+          label: "\u5206\u8B72\u306E\u56DE\u8EE2\u3067\u5229\u76CA\u3092\u6700\u5927\u5316\u3059\u308B\u3068\u7B54\u3048\u308B",
+          trust: 0.1,
+          brand: 0.2,
+          price: 0.03,
+          say: "\u8CC7\u672C\u52B9\u7387\u3092\u91CD\u8996\u3057\u3001\u5206\u8B72\u306E\u56DE\u8EE2\u3067\u5229\u76CA\u3092\u6700\u5927\u5316\u3059\u308B\u3002",
+          after: "\u6210\u9577\u671F\u5F85\u306F\u4E0A\u304C\u3063\u305F\u304C\u3001\u5E02\u6CC1\u304C\u5D29\u308C\u305F\u3068\u304D\u306E\u8106\u3055\u3082\u610F\u8B58\u3055\u308C\u305F\u3002"
+        },
+        {
+          label: "\u4EBA\u3068\u7D44\u7E54\u3078\u306E\u6295\u8CC7\u3060\u3068\u7B54\u3048\u308B",
+          trust: 0.2,
+          brand: 0.9,
+          price: -5e-3,
+          say: "\u3053\u306E\u4E8B\u696D\u306F\u4EBA\u304C\u3059\u3079\u3066\u3067\u3042\u308B\u3002\u63A1\u7528\u3068\u80B2\u6210\u306B\u8CC7\u672C\u3092\u632F\u308A\u5411\u3051\u308B\u3002",
+          after: "\u77ED\u671F\u306E\u682A\u4FA1\u306B\u306F\u52B9\u304B\u306A\u3044\u304C\u3001\u63A1\u7528\u5E02\u5834\u3067\u306E\u8A55\u5224\u306F\u4E0A\u304C\u3063\u305F\u3002"
+        }
+      ]
+    });
+    return qs.slice(0, 3);
+  }
+  function answerQuestion(g, q, a, news) {
+    g.company.irTrust = clamp((g.company.irTrust || 0) + a.trust * 0.45, -1, 1);
+    g.company.brand = clamp(g.company.brand + a.brand, 0, 100);
+    g.company.irPrice = clamp((g.company.irPrice || 0) + a.price, -0.12, 0.12);
+    if (a.brand >= 0.8) {
+      for (const s of g.staff) s.morale = clamp01(s.morale + 0.02);
+    }
+    return a.after;
+  }
+  function closeBriefing(g, news) {
+    g.company.irLastWeek = g.week;
+    const t = g.company.irTrust || 0;
+    news && news.push({
+      icon: "\u{1F399}",
+      type: "fin",
+      text: `${g.year}\u5E74\u7B2C${g.quarter}\u56DB\u534A\u671F\u306E\u6C7A\u7B97\u8AAC\u660E\u4F1A\u3092\u7D42\u3048\u305F\u3002` + (t > 0.35 ? "\u8AAC\u660E\u306F\u597D\u610F\u7684\u306B\u53D7\u3051\u6B62\u3081\u3089\u308C\u3001\u5E02\u5834\u306E\u4FE1\u983C\u306F\u539A\u304F\u306A\u3063\u3066\u3044\u308B\u3002" : t < -0.3 ? "\u8AAC\u660E\u306B\u5BFE\u3059\u308B\u5E02\u5834\u306E\u76EE\u306F\u53B3\u3057\u3044\u3002\u6B21\u306E\u56DB\u534A\u671F\u3067\u7D50\u679C\u3092\u793A\u3059\u5FC5\u8981\u304C\u3042\u308B\u3002" : "\u5E02\u5834\u306E\u53D7\u3051\u6B62\u3081\u306F\u4E2D\u7ACB\u7684\u3067\u3042\u308B\u3002")
+    });
+  }
+  function irPremium(g) {
+    return clamp(1 + (g.company.irPrice || 0) + (g.company.irTrust || 0) * 0.035, 0.85, 1.15);
+  }
+  function decayIr(g) {
+    g.company.irTrust = (g.company.irTrust || 0) * 0.994;
+    g.company.irPrice = (g.company.irPrice || 0) * 0.985;
+  }
+
   // src/sim/finance.js
   var RATINGS = [
     { id: "AAA", min: 0.5, spread: 2e-3, label: "\u6700\u4E0A\u7D1A\u3002\u8ABF\u9054\u30B3\u30B9\u30C8\u306F\u696D\u754C\u6700\u5B89\u6C34\u6E96\u3002" },
@@ -7368,7 +8290,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   function effectiveRate(g) {
     const od = overdraft(g);
     const penalty = g.debt > 0 ? od / g.debt * 0.035 : 0;
-    return g.market.rate + ratingOf(g).spread + penalty;
+    return g.market.rate + ratingOf(g).spread + outlookSpread(g) + penalty;
   }
   function debtCapacity(g) {
     const p = orgPower(g);
@@ -7485,7 +8407,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const ug = unrealizedGain(g).gain * 1e6 / g.company.shares;
     const byEarn = eps * per;
     const byAsset = (bps + ug * 0.5) * clamp(0.65 + g.company.brand / 200, 0.6, 1.25);
-    return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g)));
+    return Math.max(30, Math.round((byEarn * 0.58 + byAsset * 0.42) * planPremium(g) * irPremium(g)));
   }
   function marketCap(g) {
     return Math.round(sharePrice(g) * g.company.shares / 1e6);
@@ -7785,6 +8707,137 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return clamp(0.72 + avg / Math.max(8, me.pop) * 0.32, 0.72, 1.55);
   }
 
+  // src/sim/awards.js
+  var AWARDS = [
+    {
+      id: "good",
+      name: "\u30B0\u30C3\u30C9\u30C7\u30B6\u30A4\u30F3\u9078\u5B9A",
+      icon: "\u25CE",
+      need: 55,
+      brand: 1.6,
+      p: 0.55,
+      body: "\u65E5\u672C\u30C7\u30B6\u30A4\u30F3\u63A8\u9032\u6A5F\u69CB",
+      desc: "\u610F\u5320\u3068\u4F7F\u3044\u52DD\u624B\u304C\u8A55\u4FA1\u3055\u308C\u305F\u3002\u5E83\u304F\u540D\u524D\u304C\u77E5\u3089\u308C\u308B\u304D\u3063\u304B\u3051\u306B\u306A\u308B\u3002"
+    },
+    {
+      id: "arch",
+      name: "\u5EFA\u7BC9\u5B66\u4F1A\u4F5C\u54C1\u8CDE",
+      icon: "\u{1F3DB}",
+      need: 86,
+      brand: 3.2,
+      p: 0.3,
+      body: "\u65E5\u672C\u5EFA\u7BC9\u5B66\u4F1A",
+      desc: "\u5EFA\u7BC9\u3068\u3057\u3066\u306E\u5B8C\u6210\u5EA6\u304C\u8A55\u4FA1\u3055\u308C\u308B\u3001\u7384\u4EBA\u7B4B\u306B\u91CD\u3044\u8CDE\u3067\u3042\u308B\u3002"
+    },
+    {
+      id: "town",
+      name: "\u307E\u3061\u3065\u304F\u308A\u5927\u8CDE",
+      icon: "\u{1F333}",
+      need: 76,
+      brand: 2.6,
+      p: 0.34,
+      body: "\u90FD\u5E02\u8A08\u753B\u5354\u4F1A",
+      desc: "\u8857\u306B\u958B\u304B\u308C\u305F\u8A08\u753B\u304C\u8A55\u4FA1\u3055\u308C\u305F\u3002\u81EA\u6CBB\u4F53\u304B\u3089\u306E\u4FE1\u7528\u304C\u5897\u3059\u3002"
+    },
+    {
+      id: "env",
+      name: "\u74B0\u5883\u914D\u616E\u5EFA\u7BC9\u8CDE",
+      icon: "\u{1F343}",
+      need: 66,
+      brand: 2,
+      p: 0.36,
+      body: "\u5EFA\u7BC9\u74B0\u5883\u30FB\u7701\u30A8\u30CD\u30EB\u30AE\u30FC\u6A5F\u69CB",
+      desc: "\u7701\u30A8\u30CD\u3068\u74B0\u5883\u6027\u80FD\u304C\u8A55\u4FA1\u3055\u308C\u305F\u3002\u30C6\u30CA\u30F3\u30C8\u306E\u5F15\u304D\u5408\u3044\u304C\u5F37\u304F\u306A\u308B\u3002"
+    },
+    {
+      id: "bcs",
+      name: "\u5EFA\u7BC9\u696D\u5354\u4F1A\u8CDE\uFF08BCS\u8CDE\uFF09",
+      icon: "\u{1F3C6}",
+      need: 96,
+      brand: 4.4,
+      p: 0.2,
+      body: "\u65E5\u672C\u5EFA\u8A2D\u696D\u9023\u5408\u4F1A",
+      desc: "\u4E8B\u696D\u4E3B\u30FB\u8A2D\u8A08\u30FB\u65BD\u5DE5\u306E\u4E09\u8005\u304C\u53D7\u8CDE\u3059\u308B\u3001\u696D\u754C\u3067\u6700\u3082\u683C\u306E\u9AD8\u3044\u8CDE\u306E\u3072\u3068\u3064\u3002"
+    },
+    {
+      id: "renewal",
+      name: "\u30EA\u30CB\u30E5\u30FC\u30A2\u30EB\u5EFA\u7BC9\u8CDE",
+      icon: "\u267B",
+      need: 62,
+      brand: 1.8,
+      p: 0.3,
+      body: "\u5EFA\u7BC9\u4FDD\u5168\u30BB\u30F3\u30BF\u30FC",
+      desc: "\u65E2\u5B58\u30B9\u30C8\u30C3\u30AF\u3092\u6D3B\u304B\u3057\u305F\u518D\u751F\u304C\u8A55\u4FA1\u3055\u308C\u305F\u3002"
+    }
+  ];
+  function meritOf(g, a) {
+    const d = DISTRICTS[a.district];
+    const gradeScore = { standard: 6, high: 34, luxury: 58 }[a.grade] ?? 6;
+    const size = clamp((Math.log10(Math.max(1, a.gfa || a.nra || 1e3)) - 3.4) * 30, 0, 30);
+    const height = clamp((a.floors || 1) * 0.55, 0, 16);
+    const place = d ? clamp(d.station * 14, 0, 14) : 6;
+    const brand = clamp(g.company.brand / 9, 0, 11);
+    const mix = a.use === "mixed" ? 8 : a.use === "office" || a.use === "retail" ? 4 : 0;
+    return Math.round(gradeScore + size + height + place + brand + mix);
+  }
+  function stepAwards(g, rng, news) {
+    g.awards = g.awards || [];
+    const pool = (g.assets || []).concat(g.inventory || []).filter((a) => a.completedWeek != null && g.week - a.completedWeek <= 104 && !a.awarded);
+    if (!pool.length) return [];
+    const won = [];
+    for (const a of pool) {
+      const m = meritOf(g, a);
+      const cands = AWARDS.filter((x) => m >= x.need);
+      if (!cands.length) continue;
+      const pick = rng.weighted(cands.map((x) => ({ x, w: x.p * (1 + (m - x.need) / 40) })));
+      if (!pick) continue;
+      const chance = clamp01(pick.x.p * (0.22 + (m - pick.x.need) / 55) * 0.4);
+      if (!rng.chance(chance)) continue;
+      a.awarded = pick.x.id;
+      const rec = {
+        id: pick.x.id,
+        name: pick.x.name,
+        icon: pick.x.icon,
+        body: pick.x.body,
+        year: g.year,
+        week: g.week,
+        merit: m,
+        asset: a.name,
+        district: a.district,
+        use: a.use,
+        grade: a.grade
+      };
+      g.awards.push(rec);
+      if (g.awards.length > 120) g.awards.shift();
+      g.company.brand = clamp(g.company.brand + pick.x.brand, 0, 100);
+      won.push(rec);
+      news && news.push({
+        icon: pick.x.icon,
+        type: "award",
+        major: true,
+        text: `\u300C${a.name}\u300D\u304C${pick.x.body}\u306E${pick.x.name}\u3092\u53D7\u8CDE\u3057\u305F\u3002${pick.x.desc}\u4F01\u696D\u30D6\u30E9\u30F3\u30C9\u304C\u4E0A\u304C\u3063\u305F\u3002`
+      });
+    }
+    return won;
+  }
+  function awardSummary(g) {
+    const list = g.awards || [];
+    const byId = {};
+    for (const a of list) byId[a.id] = (byId[a.id] || 0) + 1;
+    return {
+      total: list.length,
+      byId,
+      recent: list.slice(-8).reverse(),
+      top: AWARDS.filter((x) => byId[x.id]).sort((a, b) => b.brand - a.brand)[0] || null
+    };
+  }
+  function awardAppeal(g) {
+    const list = g.awards || [];
+    if (!list.length) return 0;
+    const recent = list.filter((a) => g.week - a.week <= 260).length;
+    return clamp(Math.sqrt(recent) * 0.018, 0, 0.1);
+  }
+
   // src/sim/recruit.js
   var NG_SCHEDULE = {
     open: 9,
@@ -7948,7 +9001,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       invest: Math.sqrt(invest) / 135,
       salary: (r.salary - 5.2) * 0.05,
       programs: (g.hrPolicy.programs.brandpr ? 0.09 : 0) + (g.hrPolicy.programs.welfare ? 0.04 : 0),
-      culture: ce.appealShift
+      culture: ce.appealShift,
+      // 建築賞の受賞は学生に効く。直近5年ぶんだけ
+      awards: awardAppeal(g)
     };
     const score = clamp01(Object.values(parts).reduce((a, b) => a + b, 0));
     return {
@@ -8448,6 +9503,136 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     return all;
   }
 
+  // src/sim/talent.js
+  function openPosting(g, dept, n, rng) {
+    if (!DEPTS[dept]) return "\u90E8\u7F72\u304C\u6B63\u3057\u304F\u306A\u3044";
+    const key = DEPTS[dept].key;
+    const cands = g.staff.filter((s) => !s.subsidiary && s.dept !== dept && s.rank <= TOP_STAFF_RANK).map((s) => {
+      const fitScore = s.abil[key];
+      const push = (1 - s.morale) * 42 + (s.otHours || 0) * 0.32;
+      const pull = fitScore * 0.7 + (s.potential - avgAbility(s)) * 0.5;
+      return { s, want: clamp01((pull + push - 42) / 60) };
+    }).filter((x) => x.want > 0.12);
+    const applicants = [];
+    for (const c of cands) {
+      if (rng.chance(c.want * 0.6)) applicants.push({ id: c.s.id, want: Math.round(c.want * 100) });
+    }
+    g.postings = g.postings || [];
+    const rec = {
+      id: `post_${dept}_${g.week}`,
+      dept,
+      need: Math.max(1, n | 0),
+      week: g.week,
+      deadline: g.week + 4,
+      applicants: applicants.slice(0, 18)
+    };
+    g.postings.push(rec);
+    return null;
+  }
+  function acceptPosting(g, post, staffId, news) {
+    const s = g.staff.find((x) => x.id === staffId);
+    if (!s) return "\u5BFE\u8C61\u304C\u3044\u306A\u3044";
+    const from = s.dept;
+    s.dept = post.dept;
+    s.morale = clamp01(s.morale + 0.16);
+    s.loyalty = clamp01(s.loyalty + 0.08);
+    s.movedWeek = g.week;
+    post.applicants = post.applicants.filter((a) => a.id !== staffId);
+    post.filled = (post.filled || 0) + 1;
+    news && news.push({
+      icon: "\u{1F64B}",
+      type: "hr",
+      text: `\u793E\u5185\u516C\u52DF\u306B\u3088\u308A\u3001${s.name}\u304C${DEPTS[from].name}\u304B\u3089${DEPTS[post.dept].name}\u3078\u7570\u52D5\u3057\u305F\u3002`
+    });
+    return null;
+  }
+  function stepPostings(g, news) {
+    if (!g.postings || !g.postings.length) return;
+    const keep = [];
+    for (const p of g.postings) {
+      if (g.week < p.deadline) {
+        keep.push(p);
+        continue;
+      }
+      if (!p.filled) {
+        news && news.push({
+          icon: "\u{1F4ED}",
+          type: "hr",
+          text: `${DEPTS[p.dept].name}\u306E\u793E\u5185\u516C\u52DF\u306F\u3001\u7DE0\u5207\u307E\u3067\u306B\u914D\u5C5E\u304C\u6C7A\u307E\u3089\u306A\u304B\u3063\u305F\u3002`
+        });
+      }
+    }
+    g.postings = keep;
+  }
+  function canFastTrack(g, s) {
+    if (!s) return "\u5BFE\u8C61\u304C\u3044\u306A\u3044";
+    if (s.subsidiary) return "\u5B50\u4F1A\u793E\u3078\u51FA\u5411\u4E2D\u3067\u3042\u308B";
+    const to = s.rank + 2;
+    if (to > TOP_STAFF_RANK) return "\u3053\u308C\u4EE5\u4E0A\u306F\u5F79\u54E1\u4EBA\u4E8B\u306E\u7BC4\u56F2\u3067\u3042\u308B";
+    if (OFFICER_RANKS.includes(to)) return `${rankName(g, to)}\u306F\u5F79\u54E1\u4EBA\u4E8B\u304B\u3089\u4EFB\u547D\u3059\u308B`;
+    const def = RANKS[to];
+    const cur = g.staff.filter((x) => x.rank === to && !x.subsidiary).length;
+    if (def.slots !== Infinity && cur >= def.slots) return `${rankName(g, to)}\u306E\u67A0\u304C\u57CB\u307E\u3063\u3066\u3044\u308B`;
+    if (s.tenure < 1) return "\u52E4\u7D9A1\u5E74\u672A\u6E80\u3067\u3042\u308B";
+    return null;
+  }
+  function fastTrackOdds(g, s) {
+    const to = s.rank + 2;
+    const need = RANKS[to].minAbility;
+    const ab = avgAbility(s);
+    const pot = s.potential;
+    const base = 0.3 + clamp((ab - need) / 30, -0.45, 0.35) + clamp((pot - need) / 40, -0.2, 0.28) + clamp((s.abil.lead - 55) / 120, -0.15, 0.18) + clamp((s.morale - 0.6) * 0.3, -0.12, 0.12);
+    return clamp01(base);
+  }
+  function fastTrack(g, s, rng, news) {
+    const err = canFastTrack(g, s);
+    if (err) return { err };
+    const to = s.rank + 2;
+    const odds = fastTrackOdds(g, s);
+    const ok = rng.chance(odds);
+    const from = s.rank;
+    s.rank = to;
+    s.fastTracked = { week: g.week, from, ok };
+    if (ok) {
+      s.morale = clamp01(s.morale + 0.24);
+      s.loyalty = clamp01(s.loyalty + 0.14);
+      for (const k in s.abil) s.abil[k] = clamp(s.abil[k] + rng.range(2, 7), 0, 99);
+      s.potential = Math.min(99, s.potential + rng.int(1, 4));
+      for (const x of g.staff) {
+        if (x === s || x.subsidiary) continue;
+        if (x.age < s.age && x.potential > 72) x.morale = clamp01(x.morale + 0.05);
+      }
+      news && news.push({
+        icon: "\u{1F680}",
+        type: "hr",
+        major: true,
+        text: `${s.name}\uFF08${s.age}\u6B73\uFF09\u3092${rankName(g, from)}\u304B\u3089${rankName(g, to)}\u306B\u629C\u64E2\u3057\u305F\u3002\u671F\u5F85\u306B\u5FDC\u3048\u3066\u529B\u3092\u4F38\u3070\u3057\u3066\u304A\u308A\u3001\u82E5\u624B\u306E\u76EE\u306E\u8272\u304C\u5909\u308F\u3063\u3066\u3044\u308B\u3002`
+      });
+    } else {
+      s.morale = clamp01(s.morale - 0.22);
+      s.loyalty = clamp01(s.loyalty - 0.1);
+      let upset = 0;
+      for (const x of g.staff) {
+        if (x === s || x.subsidiary) continue;
+        if (x.rank >= from && x.rank < to && avgAbility(x) > avgAbility(s)) {
+          x.morale = clamp01(x.morale - 0.12);
+          x.loyalty = clamp01(x.loyalty - 0.06);
+          upset++;
+        }
+      }
+      news && news.push({
+        icon: "\u26A0",
+        type: "hr",
+        major: true,
+        text: `${s.name}\u3092${rankName(g, to)}\u306B\u629C\u64E2\u3057\u305F\u304C\u3001\u8377\u304C\u52DD\u3061\u3059\u304E\u3066\u3044\u305F\u3002` + (upset ? `\u98DB\u3073\u8D8A\u3055\u308C\u305F${upset}\u540D\u306E\u58EB\u6C17\u304C\u843D\u3061\u3066\u3044\u308B\u3002` : "\u672C\u4EBA\u304C\u62B1\u3048\u8FBC\u3093\u3067\u3057\u307E\u3063\u3066\u3044\u308B\u3002")
+      });
+    }
+    return { ok, odds };
+  }
+  function fastTrackCandidates(g) {
+    return g.staff.filter((s) => !s.subsidiary && !canFastTrack(g, s)).map((s) => ({ s, odds: fastTrackOdds(g, s), gap: s.potential - avgAbility(s) })).sort((a, b) => b.odds * 0.6 + b.gap / 100 * 0.4 - (a.odds * 0.6 + a.gap / 100 * 0.4)).slice(0, 20);
+  }
+
   // src/sim/week.js
   function nextWeek(g) {
     const rng = new RNG((g.rngState ^ g.week * 2654435761) >>> 0);
@@ -8461,6 +9646,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     rep.shocks = rollShocks(g, rng);
     for (const s of rep.shocks) news.push({ icon: s.icon, type: "market", major: true, text: `\u3010${s.title}\u3011${s.text}` });
     g.weather = rollWeather(g, rng);
+    rep.disaster = rollDisaster(g, rng, news);
+    stepRails(g, rng, news);
+    decayIr(g);
     for (const l of g.listings.slice()) {
       l.deadline--;
       if (l.deadline > 0) continue;
@@ -8506,6 +9694,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     stepMA(g, rng, news);
     if (g.maTargets.length < 3) g.maTargets.push(...generateTargets(g, rng, 3 - g.maTargets.length));
     stepHR(g, rng, news);
+    stepPostings(g, news);
     stepRecruit(g, rng, news);
     stepBrands(g, rng, news);
     stepCulture(g, rng, news);
@@ -8519,6 +9708,9 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       stepTier(g, news);
       rep.unlocked = (g.unlocked || []).slice(before2);
       rep.planDone = stepPlan(g, news);
+      rep.awards = stepAwards(g, rng, news);
+      rep.rating = stepRating(g, news);
+      rep.briefing = g.company.listed ? questionsFor(g) : null;
       rep.quarterEnd = true;
       rep.rank = ranking(g, "rev").find((x) => x.isPlayer);
       rep.kpi = kpis(g);
@@ -8540,8 +9732,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   // src/ui/dom.js
   var $ = (s) => document.querySelector(s);
   var modalCb = null;
-  function openModal(title11, bodyHTML, buttons = []) {
-    $("#modalTitle").textContent = title11;
+  function openModal(title12, bodyHTML, buttons = []) {
+    $("#modalTitle").textContent = title12;
     $("#modalBody").innerHTML = bodyHTML;
     const foot = $("#modalFoot");
     foot.innerHTML = "";
@@ -8607,8 +9799,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   function chip(text, cls = "grey") {
     return `<span class="chip ${cls}">${text}</span>`;
   }
-  function section(title11, note, inner) {
-    return `<div class="sec"><div class="sec-t"><span>${title11}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
+  function section(title12, note, inner) {
+    return `<div class="sec"><div class="sec-t"><span>${title12}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
   }
   function empty(msg) {
     return `<div class="empty">${msg}</div>`;
@@ -8960,15 +10152,370 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
   }
 
+  // src/ui/panelDisclosure.js
+  var panelDisclosure_exports = {};
+  __export(panelDisclosure_exports, {
+    render: () => render2,
+    title: () => title2
+  });
+  var title2 = "\u958B\u793A\u30FB\u7D71\u5408\u5831\u544A";
+  var TABS = [
+    { id: "people", name: "\u5F93\u696D\u54E1\u306E\u72B6\u6CC1", icon: "\u2617" },
+    { id: "survey", name: "\u30A8\u30F3\u30B2\u30FC\u30B8\u30E1\u30F3\u30C8", icon: "\u{1F4DD}" },
+    { id: "rating", name: "\u683C\u4ED8\u3051", icon: "\u25F1" },
+    { id: "awards", name: "\u53D7\u8CDE\u6B74", icon: "\u{1F3C6}" },
+    { id: "risk", name: "\u30EA\u30B9\u30AF\u3068\u8857\u306E\u5909\u5316", icon: "\u26A0" },
+    { id: "history", name: "\u6CBF\u9769", icon: "\u{1F4DC}" }
+  ];
+  function render2(g, ctx2) {
+    const tab = ctx2 && ctx2.discTab || "people";
+    const nav = `<div class="btnrow" style="margin-bottom:10px">
+    ${TABS.map((t) => `<button class="btn sm ${t.id === tab ? "primary" : ""}" data-act="disc.tab" data-id="${t.id}">${t.icon} ${t.name}</button>`).join("")}
+  </div>`;
+    const body = tab === "people" ? people(g) : tab === "survey" ? survey(g) : tab === "rating" ? rating(g) : tab === "awards" ? awards(g) : tab === "risk" ? risk(g) : history(g);
+    return nav + body;
+  }
+  function people(g) {
+    const p = orgPower(g);
+    const wl = workload(g, p);
+    const active = g.staff.filter((s) => !s.subsidiary);
+    const n = active.length;
+    const avg = (f) => n ? active.reduce((a, s) => a + f(s), 0) / n : 0;
+    const me = ceo(g);
+    const t = ttm(g);
+    const prog = g.hrPolicy && g.hrPolicy.work || {};
+    const deptRows = DEPT_IDS.map((d) => {
+      const list = active.filter((s) => s.dept === d);
+      const w = wl[d];
+      return `<tr>
+      <td>${DEPTS[d].icon} ${DEPTS[d].short}</td>
+      <td>${list.length}</td>
+      <td>${list.length ? (list.reduce((a, s) => a + s.age, 0) / list.length).toFixed(1) : "\u2014"}</td>
+      <td>${list.length ? (list.reduce((a, s) => a + s.tenure, 0) / list.length).toFixed(1) : "\u2014"}</td>
+      <td>${list.length ? man(list.reduce((a, s) => a + s.salary, 0) / list.length) : "\u2014"}</td>
+      <td class="${w.illegal ? "down" : w.danger ? "" : ""}" style="${w.illegal ? "font-weight:700" : ""}">${w.overtime.toFixed(1)}h</td>
+      <td>${(w.load * 100).toFixed(0)}%</td>
+    </tr>`;
+    }).join("");
+    const rankRows = RANKS.filter((r) => r.id < CEO_RANK).slice().reverse().map((r) => {
+      const list = active.filter((s) => s.rank === r.id);
+      if (!list.length) return "";
+      return `<tr><td>${rankName(g, r.id)}</td><td>${list.length}</td>
+      <td>${(list.reduce((a, s) => a + s.age, 0) / list.length).toFixed(1)}</td>
+      <td>${man(list.reduce((a, s) => a + s.salary, 0) / list.length)}</td></tr>`;
+    }).join("");
+    return `
+  ${section("\u5F93\u696D\u54E1\u306E\u72B6\u6CC1", `${g.year}\u5E74 ${g.month}\u6708 \u7B2C${g.weekOfMonth}\u9031\u76EE\u73FE\u5728`, `
+    <div class="grid4">
+      ${mini("\u5F93\u696D\u54E1\u6570", num(n) + "\u540D", `\u9023\u7D50 ${num(g.staff.length)}\u540D`)}
+      ${mini("\u5E73\u5747\u5E74\u9F62", avg((s) => s.age).toFixed(1) + "\u6B73", `\u5E73\u5747\u52E4\u7D9A ${avg((s) => s.tenure).toFixed(1)}\u5E74`)}
+      ${mini("\u5E73\u5747\u5E74\u9593\u7D66\u4E0E", man(avg((s) => s.salary)), `\u5E02\u5834\u6BD4 ${pct(payIndex(g), 0)}`)}
+      ${mini(
+      "\u5E73\u5747\u6B8B\u696D\u6642\u9593",
+      wl.total.overtime.toFixed(1) + "h",
+      "\u6708\u3042\u305F\u308A",
+      wl.total.overtime > OVERTIME_DANGER ? "var(--red)" : wl.total.overtime > 35 ? "var(--amber)" : "var(--green)"
+    )}
+    </div>
+    <div class="hint">\u5F53\u793E\u306F\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577 ${me.name} \u4EE5\u4E0B ${num(n)} \u540D\u3067\u4E8B\u696D\u3092\u884C\u3063\u3066\u3044\u308B\u3002
+    \u5F79\u54E1\u5831\u916C\uFF08\u793E\u9577\uFF09\u306F\u5E74 ${man((g.hrPolicy.rankPay || [])[CEO_RANK] || RANKS[CEO_RANK].baseSalary)}\u3002
+    \u5F93\u696D\u54E1\u306E\u5E73\u5747\u7D66\u4E0E\u306B\u5F79\u54E1\u306F\u542B\u307E\u306A\u3044\u3002</div>
+  `)}
+
+  ${section("\u52B4\u50CD\u6642\u9593\u306E\u72B6\u6CC1", wl.total.illegal ? "\u26A0 \u4E0A\u9650\u8D85\u904E\u306E\u90E8\u7F72\u3042\u308A" : "\u6708\u3042\u305F\u308A", `
+    <div class="grid3">
+      ${mini("\u6240\u5B9A\u5185", BASE_HOURS + "h", "\u6708\u3042\u305F\u308A")}
+      ${mini("\u6642\u9593\u5916", wl.total.overtime.toFixed(1) + "h", `\u7DCF\u52B4\u50CD ${wl.total.hours.toFixed(1)}h`)}
+      ${mini("\u6642\u9593\u5916\u624B\u5F53", moneyHTML(overtimeCostYear(g, p)), "\u5E74\u984D")}
+    </div>
+    ${wl.total.illegal ? `<div class="card" style="border-color:rgba(255,107,122,.5)">
+      <div class="card-t"><span class="card-n" style="color:var(--red)">\u26A0 \u6642\u9593\u5916\u52B4\u50CD\u304C\u4E0A\u9650\uFF08\u6708${OVERTIME_LIMIT}\u6642\u9593\uFF09\u3092\u8D85\u3048\u3066\u3044\u308B\u90E8\u7F72\u304C\u3042\u308B</span></div>
+      <div class="card-s">${DEPT_IDS.filter((d) => wl[d].illegal).map((d) => DEPTS[d].name).join("\u30FB")}\u3002
+      \u3053\u306E\u307E\u307E\u3067\u306F\u96E2\u8077\u304C\u6B62\u307E\u3089\u306A\u3044\u3002\u4EBA\u3092\u5897\u3084\u3059\u304B\u3001\u4ED5\u4E8B\u91CF\u305D\u306E\u3082\u306E\u3092\u6E1B\u3089\u3059\u5FC5\u8981\u304C\u3042\u308B\u3002</div>
+    </div>` : ""}
+    <table class="tbl" style="margin-top:10px">
+      <tr><th>\u90E8\u7F72</th><th>\u4EBA\u6570</th><th>\u5E74\u9F62</th><th>\u52E4\u7D9A</th><th>\u5E74\u53CE</th><th>\u6B8B\u696D</th><th>\u8CA0\u8377</th></tr>
+      ${deptRows}
+    </table>
+    <div class="hint">\u8CA0\u8377\u306F\u300C\u4ED5\u4E8B\u91CF \xF7 \u90E8\u7F72\u306E\u51E6\u7406\u80FD\u529B\u300D\u3067\u3042\u308B\u3002100%\u3092\u8D85\u3048\u305F\u3076\u3093\u304C\u6B8B\u696D\u306B\u306A\u308B\u3002
+    \u6848\u4EF6\u30FB\u4FDD\u6709\u7269\u4EF6\u30FB\u501F\u5165\u304C\u5897\u3048\u308B\u3068\u4ED5\u4E8B\u91CF\u304C\u5897\u3048\u3001\u4EBA\u3092\u5897\u3084\u3059\u304B\u5B50\u4F1A\u793E\u306B\u51FA\u3059\u307E\u3067\u4E0B\u304C\u3089\u306A\u3044\u3002</div>
+  `)}
+
+  ${section("\u50CD\u304D\u65B9\u3078\u306E\u6295\u8CC7", "", `
+    ${WORK_PROGRAMS.map((w) => `
+      <div class="card click" data-act="disc.work" data-id="${w.id}">
+        <div class="card-t"><span class="card-n">${w.icon} ${w.name}</span>${chip(prog[w.id] ? "\u5C0E\u5165\u4E2D" : "\u672A\u5C0E\u5165", prog[w.id] ? "green" : "grey")}</div>
+        <div class="card-s">${w.desc}<br>\u5E74\u9593\u30B3\u30B9\u30C8 ${money(w.cost)}</div>
+      </div>`).join("")}
+  `)}
+
+  ${section("\u5F79\u8077\u5225\u306E\u72B6\u6CC1", "", `
+    <table class="tbl">
+      <tr><th>\u5F79\u8077</th><th>\u4EBA\u6570</th><th>\u5E73\u5747\u5E74\u9F62</th><th>\u5E73\u5747\u5E74\u53CE</th></tr>
+      <tr class="me"><td>${rankName(g, CEO_RANK)}</td><td>1</td><td>\u2014</td>
+        <td>${man((g.hrPolicy.rankPay || [])[CEO_RANK] || RANKS[CEO_RANK].baseSalary)}</td></tr>
+      ${rankRows}
+    </table>
+    <div class="hint">\u4E00\u4EBA\u3042\u305F\u308A\u58F2\u4E0A\u9AD8 ${money(Math.round(t.revenue / Math.max(1, n)))}\uFF0F\u4EBA\u4EF6\u8CBB\uFF08\u5E74\u984D\uFF09${money(personnelCostYear(g))}\u3002</div>
+  `)}
+  `;
+  }
+  function survey(g) {
+    const res = surveyNow(g);
+    const list = g.surveys || [];
+    const prev = list.length ? list[list.length - 1] : null;
+    const d = prev ? res.score - prev.score : 0;
+    const vs = voices(g, res);
+    const axisRows = SURVEY_AXES.map((x) => {
+      const v = res.axes[x.id] * 100;
+      return `<div class="kv"><span class="k">${x.name}<span style="color:var(--ink-mute);font-size:10px">\u3000${x.desc}</span></span>
+      <span class="v ${v < 45 ? "down" : v > 72 ? "up" : ""}">${v.toFixed(0)}</span></div>
+      ${bar(v / 100, v < 45 ? "red" : v > 72 ? "" : "gold")}`;
+    }).join("");
+    const deptRows = DEPT_IDS.map((dd) => {
+      const x = res.depts[dd];
+      if (!x) return "";
+      return `<tr class="${x.score < 45 ? "warnrow" : ""}">
+      <td>${DEPTS[dd].icon} ${DEPTS[dd].short}</td>
+      <td>${x.n}</td>
+      <td class="${x.score < 45 ? "down" : x.score > 72 ? "up" : ""}"><b>${x.score.toFixed(1)}</b></td>
+      <td>${x.weakest.name}</td>
+      <td>${x.overtime.toFixed(0)}h</td>
+      <td>${x.officer || '<span style="color:var(--amber)">\u4E0D\u5728</span>'}</td>
+    </tr>`;
+    }).join("");
+    return `
+  ${section("\u30A8\u30F3\u30B2\u30FC\u30B8\u30E1\u30F3\u30C8\u30B5\u30FC\u30D9\u30A4", list.length ? `\u76F4\u8FD1\u306E\u5B9F\u65BD ${list[list.length - 1].year}\u5E74` : "\u672A\u5B9F\u65BD", `
+    <div class="grid3">
+      ${mini(
+      "\u5168\u793E\u30B9\u30B3\u30A2",
+      res.score.toFixed(1),
+      prev ? `\u524D\u5E74 ${prev.score.toFixed(1)}\uFF08${d >= 0 ? "+" : ""}${d.toFixed(1)}\uFF09` : "\u521D\u56DE",
+      res.score < 45 ? "var(--red)" : res.score > 70 ? "var(--green)" : ""
+    )}
+      ${mini("\u3044\u3061\u3070\u3093\u5F31\u3044\u67F1", res.weakest.name, "")}
+      ${mini("\u6700\u4E0B\u4F4D\u306E\u90E8\u7F72", res.worst ? DEPTS[res.worst.id].short : "\u2014", res.worst ? res.worst.score.toFixed(1) : "")}
+    </div>
+    ${bar(res.score / 100, res.score < 45 ? "red" : "")}
+    ${list.length > 2 ? `<div style="margin-top:10px">${spark(list.map((x) => x.score), { color: "#6b4bc4" })}</div>
+      <div class="hint">\u5168\u793E\u30B9\u30B3\u30A2\u306E\u63A8\u79FB\uFF08${list.length}\u5E74\u3076\u3093\uFF09\u3002\u6BCE\u5E7410\u6708\u306B\u5B9F\u65BD\u3057\u3066\u3044\u308B\u3002</div>` : ""}
+  `)}
+
+  ${section("\u8A2D\u554F\u306E\u67F1", "100\u70B9\u6E80\u70B9", axisRows)}
+
+  ${section("\u90E8\u7F72\u5225", "", `
+    <table class="tbl">
+      <tr><th>\u90E8\u7F72</th><th>\u4EBA\u6570</th><th>\u30B9\u30B3\u30A2</th><th>\u5F31\u3044\u67F1</th><th>\u6B8B\u696D</th><th>\u7BA1\u638C\u5F79\u54E1</th></tr>
+      ${deptRows}
+    </table>
+    <div class="hint">\u7BA1\u638C\u5F79\u54E1\u304C\u3044\u306A\u3044\u90E8\u7F72\u306F\u300C\u4E0A\u53F8\u30FB\u7D4C\u55B6\u3078\u306E\u4FE1\u983C\u300D\u304C\u4F38\u3073\u306A\u3044\u3002\u4EBA\u4E8B\u30BF\u30D6\u306E\u5F79\u54E1\u4EBA\u4E8B\u3067\u5272\u308A\u5F53\u3066\u3089\u308C\u308B\u3002</div>
+  `)}
+
+  ${vs.length ? section("\u81EA\u7531\u8A18\u8FF0", "\u533F\u540D", `
+    ${vs.map((v) => `<div class="card" style="border-color:${v.tone === "bad" ? "rgba(255,107,122,.35)" : v.tone === "good" ? "rgba(15,138,85,.3)" : "rgba(224,168,54,.35)"}">
+      <div class="card-s">${v.text}</div>
+    </div>`).join("")}
+  `) : ""}
+  `;
+  }
+  function rating(g) {
+    const r = g.ratingReport;
+    const k = kpis(g);
+    const hist = (g.ratingHistory || []).slice(-12);
+    if (!r) {
+      return section("\u683C\u4ED8\u3051", "\u672A\u53D6\u5F97", empty("\u307E\u3060\u683C\u4ED8\u3051\u30EC\u30DD\u30FC\u30C8\u304C\u51FA\u3066\u3044\u306A\u3044\u3002<br>\u6700\u521D\u306E\u6C7A\u7B97\u3092\u8FCE\u3048\u308B\u3068\u3001\u683C\u4ED8\u3051\u4F1A\u793E\u304C\u8A55\u4FA1\u3092\u516C\u8868\u3059\u308B\u3002"));
+    }
+    const o = OUTLOOKS[r.outlook];
+    return `
+  ${section("\u683C\u4ED8\u3051", r.agency, `
+    <div class="card" style="border-color:${o.id === "negative" ? "rgba(255,107,122,.45)" : o.id === "positive" ? "rgba(15,138,85,.4)" : "var(--line)"}">
+      <div class="card-t">
+        <span class="card-n">\u9577\u671F\u767A\u884C\u4F53\u683C\u4ED8\u3051\u3000<b style="font-size:19px">${r.rating}</b></span>
+        ${chip(`\u898B\u901A\u3057 ${o.name}`, o.tone)}
+      </div>
+      <div class="card-s">${r.summary}</div>
+      <div class="grid3" style="margin-top:9px">
+        ${mini("\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387", pct(r.equityRatio))}
+        ${mini("D/E\u30EC\u30B7\u30AA", r.de.toFixed(2) + "\u500D")}
+        ${mini("\u9069\u7528\u91D1\u5229", pct(k.rate, 2), o.spread ? `\u898B\u901A\u3057\u3067 ${o.spread > 0 ? "+" : ""}${(o.spread * 100).toFixed(2)}pt` : "")}
+      </div>
+      <div class="hint">${o.desc}\u898B\u901A\u3057\u306F\u305D\u306E\u307E\u307E\u8ABF\u9054\u30B3\u30B9\u30C8\u306B\u4E57\u308B\u3002</div>
+    </div>
+  `)}
+
+  ${section("\u8A55\u4FA1\u306E\u5185\u8A33", `${r.year}\u5E74 \u7B2C${r.q}\u56DB\u534A\u671F`, `
+    ${r.factors.map((f) => `<div class="card" style="padding:9px 11px;margin-bottom:6px;border-color:${f.bad ? "rgba(255,107,122,.3)" : f.good ? "rgba(15,138,85,.25)" : "var(--line)"}">
+      <div class="card-t"><span class="card-n">${f.good ? "\u25CE" : f.bad ? "\xD7" : "\u25B3"} ${f.name}</span></div>
+      <div class="card-s">${f.text}</div>
+    </div>`).join("")}
+  `)}
+
+  ${hist.length > 1 ? section("\u683C\u4ED8\u3051\u306E\u63A8\u79FB", "", `
+    <table class="tbl">
+      <tr><th>\u6642\u671F</th><th>\u683C\u4ED8\u3051</th><th>\u898B\u901A\u3057</th></tr>
+      ${hist.slice().reverse().map((x) => `<tr><td>${x.year}\u5E74 Q${x.q}</td><td>${x.rating}</td>
+        <td><span class="chip ${OUTLOOKS[x.outlook].tone}">${OUTLOOKS[x.outlook].name}</span></td></tr>`).join("")}
+    </table>
+  `) : ""}
+
+  ${section("IR\u306E\u72B6\u6CC1", "", `
+    ${kv("\u6C7A\u7B97\u8AAC\u660E\u4F1A\u3067\u306E\u4FE1\u983C", `${((g.company.irTrust || 0) * 100).toFixed(0)} / 100`)}
+    ${bar(((g.company.irTrust || 0) + 1) / 2, (g.company.irTrust || 0) < -0.2 ? "red" : "")}
+    <div class="hint">${g.company.listed ? "\u6C7A\u7B97\u8AAC\u660E\u4F1A\u3067\u306E\u53D7\u3051\u7B54\u3048\u304C\u7A4D\u307F\u91CD\u306A\u308B\u3002\u7387\u76F4\u306A\u8AAC\u660E\u306F\u77ED\u671F\u306E\u682A\u4FA1\u3092\u4E0B\u3052\u3066\u3082\u3001\u5E02\u5834\u306E\u4FE1\u983C\u3092\u539A\u304F\u3059\u308B\u3002" : "\u672A\u4E0A\u5834\u306E\u305F\u3081\u6C7A\u7B97\u8AAC\u660E\u4F1A\u306F\u958B\u3044\u3066\u3044\u306A\u3044\u3002\u4E0A\u5834\u3059\u308B\u3068\u56DB\u534A\u671F\u3054\u3068\u306B\u30A2\u30CA\u30EA\u30B9\u30C8\u306E\u8CEA\u554F\u3092\u53D7\u3051\u308B\u3053\u3068\u306B\u306A\u308B\u3002"}</div>
+  `)}
+  `;
+  }
+  function awards(g) {
+    const sum = awardSummary(g);
+    const cands = (g.assets || []).concat(g.inventory || []).filter((a) => a.completedWeek != null && g.week - a.completedWeek <= 104 && !a.awarded).map((a) => ({ a, m: meritOf(g, a), can: AWARDS.filter((x) => meritOf(g, a) >= x.need) })).sort((x, y) => y.m - x.m).slice(0, 8);
+    return `
+  ${section("\u53D7\u8CDE\u6B74", `\u7D2F\u8A08 ${sum.total}\u4EF6`, sum.total ? `
+    <div class="grid3">
+      ${AWARDS.slice(0, 3).map((x) => mini(x.name.replace(/（.*/, ""), (sum.byId[x.id] || 0) + "\u4EF6", x.icon)).join("")}
+    </div>
+    <table class="tbl" style="margin-top:10px">
+      <tr><th>\u5E74</th><th>\u8CDE</th><th>\u7269\u4EF6</th></tr>
+      ${sum.recent.map((x) => `<tr><td>${x.year}</td><td>${x.icon} ${x.name}</td><td>${x.asset}</td></tr>`).join("")}
+    </table>
+  ` : empty("\u307E\u3060\u53D7\u8CDE\u306F\u306A\u3044\u3002<br>\u898F\u6A21\u304C\u5927\u304D\u304F\u3001\u4ED5\u69D8\u306E\u826F\u3044\u7269\u4EF6\u3092\u3001\u826F\u3044\u7ACB\u5730\u3067\u5EFA\u3066\u308B\u3068\u8CDE\u304C\u4ED8\u3044\u3066\u304F\u308B\u3002"))}
+
+  ${section("\u5BE9\u67FB\u5BFE\u8C61", "\u7AE3\u5DE5\u304B\u30892\u5E74\u4EE5\u5185", cands.length ? `
+    <table class="tbl">
+      <tr><th>\u7269\u4EF6</th><th>\u5730\u533A</th><th>\u4ED5\u69D8</th><th>\u8A55\u70B9</th><th>\u72D9\u3048\u308B\u8CDE</th></tr>
+      ${cands.map((x) => `<tr>
+        <td>${x.a.name}</td>
+        <td>${DISTRICTS[x.a.district] ? DISTRICTS[x.a.district].short : "\u2014"}</td>
+        <td>${{ standard: "\u6A19\u6E96", high: "\u30CF\u30A4", luxury: "\u30E9\u30B0\u30B8\u30E5" }[x.a.grade] || "\u2014"}</td>
+        <td><b>${x.m}</b></td>
+        <td>${x.can.length ? x.can.map((c) => c.icon).join(" ") : '<span style="color:var(--ink-mute)">\u306A\u3057</span>'}</td>
+      </tr>`).join("")}
+    </table>
+    <div class="hint">\u8A55\u70B9\u306F\u4ED5\u69D8\u30FB\u5EF6\u5E8A\u30FB\u968E\u6570\u30FB\u7ACB\u5730\u30FB\u4F01\u696D\u30D6\u30E9\u30F3\u30C9\u3067\u6C7A\u307E\u308B\u3002\u56DB\u534A\u671F\u3054\u3068\u306B\u5BE9\u67FB\u304C\u3042\u308A\u30011\u7269\u4EF6\u306B\u3064\u304D1\u3064\u307E\u3067\u53D7\u8CDE\u3059\u308B\u3002</div>
+  ` : empty("\u5BE9\u67FB\u306E\u5BFE\u8C61\u3068\u306A\u308B\u7269\u4EF6\u304C\u306A\u3044"))}
+
+  ${section("\u8CDE\u306E\u4E00\u89A7", "", `
+    <table class="tbl">
+      <tr><th>\u8CDE</th><th>\u4E3B\u50AC</th><th>\u5FC5\u8981\u8A55\u70B9</th><th>\u53D7\u8CDE\u6570</th></tr>
+      ${AWARDS.map((x) => `<tr><td>${x.icon} ${x.name}</td><td>${x.body}</td><td>${x.need}</td><td>${sum.byId[x.id] || 0}</td></tr>`).join("")}
+    </table>
+  `)}
+  `;
+  }
+  function risk(g) {
+    const dis = (g.disasters || []).slice(-8).reverse();
+    const rails = railsOf(g);
+    const targets = retrofitTargets(g);
+    const assets = g.assets || [];
+    const weak = assets.filter((a) => seismicOf(a) < 0.8).length;
+    const hazRows = Object.values(DISTRICTS).map((d) => {
+      const h = hazardOf(d.id);
+      const mine = assets.filter((a) => a.district === d.id).length;
+      if (!mine) return "";
+      const tone = (v) => v >= 1.3 ? "down" : v <= 0.8 ? "up" : "";
+      return `<tr><td>${CITIES[d.city || "minato"].short}\u30FB${d.short}</td><td>${mine}\u4EF6</td>
+      <td class="${tone(h.quake)}">${h.quake.toFixed(2)}</td>
+      <td class="${tone(h.storm)}">${h.storm.toFixed(2)}</td>
+      <td class="${tone(h.flood)}">${h.flood.toFixed(2)}</td></tr>`;
+    }).join("");
+    return `
+  ${section("\u8010\u9707\u6027\u80FD", `${assets.length}\u4EF6\u4E2D ${weak}\u4EF6\u304C\u8981\u6539\u4FEE`, assets.length ? `
+    <div class="grid3">
+      ${mini("\u4FDD\u6709\u7269\u4EF6", assets.length + "\u4EF6")}
+      ${mini("\u8010\u9707\u6027\u80FD\u304C\u4F4E\u3044", weak + "\u4EF6", "0.80\u672A\u6E80", weak ? "var(--red)" : "var(--green)")}
+      ${mini("\u88AB\u707D\u306E\u7D2F\u8A08", moneyHTML((g.disasters || []).reduce((a, x) => a + x.loss, 0)), "\u7279\u5225\u640D\u5931")}
+    </div>
+    ${targets.length ? `<table class="tbl" style="margin-top:10px">
+      <tr><th>\u7269\u4EF6</th><th>\u5730\u533A</th><th>\u7BC9\u5E74</th><th>\u8010\u9707</th><th>\u6539\u4FEE\u8CBB</th><th></th></tr>
+      ${targets.slice(0, 12).map((a) => `<tr>
+        <td>${a.name}</td>
+        <td>${DISTRICTS[a.district] ? DISTRICTS[a.district].short : "\u2014"}</td>
+        <td>${Math.round(a.age || 0)}\u5E74</td>
+        <td class="${seismicOf(a) < 0.7 ? "down" : ""}">${(seismicOf(a) * 100).toFixed(0)}</td>
+        <td>${money(retrofitCost(a))}</td>
+        <td><button class="btn sm primary" data-act="disc.retrofit" data-id="${a.id}">\u6539\u4FEE\u3059\u308B</button></td>
+      </tr>`).join("")}
+    </table>
+    <div class="hint">\u8010\u9707\u6539\u4FEE\u306F\u5730\u9707\u306E\u3068\u304D\u306E\u640D\u5BB3\u3092\u5927\u304D\u304F\u6E1B\u3089\u3059\u3002\u5DE5\u4E8B\u8CBB\u306E\u4E00\u90E8\u306F\u8CC7\u672C\u7684\u652F\u51FA\u3068\u3057\u3066\u7C3F\u4FA1\u306B\u4E57\u308B\u3002</div>` : '<div class="hint">\u3044\u307E\u6539\u4FEE\u304C\u5FC5\u8981\u306A\u7269\u4EF6\u306F\u306A\u3044\u3002</div>'}
+  ` : empty("\u4FDD\u6709\u7269\u4EF6\u304C\u306A\u3044"))}
+
+  ${section("\u5730\u533A\u3054\u3068\u306E\u707D\u5BB3\u30EA\u30B9\u30AF", "1.00 = \u6A19\u6E96", assets.length ? `
+    <table class="tbl">
+      <tr><th>\u5730\u533A</th><th>\u4FDD\u6709</th><th>\u5730\u9707</th><th>\u98A8\u6C34\u5BB3</th><th>\u6D78\u6C34</th></tr>
+      ${hazRows}
+    </table>
+    <div class="hint">\u57CB\u7ACB\u5730\u306F\u63FA\u308C\u3068\u6D78\u6C34\u306B\u5F31\u304F\u3001\u9AD8\u53F0\u306F\u5F37\u3044\u3002\u540C\u3058\u5229\u56DE\u308A\u3067\u3082\u3001\u62B1\u3048\u3066\u3044\u308B\u30EA\u30B9\u30AF\u306F\u540C\u3058\u3067\u306F\u306A\u3044\u3002</div>
+  ` : empty("\u4FDD\u6709\u7269\u4EF6\u304C\u306A\u3044"))}
+
+  ${section("\u88AB\u707D\u306E\u8A18\u9332", `${(g.disasters || []).length}\u4EF6`, dis.length ? `
+    ${dis.map((x) => `<div class="card">
+      <div class="card-t"><span class="card-n">${x.icon} ${x.title}</span>${chip(`${x.year}\u5E74`, "grey")}</div>
+      <div class="card-s">\u88AB\u707D ${x.hits}\u4EF6\uFF0F\u5FA9\u65E7\u8CBB ${money(x.loss)}${x.delayed ? `\uFF0F\u5DE5\u671F\u304C\u5EF6\u3073\u305F\u6848\u4EF6 ${x.delayed}\u4EF6` : ""}
+        ${x.worst ? `<br>\u6700\u5927\u306E\u88AB\u5BB3\uFF1A${x.worst.name}\uFF08${money(x.worst.cost)}\uFF09` : ""}</div>
+    </div>`).join("")}
+  ` : empty("\u5927\u304D\u306A\u707D\u5BB3\u306F\u8D77\u304D\u3066\u3044\u306A\u3044"))}
+
+  ${section("\u9244\u9053\u306E\u6574\u5099\u8A08\u753B", `${rails.filter((r) => r.status === "building").length}\u4EF6\u304C\u9032\u884C\u4E2D`, rails.length ? `
+    ${rails.slice().reverse().map((r) => `<div class="card" style="border-color:${r.status === "open" ? "rgba(15,138,85,.3)" : "rgba(227,181,88,.35)"}">
+      <div class="card-t"><span class="card-n">${r.icon} ${r.name}</span>${chip(r.status === "open" ? `${r.openedYear}\u5E74 \u958B\u696D` : `${r.openYear}\u5E74 \u958B\u696D\u4E88\u5B9A`, r.status === "open" ? "green" : "gold")}</div>
+      <div class="card-s">\u6CBF\u7DDA\uFF1A${r.districts.map((d) => DISTRICTS[d].name).join("\u30FB")}</div>
+      ${r.status === "building" ? `${kv("\u5DE5\u4E8B\u306E\u9032\u6357", pct(r.progress || 0, 0))}${bar(r.progress || 0, "gold")}
+        <div class="hint">\u958B\u696D\u307E\u3067\u306B\u671F\u5F85\u306E\u3076\u3093\u304C\u5C11\u3057\u305A\u3064\u5730\u4FA1\u306B\u4E57\u308B\u3002\u4ED5\u8FBC\u3080\u306A\u3089\u958B\u696D\u524D\u3067\u3042\u308B\u3002</div>` : ""}
+    </div>`).join("")}
+  ` : empty("\u3044\u307E\u52D5\u3044\u3066\u3044\u308B\u9244\u9053\u306E\u8A08\u753B\u306F\u306A\u3044"))}
+  `;
+  }
+  function history(g) {
+    const me = ceo(g);
+    const ev = [];
+    const push = (year, icon, text) => ev.push({ year, icon, text });
+    push(g.company.founded, "\u{1F3E2}", `${g.company.name}\u3092\u5275\u696D\u3002${DISTRICTS[g.company.home] ? DISTRICTS[g.company.home].name : ""}\u3092\u5730\u76E4\u306B\u4E8B\u696D\u3092\u958B\u59CB\u3002`);
+    for (const a of g.awards || []) push(a.year, a.icon, `\u300C${a.asset}\u300D\u304C${a.name}\u3092\u53D7\u8CDE\u3002`);
+    for (const d of g.disasters || []) push(d.year, d.icon, `${d.title}\u3002\u4FDD\u6709${d.hits}\u4EF6\u304C\u88AB\u707D\u3057\u3001\u5FA9\u65E7\u8CBB${Math.round(d.loss / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3002`);
+    for (const r of railsOf(g)) {
+      push(r.announcedYear, r.icon, `${r.name}\u306E\u4E8B\u696D\u8A08\u753B\u304C\u8A8D\u53EF\u3055\u308C\u308B\u3002`);
+      if (r.status === "open") push(r.openedYear, r.icon, `${r.name}\u304C\u958B\u696D\u3002`);
+    }
+    for (const p of g.planHistory || []) {
+      push(p.endYear, "\u{1F4CB}", `\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u300C${p.name}\u300D\u304C${{ achieved: "\u9054\u6210", partial: "\u4E00\u90E8\u9054\u6210", missed: "\u672A\u9054", abandoned: "\u53D6\u308A\u4E0B\u3052" }[p.status]}\uFF08\u9032\u6357 ${(p.score * 100).toFixed(0)}%\uFF09\u3002`);
+    }
+    for (const a of g.acquisitions || []) push(g.year, "\u{1F91D}", `${a.name}\u3092\u8CB7\u53CE\u3002`);
+    ev.sort((a, b) => b.year - a.year);
+    const t = ttm(g);
+    const bs = buildBS(g);
+    return `
+  ${section("\u4F1A\u793E\u306E\u6982\u8981", "", `
+    <table class="tbl">
+      <tr><td>\u5546\u53F7</td><td>${g.company.name}</td></tr>
+      <tr><td>\u4EE3\u8868\u8005</td><td>${rankName(g, CEO_RANK)}\u3000${me.name}</td></tr>
+      <tr><td>\u8A2D\u7ACB</td><td>${g.company.founded}\u5E74</td></tr>
+      <tr><td>\u672C\u5E97\u6240\u5728\u5730</td><td>${DISTRICTS.T.name}</td></tr>
+      <tr><td>\u5730\u76E4</td><td>${DISTRICTS[g.company.home] ? DISTRICTS[g.company.home].name : "\u2014"}</td></tr>
+      <tr><td>\u4E8B\u696D\u306E\u6BB5\u968E</td><td>${tierOf(g).name}</td></tr>
+      <tr><td>\u5F93\u696D\u54E1\u6570</td><td>${num(g.staff.length)}\u540D</td></tr>
+      <tr><td>\u58F2\u4E0A\u9AD8\uFF08\u76F4\u8FD14\u56DB\u534A\u671F\uFF09</td><td>${money(t.revenue)}</td></tr>
+      <tr><td>\u7D14\u8CC7\u7523</td><td>${money(bs.equity)}</td></tr>
+      <tr><td>\u4E0A\u5834</td><td>${g.company.listed ? "\u4E0A\u5834" : "\u672A\u4E0A\u5834"}</td></tr>
+    </table>
+  `)}
+
+  ${section("\u6CBF\u9769", `${ev.length}\u4EF6`, ev.length ? `
+    <div class="tl">
+      ${ev.slice(0, 40).map((x) => `<div class="tl-row"><span class="tl-y">${x.year}\u5E74</span>
+        <span class="tl-i">${x.icon}</span><span class="tl-t">${x.text}</span></div>`).join("")}
+    </div>
+  ` : empty("\u307E\u3060\u8A18\u9332\u304C\u306A\u3044"))}
+  `;
+  }
+
   // src/ui/panelLand.js
   var panelLand_exports = {};
   __export(panelLand_exports, {
     openDetail: () => openDetail,
-    render: () => render2,
-    title: () => title2
+    render: () => render3,
+    title: () => title3
   });
-  var title2 = "\u7528\u5730\u53D6\u5F97";
-  function render2(g, ctx2) {
+  var title3 = "\u7528\u5730\u53D6\u5F97";
+  function render3(g, ctx2) {
     const p = orgPower(g);
     const owned = g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId);
     const bidding = g.listings.filter((l) => l.bid);
@@ -9257,11 +10804,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     openPlan: () => openPlan2,
     openPricing: () => openPricing,
     recommendStack: () => recommendStack,
-    render: () => render3,
-    title: () => title3
+    render: () => render4,
+    title: () => title4
   });
-  var title3 = "\u958B\u767A\u4E8B\u696D";
-  function render3(g, ctx2) {
+  var title4 = "\u958B\u767A\u4E8B\u696D";
+  function render4(g, ctx2) {
     const p = orgPower(g);
     const cap = projectCapacity(g);
     const idle = g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId);
@@ -9596,11 +11143,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var panelSales_exports = {};
   __export(panelSales_exports, {
     openReprice: () => openReprice,
-    render: () => render4,
-    title: () => title4
+    render: () => render5,
+    title: () => title5
   });
-  var title4 = "\u5206\u8B72\u8CA9\u58F2";
-  function render4(g, ctx2) {
+  var title5 = "\u5206\u8B72\u8CA9\u58F2";
+  function render5(g, ctx2) {
     const p = orgPower(g);
     const presales = g.projects.filter((x) => x.saleArea > 0);
     const cards = g.inventory.length ? g.inventory.map((inv) => {
@@ -9691,11 +11238,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var panelAsset_exports = {};
   __export(panelAsset_exports, {
     openRent: () => openRent,
-    render: () => render5,
-    title: () => title5
+    render: () => render6,
+    title: () => title6
   });
-  var title5 = "\u4FDD\u6709\u7269\u4EF6";
-  function render5(g, ctx2) {
+  var title6 = "\u4FDD\u6709\u7269\u4EF6";
+  function render6(g, ctx2) {
     const p = orgPower(g);
     let book = 0, mv = 0, noi = 0;
     for (const a of g.assets) {
@@ -9800,11 +11347,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     openBorrow: () => openBorrow,
     openIPO: () => openIPO,
     openIssue: () => openIssue,
-    render: () => render6,
-    title: () => title6
+    render: () => render7,
+    title: () => title7
   });
-  var title6 = "\u8CA1\u52D9";
-  function render6(g, ctx2) {
+  var title7 = "\u8CA1\u52D9";
+  function render7(g, ctx2) {
     const k = kpis(g);
     const t = ttm(g);
     const h = g.finance.history;
@@ -10011,14 +11558,15 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     openMid: () => openMid,
     openNewGrad: () => openNewGrad,
     openOversee: () => openOversee,
+    openPostingModal: () => openPostingModal,
     openRankNames: () => openRankNames,
     openSalaryPolicy: () => openSalaryPolicy,
     openStaff: () => openStaff,
-    render: () => render7,
-    title: () => title7
+    render: () => render8,
+    title: () => title8
   });
-  var title7 = "\u4EBA\u4E8B\u30FB\u7D44\u7E54";
-  function render7(g, ctx2) {
+  var title8 = "\u4EBA\u4E8B\u30FB\u7D44\u7E54";
+  function render8(g, ctx2) {
     const p = orgPower(g);
     const active = g.staff.filter((s) => !s.subsidiary);
     const seconded = g.staff.filter((s) => s.subsidiary);
@@ -10087,6 +11635,8 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   ${section("\u7D44\u7E54\u56F3", "\u8AB2\u9577\u4EE5\u4E0A\u306F\u500B\u4EBA\u3092\u8868\u793A", `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
+
+  ${talentSection(g)}
 
   ${jobRankSection(g, ctx2)}
 
@@ -11034,16 +12584,110 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     \u63B2\u8F09\u3057\u3066\u3044\u308B\u4F01\u696D\u306F\u3059\u3079\u3066\u67B6\u7A7A\u3067\u3042\u308A\u3001\u5B9F\u5728\u306E\u4F01\u696D\u306E\u6570\u5024\u3067\u306F\u306A\u3044\u3002</div>
   `);
   }
+  function talentSection(g) {
+    const posts = (g.postings || []).filter((p) => g.week < p.deadline);
+    const cands = fastTrackCandidates(g).slice(0, 5);
+    const wl = workload(g, orgPower(g));
+    const postCards = posts.length ? posts.map((p) => `
+    <div class="card">
+      <div class="card-t"><span class="card-n">${DEPTS[p.dept].icon} ${DEPTS[p.dept].name}\u306E\u793E\u5185\u516C\u52DF</span>
+        ${chip(`\u7DE0\u5207\u307E\u3067 ${p.deadline - g.week}\u9031`, p.deadline - g.week <= 1 ? "red" : "grey")}</div>
+      <div class="card-s">\u52DF\u96C6 ${p.need}\u540D\uFF0F\u5FDC\u52DF ${p.applicants.length}\u540D${p.filled ? `\uFF0F\u6C7A\u5B9A ${p.filled}\u540D` : ""}</div>
+      ${p.applicants.length ? `<table class="tbl" style="margin-top:6px">
+        <tr><th>\u6C0F\u540D</th><th>\u73FE\u90E8\u7F72</th><th>\u5F79\u8077</th><th>\u80FD\u529B</th><th>\u5FD7\u671B\u5EA6</th><th></th></tr>
+        ${p.applicants.slice(0, 8).map((ap) => {
+      const s = g.staff.find((x) => x.id === ap.id);
+      if (!s) return "";
+      return `<tr><td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
+          <td>${avgAbility(s).toFixed(0)}</td><td>${ap.want}</td>
+          <td><button class="btn sm primary" data-act="hr.accept" data-id="${p.id}|${s.id}">\u53D7\u3051\u5165\u308C\u308B</button></td></tr>`;
+    }).join("")}
+      </table>` : '<div class="hint">\u307E\u3060\u5FDC\u52DF\u304C\u306A\u3044\u3002</div>'}
+    </div>`).join("") : empty("\u3044\u307E\u51FA\u3057\u3066\u3044\u308B\u516C\u52DF\u306F\u306A\u3044");
+    return section("\u793E\u5185\u516C\u52DF\u30FB\u629C\u64E2\u4EBA\u4E8B", posts.length ? `\u516C\u52DF ${posts.length}\u4EF6` : "", `
+    <div class="card">
+      <div class="card-t"><span class="card-n">\u{1F64B} \u793E\u5185\u516C\u52DF</span></div>
+      <div class="card-s">\u90E8\u7F72\u3092\u6307\u5B9A\u3057\u3066\u624B\u6319\u3052\u3092\u52DF\u308B\u3002\u901A\u5E38\u306E\u7570\u52D5\u3068\u9055\u3044\u3001\u81EA\u3089\u5E0C\u671B\u3057\u3066\u79FB\u3063\u305F\u793E\u54E1\u306F\u58EB\u6C17\u304C\u4E0A\u304C\u308B\u3002
+      \u3044\u307E\u306E\u90E8\u7F72\u3067\u4F38\u3073\u60A9\u3093\u3067\u3044\u308B\u4EBA\u3084\u3001\u6B8B\u696D\u304C\u91CD\u3044\u90E8\u7F72\u306E\u4EBA\u307B\u3069\u624B\u3092\u6319\u3052\u3084\u3059\u3044\u3002</div>
+      ${kv("\u3044\u3061\u3070\u3093\u6B8B\u696D\u306E\u91CD\u3044\u90E8\u7F72", `${DEPTS[wl.total.worst].name}\u3000${wl[wl.total.worst].overtime.toFixed(0)}h\uFF0F\u6708`)}
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.posting">\u793E\u5185\u516C\u52DF\u3092\u51FA\u3059</button></div>
+    </div>
+    ${postCards}
+    <div class="card" style="margin-top:10px">
+      <div class="card-t"><span class="card-n">\u{1F680} \u629C\u64E2\u4EBA\u4E8B</span></div>
+      <div class="card-s">\u7B49\u7D1A\u30922\u3064\u98DB\u3070\u3057\u3066\u5F15\u304D\u4E0A\u3052\u308B\u3002\u6210\u529F\u3059\u308C\u3070\u4E00\u6C17\u306B\u4F38\u3073\u3001\u82E5\u624B\u306E\u76EE\u306E\u8272\u304C\u5909\u308F\u308B\u3002
+      \u5931\u6557\u3059\u308B\u3068\u672C\u4EBA\u304C\u6F70\u308C\u3001\u98DB\u3073\u8D8A\u3055\u308C\u305F\u793E\u54E1\u306E\u58EB\u6C17\u304C\u843D\u3061\u308B\u3002</div>
+      ${cands.length ? `<table class="tbl" style="margin-top:6px">
+        <tr><th>\u6C0F\u540D</th><th>\u5E74\u9F62</th><th>\u73FE\u8077</th><th>\u80FD\u529B</th><th>\u6F5C\u5728</th><th>\u6210\u529F\u7387</th><th></th></tr>
+        ${cands.map((c) => `<tr>
+          <td>${c.s.name}</td><td>${c.s.age}</td><td>${rankShort(g, c.s.rank)}</td>
+          <td>${avgAbility(c.s).toFixed(0)}</td><td>${c.s.potential}</td>
+          <td class="${c.odds >= 0.6 ? "up" : c.odds < 0.4 ? "down" : ""}">${(c.odds * 100).toFixed(0)}%</td>
+          <td><button class="btn sm" data-act="hr.fast" data-id="${c.s.id}">${rankName(g, c.s.rank + 2)}\u306B\u629C\u64E2</button></td>
+        </tr>`).join("")}
+      </table>` : '<div class="hint">\u3044\u307E\u629C\u64E2\u3067\u304D\u308B\u793E\u54E1\u304C\u3044\u306A\u3044\u3002\u52E4\u7D9A1\u5E74\u4EE5\u4E0A\u3067\u30012\u3064\u4E0A\u306E\u7B49\u7D1A\u306B\u7A7A\u304D\u304C\u3042\u308B\u3053\u3068\u304C\u6761\u4EF6\u3067\u3042\u308B\u3002</div>'}
+    </div>
+  `);
+  }
+  function openPostingModal(g, ctx2) {
+    let dept = "land", n = 2;
+    const wl = workload(g, orgPower(g));
+    openModal("\u793E\u5185\u516C\u52DF\u3092\u51FA\u3059", build(), []);
+    bind();
+    function build() {
+      return `
+    <div class="card">
+      <div class="card-s">\u52DF\u96C6\u3059\u308B\u90E8\u7F72\u3068\u4EBA\u6570\u3092\u6C7A\u3081\u308B\u3002\u7DE0\u5207\u307E\u3067\u306B\u5FDC\u52DF\u304C\u96C6\u307E\u308C\u3070\u3001\u305D\u3053\u304B\u3089\u9078\u3093\u3067\u7570\u52D5\u3055\u305B\u3089\u308C\u308B\u3002
+      \u624B\u3092\u6319\u3052\u3066\u901A\u3063\u305F\u7570\u52D5\u306F\u3001\u8F9E\u4EE4\u306B\u3088\u308B\u7570\u52D5\u3088\u308A\u3082\u5B9A\u7740\u3059\u308B\u3002</div>
+    </div>
+    <div class="selgrid">
+      ${DEPT_IDS.map((d) => `<button class="selbtn ${d === dept ? "on" : ""}" data-d="${d}">
+        <b>${DEPTS[d].icon} ${DEPTS[d].name}</b>
+        <span>${orgPower(g)[d].count}\u540D\uFF0F\u6B8B\u696D ${wl[d].overtime.toFixed(0)}h\u30FB\u8CA0\u8377 ${(wl[d].load * 100).toFixed(0)}%</span>
+      </button>`).join("")}
+    </div>
+    <div class="field" style="margin-top:10px">
+      <label>\u52DF\u96C6\u4EBA\u6570</label>
+      <input type="number" id="inpN" value="${n}" min="1" max="12" step="1">
+    </div>
+    <div class="hint">${DEPTS[dept].desc}</div>
+    <div class="btnrow"><button class="btn primary wide" data-go="1">\u516C\u52DF\u3092\u51FA\u3059</button></div>`;
+    }
+    function refresh2() {
+      document.getElementById("modalBody").innerHTML = build();
+      bind();
+    }
+    function bind() {
+      const body = document.getElementById("modalBody");
+      body.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
+        dept = b.dataset.d;
+        refresh2();
+      });
+      body.querySelector("#inpN").oninput = (e) => {
+        n = Math.max(1, Math.min(12, +e.target.value || 1));
+      };
+      body.querySelector("[data-go]").onclick = () => {
+        const rng = new RNG(g.rngState ^ 777771);
+        const err = openPosting(g, dept, n, rng);
+        g.rngState = rng.s;
+        if (err) return toast(err, "bad");
+        const p = g.postings[g.postings.length - 1];
+        toast(`${DEPTS[dept].name}\u306E\u516C\u52DF\u306B ${p.applicants.length}\u540D\u304C\u5FDC\u52DF\u3057\u305F`, p.applicants.length ? "good" : "bad");
+        ctx2.refresh();
+        closeModal();
+      };
+    }
+  }
 
   // src/ui/panelMA.js
   var panelMA_exports = {};
   __export(panelMA_exports, {
     openTarget: () => openTarget,
-    render: () => render8,
-    title: () => title8
+    render: () => render9,
+    title: () => title9
   });
-  var title8 = "M&A\u30FB\u5B50\u4F1A\u793E";
-  function render8(g, ctx2) {
+  var title9 = "M&A\u30FB\u5B50\u4F1A\u793E";
+  function render9(g, ctx2) {
     const p = orgPower(g);
     const subs = g.subsidiaries.length ? g.subsidiaries.map((s) => {
       const def = SUB_TYPES.find((x) => x.id === s.type);
@@ -11231,10 +12875,10 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var panelRival_exports = {};
   __export(panelRival_exports, {
     openDetail: () => openDetail2,
-    render: () => render9,
-    title: () => title9
+    render: () => render10,
+    title: () => title10
   });
-  var title9 = "\u7AF6\u5408\u5206\u6790";
+  var title10 = "\u7AF6\u5408\u5206\u6790";
   var KEYS = [
     { k: "rev", n: "\u58F2\u4E0A\u9AD8" },
     { k: "op", n: "\u55B6\u696D\u5229\u76CA" },
@@ -11254,7 +12898,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if (Math.abs(d) < 5e-3) return '\u3000<span class="flat">\u524D\u5E74\u6BD4 \xB10%</span>';
     return `\u3000<span class="${d > 0 ? "up" : "down"}">\u524D\u5E74\u6BD4 ${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}%</span>`;
   }
-  function render9(g, ctx2) {
+  function render10(g, ctx2) {
     const key = ctx2.rivalKey || "rev";
     const list = ranking(g, key);
     const me = list.find((x) => x.isPlayer);
@@ -11481,11 +13125,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     openAd: () => openAd,
     openNew: () => openNew,
     openRename: () => openRename,
-    render: () => render10,
-    title: () => title10
+    render: () => render11,
+    title: () => title11
   });
-  var title10 = "\u30D6\u30E9\u30F3\u30C9";
-  function render10(g, ctx2) {
+  var title11 = "\u30D6\u30E9\u30F3\u30C9";
+  function render11(g, ctx2) {
     const cards = g.brands.length ? g.brands.map((b) => {
       const C = BRAND_CATEGORIES[b.category], G2 = BRAND_GRADES[b.grade];
       const e = brandEffect(g, b.id);
@@ -11732,7 +13376,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
 
   // src/main.js
-  var PANELS = { dash: panelDash_exports, land: panelLand_exports, dev: panelDev_exports, sales: panelSales_exports, asset: panelAsset_exports, fin: panelFin_exports, hr: panelHR_exports, brand: panelBrand_exports, ma: panelMA_exports, rival: panelRival_exports };
+  var PANELS = { dash: panelDash_exports, land: panelLand_exports, dev: panelDev_exports, sales: panelSales_exports, asset: panelAsset_exports, fin: panelFin_exports, hr: panelHR_exports, brand: panelBrand_exports, ma: panelMA_exports, rival: panelRival_exports, disc: panelDisclosure_exports };
   var G = null;
   var R = null;
   var currentPanel = null;
@@ -11742,6 +13386,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     rivalKey: "rev",
     hrSort: "ability",
     jobRankMode: "pop",
+    discTab: "people",
     startProject: startProject2,
     acquireNow,
     focusCell
@@ -11847,6 +13492,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       R.focusCity("minato", 1);
     }
     window.R = R;
+    window.__wl = () => workload(G, orgPower(G));
     if (IS_SMALL) {
       $("#feed").classList.add("collapsed");
       $("#feedToggle").textContent = "\u25B8";
@@ -12307,6 +13953,92 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       case "hr.ceo":
         openCeo(G, ctx);
         break;
+      case "hr.posting":
+        openPostingModal(G, ctx);
+        break;
+      case "hr.accept": {
+        const [pid, sid] = String(id).split("|");
+        const post = (G.postings || []).find((x) => x.id === pid);
+        if (!post) break;
+        const err = acceptPosting(G, post, sid, G.news);
+        if (err) return toast(err, "bad");
+        toast("\u793E\u5185\u516C\u52DF\u306B\u3088\u308B\u7570\u52D5\u3092\u6C7A\u3081\u305F", "good");
+        refresh();
+        break;
+      }
+      case "hr.fast": {
+        const s = G.staff.find((x) => x.id === id);
+        if (!s) break;
+        const odds = fastTrackOdds(G, s);
+        openModal("\u629C\u64E2\u4EBA\u4E8B", `
+        <div class="card" style="border-color:rgba(227,181,88,.4)">
+          <div class="card-t"><span class="card-n">${s.name}\uFF08${s.age}\u6B73\u30FB${rankName(G, s.rank)}\uFF09</span></div>
+          <div class="card-s">${rankName(G, s.rank)}\u304B\u3089${rankName(G, s.rank + 2)}\u3078\u3001\u7B49\u7D1A\u30922\u3064\u98DB\u3070\u3057\u3066\u5F15\u304D\u4E0A\u3052\u308B\u3002</div>
+          ${kv("\u7DCF\u5408\u80FD\u529B", avgAbility(s).toFixed(0))}
+          ${kv("\u6F5C\u5728\u80FD\u529B", s.potential)}
+          ${kv("\u7D71\u7387", s.abil.lead.toFixed(0))}
+          ${kv("\u6210\u529F\u7387", `<b class="${odds >= 0.6 ? "up" : odds < 0.4 ? "down" : ""}">${(odds * 100).toFixed(0)}%</b>`)}
+        </div>
+        <div class="hint">\u6210\u529F\u3059\u308C\u3070\u4E00\u6C17\u306B\u529B\u3092\u4F38\u3070\u3057\u3001\u82E5\u624B\u306E\u58EB\u6C17\u3082\u4E0A\u304C\u308B\u3002
+        \u5931\u6557\u3059\u308B\u3068\u672C\u4EBA\u306E\u58EB\u6C17\u304C\u5927\u304D\u304F\u843D\u3061\u3001\u98DB\u3073\u8D8A\u3055\u308C\u305F\u793E\u54E1\u306E\u58EB\u6C17\u3082\u4E0B\u304C\u308B\u3002</div>`, [
+          { label: "\u3084\u3081\u308B", cls: "ghost" },
+          {
+            label: "\u629C\u64E2\u3059\u308B",
+            cls: "primary",
+            onClick: () => {
+              const rng = new RNG(G.rngState ^ 5150501);
+              const r = fastTrack(G, s, rng, G.news);
+              G.rngState = rng.s;
+              if (r.err) return toast(r.err, "bad");
+              toast(r.ok ? `${s.name}\u306E\u629C\u64E2\u306F\u6210\u529F\u3057\u305F` : `${s.name}\u306B\u306F\u8377\u304C\u52DD\u3061\u3059\u304E\u305F`, r.ok ? "good" : "bad");
+              refresh();
+            }
+          }
+        ]);
+        break;
+      }
+      case "disc.tab":
+        ctx.discTab = id;
+        refresh();
+        break;
+      case "disc.work": {
+        const w = WORK_PROGRAMS.find((x) => x.id === id);
+        if (!w) break;
+        G.hrPolicy.work = G.hrPolicy.work || {};
+        const on = !G.hrPolicy.work[w.id];
+        G.hrPolicy.work[w.id] = on;
+        toast(`${w.name}\u3092${on ? "\u5C0E\u5165\u3057\u305F" : "\u53D6\u308A\u3084\u3081\u305F"}`, on ? "good" : "");
+        refresh();
+        break;
+      }
+      case "disc.retrofit": {
+        const a = G.assets.find((x) => x.id === id);
+        if (!a) break;
+        openModal("\u8010\u9707\u6539\u4FEE", `
+        <div class="card">
+          <div class="card-t"><span class="card-n">${a.name}</span></div>
+          <div class="card-s">\u3044\u307E\u306E\u8010\u9707\u6027\u80FD\u306F ${(seismicOf(a) * 100).toFixed(0)}\u3002
+          \u6539\u4FEE\u3059\u308B\u3068 ${Math.min(115, seismicOf(a) * 100 + 45).toFixed(0)} \u307E\u3067\u4E0A\u304C\u308A\u3001
+          \u5730\u9707\u306E\u3068\u304D\u306E\u640D\u5BB3\u304C\u5927\u304D\u304F\u6E1B\u308B\u3002</div>
+          ${kv("\u5DE5\u4E8B\u8CBB", money(retrofitCost(a)))}
+          ${kv("\u73FE\u9810\u91D1", money(G.cash))}
+        </div>
+        <div class="hint">\u5DE5\u4E8B\u8CBB\u306E65%\u306F\u8CC7\u672C\u7684\u652F\u51FA\u3068\u3057\u3066\u7C3F\u4FA1\u306B\u4E57\u308A\u3001\u6B8B\u308A\u306F\u8CBB\u7528\u3068\u3057\u3066\u8A08\u4E0A\u3055\u308C\u308B\u3002</div>`, [
+          { label: "\u3084\u3081\u308B", cls: "ghost" },
+          {
+            label: "\u767A\u6CE8\u3059\u308B",
+            cls: "primary",
+            disabled: G.cash < retrofitCost(a),
+            onClick: () => {
+              const err = retrofit(G, a, G.news);
+              if (err) return toast(err, "bad");
+              toast("\u8010\u9707\u6539\u4FEE\u3092\u767A\u6CE8\u3057\u305F", "good");
+              refresh();
+            }
+          }
+        ]);
+        break;
+      }
       case "plan.new":
         openPlan(G, ctx);
         break;
@@ -12571,7 +14303,48 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   }
   function afterReport() {
     refresh();
-    if (G.gameOver) showGameOver();
+    if (G.gameOver) return showGameOver();
+    const rep = G.pendingReport;
+    if (rep && rep.briefing && rep.briefing.length) openBriefing(rep.briefing);
+  }
+  function openBriefing(questions) {
+    let i = 0;
+    const log = [];
+    step();
+    function step() {
+      if (i >= questions.length) return finish();
+      const q = questions[i];
+      openModal(`\u6C7A\u7B97\u8AAC\u660E\u4F1A\u3000${G.year}\u5E74 \u7B2C${G.quarter}\u56DB\u534A\u671F`, `
+      <div class="card" style="border-color:rgba(13,126,168,.35)">
+        <div class="card-t"><span class="card-n">\u{1F399} ${q.who}\u304B\u3089\u306E\u8CEA\u554F</span>
+          ${chip(`${i + 1} / ${questions.length}`, "grey")}</div>
+        <div class="card-s" style="font-size:12.5px;line-height:1.9">${q.q}</div>
+      </div>
+      ${log.length ? `<div style="margin-top:10px">${log.map((x) => `<div class="kv"><span class="k">${x.q}</span><span class="v">${x.a}</span></div>`).join("")}</div>` : ""}
+      <div class="sec">
+        <div class="sec-t"><span>\u793E\u9577\u3068\u3057\u3066\u3069\u3046\u7B54\u3048\u308B\u304B</span></div>
+        ${q.answers.map((a, k) => `<div class="card click" data-ans="${k}">
+          <div class="card-t"><span class="card-n">${a.label}</span></div>
+          <div class="card-s">\u300C${a.say}\u300D</div>
+        </div>`).join("")}
+      </div>`, []);
+      const body = document.getElementById("modalBody");
+      body.querySelectorAll("[data-ans]").forEach((el) => el.onclick = () => {
+        const a = q.answers[+el.dataset.ans];
+        const after = answerQuestion(G, q, a, G.news);
+        log.push({ q: q.who, a: a.label });
+        toast(after, a.trust >= 0 ? "good" : "bad");
+        i++;
+        step();
+      });
+    }
+    function finish() {
+      closeBriefing(G, G.news);
+      closeModal();
+      refresh();
+      const t = G.company.irTrust || 0;
+      toast(t > 0.3 ? "\u8AAC\u660E\u4F1A\u306F\u597D\u610F\u7684\u306B\u53D7\u3051\u6B62\u3081\u3089\u308C\u305F" : t < -0.25 ? "\u5E02\u5834\u306E\u76EE\u306F\u53B3\u3057\u3044\u307E\u307E\u3067\u3042\u308B" : "\u8AAC\u660E\u4F1A\u3092\u7D42\u3048\u305F");
+    }
   }
   function showGameOver() {
     const k = kpis(G);
@@ -12697,7 +14470,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         ${!recovery && s.meta && s.id !== "auto" ? `<button class="btn sm danger" data-dl="${s.id}">\u524A\u9664</button>` : ""}
       </div>
     </div>`;
-    const render11 = () => `
+    const render12 = () => `
     ${canSave ? "" : `<div class="card" style="border-color:rgba(196,52,74,.35);background:var(--red-soft)">
       <div class="card-t"><span class="card-n">\u26A0 \u3053\u306E\u753B\u9762\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044</span></div>
       <div class="card-s">\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u304B\u3001\u30D6\u30E9\u30A6\u30B6\u306E\u8A2D\u5B9A\u3067\u30C7\u30FC\u30BF\u306E\u4FDD\u5B58\u304C\u6B62\u3081\u3089\u308C\u3066\u3044\u308B\u3002
@@ -12739,11 +14512,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       iPhone \u306E Safari \u306F\u30017\u65E5\u9593\u305D\u306E\u30B5\u30A4\u30C8\u3092\u958B\u304B\u306A\u3044\u3067\u3044\u308B\u3068\u4FDD\u5B58\u30C7\u30FC\u30BF\u3092\u6D88\u3059\u3053\u3068\u304C\u3042\u308B\u3002
       \u30DB\u30FC\u30E0\u753B\u9762\u306B\u8FFD\u52A0\u3057\u3066\u3001\u305D\u3053\u304B\u3089\u904A\u3079\u3070\u3053\u306E\u5BFE\u8C61\u304B\u3089\u5916\u308C\u308B\u3002
     </div>`;
-    openModal("\u30BB\u30FC\u30D6\uFF0F\u30ED\u30FC\u30C9", render11(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
+    openModal("\u30BB\u30FC\u30D6\uFF0F\u30ED\u30FC\u30C9", render12(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
     const bind = () => {
       const body = $("#modalBody");
       const redraw = () => {
-        body.innerHTML = render11();
+        body.innerHTML = render12();
         bind();
       };
       body.querySelectorAll("[data-sv]").forEach((b) => b.onclick = () => {

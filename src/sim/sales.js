@@ -108,6 +108,8 @@ export function stepAssets(g, rng, news) {
     if (a.use === 'logi') target = clamp01(target * 1.06 + 0.04);
     if (a.use === 'hotel') target = clamp01(target * (0.74 + dem * 0.34));
     if (a.age > 25) target *= 0.94;
+    // 被災して復旧工事中の物件は、そのぶん埋まらない
+    if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
     a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 0.006));
 
     // 賃料改定（2年ごと）

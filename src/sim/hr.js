@@ -8,6 +8,8 @@ import { makeStaff, baseSalaryFor, stdSalary, rankPayOf, avgAbility, uid } from 
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR, isYearStart, isAprilFirstWeek } from '../core/time.js';
 import { cultureEffects } from './culture.js';
 import { oversightOf, ceoPayMorale, ceoPay } from './officers.js';
+import { workload, overtimeCost, overtimeMorale, overtimeAttrition, workEffects, OVERTIME_LIMIT } from './workload.js';
+import { runSurvey } from './survey.js';
 
 /** 部署ごとの「質」と「量」を集計する */
 export function orgPower(g) {
@@ -72,8 +74,14 @@ export function personnelCost(g) {
   const salary = (g.staff.reduce((a, s) => a + s.salary, 0) + ceoPay(g)) / WEEKS_PER_YEAR;
   const welfare = salary * 0.16;                              // 法定福利
   const programs = HR_PROGRAMS.reduce((a, p) => a + (g.hrPolicy.programs[p.field] ? p.cost / WEEKS_PER_YEAR : 0), 0);
-  return salary + welfare + programs;
+  // 働き方への投資と、実際に発生した残業代
+  const workProg = Object.entries((g.hrPolicy && g.hrPolicy.work) || {})
+    .reduce((a, [k, on]) => a + (on ? (WORK_COST[k] || 0) / WEEKS_PER_YEAR : 0), 0);
+  return salary + welfare + programs + workProg + overtimeCost(g, orgPower(g));
 }
+
+/** 働き方への投資の年額（workload.js の WORK_PROGRAMS と対応） */
+const WORK_COST = { flex: 160, outsource: 520, health: 210 };
 /** 年額の人件費（表示用） */
 export function personnelCostYear(g) { return personnelCost(g) * WEEKS_PER_YEAR; }
 
@@ -103,9 +111,12 @@ export function stepHR(g, rng, news) {
   const welfare = pol.programs.welfare ? 1 : 0;
   const W = WEEKS_PER_QUARTER;
   const ce = cultureEffects(g);
+  const we = workEffects(g);
+  const wl = workload(g, orgPower(g));
   const leavers = [];
 
   for (const s of g.staff) {
+    const ot = s.subsidiary ? 0 : (wl[s.dept] ? wl[s.dept].overtime : 0);
     // --- 成長 ---
     const youth = clamp(1.25 - (s.age - 22) * 0.028, 0.15, 1.25);
     for (const k of ABILITY_IDS) {
@@ -126,7 +137,11 @@ export function stepHR(g, rng, news) {
     if (s.rank >= 3) dm += 0.012;
     if (g.market.sentiment > 0.65) dm += 0.008;
     if (g.finance.pl && g.finance.pl.op < 0) dm -= 0.035;
+    // 残業。ほどほどなら張りになるが、月45時間を超えると目に見えて削れる
+    const om = overtimeMorale(ot);
+    dm += (om < 0 ? om * we.moraleMul : om) * W;
     s.morale = clamp01(s.morale + (dm + rng.normal(0, 0.03)) / W);
+    s.otHours = Math.round(ot * 10) / 10;
 
     // --- 離職判定 ---
     let risk = 0.012;
@@ -140,12 +155,16 @@ export function stepHR(g, rng, news) {
     const rel = (avgAbility(s) - 55) / 45;
     risk *= clamp(1 - rel * ce.meritLeave * 0.5, 0.45, 1.8);
     risk *= ce.leaveMul;
+    // 長時間労働そのものが辞める理由になる
+    risk += overtimeAttrition(ot) * we.attritionMul;
     if (rng.chance(clamp01(risk) / W)) leavers.push(s);
   }
 
   for (const s of leavers) {
     g.staff.splice(g.staff.indexOf(s), 1);
-    const why = s.age > 60 ? '定年退職' : salaryFairness(g, s) < 0.92 ? '待遇への不満' : s.morale < 0.45 ? 'モチベーション低下' : '他社への転職';
+    const why = s.age > 60 ? '定年退職'
+      : (s.otHours || 0) > 55 ? '長時間労働による疲弊'
+        : salaryFairness(g, s) < 0.92 ? '待遇への不満' : s.morale < 0.45 ? 'モチベーション低下' : '他社への転職';
     news.push({ icon: '🚪', type: 'hr', major: s.rank >= 4, text: `${DEPTS[s.dept].name}の${rankName(g, s.rank)}・${s.name}が退職した（${why}）。` });
   }
 
@@ -176,6 +195,9 @@ export function stepHR(g, rng, news) {
     }
     if (promoted) news.push({ icon: '📋', type: 'hr', major: true, text: `${g.year}年の定期人事で${promoted}名が昇格し、全社員の給与を改定した。` });
   }
+
+  // --- エンゲージメントサーベイ（年1回・10月に実施） ---
+  if (g.weekOfYear === 39 && g.week > 26) runSurvey(g, news);
 
   // 社長はプレイヤー本人なので、後継者を立てる処理は無い。
   // 万一、社員が社長の席に座っていたら（旧セーブ）一段下ろす

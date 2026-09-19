@@ -27,7 +27,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 /** 保存用にゲーム状態を文字列化する（一時データは除く） */
 export function serialize(g) {
@@ -230,6 +230,34 @@ const STEPS = [
     // 役員には管掌部門の枠を持たせる
     for (const s of g.staff || []) {
       if (!Array.isArray(s.oversee)) s.oversee = [];
+    }
+  },
+
+  // 労働時間・サーベイ・表彰・災害・鉄道・IR を後から足す
+  g => {
+    g.hrPolicy = g.hrPolicy || {};
+    if (!g.hrPolicy.work) g.hrPolicy.work = {};
+    for (const k of ['surveys', 'awards', 'disasters', 'rails', 'postings', 'ratingHistory', 'planHistory']) {
+      if (!Array.isArray(g[k])) g[k] = [];
+    }
+    if (g.ratingReport === undefined) g.ratingReport = null;
+    const c = g.company || {};
+    if (typeof c.irTrust !== 'number') c.irTrust = 0;
+    if (typeof c.irPrice !== 'number') c.irPrice = 0;
+    if (typeof c.irLastWeek !== 'number') c.irLastWeek = -1;
+    // 既存の保有物件に耐震性能と延床を持たせる。
+    // 築年から逆算するので、古い物件ほど弱い
+    for (const a of g.assets || []) {
+      if (typeof a.seismic !== 'number') {
+        a.seismic = Math.max(0.55, Math.min(1, 1 - Math.max(0, (a.age || 0) - 12) * 0.012));
+      }
+      if (typeof a.damage !== 'number') a.damage = 0;
+      if (!(a.gfa > 0)) a.gfa = Math.round((a.nra || 0) / 0.62);
+      if (!(a.floors > 0)) a.floors = Math.max(1, Math.round((a.gfa || 1000) / 900));
+    }
+    for (const inv of g.inventory || []) {
+      if (!(inv.gfa > 0)) inv.gfa = Math.round((inv.area || 0) / 0.72);
+      if (!(inv.floors > 0)) inv.floors = Math.max(1, Math.round((inv.gfa || 1000) / 900));
     }
   },
 ];

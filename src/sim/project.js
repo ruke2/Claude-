@@ -277,6 +277,7 @@ function completeProject(g, pj, rng, news) {
       cost: Math.round(cost * saleShare),
       soldRatio: 0, revenue: 0, weeksOnSale: 0, completedWeek: g.week,
       impaired: 0, discount: 0,
+      gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う
     };
     // 事前契約分を即時に売上計上
     const pre = clamp01(pj.preContract);
@@ -310,6 +311,9 @@ function completeProject(g, pj, rng, news) {
       bookBuild: Math.round(pj.spent * share),
       completedWeek: g.week, age: 0, lastRentReview: g.week,
       noi: 0, cumNoi: 0,
+      gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う
+      seismic: 1.0,                          // 耐震性能（1.0 = 現行基準）
+      damage: 0,                             // 災害で受けた損傷の累計
     };
     // 募集賃料を決める。抜けている案件は相場から引き直す
     const raw = Math.max(1, marketRentRaw(g, asset));

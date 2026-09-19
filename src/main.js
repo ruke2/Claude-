@@ -21,8 +21,15 @@ import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
 import { sellAsset } from './sim/sales.js';
 import { foundSubsidiary, liquidate, generateTargets as genTargets } from './sim/ma.js';
 import { orgPower } from './sim/hr.js';
+import { workload } from './sim/workload.js';
 import { dismiss as dismissOfficer } from './sim/officers.js';
 import { abandonPlan } from './sim/midplan.js';
+import { WORK_PROGRAMS } from './sim/workload.js';
+import { seismicOf, retrofitCost, retrofit } from './sim/cityevents.js';
+import { acceptPosting, fastTrack, fastTrackOdds } from './sim/talent.js';
+import { answerQuestion, closeBriefing } from './sim/ir.js';
+import { rankName as rankNameOf } from './data/hrdata.js';
+import { avgAbility } from './core/state.js';
 import { ranking } from './sim/rivals.js';
 import { unlocked } from './sim/company.js';
 import { SUB_TYPES, RIVAL_DEFS } from './data/companies.js';
@@ -30,6 +37,7 @@ import { HR_PROGRAMS, DEPTS, RANKS } from './data/hrdata.js';
 
 import { $, openModal, closeModal, toast, section, kv, mini, chip, bar, empty } from './ui/dom.js';
 import * as Dash from './ui/panelDash.js';
+import * as Disc from './ui/panelDisclosure.js';
 import * as Land from './ui/panelLand.js';
 import * as Dev from './ui/panelDev.js';
 import * as Sales from './ui/panelSales.js';
@@ -41,14 +49,14 @@ import * as Rival from './ui/panelRival.js';
 import * as Brand from './ui/panelBrand.js';
 import { buildReport } from './ui/report.js';
 
-const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival };
+const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival, disc: Disc };
 
 
 let G = null, R = null;
 let currentPanel = null;
 let lastT = 0;
 const ctx = {
-  refresh, rivalKey: 'rev', hrSort: 'ability', jobRankMode: 'pop',
+  refresh, rivalKey: 'rev', hrSort: 'ability', jobRankMode: 'pop', discTab: 'people',
   startProject, acquireNow, focusCell,
 };
 
@@ -156,6 +164,7 @@ function startGame(saved) {
   R.setWeather(G.weather || 'clear');
   if (IS_SMALL) R.fit('minato'); else { R.cam.zoomIdx = 1; R.focusCity('minato', 1); }
   window.R = R;
+  window.__wl = () => workload(G, orgPower(G));   // 計測用
 
   // 画面が狭いときは週次フィードを畳んでおく（見出しをタップで開く）
   if (IS_SMALL) {
@@ -566,6 +575,81 @@ function handleAction(act, id) {
       break;
     }
     case 'hr.ceo': HR.openCeo(G, ctx); break;
+    case 'hr.posting': HR.openPostingModal(G, ctx); break;
+    case 'hr.accept': {
+      const [pid, sid] = String(id).split('|');
+      const post = (G.postings || []).find(x => x.id === pid);
+      if (!post) break;
+      const err = acceptPosting(G, post, sid, G.news);
+      if (err) return toast(err, 'bad');
+      toast('社内公募による異動を決めた', 'good'); refresh();
+      break;
+    }
+    case 'hr.fast': {
+      const s = G.staff.find(x => x.id === id);
+      if (!s) break;
+      const odds = fastTrackOdds(G, s);
+      openModal('抜擢人事', `
+        <div class="card" style="border-color:rgba(227,181,88,.4)">
+          <div class="card-t"><span class="card-n">${s.name}（${s.age}歳・${rankNameOf(G, s.rank)}）</span></div>
+          <div class="card-s">${rankNameOf(G, s.rank)}から${rankNameOf(G, s.rank + 2)}へ、等級を2つ飛ばして引き上げる。</div>
+          ${kv('総合能力', avgAbility(s).toFixed(0))}
+          ${kv('潜在能力', s.potential)}
+          ${kv('統率', s.abil.lead.toFixed(0))}
+          ${kv('成功率', `<b class="${odds >= 0.6 ? 'up' : odds < 0.4 ? 'down' : ''}">${(odds * 100).toFixed(0)}%</b>`)}
+        </div>
+        <div class="hint">成功すれば一気に力を伸ばし、若手の士気も上がる。
+        失敗すると本人の士気が大きく落ち、飛び越された社員の士気も下がる。</div>`, [
+        { label: 'やめる', cls: 'ghost' },
+        {
+          label: '抜擢する', cls: 'primary', onClick: () => {
+            const rng = new RNG(G.rngState ^ 5150501);
+            const r = fastTrack(G, s, rng, G.news);
+            G.rngState = rng.s;
+            if (r.err) return toast(r.err, 'bad');
+            toast(r.ok ? `${s.name}の抜擢は成功した` : `${s.name}には荷が勝ちすぎた`, r.ok ? 'good' : 'bad');
+            refresh();
+          }
+        },
+      ]);
+      break;
+    }
+    case 'disc.tab': ctx.discTab = id; refresh(); break;
+    case 'disc.work': {
+      const w = WORK_PROGRAMS.find(x => x.id === id);
+      if (!w) break;
+      G.hrPolicy.work = G.hrPolicy.work || {};
+      const on = !G.hrPolicy.work[w.id];
+      G.hrPolicy.work[w.id] = on;
+      toast(`${w.name}を${on ? '導入した' : '取りやめた'}`, on ? 'good' : '');
+      refresh();
+      break;
+    }
+    case 'disc.retrofit': {
+      const a = G.assets.find(x => x.id === id);
+      if (!a) break;
+      openModal('耐震改修', `
+        <div class="card">
+          <div class="card-t"><span class="card-n">${a.name}</span></div>
+          <div class="card-s">いまの耐震性能は ${(seismicOf(a) * 100).toFixed(0)}。
+          改修すると ${(Math.min(115, seismicOf(a) * 100 + 45)).toFixed(0)} まで上がり、
+          地震のときの損害が大きく減る。</div>
+          ${kv('工事費', money(retrofitCost(a)))}
+          ${kv('現預金', money(G.cash))}
+        </div>
+        <div class="hint">工事費の65%は資本的支出として簿価に乗り、残りは費用として計上される。</div>`, [
+        { label: 'やめる', cls: 'ghost' },
+        {
+          label: '発注する', cls: 'primary', disabled: G.cash < retrofitCost(a),
+          onClick: () => {
+            const err = retrofit(G, a, G.news);
+            if (err) return toast(err, 'bad');
+            toast('耐震改修を発注した', 'good'); refresh();
+          }
+        },
+      ]);
+      break;
+    }
     case 'plan.new': Dash.openPlan(G, ctx); break;
     case 'plan.abandon': {
       openModal('中期経営計画の取り下げ', `
@@ -805,7 +889,56 @@ function monthOfWeek(week) { return dateLabelOf(week); }
 
 function afterReport() {
   refresh();
-  if (G.gameOver) showGameOver();
+  if (G.gameOver) return showGameOver();
+  // 上場していれば、決算のあとに説明会が開かれる
+  const rep = G.pendingReport;
+  if (rep && rep.briefing && rep.briefing.length) openBriefing(rep.briefing);
+}
+
+// ------------------------------------------------------------
+//  決算説明会
+//    同じ数字でも、どう説明するかで市場の受け取りは変わる。
+// ------------------------------------------------------------
+function openBriefing(questions) {
+  let i = 0;
+  const log = [];
+  step();
+
+  function step() {
+    if (i >= questions.length) return finish();
+    const q = questions[i];
+    openModal(`決算説明会　${G.year}年 第${G.quarter}四半期`, `
+      <div class="card" style="border-color:rgba(13,126,168,.35)">
+        <div class="card-t"><span class="card-n">🎙 ${q.who}からの質問</span>
+          ${chip(`${i + 1} / ${questions.length}`, 'grey')}</div>
+        <div class="card-s" style="font-size:12.5px;line-height:1.9">${q.q}</div>
+      </div>
+      ${log.length ? `<div style="margin-top:10px">${log.map(x => `<div class="kv"><span class="k">${x.q}</span><span class="v">${x.a}</span></div>`).join('')}</div>` : ''}
+      <div class="sec">
+        <div class="sec-t"><span>社長としてどう答えるか</span></div>
+        ${q.answers.map((a, k) => `<div class="card click" data-ans="${k}">
+          <div class="card-t"><span class="card-n">${a.label}</span></div>
+          <div class="card-s">「${a.say}」</div>
+        </div>`).join('')}
+      </div>`, []);
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-ans]').forEach(el => el.onclick = () => {
+      const a = q.answers[+el.dataset.ans];
+      const after = answerQuestion(G, q, a, G.news);
+      log.push({ q: q.who, a: a.label });
+      toast(after, a.trust >= 0 ? 'good' : 'bad');
+      i++; step();
+    });
+  }
+
+  function finish() {
+    closeBriefing(G, G.news);
+    closeModal();
+    refresh();
+    const t = G.company.irTrust || 0;
+    toast(t > 0.3 ? '説明会は好意的に受け止められた'
+      : t < -0.25 ? '市場の目は厳しいままである' : '説明会を終えた');
+  }
 }
 
 function showGameOver() {

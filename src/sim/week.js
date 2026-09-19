@@ -18,6 +18,10 @@ import { weeklyCosts, closeQuarter, kpis } from './finance.js';
 import { DISTRICTS } from '../data/city.js';
 import { stepTier } from './company.js';
 import { stepPlan } from './midplan.js';
+import { stepAwards } from './awards.js';
+import { rollDisaster, stepRails } from './cityevents.js';
+import { stepRating, decayIr, questionsFor } from './ir.js';
+import { stepPostings } from './talent.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -36,6 +40,10 @@ export function nextWeek(g) {
   rep.shocks = rollShocks(g, rng);
   for (const s of rep.shocks) news.push({ icon: s.icon, type: 'market', major: true, text: `【${s.title}】${s.text}` });
   g.weather = rollWeather(g, rng);
+  // 災害と、鉄道の整備計画
+  rep.disaster = rollDisaster(g, rng, news);
+  stepRails(g, rng, news);
+  decayIr(g);
 
   // 3. 入札の締切処理
   for (const l of g.listings.slice()) {
@@ -80,6 +88,7 @@ export function nextWeek(g) {
 
   // 6. 組織
   stepHR(g, rng, news);
+  stepPostings(g, news);
   stepRecruit(g, rng, news);
   stepBrands(g, rng, news);
   stepCulture(g, rng, news);
@@ -101,6 +110,10 @@ export function nextWeek(g) {
     rep.unlocked = (g.unlocked || []).slice(before);
     // 中期経営計画の期限が来ていれば成否を確定させる
     rep.planDone = stepPlan(g, news);
+    // 表彰の審査、格付けレポート、決算説明会の設問
+    rep.awards = stepAwards(g, rng, news);
+    rep.rating = stepRating(g, news);
+    rep.briefing = g.company.listed ? questionsFor(g) : null;
     rep.quarterEnd = true;
     rep.rank = ranking(g, 'rev').find(x => x.isPlayer);
     rep.kpi = kpis(g);

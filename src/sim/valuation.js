@@ -8,6 +8,7 @@ import { orgPower } from './hr.js';
 import { brandEffect } from './brands.js';
 import { cultureEffects } from './culture.js';
 import { homeMul } from './company.js';
+import { railMul } from './cityevents.js';
 
 /** 用途別の建築面積率（敷地に対する各階の床の割合） */
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
@@ -38,7 +39,9 @@ export function landAppraisal(g, c) {
   const d = DISTRICTS[c.d];
   const best = bestUseFit(c);
   const demand = g.market.demand[best] ?? 1;
-  return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1));
+  // 鉄道の整備計画が動いている沿線は、開業前から期待が地価に乗る
+  return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24)
+    * (0.94 + d.station * 0.1) * railMul(g, c.d));
 }
 
 /** その区画で最も適した用途 */

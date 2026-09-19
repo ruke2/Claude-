@@ -10,6 +10,7 @@ import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { cultureEffects, cultureMatch, randomPreference } from './culture.js';
 import { ttm } from './finance.js';
 import { rivalPull } from './jobrank.js';
+import { awardAppeal } from './awards.js';
 
 /** 新卒採用の年間スケジュール（週番号は年初からの通算） */
 export const NG_SCHEDULE = {
@@ -154,6 +155,8 @@ export function employerAppeal(g) {
     salary: (r.salary - 5.2) * 0.05,
     programs: (g.hrPolicy.programs.brandpr ? 0.09 : 0) + (g.hrPolicy.programs.welfare ? 0.04 : 0),
     culture: ce.appealShift,
+    // 建築賞の受賞は学生に効く。直近5年ぶんだけ
+    awards: awardAppeal(g),
   };
   const score = clamp01(Object.values(parts).reduce((a, b) => a + b, 0));
   return {

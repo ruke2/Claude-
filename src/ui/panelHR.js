@@ -10,9 +10,11 @@ import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNE
 import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor, stdSalary, rankPayOf, defaultRankPay } from '../core/state.js';
-import { RNG } from '../core/rng.js';
 import { ranking, industryPay } from '../sim/rivals.js';
 import { jobRanking, selfRank, rivalPull } from '../sim/jobrank.js';
+import { openPosting, acceptPosting, canFastTrack, fastTrackOdds, fastTrack, fastTrackCandidates } from '../sim/talent.js';
+import { workload } from '../sim/workload.js';
+import { RNG } from '../core/rng.js';
 import { INDUSTRIES } from '../data/employers.js';
 import { officers, officerRoom, canAppoint, appoint as appointFn, dismiss as dismissFn,
   setOversight as setOversightFn, oversightOf, uncovered, ceo, ceoPay, payGapView, boardStrength } from '../sim/officers.js';
@@ -95,6 +97,8 @@ export function render(g, ctx) {
   ${section('組織図', '課長以上は個人を表示', `<div class="org">${org}</div>`)}
 
   ${recruitSection(g)}
+
+  ${talentSection(g)}
 
   ${jobRankSection(g, ctx)}
 
@@ -1074,4 +1078,100 @@ function jobRankSection(g, ctx) {
     順位が上がるほど内定辞退が減り、上位校の学生が集まる。<br>
     掲載している企業はすべて架空であり、実在の企業の数値ではない。</div>
   `);
+}
+
+// ------------------------------------------------------------
+//  社内公募と抜擢人事
+// ------------------------------------------------------------
+function talentSection(g) {
+  const posts = (g.postings || []).filter(p => g.week < p.deadline);
+  const cands = fastTrackCandidates(g).slice(0, 5);
+  const wl = workload(g, orgPower(g));
+
+  const postCards = posts.length ? posts.map(p => `
+    <div class="card">
+      <div class="card-t"><span class="card-n">${DEPTS[p.dept].icon} ${DEPTS[p.dept].name}の社内公募</span>
+        ${chip(`締切まで ${p.deadline - g.week}週`, p.deadline - g.week <= 1 ? 'red' : 'grey')}</div>
+      <div class="card-s">募集 ${p.need}名／応募 ${p.applicants.length}名${p.filled ? `／決定 ${p.filled}名` : ''}</div>
+      ${p.applicants.length ? `<table class="tbl" style="margin-top:6px">
+        <tr><th>氏名</th><th>現部署</th><th>役職</th><th>能力</th><th>志望度</th><th></th></tr>
+        ${p.applicants.slice(0, 8).map(ap => {
+    const s = g.staff.find(x => x.id === ap.id);
+    if (!s) return '';
+    return `<tr><td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
+          <td>${avgAbility(s).toFixed(0)}</td><td>${ap.want}</td>
+          <td><button class="btn sm primary" data-act="hr.accept" data-id="${p.id}|${s.id}">受け入れる</button></td></tr>`;
+  }).join('')}
+      </table>` : '<div class="hint">まだ応募がない。</div>'}
+    </div>`).join('') : empty('いま出している公募はない');
+
+  return section('社内公募・抜擢人事', posts.length ? `公募 ${posts.length}件` : '', `
+    <div class="card">
+      <div class="card-t"><span class="card-n">🙋 社内公募</span></div>
+      <div class="card-s">部署を指定して手挙げを募る。通常の異動と違い、自ら希望して移った社員は士気が上がる。
+      いまの部署で伸び悩んでいる人や、残業が重い部署の人ほど手を挙げやすい。</div>
+      ${kv('いちばん残業の重い部署', `${DEPTS[wl.total.worst].name}　${wl[wl.total.worst].overtime.toFixed(0)}h／月`)}
+      <div class="btnrow"><button class="btn sm primary" data-act="hr.posting">社内公募を出す</button></div>
+    </div>
+    ${postCards}
+    <div class="card" style="margin-top:10px">
+      <div class="card-t"><span class="card-n">🚀 抜擢人事</span></div>
+      <div class="card-s">等級を2つ飛ばして引き上げる。成功すれば一気に伸び、若手の目の色が変わる。
+      失敗すると本人が潰れ、飛び越された社員の士気が落ちる。</div>
+      ${cands.length ? `<table class="tbl" style="margin-top:6px">
+        <tr><th>氏名</th><th>年齢</th><th>現職</th><th>能力</th><th>潜在</th><th>成功率</th><th></th></tr>
+        ${cands.map(c => `<tr>
+          <td>${c.s.name}</td><td>${c.s.age}</td><td>${rankShort(g, c.s.rank)}</td>
+          <td>${avgAbility(c.s).toFixed(0)}</td><td>${c.s.potential}</td>
+          <td class="${c.odds >= 0.6 ? 'up' : c.odds < 0.4 ? 'down' : ''}">${(c.odds * 100).toFixed(0)}%</td>
+          <td><button class="btn sm" data-act="hr.fast" data-id="${c.s.id}">${rankName(g, c.s.rank + 2)}に抜擢</button></td>
+        </tr>`).join('')}
+      </table>` : '<div class="hint">いま抜擢できる社員がいない。勤続1年以上で、2つ上の等級に空きがあることが条件である。</div>'}
+    </div>
+  `);
+}
+
+// ------------------------------------------------------------
+//  社内公募を出す
+// ------------------------------------------------------------
+export function openPostingModal(g, ctx) {
+  let dept = 'land', n = 2;
+  const wl = workload(g, orgPower(g));
+  openModal('社内公募を出す', build(), []);
+  bind();
+
+  function build() {
+    return `
+    <div class="card">
+      <div class="card-s">募集する部署と人数を決める。締切までに応募が集まれば、そこから選んで異動させられる。
+      手を挙げて通った異動は、辞令による異動よりも定着する。</div>
+    </div>
+    <div class="selgrid">
+      ${DEPT_IDS.map(d => `<button class="selbtn ${d === dept ? 'on' : ''}" data-d="${d}">
+        <b>${DEPTS[d].icon} ${DEPTS[d].name}</b>
+        <span>${orgPower(g)[d].count}名／残業 ${wl[d].overtime.toFixed(0)}h・負荷 ${(wl[d].load * 100).toFixed(0)}%</span>
+      </button>`).join('')}
+    </div>
+    <div class="field" style="margin-top:10px">
+      <label>募集人数</label>
+      <input type="number" id="inpN" value="${n}" min="1" max="12" step="1">
+    </div>
+    <div class="hint">${DEPTS[dept].desc}</div>
+    <div class="btnrow"><button class="btn primary wide" data-go="1">公募を出す</button></div>`;
+  }
+  function refresh() { document.getElementById('modalBody').innerHTML = build(); bind(); }
+  function bind() {
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { dept = b.dataset.d; refresh(); });
+    body.querySelector('#inpN').oninput = e => { n = Math.max(1, Math.min(12, +e.target.value || 1)); };
+    body.querySelector('[data-go]').onclick = () => {
+      const rng = new RNG(g.rngState ^ 777771);
+      const err = openPosting(g, dept, n, rng);
+      g.rngState = rng.s;
+      if (err) return toast(err, 'bad');
+      const p = g.postings[g.postings.length - 1];
+      toast(`${DEPTS[dept].name}の公募に ${p.applicants.length}名が応募した`, p.applicants.length ? 'good' : 'bad');
+      ctx.refresh(); closeModal();
+    };
+  }
 }
