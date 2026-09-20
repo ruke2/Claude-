@@ -135,7 +135,9 @@ export function stepAssets(g, rng, news) {
     a.noi = noiY;
     const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
     const opexW = grossW * 0.24;
-    const deprW = a.bookBuild / (50 * WEEKS_PER_YEAR);      // 50年定額
+    // 償却年数。自社で建てたものは50年、中古で取得したものは残りが短い
+    // （`a.deprYears` が無い古いセーブは従来どおり50年で回る）
+    const deprW = a.bookBuild / ((a.deprYears || 50) * WEEKS_PER_YEAR);
     a.bookBuild = Math.max(0, a.bookBuild - deprW);
     a.cumNoi += grossW - opexW;
     g.finance.quarterAcc.revLease += grossW;

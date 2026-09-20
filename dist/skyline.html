@@ -3710,6 +3710,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       // 賞与の支給記録
       jvOffers: [],
       // 競合からの共同事業の打診
+      standing: [],
+      // 売りに出ている稼働中のビル（一棟買い）
       relations: {},
       // 競合との関係値（共同事業の通りやすさ）
       union: { formed: false, disputes: 0, history: [] },
@@ -6352,6 +6354,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       if (!Array.isArray(g.agenda)) g.agenda = [];
       if (!Array.isArray(g.bonuses)) g.bonuses = [];
       if (!Array.isArray(g.jvOffers)) g.jvOffers = [];
+      if (!Array.isArray(g.standing)) g.standing = [];
       if (!g.relations || typeof g.relations !== "object") g.relations = {};
       if (!g.union || typeof g.union !== "object") g.union = { formed: false, disputes: 0, history: [] };
       if (!Array.isArray(g.union.history)) g.union.history = [];
@@ -8732,480 +8735,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return [(hh + 360) % 360, s * 100, l * 100];
   }
 
-  // src/sim/sales.js
-  function stepInventory(g, rng, news) {
-    const p = orgPower(g);
-    const finished = [];
-    for (const inv of g.inventory) {
-      inv.weeksOnSale++;
-      if (!(inv.totalValue > 0) && inv.cost > 0) {
-        const price = inv.price > 0 ? inv.price : inv.basePrice > 0 ? inv.basePrice : 0;
-        if (price > 0 && inv.area > 0) {
-          inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
-        } else {
-          continue;
-        }
-      }
-      if (inv.soldRatio >= 0.999) {
-        finished.push(inv);
-        continue;
-      }
-      let speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district, inv.brandId);
-      if (inv.weeksOnSale > 78) speed *= 0.82;
-      if (inv.weeksOnSale > 156) speed *= 0.7;
-      speed *= rng.range(0.7, 1.3);
-      const before = inv.soldRatio;
-      inv.soldRatio = clamp01(inv.soldRatio + speed);
-      const delta = inv.soldRatio - before;
-      if (delta > 0) {
-        const rev = Math.round(inv.totalValue * delta);
-        const cogs = Math.round(inv.cost * delta);
-        g.finance.quarterAcc.revSale += rev;
-        g.finance.quarterAcc.cogsSale += cogs;
-        g.cash += rev;
-        inv.revenue += rev;
-        g.kpi.soldUnits += Math.round(inv.units * delta);
-      }
-      if (inv.weeksOnSale >= 104 && inv.soldRatio < 0.8 && rng.chance(0.42 / WEEKS_PER_QUARTER)) {
-        const remain = inv.totalValue * (1 - inv.soldRatio);
-        const loss = Math.round(remain * rng.range(0.05, 0.12));
-        inv.impaired += loss;
-        if (inv.brandId) damageBrand(g, inv.brandId, 0.8, 2.5);
-        g.finance.quarterAcc.impairment += loss;
-        inv.totalValue -= loss;
-        inv.price = Math.round(inv.price * (1 - loss / Math.max(1, remain)) * 1e3) / 1e3;
-        news.push({ icon: "\u{1F4C9}", type: "sales", text: `\u3010${inv.name}\u3011\u8CA9\u58F2\u304C\u9577\u671F\u5316\u3057\u3001\u68DA\u5378\u8CC7\u7523\u8A55\u4FA1\u640D${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3057\u305F\u3002` });
-      }
-      if (inv.soldRatio >= 0.999) finished.push(inv);
-    }
-    for (const inv of finished) {
-      const cell = g.cells.find((c) => c.id === inv.cellId);
-      if (cell) {
-        cell.invId = null;
-        cell.soldOut = true;
-      }
-      const i = g.inventory.indexOf(inv);
-      if (i >= 0) g.inventory.splice(i, 1);
-      g.company.brand = clamp(g.company.brand + 0.8, 0, 100);
-      if (inv.brandId) growBrand(g, inv.brandId, { area: inv.area, base: inv.weeksOnSale < 52 ? 3.4 : 1.2, reputation: inv.weeksOnSale < 52 ? 3 : -1 });
-      news.push({ icon: "\u2705", type: "sales", major: true, text: `\u3010${inv.name}\u3011\u5168${inv.units}\u6238\u304C\u5B8C\u58F2\uFF08\u8CA9\u58F2\u671F\u9593${Math.round(inv.weeksOnSale / 4.33)}\u30F6\u6708\uFF09\u3002\u7D2F\u8A08\u58F2\u4E0A${Math.round(inv.revenue / 100).toLocaleString()}\u5104\u5186\u3002` });
-    }
-  }
-  var K_OCC = perWeek(0.34);
-  function stepAssets(g, rng, news) {
-    const p = orgPower(g);
-    for (const a of g.assets) {
-      a.age += 1 / WEEKS_PER_YEAR;
-      const dem = g.market.demand[a.use] ?? 1;
-      const raw = marketRentRaw(g, a);
-      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
-      a.marketRent = Math.round(raw * a.rentIndex);
-      if (!(a.rent > 0)) {
-        a.rent = Math.max(1, Math.round(a.marketRent || raw));
-        a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
-        a.marketRent = Math.round(raw * a.rentIndex);
-        news.push({
-          icon: "\u{1F3E2}",
-          type: "lease",
-          text: `\u3010${a.name}\u3011\u52DF\u96C6\u8CC3\u6599\u304C\u672A\u8A2D\u5B9A\u3060\u3063\u305F\u305F\u3081\u3001\u76F8\u5834\u306E\u6708\u576A${a.rent.toLocaleString()}\u5186\u3067\u52DF\u96C6\u3092\u958B\u59CB\u3057\u305F\u3002`
-        });
-      }
-      const gap = a.rent / Math.max(1, a.marketRent);
-      const lease = 0.8 + p.lease.quality / 340 + subEffect(g, "occupancy") * 2 + (isHome(g, a.district) ? HOME.occupancy : 0);
-      const popMul = demandMul(g, a.district, a.use);
-      let target = clamp01((1.34 - gap * 0.36) * (0.7 + dem * 0.31) * lease * popMul);
-      if (a.use === "logi") target = clamp01(target * 1.06 + 0.04);
-      if (a.use === "hotel") target = clamp01(target * (0.74 + dem * 0.34));
-      if (a.age > 25) target *= 0.94;
-      if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
-      a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 6e-3));
-      if (g.week - a.lastRentReview >= 104) {
-        const power = 0.35 + p.lease.quality / 260;
-        const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
-        if (a.rent > 0 && Math.abs(newRent - a.rent) / a.rent > 0.03) {
-          news.push({
-            icon: newRent > a.rent ? "\u{1F4C8}" : "\u{1F4C9}",
-            type: "lease",
-            text: `\u3010${a.name}\u3011\u8CC3\u6599\u6539\u5B9A\u3002\u6708\u576A${a.rent.toLocaleString()}\u5186 \u2192 ${newRent.toLocaleString()}\u5186\uFF08\u7A3C\u50CD${Math.round(a.occupancy * 100)}%\uFF09\u3002`
-          });
-        }
-        a.rent = newRent;
-        a.lastRentReview = g.week;
-      }
-      const noiY = currentNOI(g, a);
-      a.noi = noiY;
-      const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
-      const opexW = grossW * 0.24;
-      const deprW = a.bookBuild / (50 * WEEKS_PER_YEAR);
-      a.bookBuild = Math.max(0, a.bookBuild - deprW);
-      a.cumNoi += grossW - opexW;
-      g.finance.quarterAcc.revLease += grossW;
-      g.finance.quarterAcc.cogsLease += opexW + deprW;
-      g.cash += grossW - opexW;
-      const fee = subEffect(g, "feeRate");
-      if (fee > 0) {
-        const f = grossW * fee * WEEKS_PER_YEAR / 12;
-        g.finance.quarterAcc.revFee += f;
-        g.cash += f;
-      }
-    }
-    for (const a of g.assets) {
-      if (a.age > 14 && rng.chance(0.028 / WEEKS_PER_QUARTER)) {
-        const cost = Math.round(a.bookBuild * 0.07 + 200);
-        g.cash -= cost;
-        g.finance.quarterAcc.cogsLease += cost;
-        news.push({ icon: "\u{1F527}", type: "lease", text: `\u3010${a.name}\u3011\u5927\u898F\u6A21\u4FEE\u7E55\u3092\u5B9F\u65BD\u3002${Math.round(cost / 100).toLocaleString()}\u5104\u5186\u3092\u652F\u51FA\u3057\u305F\u3002` });
-      }
-    }
-  }
-  function sellAsset(g, a, news) {
-    const price = Math.round(assetValue(g, a) * (1 + subEffect(g, "exitPremium")));
-    const book = a.bookLand + a.bookBuild;
-    const gain = price - book;
-    const fee = Math.round(price * 0.025);
-    g.cash += price - fee;
-    g.finance.quarterAcc.gainSale += gain - fee;
-    const cell = g.cells.find((c) => c.id === a.cellId);
-    if (cell) {
-      cell.assetId = null;
-      cell.owner = "other";
-      if (cell.building) cell.building.owner = "other";
-    }
-    const i = g.assets.indexOf(a);
-    if (i >= 0) g.assets.splice(i, 1);
-    news && news.push({
-      icon: "\u{1F4B0}",
-      type: "lease",
-      text: `\u3010${a.name}\u3011\u3092${Math.round(price / 100).toLocaleString()}\u5104\u5186\u3067\u58F2\u5374\u3002\u58F2\u5374${gain >= 0 ? "\u76CA" : "\u640D"}${Math.round(Math.abs(gain) / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3057\u305F\u3002`
-    });
-    return { price, gain };
-  }
-  function repriceInventory(g, inv, newPrice, news) {
-    const old = inv.price;
-    const base = inv.basePrice > 0 ? inv.basePrice : old > 0 ? old : 0;
-    const lo = base > 0 ? base * 0.4 : 0.01;
-    const hi = base > 0 ? base * 2 : Number.MAX_SAFE_INTEGER;
-    inv.price = Math.round(clamp(newPrice, lo, hi) * 1e3) / 1e3;
-    const remain = 1 - inv.soldRatio;
-    inv.totalValue = Math.round(inv.revenue + inv.area * remain * inv.price);
-    if (newPrice < old * 0.94) {
-      g.company.brand = clamp(g.company.brand - 0.6, 0, 100);
-      if (inv.brandId) damageBrand(g, inv.brandId, 1.2, 3);
-      news && news.push({ icon: "\u{1F3F7}", type: "sales", text: `\u3010${inv.name}\u3011\u8CA9\u58F2\u4FA1\u683C\u3092\u576A${(old * 100).toFixed(0)}\u4E07\u5186\u2192${(inv.price * 100).toFixed(0)}\u4E07\u5186\u306B\u6539\u5B9A\u3057\u305F\u3002` });
-    }
-  }
-
-  // src/sim/ma.js
-  var RISK_WINDOW = 156;
-  var MA_RISKS = [
-    { id: "debt", name: "\u7C3F\u5916\u50B5\u52D9", p: 0.16, sev: 0.9, desc: "\u6C7A\u7B97\u66F8\u306B\u73FE\u308C\u306A\u3044\u50B5\u52D9\u3002\u8CB7\u53CE\u5F8C\u306B\u7279\u5225\u640D\u5931\u3068\u3057\u3066\u8868\u9762\u5316\u3059\u308B\u3002" },
-    { id: "window", name: "\u4F1A\u8A08\u51E6\u7406\u306E\u4E0D\u9069\u5207\u3055", p: 0.12, sev: 0.8, desc: "\u58F2\u4E0A\u306E\u524D\u5012\u3057\u8A08\u4E0A\u306A\u3069\u3002\u4FEE\u6B63\u306B\u3088\u308A\u5229\u76CA\u304C\u5927\u5E45\u306B\u6E1B\u308B\u3002" },
-    { id: "keyman", name: "\u30AD\u30FC\u30DE\u30F3\u4F9D\u5B58", p: 0.22, sev: 0.6, desc: "\u4E3B\u8981\u4EBA\u6750\u304C\u8CB7\u53CE\u3092\u6A5F\u306B\u9000\u8077\u3059\u308B\u3068\u3001\u30B7\u30CA\u30B8\u30FC\u306E\u5927\u534A\u304C\u5931\u308F\u308C\u308B\u3002" },
-    { id: "culture", name: "\u4F01\u696D\u6587\u5316\u306E\u4E0D\u4E00\u81F4", p: 0.24, sev: 0.5, desc: "\u7D71\u5408\u304C\u9032\u307E\u305A\u3001\u4E21\u793E\u306E\u793E\u54E1\u306E\u58EB\u6C17\u304C\u4E0B\u304C\u308B\u3002" },
-    { id: "lawsuit", name: "\u4FC2\u5C5E\u4E2D\u306E\u8A34\u8A1F", p: 0.11, sev: 0.7, desc: "\u6557\u8A34\u3059\u308C\u3070\u548C\u89E3\u91D1\u306E\u652F\u6255\u3044\u304C\u767A\u751F\u3059\u308B\u3002" },
-    { id: "customer", name: "\u9867\u5BA2\u306E\u6975\u7AEF\u306A\u96C6\u4E2D", p: 0.15, sev: 0.6, desc: "\u4E3B\u8981\u53D6\u5F15\u5148\u3092\u5931\u3046\u3068\u58F2\u4E0A\u304C\u4E00\u6C17\u306B\u6D88\u3048\u308B\u3002" },
-    { id: "system", name: "\u57FA\u5E79\u30B7\u30B9\u30C6\u30E0\u306E\u8001\u673D\u5316", p: 0.14, sev: 0.4, desc: "\u7D71\u5408\u306B\u306F\u60F3\u5B9A\u5916\u306E\u30B7\u30B9\u30C6\u30E0\u6295\u8CC7\u304C\u5FC5\u8981\u306B\u306A\u308B\u3002" }
-  ];
-  function generateTargets(g, rng, n = 3) {
-    const out = [];
-    const used = new Set(g.acquisitions.map((a) => a.name));
-    for (let i = 0; i < n; i++) {
-      const tpl = rng.pick(TARGET_TEMPLATES);
-      const name2 = rng.pick(tpl.names.filter((x) => !used.has(x)) || tpl.names);
-      if (!name2 || used.has(name2)) continue;
-      used.add(name2);
-      const scale = rng.range(0.35, 2.4);
-      const rev = Math.round((9e3 + rng.range(0, 34e3)) * scale / 100) * 100;
-      const opMargin = rng.range(0.015, 0.14);
-      const op = Math.round(rev * opMargin);
-      const np = Math.round(op * rng.range(0.5, 0.72));
-      const equity = Math.round(rev * rng.range(0.22, 0.75));
-      const employees = Math.round(rev / rng.range(38, 95));
-      const quality = clamp01(0.35 + opMargin * 3.2 + rng.normal(0, 0.16));
-      const risks = [];
-      for (const r of MA_RISKS) {
-        let pr = r.p * (1.45 - quality * 0.9);
-        if (rng.chance(pr)) risks.push({ ...r, found: false, mag: rng.range(0.5, 1.4) });
-      }
-      const multiple = rng.range(6.5, 15) * (0.7 + quality * 0.7);
-      const askPrice = Math.round((equity * rng.range(0.9, 1.5) + op * multiple) / 100) * 100;
-      out.push({
-        id: uid("M"),
-        name: name2,
-        kind: tpl.kind,
-        label: tpl.label,
-        icon: tpl.icon,
-        synergy: tpl.synergy,
-        effect: { ...tpl.effect },
-        rev,
-        op,
-        np,
-        equity,
-        employees,
-        askPrice,
-        quality,
-        risks,
-        ddLevel: 0,
-        ddSkill: 0,
-        listedWeek: g.week,
-        expires: g.week + rng.int(8, 26),
-        note: rng.pick([
-          "\u5275\u696D\u5BB6\u304C\u5F8C\u7D99\u8005\u4E0D\u5728\u3092\u7406\u7531\u306B\u58F2\u5374\u3092\u691C\u8A0E\u3057\u3066\u3044\u308B\u3002",
-          "\u30D5\u30A1\u30F3\u30C9\u304C\u4FDD\u6709\u3057\u3066\u304A\u308A\u3001\u51FA\u53E3\u3092\u63A2\u3057\u3066\u3044\u308B\u3002",
-          "\u89AA\u4F1A\u793E\u304C\u672C\u696D\u56DE\u5E30\u306E\u305F\u3081\u58F2\u5374\u3092\u6C7A\u3081\u305F\u3002",
-          "\u696D\u7E3E\u306F\u5805\u8ABF\u3060\u304C\u3001\u5358\u72EC\u3067\u306E\u6210\u9577\u306B\u9650\u754C\u3092\u611F\u3058\u3066\u3044\u308B\u3002",
-          "\u540C\u696D\u4ED6\u793E\u3082\u95A2\u5FC3\u3092\u793A\u3057\u3066\u3044\u308B\u3068\u306E\u5642\u304C\u3042\u308B\u3002"
-        ])
-      });
-    }
-    return out;
-  }
-  function maDueDiligence(g, t, level, rng) {
-    const p = orgPower(g);
-    const cost = Math.round(t.askPrice * (level === 1 ? 6e-3 : 0.018));
-    const base = level === 1 ? 0.45 : 0.85;
-    const skill = clamp01(base + (p.corp.quality - 55) / 240 + (p.fin.quality - 55) / 380);
-    let found = 0;
-    for (const r of t.risks) {
-      if (r.found) continue;
-      if (rng.chance(skill)) {
-        r.found = true;
-        found++;
-      }
-    }
-    t.ddLevel = Math.max(t.ddLevel, level);
-    t.ddSkill = skill;
-    g.cash -= cost;
-    g.finance.quarterAcc.cogsOther += cost;
-    return { cost, found };
-  }
-  function acquire(g, t, price, rng, news) {
-    const p = orgPower(g);
-    const goodwill = Math.max(0, price - t.equity);
-    g.cash -= price;
-    g.goodwill += goodwill;
-    const integSpeed = clamp(0.16 + p.corp.quality / 420 + p.hr.quality / 700, 0.12, 0.42);
-    const a = {
-      id: t.id,
-      name: t.name,
-      kind: t.kind,
-      label: t.label,
-      icon: t.icon,
-      price,
-      goodwill,
-      goodwillInit: goodwill,
-      equity: t.equity,
-      rev: t.rev,
-      op: t.op,
-      np: t.np,
-      employees: t.employees,
-      effect: { ...t.effect },
-      synergy: t.synergy,
-      risks: t.risks.map((r) => ({ ...r })),
-      integration: 0.12,
-      integSpeed,
-      acquiredWeek: g.week,
-      failed: false,
-      troubles: [],
-      health: 1
-    };
-    g.acquisitions.push(a);
-    const i = g.maTargets.indexOf(t);
-    if (i >= 0) g.maTargets.splice(i, 1);
-    g.company.brand = clamp(g.company.brand + (t.rev > 2e4 ? 3 : 1.4) + (t.effect.brand || 0), 0, 100);
-    news.push({
-      icon: "\u{1F91D}",
-      type: "ma",
-      text: `${t.label}\u300C${t.name}\u300D\u3092${Math.round(price / 100).toLocaleString()}\u5104\u5186\u3067\u8CB7\u53CE\u3057\u305F\u3002\u306E\u308C\u3093${Math.round(goodwill / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3002`
-    });
-    if (t.effect.lots) {
-      const pool = g.cells.filter((c) => c.owner === "other" && c.d && !c.onSale).slice(0, 200);
-      const n = Math.min(pool.length, 1 + Math.floor(t.rev / 16e3));
-      const picked = rng.shuffle(pool).slice(0, n);
-      for (const c of picked) {
-        c.owner = "player";
-        c.bookValue = Math.round((c.baseValue || 1e3) * 0.9);
-        c.vacant = !c.building;
-        if (c.building) c.building.owner = "player";
-      }
-      if (n) news.push({ icon: "\u25C8", type: "ma", text: `\u8CB7\u53CE\u306B\u3088\u308A${n}\u533A\u753B\u306E\u4FDD\u6709\u4E0D\u52D5\u7523\u3092\u5F15\u304D\u7D99\u3044\u3060\u3002` });
-    }
-    return a;
-  }
-  function stepMA(g, rng, news) {
-    const p = orgPower(g);
-    for (const a of g.acquisitions) {
-      if (a.failed) continue;
-      const before = a.integration;
-      a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER);
-      if (before < 1 && a.integration >= 1) {
-        news.push({ icon: "\u{1F517}", type: "ma", text: `${a.name}\u306E\u7D71\u5408\uFF08PMI\uFF09\u304C\u5B8C\u4E86\u3002\u30B7\u30CA\u30B8\u30FC\u304C\u5B8C\u5168\u306B\u767A\u73FE\u3057\u305F\u3002` });
-      }
-      const dem = g.market.sentiment;
-      const perf = clamp(0.62 + a.integration * 0.5 + (dem - 0.5) * 0.3, 0.3, 1.5) * a.health;
-      const wRev = a.rev / WEEKS_PER_YEAR * perf;
-      const wOp = a.op / WEEKS_PER_YEAR * perf * (a.integration > 0.7 ? 1.12 : 0.85);
-      g.finance.quarterAcc.revOther += wRev;
-      g.finance.quarterAcc.cogsOther += Math.max(0, wRev - wOp);
-      g.cash += wOp;
-      if (a.goodwill > 0) {
-        const am = a.goodwillInit / (20 * WEEKS_PER_YEAR);
-        a.goodwill = Math.max(0, a.goodwill - am);
-        g.goodwill = Math.max(0, g.goodwill - am);
-        g.finance.quarterAcc.cogsOther += am;
-      }
-      for (const r of a.risks) {
-        if (r.fired) continue;
-        const window2 = g.week - a.acquiredWeek;
-        if (window2 > RISK_WINDOW) continue;
-        const base = (0.2 + (r.sev ?? 0.6) * 0.2) * (r.found ? 0.6 : 1);
-        if (!rng.chance(1 - Math.pow(1 - base, 1 / RISK_WINDOW))) continue;
-        r.fired = true;
-        const mitigated = r.found ? 0.45 : 1;
-        switch (r.id) {
-          case "debt": {
-            const loss = Math.round(a.price * 0.16 * r.mag * mitigated);
-            g.finance.quarterAcc.extraordinary -= loss;
-            g.cash -= loss;
-            a.troubles.push({ id: r.id, loss });
-            news.push({ icon: "\u{1F4A5}", type: "ma", text: `${a.name}\u3067\u7C3F\u5916\u50B5\u52D9${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u304C\u767A\u899A\u3002\u7279\u5225\u640D\u5931\u3092\u8A08\u4E0A\u3057\u305F\u3002` });
-            break;
-          }
-          case "window": {
-            a.rev = Math.round(a.rev * (1 - 0.12 * mitigated));
-            a.op = Math.round(a.op * (1 - 0.3 * mitigated));
-            news.push({ icon: "\u{1F4D5}", type: "ma", text: `${a.name}\u306E\u904E\u5E74\u5EA6\u6C7A\u7B97\u306B\u4E0D\u9069\u5207\u306A\u4F1A\u8A08\u51E6\u7406\u304C\u5224\u660E\u3002\u53CE\u76CA\u529B\u306E\u524D\u63D0\u304C\u5D29\u308C\u305F\u3002` });
-            break;
-          }
-          case "keyman": {
-            a.health *= 1 - 0.22 * mitigated;
-            for (const k in a.effect) if (typeof a.effect[k] === "number") a.effect[k] *= 1 - 0.4 * mitigated;
-            news.push({ icon: "\u{1F6AA}", type: "ma", text: `${a.name}\u306E\u4E2D\u6838\u4EBA\u6750\u304C\u76F8\u6B21\u3044\u3067\u9000\u8077\u3002\u898B\u8FBC\u3093\u3067\u3044\u305F\u30B7\u30CA\u30B8\u30FC\u304C\u7E2E\u5C0F\u3057\u305F\u3002` });
-            break;
-          }
-          case "culture": {
-            a.integSpeed *= 0.6;
-            for (const s of g.staff) if (rng.chance(0.25)) s.morale = clamp01(s.morale - 0.06);
-            news.push({ icon: "\u{1F9CA}", type: "ma", text: `${a.name}\u3068\u306E\u7D71\u5408\u3067\u8ECB\u8F62\u304C\u751F\u3058\u3066\u3044\u308B\u3002\u4E21\u793E\u306E\u58EB\u6C17\u304C\u4E0B\u304C\u3063\u305F\u3002` });
-            break;
-          }
-          case "lawsuit": {
-            const loss = Math.round(a.price * 0.07 * r.mag * mitigated);
-            g.finance.quarterAcc.extraordinary -= loss;
-            g.cash -= loss;
-            news.push({ icon: "\u2696", type: "ma", text: `${a.name}\u304C\u62B1\u3048\u3066\u3044\u305F\u8A34\u8A1F\u3067\u548C\u89E3\u3002${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u652F\u6255\u3063\u305F\u3002` });
-            break;
-          }
-          case "customer": {
-            a.rev = Math.round(a.rev * (1 - 0.25 * mitigated));
-            a.op = Math.round(a.op * (1 - 0.35 * mitigated));
-            news.push({ icon: "\u{1F4C9}", type: "ma", text: `${a.name}\u306E\u6700\u5927\u9867\u5BA2\u304C\u53D6\u5F15\u3092\u505C\u6B62\u3002\u58F2\u4E0A\u304C\u5927\u304D\u304F\u843D\u3061\u8FBC\u3093\u3060\u3002` });
-            break;
-          }
-          case "system": {
-            const cost = Math.round(a.price * 0.05 * r.mag * mitigated);
-            g.cash -= cost;
-            g.finance.quarterAcc.cogsOther += cost;
-            news.push({ icon: "\u{1F4BB}", type: "ma", text: `${a.name}\u306E\u57FA\u5E79\u30B7\u30B9\u30C6\u30E0\u5237\u65B0\u306B${Math.round(cost / 100).toLocaleString()}\u5104\u5186\u306E\u8FFD\u52A0\u6295\u8CC7\u304C\u5FC5\u8981\u306B\u306A\u3063\u305F\u3002` });
-            break;
-          }
-        }
-      }
-      if (a.goodwill > 0 && g.week - a.acquiredWeek >= 52 && rng.chance(0.09 / WEEKS_PER_QUARTER)) {
-        const perfNow = a.health * (0.6 + a.integration * 0.5);
-        if (perfNow < 0.78) {
-          const loss = Math.round(a.goodwill * clamp(1 - perfNow, 0.3, 1));
-          a.goodwill -= loss;
-          g.goodwill = Math.max(0, g.goodwill - loss);
-          g.finance.quarterAcc.impairment += loss;
-          a.impaired = (a.impaired || 0) + loss;
-          if (a.goodwill <= 0 && perfNow < 0.55) a.failed = true;
-          news.push({
-            icon: "\u{1F525}",
-            type: "ma",
-            text: `${a.name}\u306E\u696D\u7E3E\u304C\u8A08\u753B\u3092\u5927\u304D\u304F\u4E0B\u56DE\u308A\u3001\u306E\u308C\u3093${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u6E1B\u640D\u51E6\u7406\u3057\u305F\u3002${a.failed ? "\u3053\u306E\u8CB7\u53CE\u306F\u5931\u6557\u306B\u7D42\u308F\u3063\u305F\u3002" : ""}`
-          });
-          g.company.brand = clamp(g.company.brand - 1.5, 0, 100);
-        }
-      }
-    }
-    for (const s of g.subsidiaries) {
-      const dem = g.market.sentiment;
-      if (s.type === "overseas") {
-        const swing = rng.normal(0.4, 1.4) * (0.5 + dem);
-        const pl = s.bookValue * 0.035 * swing / WEEKS_PER_QUARTER;
-        g.finance.quarterAcc.revOther += Math.max(0, pl);
-        if (pl < 0) g.finance.quarterAcc.extraordinary += pl;
-        g.cash += pl;
-        s.lastPL = pl;
-        s.accPL = (s.accPL || 0) + pl;
-        if (Math.abs(s.accPL) > s.bookValue * 0.06) {
-          news.push({
-            icon: "\u{1F30F}",
-            type: "ma",
-            text: `\u6D77\u5916\u4E8B\u696D\u5B50\u4F1A\u793E\u304C${Math.round(Math.abs(s.accPL) / 100).toLocaleString()}\u5104\u5186\u306E${s.accPL < 0 ? "\u640D\u5931" : "\u5229\u76CA"}\u3092\u8A08\u4E0A\u3057\u305F${s.accPL < 0 ? "\uFF08\u73FE\u5730\u5E02\u6CC1\u3068\u70BA\u66FF\u306E\u60AA\u5316\uFF09" : ""}\u3002`
-          });
-          s.health = clamp01(s.health + (s.accPL < 0 ? -0.06 : 0.03));
-          s.accPL = 0;
-        }
-      } else {
-        const load = {
-          construction: g.projects.length / 3,
-          sales: g.inventory.length / 2,
-          pm: g.assets.length / 3,
-          reit: g.assets.length / 4
-        }[s.type] ?? 1;
-        const pl = s.upkeep / WEEKS_PER_YEAR * (load - 1) * 1.6;
-        s.lastPL = pl * WEEKS_PER_QUARTER;
-        g.finance.quarterAcc.revOther += Math.max(0, pl);
-        if (pl < 0) g.finance.quarterAcc.cogsOther += -pl;
-        g.cash += pl;
-        s.health = clamp01(s.health + (load > 1 ? 0.02 : -0.03) / WEEKS_PER_QUARTER);
-        if (s.health < 0.45 && rng.chance(0.2 / WEEKS_PER_QUARTER)) {
-          news.push({ icon: "\u26A0", type: "ma", text: `${s.name}\u306F\u696D\u52D9\u91CF\u304C\u4E0D\u8DB3\u3057\u3066\u304A\u308A\u3001\u56FA\u5B9A\u8CBB\u304C\u91CD\u8377\u306B\u306A\u3063\u3066\u3044\u308B\u3002` });
-        }
-      }
-    }
-    g.maTargets = g.maTargets.filter((t) => t.expires > g.week);
-    if (g.maTargets.length < 3 && rng.chance(0.65 / WEEKS_PER_QUARTER)) {
-      g.maTargets.push(...generateTargets(g, rng, 1));
-    }
-  }
-  function foundSubsidiary(g, typeId, rng, news) {
-    const def = SUB_TYPES.find((s) => s.id === typeId);
-    if (!def) return null;
-    const sub = {
-      id: uid("S"),
-      type: def.id,
-      name: `${g.company.name}${def.name.replace("\u5B50\u4F1A\u793E", "")}`,
-      icon: def.icon,
-      bookValue: def.cost,
-      upkeep: def.upkeep,
-      effect: { ...def.effect },
-      health: 1,
-      foundedWeek: g.week,
-      staffIds: []
-    };
-    g.cash -= def.cost;
-    const prefer = { construction: "cons", sales: "sales", pm: "lease", reit: "fin", overseas: "corp" }[def.id];
-    const pool = g.staff.filter((s) => !s.subsidiary && s.rank < 6).sort((a, b) => a.dept === prefer ? -1 : 1);
-    for (let i = 0; i < Math.min(def.staffNeed, pool.length); i++) {
-      pool[i].subsidiary = sub.id;
-      sub.staffIds.push(pool[i].id);
-    }
-    g.subsidiaries.push(sub);
-    news.push({ icon: def.icon, type: "ma", text: `${sub.name}\u3092\u8A2D\u7ACB\u3057\u305F\uFF08\u51FA\u8CC7${Math.round(def.cost / 100).toLocaleString()}\u5104\u5186\u30FB\u51FA\u5411${sub.staffIds.length}\u540D\uFF09\u3002` });
-    return sub;
-  }
-  function liquidate(g, sub, news) {
-    const recover = Math.round(sub.bookValue * 0.45 * sub.health);
-    g.cash += recover;
-    g.finance.quarterAcc.extraordinary -= sub.bookValue - recover;
-    for (const s of g.staff) if (s.subsidiary === sub.id) delete s.subsidiary;
-    const i = g.subsidiaries.indexOf(sub);
-    if (i >= 0) g.subsidiaries.splice(i, 1);
-    news.push({ icon: "\u{1F5D1}", type: "ma", text: `${sub.name}\u3092\u6E05\u7B97\u3057\u305F\u3002${Math.round(recover / 100).toLocaleString()}\u5104\u5186\u3092\u56DE\u53CE\u3057\u3001\u5DEE\u984D\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` });
-  }
+  // src/sim/trading.js
+  var trading_exports = {};
+  __export(trading_exports, {
+    MAX_BIDS: () => MAX_BIDS,
+    acquireStanding: () => acquireStanding,
+    appraiseStanding: () => appraiseStanding,
+    bidStanding: () => bidStanding,
+    passStanding: () => passStanding,
+    standingFor: () => standingFor,
+    standingRows: () => standingRows,
+    standingSpec: () => standingSpec,
+    stepStanding: () => stepStanding
+  });
 
   // src/sim/midplan.js
   var PLAN_METRICS = {
@@ -10132,6 +9674,688 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       room: Math.max(0, debtCapacity(g) - g.debt),
       unrealized: unrealizedGain(g)
     };
+  }
+
+  // src/sim/trading.js
+  var TRADABLE = ["office", "rental", "retail", "hotel", "logi", "mixed"];
+  var MAX_OFFERS = 4;
+  var MAX_BIDS = 3;
+  var GRADE_RENT = { standard: 0.96, high: 1.14, luxury: 1.38 };
+  var SELLERS = [
+    { name: "\u5916\u8CC7\u7CFB\u30D5\u30A1\u30F3\u30C9\uFF08\u51FA\u53E3\uFF09", hurry: 0.72, note: "\u30D5\u30A1\u30F3\u30C9\u306E\u511F\u9084\u671F\u9650\u304C\u8FEB\u3063\u3066\u304A\u308A\u3001\u5E74\u5EA6\u5185\u306E\u6C7A\u6E08\u3092\u6C42\u3081\u3066\u3044\u308B\u3002" },
+    { name: "J-REIT\uFF08\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u5165\u66FF\uFF09", hurry: 0.4, note: "\u8CC7\u7523\u5165\u66FF\u306E\u4E00\u74B0\u3067\u3001\u4FA1\u683C\u306B\u306F\u5F37\u6C17\u3067\u3042\u308B\u3002" },
+    { name: "\u4E8B\u696D\u4F1A\u793E\uFF08\u672C\u793E\u79FB\u8EE2\uFF09", hurry: 0.58, note: "\u672C\u793E\u6A5F\u80FD\u306E\u79FB\u8EE2\u306B\u3068\u3082\u306A\u3046\u58F2\u5374\u3067\u3001\u6642\u671F\u306F\u67D4\u8EDF\u3067\u3042\u308B\u3002" },
+    { name: "\u751F\u547D\u4FDD\u967A\u4F1A\u793E\uFF08\u8CC7\u7523\u5727\u7E2E\uFF09", hurry: 0.35, note: "\u7C3F\u4FA1\u304C\u4F4E\u304F\u3001\u58F2\u308A\u6025\u3050\u7406\u7531\u304C\u306A\u3044\u3002" },
+    { name: "\u5275\u696D\u5BB6\u306E\u8CC7\u7523\u7BA1\u7406\u4F1A\u793E\uFF08\u76F8\u7D9A\uFF09", hurry: 0.8, note: "\u76F8\u7D9A\u306E\u7D0D\u7A0E\u8CC7\u91D1\u304C\u5FC5\u8981\u3067\u3001\u65E9\u671F\u306E\u6C7A\u6E08\u3092\u5F37\u304F\u5E0C\u671B\u3057\u3066\u3044\u308B\u3002" },
+    { name: "\u5730\u65B9\u9280\u884C\uFF08\u62C5\u4FDD\u51E6\u5206\uFF09", hurry: 0.85, note: "\u62C5\u4FDD\u51E6\u5206\u3067\u3042\u308A\u3001\u6761\u4EF6\u3088\u308A\u3082\u78BA\u5B9F\u306B\u6C7A\u6E08\u3067\u304D\u308B\u76F8\u624B\u3092\u9078\u3076\u3002" },
+    { name: "\u6D77\u5916\u5E74\u91D1\u57FA\u91D1\uFF08\u672C\u56FD\u56DE\u5E30\uFF09", hurry: 0.62, note: "\u70BA\u66FF\u3092\u7406\u7531\u306B\u65E5\u672C\u5E02\u5834\u304B\u3089\u64A4\u9000\u3059\u308B\u65B9\u91DD\u3068\u3044\u3046\u3002" }
+  ];
+  function standingSpec(g, cell) {
+    const b = cell.building;
+    const d = DISTRICTS[cell.d];
+    if (!b || !d) return null;
+    const use = TRADABLE.includes(b.use) ? b.use : "office";
+    const U = USES[use];
+    const byFar = cell.area * (cell.far || 200) / 100;
+    const byFloors = cell.area * 0.58 * (b.floors || 3);
+    const gfa = Math.max(200, Math.round(Math.min(byFar, byFloors)));
+    const age = Math.max(0, g.year - (b.year || g.year));
+    const grade = b.grade || "standard";
+    return {
+      use,
+      grade,
+      age,
+      gfa,
+      floors: b.floors || 3,
+      nra: Math.round(gfa * U.efficiency),
+      rentIndex: GRADE_RENT[grade] ?? 1
+    };
+  }
+  function appraiseStanding(g, cell, spec) {
+    const s = spec || standingSpec(g, cell);
+    if (!s) return null;
+    const d = DISTRICTS[cell.d];
+    const probe = {
+      district: cell.d,
+      use: s.use,
+      nra: s.nra,
+      age: s.age,
+      rent: 0,
+      occupancy: 0,
+      rentIndex: s.rentIndex
+    };
+    const raw = Math.max(1, marketRentRaw(g, probe));
+    probe.rent = Math.round(raw * s.rentIndex);
+    probe.occupancy = clamp(
+      (s.use === "logi" ? 0.94 : 0.92) - Math.max(0, s.age - 15) * 4e-3,
+      0.62,
+      0.97
+    );
+    const noi = currentNOI(g, probe);
+    const cap = clamp(
+      d.capRate + (CAP_SPREAD[s.use] ?? 0) + g.market.capShift + (s.age > 30 ? 6e-3 : s.age > 20 ? 3e-3 : 0) - subEffect(g, "exitPremium") * 0.05,
+      0.026,
+      0.095
+    );
+    const value = noi > 0 ? Math.round(noi / cap) : 0;
+    return { ...s, rent: probe.rent, marketRent: Math.round(raw), occupancy: probe.occupancy, noi, cap, value };
+  }
+  function stepStanding(g, rng, news) {
+    g.standing = (g.standing || []).filter((o) => o.deadline > g.week);
+    if (g.standing.length >= MAX_OFFERS) return;
+    const p = orgPower(g);
+    const info = p.land.quality / 100 + subEffect(g, "landInfo") * 2;
+    if (!rng.chance((0.9 + info * 0.7) / WEEKS_PER_QUARTER)) return;
+    const reach = citiesOpen(g);
+    const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && reach.has(cityOf(c.d)) && c.building && TRADABLE.includes(c.building.use) && c.owner !== "player" && !c.assetId && !c.projectId && !c.invId && !(g.standing || []).some((o) => o.cellId === c.id));
+    if (!pool.length) return;
+    const power = Math.max(2e3, g.cash + Math.max(0, debtCapacity(g) - g.debt));
+    const fit = (v) => v > power * 1.6 ? 0.02 : v > power ? 0.35 : 1;
+    const scored = pool.map((c) => {
+      const a = appraiseStanding(g, c);
+      return a && a.value > 0 ? { c, a, w: Math.pow(a.value, 0.55) * fit(a.value) * (isHome(g, c.d) ? 1 + HOME.info : 1) } : null;
+    }).filter(Boolean);
+    if (!scored.length) return;
+    const pick = rng.weighted(scored);
+    const seller = rng.pick(SELLERS);
+    const reserve = Math.round(pick.a.value * (1.14 - seller.hurry * 0.26 + rng.range(-0.04, 0.05)));
+    const offer = {
+      id: uid("S"),
+      cellId: pick.c.id,
+      week: g.week,
+      deadline: g.week + rng.int(5, 12),
+      ask: Math.round(reserve * rng.range(1.04, 1.14)),
+      // 表に出ている売出価格
+      reserve,
+      // 非公開の最低ライン
+      seller: seller.name,
+      note: seller.note,
+      bids: 0,
+      spec: pick.a
+    };
+    g.standing.push(offer);
+    news && news.push({
+      icon: "\u{1F3E2}",
+      type: "land",
+      major: pick.a.value >= 2e4,
+      text: `${DISTRICTS[pick.c.d].name}\u306E${USES[pick.a.use].name}\u300C${pick.c.building.name}\u300D\u304C\u58F2\u308A\u306B\u51FA\u305F\uFF08${pick.a.nra.toLocaleString()}\u576A\uFF0F\u58F2\u51FA ${Math.round(offer.ask / 100).toLocaleString()}\u5104\u5186\uFF09\u3002`
+    });
+  }
+  function standingFor(g, cellId) {
+    return (g.standing || []).find((o) => o.cellId === cellId) || null;
+  }
+  function bidStanding(g, offer, price, rng, news) {
+    if (offer.bids >= MAX_BIDS) return { ok: false, message: "\u3053\u308C\u4EE5\u4E0A\u306E\u4EA4\u6E09\u306B\u306F\u5FDC\u3058\u3066\u3082\u3089\u3048\u306A\u3044" };
+    if (price * 1.05 > g.cash) return { ok: false, message: "\u624B\u5143\u8CC7\u91D1\u304C\u8DB3\u308A\u306A\u3044\uFF08\u4EF2\u4ECB\u624B\u6570\u6599\u3068\u7A0E\u3067\u4FA1\u683C\u306E5%\u304C\u304B\u304B\u308B\uFF09" };
+    offer.bids++;
+    const p = orgPower(g);
+    const cell = g.cells.find((c) => c.id === offer.cellId);
+    const skill = clamp01(0.5 + (p.land.quality - 55) / 240 + (p.corp.quality - 55) / 380 + (cell && isHome(g, cell.d) ? 0.06 : 0) + g.company.brand / 900);
+    const room = offer.reserve * (0.05 * skill) * (1 - (offer.bids - 1) * 0.4);
+    const line = Math.round(offer.reserve - Math.max(0, room));
+    if (price >= line) {
+      const asset = acquireStanding(g, offer, price, news);
+      return { ok: true, asset, price };
+    }
+    const gap = (line - price) / line;
+    return {
+      ok: false,
+      message: gap > 0.18 ? "\u58F2\u4E3B\u306F\u300C\u8A71\u306B\u306A\u3089\u306A\u3044\u300D\u3068\u5E2D\u3092\u7ACB\u3063\u305F\u3002" + (offer.bids >= MAX_BIDS ? "\u3053\u306E\u7269\u4EF6\u306E\u4EA4\u6E09\u306F\u7D42\u308F\u3063\u305F\u3002" : "") : "\u3082\u3046\u5C11\u3057\u51FA\u3057\u3066\u3082\u3089\u3048\u306A\u3044\u304B\u3001\u3068\u8FD4\u3063\u3066\u304D\u305F\u3002" + (offer.bids >= MAX_BIDS ? "\u3053\u308C\u4EE5\u4E0A\u306F\u53D6\u308A\u5408\u3063\u3066\u3082\u3089\u3048\u306A\u3044\u3002" : `\uFF08\u3042\u3068${MAX_BIDS - offer.bids}\u56DE\uFF09`),
+      close: gap <= 0.18
+    };
+  }
+  function acquireStanding(g, offer, price, news) {
+    const cell = g.cells.find((c) => c.id === offer.cellId);
+    if (!cell) return null;
+    const s = offer.spec;
+    const landApp = Math.max(1, landAppraisal(g, cell));
+    const newCost = Math.max(1, s.gfa * USES[s.use].build * g.market.costIdx * cityBuildMul(cell.d));
+    const usedCost = newCost * clamp(1 - s.age * 0.015, 0.3, 1);
+    const landShare = clamp(landApp / (landApp + usedCost), 0.12, 0.85);
+    const land = Math.round(price * landShare);
+    const build = Math.max(0, price - land);
+    const fee = Math.round(price * 0.05);
+    g.cash -= price + fee;
+    g.finance.quarterAcc.sga = (g.finance.quarterAcc.sga || 0) + fee;
+    const b = cell.building;
+    const asset = {
+      id: uid("A"),
+      cellId: cell.id,
+      projectId: null,
+      name: b && b.name || `${DISTRICTS[cell.d].name}\u30D3\u30EB`,
+      use: s.use,
+      district: cell.d,
+      grade: s.grade,
+      brandId: null,
+      nra: s.nra,
+      rent: s.rent,
+      marketRent: s.marketRent,
+      rentIndex: s.rentIndex,
+      occupancy: s.occupancy,
+      bookLand: land,
+      bookBuild: build,
+      jv: null,
+      completedWeek: g.week - Math.round(s.age * WEEKS_PER_YEAR),
+      age: s.age,
+      lastRentReview: g.week,
+      noi: s.noi,
+      cumNoi: 0,
+      gfa: s.gfa,
+      floors: s.floors,
+      // 築年に応じて耐震性能を落とす（新築より弱い）
+      seismic: clamp(1 - Math.max(0, s.age - 12) * 0.012, 0.55, 1),
+      damage: 0,
+      acquired: true,
+      // 自社で建てたものではない
+      // 中古で買った建物は、残りの使える年数が短い（税務の簡便法に近い扱い）
+      deprYears: Math.max(12, 50 - Math.round(s.age * 0.8))
+    };
+    g.assets.push(asset);
+    cell.assetId = asset.id;
+    cell.owner = "player";
+    if (cell.building) cell.building.owner = "player";
+    const o = (g.standing || []).indexOf(offer);
+    if (o >= 0) g.standing.splice(o, 1);
+    news && news.push({
+      icon: "\u{1F91D}",
+      type: "lease",
+      major: true,
+      text: `\u3010${asset.name}\u3011\u3092${Math.round(price / 100).toLocaleString()}\u5104\u5186\u3067\u53D6\u5F97\u3057\u305F\uFF08\u8CB8\u5BA4${asset.nra.toLocaleString()}\u576A\uFF0F\u7A3C\u50CD${Math.round(asset.occupancy * 100)}%\uFF0FNOI\u5229\u56DE\u308A ${(s.noi / price * 100).toFixed(2)}%\uFF09\u3002`
+    });
+    return asset;
+  }
+  function passStanding(g, offer, news) {
+    const i = (g.standing || []).indexOf(offer);
+    if (i >= 0) g.standing.splice(i, 1);
+    news && news.push({ icon: "\u2014", type: "land", text: "\u58F2\u308A\u7269\u4EF6\u306E\u691C\u8A0E\u3092\u898B\u9001\u3063\u305F\u3002" });
+  }
+  function standingRows(g) {
+    return (g.standing || []).map((o) => {
+      const cell = g.cells.find((c) => c.id === o.cellId);
+      return {
+        offer: o,
+        cell,
+        district: cell ? DISTRICTS[cell.d] : null,
+        weeksLeft: Math.max(0, o.deadline - g.week),
+        // 表に見せる利回りは、売出価格に対するNOI
+        yieldOnAsk: o.ask > 0 ? o.spec.noi / o.ask : 0
+      };
+    }).sort((a, b) => b.offer.spec.value - a.offer.spec.value);
+  }
+
+  // src/sim/sales.js
+  function stepInventory(g, rng, news) {
+    const p = orgPower(g);
+    const finished = [];
+    for (const inv of g.inventory) {
+      inv.weeksOnSale++;
+      if (!(inv.totalValue > 0) && inv.cost > 0) {
+        const price = inv.price > 0 ? inv.price : inv.basePrice > 0 ? inv.basePrice : 0;
+        if (price > 0 && inv.area > 0) {
+          inv.totalValue = Math.round(inv.revenue + inv.area * (1 - (inv.soldRatio || 0)) * price);
+        } else {
+          continue;
+        }
+      }
+      if (inv.soldRatio >= 0.999) {
+        finished.push(inv);
+        continue;
+      }
+      let speed = contractSpeed(g, inv.use, inv.price, inv.basePrice, p, inv.district, inv.brandId);
+      if (inv.weeksOnSale > 78) speed *= 0.82;
+      if (inv.weeksOnSale > 156) speed *= 0.7;
+      speed *= rng.range(0.7, 1.3);
+      const before = inv.soldRatio;
+      inv.soldRatio = clamp01(inv.soldRatio + speed);
+      const delta = inv.soldRatio - before;
+      if (delta > 0) {
+        const rev = Math.round(inv.totalValue * delta);
+        const cogs = Math.round(inv.cost * delta);
+        g.finance.quarterAcc.revSale += rev;
+        g.finance.quarterAcc.cogsSale += cogs;
+        g.cash += rev;
+        inv.revenue += rev;
+        g.kpi.soldUnits += Math.round(inv.units * delta);
+      }
+      if (inv.weeksOnSale >= 104 && inv.soldRatio < 0.8 && rng.chance(0.42 / WEEKS_PER_QUARTER)) {
+        const remain = inv.totalValue * (1 - inv.soldRatio);
+        const loss = Math.round(remain * rng.range(0.05, 0.12));
+        inv.impaired += loss;
+        if (inv.brandId) damageBrand(g, inv.brandId, 0.8, 2.5);
+        g.finance.quarterAcc.impairment += loss;
+        inv.totalValue -= loss;
+        inv.price = Math.round(inv.price * (1 - loss / Math.max(1, remain)) * 1e3) / 1e3;
+        news.push({ icon: "\u{1F4C9}", type: "sales", text: `\u3010${inv.name}\u3011\u8CA9\u58F2\u304C\u9577\u671F\u5316\u3057\u3001\u68DA\u5378\u8CC7\u7523\u8A55\u4FA1\u640D${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3057\u305F\u3002` });
+      }
+      if (inv.soldRatio >= 0.999) finished.push(inv);
+    }
+    for (const inv of finished) {
+      const cell = g.cells.find((c) => c.id === inv.cellId);
+      if (cell) {
+        cell.invId = null;
+        cell.soldOut = true;
+      }
+      const i = g.inventory.indexOf(inv);
+      if (i >= 0) g.inventory.splice(i, 1);
+      g.company.brand = clamp(g.company.brand + 0.8, 0, 100);
+      if (inv.brandId) growBrand(g, inv.brandId, { area: inv.area, base: inv.weeksOnSale < 52 ? 3.4 : 1.2, reputation: inv.weeksOnSale < 52 ? 3 : -1 });
+      news.push({ icon: "\u2705", type: "sales", major: true, text: `\u3010${inv.name}\u3011\u5168${inv.units}\u6238\u304C\u5B8C\u58F2\uFF08\u8CA9\u58F2\u671F\u9593${Math.round(inv.weeksOnSale / 4.33)}\u30F6\u6708\uFF09\u3002\u7D2F\u8A08\u58F2\u4E0A${Math.round(inv.revenue / 100).toLocaleString()}\u5104\u5186\u3002` });
+    }
+  }
+  var K_OCC = perWeek(0.34);
+  function stepAssets(g, rng, news) {
+    const p = orgPower(g);
+    for (const a of g.assets) {
+      a.age += 1 / WEEKS_PER_YEAR;
+      const dem = g.market.demand[a.use] ?? 1;
+      const raw = marketRentRaw(g, a);
+      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
+      a.marketRent = Math.round(raw * a.rentIndex);
+      if (!(a.rent > 0)) {
+        a.rent = Math.max(1, Math.round(a.marketRent || raw));
+        a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
+        a.marketRent = Math.round(raw * a.rentIndex);
+        news.push({
+          icon: "\u{1F3E2}",
+          type: "lease",
+          text: `\u3010${a.name}\u3011\u52DF\u96C6\u8CC3\u6599\u304C\u672A\u8A2D\u5B9A\u3060\u3063\u305F\u305F\u3081\u3001\u76F8\u5834\u306E\u6708\u576A${a.rent.toLocaleString()}\u5186\u3067\u52DF\u96C6\u3092\u958B\u59CB\u3057\u305F\u3002`
+        });
+      }
+      const gap = a.rent / Math.max(1, a.marketRent);
+      const lease = 0.8 + p.lease.quality / 340 + subEffect(g, "occupancy") * 2 + (isHome(g, a.district) ? HOME.occupancy : 0);
+      const popMul = demandMul(g, a.district, a.use);
+      let target = clamp01((1.34 - gap * 0.36) * (0.7 + dem * 0.31) * lease * popMul);
+      if (a.use === "logi") target = clamp01(target * 1.06 + 0.04);
+      if (a.use === "hotel") target = clamp01(target * (0.74 + dem * 0.34));
+      if (a.age > 25) target *= 0.94;
+      if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
+      a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 6e-3));
+      if (g.week - a.lastRentReview >= 104) {
+        const power = 0.35 + p.lease.quality / 260;
+        const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
+        if (a.rent > 0 && Math.abs(newRent - a.rent) / a.rent > 0.03) {
+          news.push({
+            icon: newRent > a.rent ? "\u{1F4C8}" : "\u{1F4C9}",
+            type: "lease",
+            text: `\u3010${a.name}\u3011\u8CC3\u6599\u6539\u5B9A\u3002\u6708\u576A${a.rent.toLocaleString()}\u5186 \u2192 ${newRent.toLocaleString()}\u5186\uFF08\u7A3C\u50CD${Math.round(a.occupancy * 100)}%\uFF09\u3002`
+          });
+        }
+        a.rent = newRent;
+        a.lastRentReview = g.week;
+      }
+      const noiY = currentNOI(g, a);
+      a.noi = noiY;
+      const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
+      const opexW = grossW * 0.24;
+      const deprW = a.bookBuild / ((a.deprYears || 50) * WEEKS_PER_YEAR);
+      a.bookBuild = Math.max(0, a.bookBuild - deprW);
+      a.cumNoi += grossW - opexW;
+      g.finance.quarterAcc.revLease += grossW;
+      g.finance.quarterAcc.cogsLease += opexW + deprW;
+      g.cash += grossW - opexW;
+      const fee = subEffect(g, "feeRate");
+      if (fee > 0) {
+        const f = grossW * fee * WEEKS_PER_YEAR / 12;
+        g.finance.quarterAcc.revFee += f;
+        g.cash += f;
+      }
+    }
+    for (const a of g.assets) {
+      if (a.age > 14 && rng.chance(0.028 / WEEKS_PER_QUARTER)) {
+        const cost = Math.round(a.bookBuild * 0.07 + 200);
+        g.cash -= cost;
+        g.finance.quarterAcc.cogsLease += cost;
+        news.push({ icon: "\u{1F527}", type: "lease", text: `\u3010${a.name}\u3011\u5927\u898F\u6A21\u4FEE\u7E55\u3092\u5B9F\u65BD\u3002${Math.round(cost / 100).toLocaleString()}\u5104\u5186\u3092\u652F\u51FA\u3057\u305F\u3002` });
+      }
+    }
+  }
+  function sellAsset(g, a, news) {
+    const price = Math.round(assetValue(g, a) * (1 + subEffect(g, "exitPremium")));
+    const book = a.bookLand + a.bookBuild;
+    const gain = price - book;
+    const fee = Math.round(price * 0.025);
+    g.cash += price - fee;
+    g.finance.quarterAcc.gainSale += gain - fee;
+    const cell = g.cells.find((c) => c.id === a.cellId);
+    if (cell) {
+      cell.assetId = null;
+      cell.owner = "other";
+      if (cell.building) cell.building.owner = "other";
+    }
+    const i = g.assets.indexOf(a);
+    if (i >= 0) g.assets.splice(i, 1);
+    news && news.push({
+      icon: "\u{1F4B0}",
+      type: "lease",
+      text: `\u3010${a.name}\u3011\u3092${Math.round(price / 100).toLocaleString()}\u5104\u5186\u3067\u58F2\u5374\u3002\u58F2\u5374${gain >= 0 ? "\u76CA" : "\u640D"}${Math.round(Math.abs(gain) / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3057\u305F\u3002`
+    });
+    return { price, gain };
+  }
+  function repriceInventory(g, inv, newPrice, news) {
+    const old = inv.price;
+    const base = inv.basePrice > 0 ? inv.basePrice : old > 0 ? old : 0;
+    const lo = base > 0 ? base * 0.4 : 0.01;
+    const hi = base > 0 ? base * 2 : Number.MAX_SAFE_INTEGER;
+    inv.price = Math.round(clamp(newPrice, lo, hi) * 1e3) / 1e3;
+    const remain = 1 - inv.soldRatio;
+    inv.totalValue = Math.round(inv.revenue + inv.area * remain * inv.price);
+    if (newPrice < old * 0.94) {
+      g.company.brand = clamp(g.company.brand - 0.6, 0, 100);
+      if (inv.brandId) damageBrand(g, inv.brandId, 1.2, 3);
+      news && news.push({ icon: "\u{1F3F7}", type: "sales", text: `\u3010${inv.name}\u3011\u8CA9\u58F2\u4FA1\u683C\u3092\u576A${(old * 100).toFixed(0)}\u4E07\u5186\u2192${(inv.price * 100).toFixed(0)}\u4E07\u5186\u306B\u6539\u5B9A\u3057\u305F\u3002` });
+    }
+  }
+
+  // src/sim/ma.js
+  var RISK_WINDOW = 156;
+  var MA_RISKS = [
+    { id: "debt", name: "\u7C3F\u5916\u50B5\u52D9", p: 0.16, sev: 0.9, desc: "\u6C7A\u7B97\u66F8\u306B\u73FE\u308C\u306A\u3044\u50B5\u52D9\u3002\u8CB7\u53CE\u5F8C\u306B\u7279\u5225\u640D\u5931\u3068\u3057\u3066\u8868\u9762\u5316\u3059\u308B\u3002" },
+    { id: "window", name: "\u4F1A\u8A08\u51E6\u7406\u306E\u4E0D\u9069\u5207\u3055", p: 0.12, sev: 0.8, desc: "\u58F2\u4E0A\u306E\u524D\u5012\u3057\u8A08\u4E0A\u306A\u3069\u3002\u4FEE\u6B63\u306B\u3088\u308A\u5229\u76CA\u304C\u5927\u5E45\u306B\u6E1B\u308B\u3002" },
+    { id: "keyman", name: "\u30AD\u30FC\u30DE\u30F3\u4F9D\u5B58", p: 0.22, sev: 0.6, desc: "\u4E3B\u8981\u4EBA\u6750\u304C\u8CB7\u53CE\u3092\u6A5F\u306B\u9000\u8077\u3059\u308B\u3068\u3001\u30B7\u30CA\u30B8\u30FC\u306E\u5927\u534A\u304C\u5931\u308F\u308C\u308B\u3002" },
+    { id: "culture", name: "\u4F01\u696D\u6587\u5316\u306E\u4E0D\u4E00\u81F4", p: 0.24, sev: 0.5, desc: "\u7D71\u5408\u304C\u9032\u307E\u305A\u3001\u4E21\u793E\u306E\u793E\u54E1\u306E\u58EB\u6C17\u304C\u4E0B\u304C\u308B\u3002" },
+    { id: "lawsuit", name: "\u4FC2\u5C5E\u4E2D\u306E\u8A34\u8A1F", p: 0.11, sev: 0.7, desc: "\u6557\u8A34\u3059\u308C\u3070\u548C\u89E3\u91D1\u306E\u652F\u6255\u3044\u304C\u767A\u751F\u3059\u308B\u3002" },
+    { id: "customer", name: "\u9867\u5BA2\u306E\u6975\u7AEF\u306A\u96C6\u4E2D", p: 0.15, sev: 0.6, desc: "\u4E3B\u8981\u53D6\u5F15\u5148\u3092\u5931\u3046\u3068\u58F2\u4E0A\u304C\u4E00\u6C17\u306B\u6D88\u3048\u308B\u3002" },
+    { id: "system", name: "\u57FA\u5E79\u30B7\u30B9\u30C6\u30E0\u306E\u8001\u673D\u5316", p: 0.14, sev: 0.4, desc: "\u7D71\u5408\u306B\u306F\u60F3\u5B9A\u5916\u306E\u30B7\u30B9\u30C6\u30E0\u6295\u8CC7\u304C\u5FC5\u8981\u306B\u306A\u308B\u3002" }
+  ];
+  function generateTargets(g, rng, n = 3) {
+    const out = [];
+    const used = new Set(g.acquisitions.map((a) => a.name));
+    for (let i = 0; i < n; i++) {
+      const tpl = rng.pick(TARGET_TEMPLATES);
+      const name2 = rng.pick(tpl.names.filter((x) => !used.has(x)) || tpl.names);
+      if (!name2 || used.has(name2)) continue;
+      used.add(name2);
+      const scale = rng.range(0.35, 2.4);
+      const rev = Math.round((9e3 + rng.range(0, 34e3)) * scale / 100) * 100;
+      const opMargin = rng.range(0.015, 0.14);
+      const op = Math.round(rev * opMargin);
+      const np = Math.round(op * rng.range(0.5, 0.72));
+      const equity = Math.round(rev * rng.range(0.22, 0.75));
+      const employees = Math.round(rev / rng.range(38, 95));
+      const quality = clamp01(0.35 + opMargin * 3.2 + rng.normal(0, 0.16));
+      const risks = [];
+      for (const r of MA_RISKS) {
+        let pr = r.p * (1.45 - quality * 0.9);
+        if (rng.chance(pr)) risks.push({ ...r, found: false, mag: rng.range(0.5, 1.4) });
+      }
+      const multiple = rng.range(6.5, 15) * (0.7 + quality * 0.7);
+      const askPrice = Math.round((equity * rng.range(0.9, 1.5) + op * multiple) / 100) * 100;
+      out.push({
+        id: uid("M"),
+        name: name2,
+        kind: tpl.kind,
+        label: tpl.label,
+        icon: tpl.icon,
+        synergy: tpl.synergy,
+        effect: { ...tpl.effect },
+        rev,
+        op,
+        np,
+        equity,
+        employees,
+        askPrice,
+        quality,
+        risks,
+        ddLevel: 0,
+        ddSkill: 0,
+        listedWeek: g.week,
+        expires: g.week + rng.int(8, 26),
+        note: rng.pick([
+          "\u5275\u696D\u5BB6\u304C\u5F8C\u7D99\u8005\u4E0D\u5728\u3092\u7406\u7531\u306B\u58F2\u5374\u3092\u691C\u8A0E\u3057\u3066\u3044\u308B\u3002",
+          "\u30D5\u30A1\u30F3\u30C9\u304C\u4FDD\u6709\u3057\u3066\u304A\u308A\u3001\u51FA\u53E3\u3092\u63A2\u3057\u3066\u3044\u308B\u3002",
+          "\u89AA\u4F1A\u793E\u304C\u672C\u696D\u56DE\u5E30\u306E\u305F\u3081\u58F2\u5374\u3092\u6C7A\u3081\u305F\u3002",
+          "\u696D\u7E3E\u306F\u5805\u8ABF\u3060\u304C\u3001\u5358\u72EC\u3067\u306E\u6210\u9577\u306B\u9650\u754C\u3092\u611F\u3058\u3066\u3044\u308B\u3002",
+          "\u540C\u696D\u4ED6\u793E\u3082\u95A2\u5FC3\u3092\u793A\u3057\u3066\u3044\u308B\u3068\u306E\u5642\u304C\u3042\u308B\u3002"
+        ])
+      });
+    }
+    return out;
+  }
+  function maDueDiligence(g, t, level, rng) {
+    const p = orgPower(g);
+    const cost = Math.round(t.askPrice * (level === 1 ? 6e-3 : 0.018));
+    const base = level === 1 ? 0.45 : 0.85;
+    const skill = clamp01(base + (p.corp.quality - 55) / 240 + (p.fin.quality - 55) / 380);
+    let found = 0;
+    for (const r of t.risks) {
+      if (r.found) continue;
+      if (rng.chance(skill)) {
+        r.found = true;
+        found++;
+      }
+    }
+    t.ddLevel = Math.max(t.ddLevel, level);
+    t.ddSkill = skill;
+    g.cash -= cost;
+    g.finance.quarterAcc.cogsOther += cost;
+    return { cost, found };
+  }
+  function acquire(g, t, price, rng, news) {
+    const p = orgPower(g);
+    const goodwill = Math.max(0, price - t.equity);
+    g.cash -= price;
+    g.goodwill += goodwill;
+    const integSpeed = clamp(0.16 + p.corp.quality / 420 + p.hr.quality / 700, 0.12, 0.42);
+    const a = {
+      id: t.id,
+      name: t.name,
+      kind: t.kind,
+      label: t.label,
+      icon: t.icon,
+      price,
+      goodwill,
+      goodwillInit: goodwill,
+      equity: t.equity,
+      rev: t.rev,
+      op: t.op,
+      np: t.np,
+      employees: t.employees,
+      effect: { ...t.effect },
+      synergy: t.synergy,
+      risks: t.risks.map((r) => ({ ...r })),
+      integration: 0.12,
+      integSpeed,
+      acquiredWeek: g.week,
+      failed: false,
+      troubles: [],
+      health: 1
+    };
+    g.acquisitions.push(a);
+    const i = g.maTargets.indexOf(t);
+    if (i >= 0) g.maTargets.splice(i, 1);
+    g.company.brand = clamp(g.company.brand + (t.rev > 2e4 ? 3 : 1.4) + (t.effect.brand || 0), 0, 100);
+    news.push({
+      icon: "\u{1F91D}",
+      type: "ma",
+      text: `${t.label}\u300C${t.name}\u300D\u3092${Math.round(price / 100).toLocaleString()}\u5104\u5186\u3067\u8CB7\u53CE\u3057\u305F\u3002\u306E\u308C\u3093${Math.round(goodwill / 100).toLocaleString()}\u5104\u5186\u3092\u8A08\u4E0A\u3002`
+    });
+    if (t.effect.lots) {
+      const pool = g.cells.filter((c) => c.owner === "other" && c.d && !c.onSale).slice(0, 200);
+      const n = Math.min(pool.length, 1 + Math.floor(t.rev / 16e3));
+      const picked = rng.shuffle(pool).slice(0, n);
+      for (const c of picked) {
+        c.owner = "player";
+        c.bookValue = Math.round((c.baseValue || 1e3) * 0.9);
+        c.vacant = !c.building;
+        if (c.building) c.building.owner = "player";
+      }
+      if (n) news.push({ icon: "\u25C8", type: "ma", text: `\u8CB7\u53CE\u306B\u3088\u308A${n}\u533A\u753B\u306E\u4FDD\u6709\u4E0D\u52D5\u7523\u3092\u5F15\u304D\u7D99\u3044\u3060\u3002` });
+    }
+    return a;
+  }
+  function stepMA(g, rng, news) {
+    const p = orgPower(g);
+    for (const a of g.acquisitions) {
+      if (a.failed) continue;
+      const before = a.integration;
+      a.integration = clamp01(a.integration + a.integSpeed / WEEKS_PER_QUARTER);
+      if (before < 1 && a.integration >= 1) {
+        news.push({ icon: "\u{1F517}", type: "ma", text: `${a.name}\u306E\u7D71\u5408\uFF08PMI\uFF09\u304C\u5B8C\u4E86\u3002\u30B7\u30CA\u30B8\u30FC\u304C\u5B8C\u5168\u306B\u767A\u73FE\u3057\u305F\u3002` });
+      }
+      const dem = g.market.sentiment;
+      const perf = clamp(0.62 + a.integration * 0.5 + (dem - 0.5) * 0.3, 0.3, 1.5) * a.health;
+      const wRev = a.rev / WEEKS_PER_YEAR * perf;
+      const wOp = a.op / WEEKS_PER_YEAR * perf * (a.integration > 0.7 ? 1.12 : 0.85);
+      g.finance.quarterAcc.revOther += wRev;
+      g.finance.quarterAcc.cogsOther += Math.max(0, wRev - wOp);
+      g.cash += wOp;
+      if (a.goodwill > 0) {
+        const am = a.goodwillInit / (20 * WEEKS_PER_YEAR);
+        a.goodwill = Math.max(0, a.goodwill - am);
+        g.goodwill = Math.max(0, g.goodwill - am);
+        g.finance.quarterAcc.cogsOther += am;
+      }
+      for (const r of a.risks) {
+        if (r.fired) continue;
+        const window2 = g.week - a.acquiredWeek;
+        if (window2 > RISK_WINDOW) continue;
+        const base = (0.2 + (r.sev ?? 0.6) * 0.2) * (r.found ? 0.6 : 1);
+        if (!rng.chance(1 - Math.pow(1 - base, 1 / RISK_WINDOW))) continue;
+        r.fired = true;
+        const mitigated = r.found ? 0.45 : 1;
+        switch (r.id) {
+          case "debt": {
+            const loss = Math.round(a.price * 0.16 * r.mag * mitigated);
+            g.finance.quarterAcc.extraordinary -= loss;
+            g.cash -= loss;
+            a.troubles.push({ id: r.id, loss });
+            news.push({ icon: "\u{1F4A5}", type: "ma", text: `${a.name}\u3067\u7C3F\u5916\u50B5\u52D9${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u304C\u767A\u899A\u3002\u7279\u5225\u640D\u5931\u3092\u8A08\u4E0A\u3057\u305F\u3002` });
+            break;
+          }
+          case "window": {
+            a.rev = Math.round(a.rev * (1 - 0.12 * mitigated));
+            a.op = Math.round(a.op * (1 - 0.3 * mitigated));
+            news.push({ icon: "\u{1F4D5}", type: "ma", text: `${a.name}\u306E\u904E\u5E74\u5EA6\u6C7A\u7B97\u306B\u4E0D\u9069\u5207\u306A\u4F1A\u8A08\u51E6\u7406\u304C\u5224\u660E\u3002\u53CE\u76CA\u529B\u306E\u524D\u63D0\u304C\u5D29\u308C\u305F\u3002` });
+            break;
+          }
+          case "keyman": {
+            a.health *= 1 - 0.22 * mitigated;
+            for (const k in a.effect) if (typeof a.effect[k] === "number") a.effect[k] *= 1 - 0.4 * mitigated;
+            news.push({ icon: "\u{1F6AA}", type: "ma", text: `${a.name}\u306E\u4E2D\u6838\u4EBA\u6750\u304C\u76F8\u6B21\u3044\u3067\u9000\u8077\u3002\u898B\u8FBC\u3093\u3067\u3044\u305F\u30B7\u30CA\u30B8\u30FC\u304C\u7E2E\u5C0F\u3057\u305F\u3002` });
+            break;
+          }
+          case "culture": {
+            a.integSpeed *= 0.6;
+            for (const s of g.staff) if (rng.chance(0.25)) s.morale = clamp01(s.morale - 0.06);
+            news.push({ icon: "\u{1F9CA}", type: "ma", text: `${a.name}\u3068\u306E\u7D71\u5408\u3067\u8ECB\u8F62\u304C\u751F\u3058\u3066\u3044\u308B\u3002\u4E21\u793E\u306E\u58EB\u6C17\u304C\u4E0B\u304C\u3063\u305F\u3002` });
+            break;
+          }
+          case "lawsuit": {
+            const loss = Math.round(a.price * 0.07 * r.mag * mitigated);
+            g.finance.quarterAcc.extraordinary -= loss;
+            g.cash -= loss;
+            news.push({ icon: "\u2696", type: "ma", text: `${a.name}\u304C\u62B1\u3048\u3066\u3044\u305F\u8A34\u8A1F\u3067\u548C\u89E3\u3002${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u652F\u6255\u3063\u305F\u3002` });
+            break;
+          }
+          case "customer": {
+            a.rev = Math.round(a.rev * (1 - 0.25 * mitigated));
+            a.op = Math.round(a.op * (1 - 0.35 * mitigated));
+            news.push({ icon: "\u{1F4C9}", type: "ma", text: `${a.name}\u306E\u6700\u5927\u9867\u5BA2\u304C\u53D6\u5F15\u3092\u505C\u6B62\u3002\u58F2\u4E0A\u304C\u5927\u304D\u304F\u843D\u3061\u8FBC\u3093\u3060\u3002` });
+            break;
+          }
+          case "system": {
+            const cost = Math.round(a.price * 0.05 * r.mag * mitigated);
+            g.cash -= cost;
+            g.finance.quarterAcc.cogsOther += cost;
+            news.push({ icon: "\u{1F4BB}", type: "ma", text: `${a.name}\u306E\u57FA\u5E79\u30B7\u30B9\u30C6\u30E0\u5237\u65B0\u306B${Math.round(cost / 100).toLocaleString()}\u5104\u5186\u306E\u8FFD\u52A0\u6295\u8CC7\u304C\u5FC5\u8981\u306B\u306A\u3063\u305F\u3002` });
+            break;
+          }
+        }
+      }
+      if (a.goodwill > 0 && g.week - a.acquiredWeek >= 52 && rng.chance(0.09 / WEEKS_PER_QUARTER)) {
+        const perfNow = a.health * (0.6 + a.integration * 0.5);
+        if (perfNow < 0.78) {
+          const loss = Math.round(a.goodwill * clamp(1 - perfNow, 0.3, 1));
+          a.goodwill -= loss;
+          g.goodwill = Math.max(0, g.goodwill - loss);
+          g.finance.quarterAcc.impairment += loss;
+          a.impaired = (a.impaired || 0) + loss;
+          if (a.goodwill <= 0 && perfNow < 0.55) a.failed = true;
+          news.push({
+            icon: "\u{1F525}",
+            type: "ma",
+            text: `${a.name}\u306E\u696D\u7E3E\u304C\u8A08\u753B\u3092\u5927\u304D\u304F\u4E0B\u56DE\u308A\u3001\u306E\u308C\u3093${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u6E1B\u640D\u51E6\u7406\u3057\u305F\u3002${a.failed ? "\u3053\u306E\u8CB7\u53CE\u306F\u5931\u6557\u306B\u7D42\u308F\u3063\u305F\u3002" : ""}`
+          });
+          g.company.brand = clamp(g.company.brand - 1.5, 0, 100);
+        }
+      }
+    }
+    for (const s of g.subsidiaries) {
+      const dem = g.market.sentiment;
+      if (s.type === "overseas") {
+        const swing = rng.normal(0.4, 1.4) * (0.5 + dem);
+        const pl = s.bookValue * 0.035 * swing / WEEKS_PER_QUARTER;
+        g.finance.quarterAcc.revOther += Math.max(0, pl);
+        if (pl < 0) g.finance.quarterAcc.extraordinary += pl;
+        g.cash += pl;
+        s.lastPL = pl;
+        s.accPL = (s.accPL || 0) + pl;
+        if (Math.abs(s.accPL) > s.bookValue * 0.06) {
+          news.push({
+            icon: "\u{1F30F}",
+            type: "ma",
+            text: `\u6D77\u5916\u4E8B\u696D\u5B50\u4F1A\u793E\u304C${Math.round(Math.abs(s.accPL) / 100).toLocaleString()}\u5104\u5186\u306E${s.accPL < 0 ? "\u640D\u5931" : "\u5229\u76CA"}\u3092\u8A08\u4E0A\u3057\u305F${s.accPL < 0 ? "\uFF08\u73FE\u5730\u5E02\u6CC1\u3068\u70BA\u66FF\u306E\u60AA\u5316\uFF09" : ""}\u3002`
+          });
+          s.health = clamp01(s.health + (s.accPL < 0 ? -0.06 : 0.03));
+          s.accPL = 0;
+        }
+      } else {
+        const load = {
+          construction: g.projects.length / 3,
+          sales: g.inventory.length / 2,
+          pm: g.assets.length / 3,
+          reit: g.assets.length / 4
+        }[s.type] ?? 1;
+        const pl = s.upkeep / WEEKS_PER_YEAR * (load - 1) * 1.6;
+        s.lastPL = pl * WEEKS_PER_QUARTER;
+        g.finance.quarterAcc.revOther += Math.max(0, pl);
+        if (pl < 0) g.finance.quarterAcc.cogsOther += -pl;
+        g.cash += pl;
+        s.health = clamp01(s.health + (load > 1 ? 0.02 : -0.03) / WEEKS_PER_QUARTER);
+        if (s.health < 0.45 && rng.chance(0.2 / WEEKS_PER_QUARTER)) {
+          news.push({ icon: "\u26A0", type: "ma", text: `${s.name}\u306F\u696D\u52D9\u91CF\u304C\u4E0D\u8DB3\u3057\u3066\u304A\u308A\u3001\u56FA\u5B9A\u8CBB\u304C\u91CD\u8377\u306B\u306A\u3063\u3066\u3044\u308B\u3002` });
+        }
+      }
+    }
+    g.maTargets = g.maTargets.filter((t) => t.expires > g.week);
+    if (g.maTargets.length < 3 && rng.chance(0.65 / WEEKS_PER_QUARTER)) {
+      g.maTargets.push(...generateTargets(g, rng, 1));
+    }
+  }
+  function foundSubsidiary(g, typeId, rng, news) {
+    const def = SUB_TYPES.find((s) => s.id === typeId);
+    if (!def) return null;
+    const sub = {
+      id: uid("S"),
+      type: def.id,
+      name: `${g.company.name}${def.name.replace("\u5B50\u4F1A\u793E", "")}`,
+      icon: def.icon,
+      bookValue: def.cost,
+      upkeep: def.upkeep,
+      effect: { ...def.effect },
+      health: 1,
+      foundedWeek: g.week,
+      staffIds: []
+    };
+    g.cash -= def.cost;
+    const prefer = { construction: "cons", sales: "sales", pm: "lease", reit: "fin", overseas: "corp" }[def.id];
+    const pool = g.staff.filter((s) => !s.subsidiary && s.rank < 6).sort((a, b) => a.dept === prefer ? -1 : 1);
+    for (let i = 0; i < Math.min(def.staffNeed, pool.length); i++) {
+      pool[i].subsidiary = sub.id;
+      sub.staffIds.push(pool[i].id);
+    }
+    g.subsidiaries.push(sub);
+    news.push({ icon: def.icon, type: "ma", text: `${sub.name}\u3092\u8A2D\u7ACB\u3057\u305F\uFF08\u51FA\u8CC7${Math.round(def.cost / 100).toLocaleString()}\u5104\u5186\u30FB\u51FA\u5411${sub.staffIds.length}\u540D\uFF09\u3002` });
+    return sub;
+  }
+  function liquidate(g, sub, news) {
+    const recover = Math.round(sub.bookValue * 0.45 * sub.health);
+    g.cash += recover;
+    g.finance.quarterAcc.extraordinary -= sub.bookValue - recover;
+    for (const s of g.staff) if (s.subsidiary === sub.id) delete s.subsidiary;
+    const i = g.subsidiaries.indexOf(sub);
+    if (i >= 0) g.subsidiaries.splice(i, 1);
+    news.push({ icon: "\u{1F5D1}", type: "ma", text: `${sub.name}\u3092\u6E05\u7B97\u3057\u305F\u3002${Math.round(recover / 100).toLocaleString()}\u5104\u5186\u3092\u56DE\u53CE\u3057\u3001\u5DEE\u984D\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` });
   }
 
   // src/data/employers.js
@@ -11911,6 +12135,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     generateListings(g, rng, news);
     generatePublic(g, rng, news);
     stepJV(g, rng, news);
+    stepStanding(g, rng, news);
     const before = g.assets.length + g.inventory.length;
     stepProjects(g, rng, news);
     if (g.assets.length + g.inventory.length > before) rep.completed.push(true);
@@ -12868,6 +13093,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   var panelLand_exports = {};
   __export(panelLand_exports, {
     openDetail: () => openDetail,
+    openStandingDetail: () => openStandingDetail,
     render: () => render3,
     title: () => title3
   });
@@ -12926,6 +13152,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     <div class="hint">\u7528\u5730\u958B\u767A\u90E8\u306E\u4EBA\u54E1\u3068\u80FD\u529B\u304C\u9AD8\u3044\u307B\u3069\u3001\u591A\u304F\u306E\u58F2\u5374\u60C5\u5831\u304C\u6301\u3061\u8FBC\u307E\u308C\u308B\u3002\u4EF2\u4ECB\u5B50\u4F1A\u793E\u306E\u8CB7\u53CE\u3082\u60C5\u5831\u91CF\u3092\u62BC\u3057\u4E0A\u3052\u308B\u3002</div>
   `)}
   ${section("\u58F2\u5374\u60C5\u5831", `${g.listings.length}\u4EF6`, cards)}
+  ${section("\u53CE\u76CA\u7269\u4EF6\uFF08\u4E00\u68DF\uFF09", `${(g.standing || []).length}\u4EF6`, standingCards(g))}
   ${unlocked(g, "public") ? "" : section(
       "\u516C\u5171\u6848\u4EF6",
       "\u672A\u89E3\u7981",
@@ -12933,6 +13160,36 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     )}
   ${section("\u4FDD\u6709\u4E2D\u306E\u672A\u7740\u5DE5\u7528\u5730", `${owned.length}\u4EF6`, ownedCards)}
   `;
+  }
+  function standingCards(g) {
+    const rows = standingRows(g);
+    if (!rows.length) {
+      return empty("\u3044\u307E\u58F2\u308A\u306B\u51FA\u3066\u3044\u308B\u4E00\u68DF\u7269\u4EF6\u306F\u306A\u3044\u3002<br>\u7528\u5730\u958B\u767A\u90E8\u306E\u60C5\u5831\u529B\u304C\u9AD8\u3044\u307B\u3069\u3001\u3053\u306E\u624B\u306E\u8A71\u306F\u65E9\u304F\u56DE\u3063\u3066\u304F\u308B\u3002");
+    }
+    return rows.map((r) => {
+      const o = r.offer, s = o.spec, c = r.cell;
+      if (!c) return "";
+      return `<div class="card click" data-act="std.detail" data-id="${o.id}">
+      <div class="card-t">
+        <span class="card-n">${cityOf(c.d) === "minato" ? "" : CITIES[cityOf(c.d)].short + "\u30FB"}${c.building && c.building.name || r.district.name}</span>
+        ${chip(USES[s.use].name, "cyan")}
+        ${s.value >= 2e4 ? chip("\u5927\u578B", "gold") : ""}
+        ${isHome(g, c.d) ? chip("\u5730\u76E4", "gold") : ""}
+      </div>
+      <div class="card-s">
+        ${r.district.name}\u3000${GRADES[s.grade].name}\uFF0F\u5730\u4E0A${s.floors}\u968E\uFF0F\u8CB8\u5BA4 ${num(s.nra)}\u576A\uFF0F\u7BC9${s.age}\u5E74<br>
+        \u58F2\u4E3B\uFF1A${o.seller}
+      </div>
+      <div class="kv"><span class="k">\u58F2\u51FA\u4FA1\u683C</span><span class="v">${money(o.ask)}</span></div>
+      <div class="kv"><span class="k">\u5F53\u793E\u67FB\u5B9A</span><span class="v">${money(s.value)}</span></div>
+      <div class="kv"><span class="k">NOI\u5229\u56DE\u308A\uFF08\u58F2\u51FA\u4FA1\u683C\u306B\u5BFE\u3057\u3066\uFF09</span><span class="v">${(r.yieldOnAsk * 100).toFixed(2)}%</span></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        ${chip(`\u7DE0\u5207\u307E\u3067 ${r.weeksLeft}\u9031`, r.weeksLeft <= 2 ? "red" : "grey")}
+        ${chip(`\u7A3C\u50CD ${Math.round(s.occupancy * 100)}%`, s.occupancy >= 0.9 ? "green" : "amber")}
+        ${o.bids ? chip(`\u4EA4\u6E09 ${o.bids}/${MAX_BIDS}\u56DE`, o.bids >= MAX_BIDS ? "red" : "amber") : ""}
+      </div>
+    </div>`;
+    }).join("");
   }
   function openDetail(g, listing, ctx2) {
     const c = g.cells.find((x) => x.id === listing.cellId);
@@ -13150,6 +13407,121 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         toast("\u5165\u672D\u3092\u53D6\u308A\u4E0B\u3052\u305F");
         ctx2.refresh();
         closeModal();
+      };
+    }
+  }
+  function openStandingDetail(g, offer, ctx2, after) {
+    const c = g.cells.find((x) => x.id === offer.cellId);
+    if (!c) return;
+    const d = DISTRICTS[c.d];
+    const s = offer.spec;
+    let last = null;
+    openModal(`${c.building && c.building.name || d.name}\u3000${num(s.nra)}\u576A`, buildHTML(), [
+      { label: "\u898B\u9001\u308B", cls: "ghost", onClick: () => {
+        Pass();
+      } },
+      { label: "\u9589\u3058\u308B", cls: "ghost" }
+    ]);
+    bind();
+    function Pass() {
+      const { passStanding: passStanding2 } = ctx2.trading;
+      passStanding2(g, offer, ctx2.news || null);
+      ctx2.refresh && ctx2.refresh();
+    }
+    function buildHTML() {
+      const room = Math.max(0, debtCapacity(g) - g.debt);
+      const power = g.cash + room;
+      const base = Math.min(offer.ask, Math.round(s.value * 1.02));
+      const devYoc = 0.062;
+      return `
+    <div class="grid2">
+      ${mini("NOI\uFF08\u5E74\u984D\uFF09", money(s.noi), `\u7A3C\u50CD ${Math.round(s.occupancy * 100)}%`)}
+      ${mini("\u30AD\u30E3\u30C3\u30D7\u30EC\u30FC\u30C8", (s.cap * 100).toFixed(2) + "%", "\u5F53\u793E\u306E\u67FB\u5B9A\u5229\u56DE\u308A")}
+      ${mini("\u5F53\u793E\u67FB\u5B9A", money(s.value), "NOI \xF7 \u30AD\u30E3\u30C3\u30D7\u30EC\u30FC\u30C8")}
+      ${mini("\u58F2\u51FA\u4FA1\u683C", money(offer.ask), `\u67FB\u5B9A\u6BD4 ${((offer.ask / Math.max(1, s.value) - 1) * 100).toFixed(1)}%`)}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u7269\u4EF6\u306E\u6982\u8981</span></div>
+      ${kv("\u6240\u5728", `${CITIES[cityOf(c.d)].name}\u3000${d.name}`)}
+      ${kv("\u7528\u9014", USES[s.use].name)}
+      ${kv("\u30B0\u30EC\u30FC\u30C9", GRADES[s.grade].name)}
+      ${kv("\u898F\u6A21", `\u5730\u4E0A${s.floors}\u968E\uFF0F\u5EF6\u5E8A ${num(s.gfa)}\u576A\uFF0F\u8CB8\u5BA4 ${num(s.nra)}\u576A`)}
+      ${kv("\u7BC9\u5E74\u6570", `${s.age}\u5E74`)}
+      ${kv("\u73FE\u884C\u8CC3\u6599", `\u6708\u576A ${num(s.rent)}\u5186`)}
+      ${kv("\u5730\u533A\u306E\u76F8\u5834", `\u6708\u576A ${num(s.marketRent)}\u5186`)}
+      ${kv("\u7A3C\u50CD\u7387", `${Math.round(s.occupancy * 100)}%`)}
+      <div class="hint">\u58F2\u4E3B\uFF1A${offer.seller}<br>${offer.note}</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u8CB7\u3046\u304B\u3001\u5EFA\u3066\u308B\u304B</span></div>
+      <div class="hint">
+        \u3053\u306E\u7269\u4EF6\u3092\u58F2\u51FA\u4FA1\u683C\u3067\u8CB7\u3046\u3068\u5229\u56DE\u308A\u306F <b>${(s.noi / Math.max(1, offer.ask) * 100).toFixed(2)}%</b>\u3002
+        \u540C\u3058\u91D1\u984D\u3092\u958B\u767A\u306B\u56DE\u3057\u305F\u5834\u5408\u306E\u958B\u767A\u5229\u56DE\u308A\u306F\u304A\u304A\u3080\u306D ${(devYoc * 100).toFixed(1)}% \u3067\u3042\u308B\u3002<br>
+        \u4E00\u68DF\u8CB7\u3044\u304C\u6709\u5229\u306A\u306E\u306F\u5229\u56DE\u308A\u3067\u306F\u306A\u304F\u3001<b>\u5DE5\u671F3\u301C4\u5E74\u3076\u3093\u306E\u6642\u9593\u3092\u8CB7\u3048\u308B\u3053\u3068</b>\u3068\u3001
+        <b>\u4E00\u5EA6\u306B\u898F\u6A21\u3092\u5897\u3084\u305B\u308B\u3053\u3068</b>\u3067\u3042\u308B\u3002\u7AE3\u5DE5\u30EA\u30B9\u30AF\u3082\u3001\u58F2\u308C\u6B8B\u308A\u306E\u30EA\u30B9\u30AF\u3082\u7121\u3044\u3002
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u4FA1\u683C\u306E\u63D0\u793A</span><span class="note">\u6295\u8CC7\u4F59\u529B ${money(power)}</span></div>
+      ${offer.bids >= MAX_BIDS ? '<div class="hint" style="color:var(--red)">\u3053\u308C\u4EE5\u4E0A\u306E\u4EA4\u6E09\u306B\u306F\u5FDC\u3058\u3066\u3082\u3089\u3048\u306A\u3044\u3002</div>' : `<div class="field">
+        <label>\u63D0\u793A\u984D\uFF08\u5104\u5186\uFF09\u3000\u6B8B\u308A ${MAX_BIDS - offer.bids} \u56DE</label>
+        <input type="number" id="inpStd" value="${Math.round(base / 100)}" step="1" min="0">
+      </div>
+      <input type="range" id="rngStd" min="${Math.round(s.value * 0.6 / 100)}" max="${Math.round(offer.ask * 1.1 / 100)}" value="${Math.round(base / 100)}" style="width:100%;accent-color:var(--gold)">
+      <div id="stdInfo" class="hint"></div>
+      <div class="btnrow">
+        <button class="btn primary" data-std="1">\u3053\u306E\u91D1\u984D\u3067\u8CB7\u3044\u4ED8\u3051\u3092\u5165\u308C\u308B</button>
+      </div>`}
+      ${last ? `<div class="card ${last.ok ? "sel" : "warn"}" style="margin-top:8px"><div class="card-s">${last.message || ""}</div></div>` : ""}
+      <div class="hint">\u58F2\u4E3B\u306B\u306F\u624B\u653E\u3057\u3066\u3088\u3044\u4E0B\u9650\u304C\u3042\u308B\u3002\u5B89\u304F\u5165\u308C\u3059\u304E\u308B\u3068\u5E2D\u3092\u7ACB\u305F\u308C\u308B\u3002
+        \u4EA4\u6E09\u306F${MAX_BIDS}\u56DE\u307E\u3067\u3002\u53D6\u5F97\u6642\u306B\u306F\u4EF2\u4ECB\u624B\u6570\u6599\u3068\u7A0E\u3067\u4FA1\u683C\u306E5%\u304C\u304B\u304B\u308B\u3002</div>
+    </div>`;
+    }
+    function refresh2() {
+      const el = document.getElementById("modalBody");
+      if (!el) return;
+      el.innerHTML = buildHTML();
+      bind();
+    }
+    function bind() {
+      const inp = document.getElementById("inpStd");
+      const rng = document.getElementById("rngStd");
+      const info = document.getElementById("stdInfo");
+      const sync = (v) => {
+        if (inp) inp.value = v;
+        if (rng) rng.value = v;
+        if (!info) return;
+        const price = v * 100;
+        const fee = Math.round(price * 0.05);
+        info.innerHTML = `\u53D6\u5F97\u539F\u4FA1 ${money(price + fee)}\uFF08\u3046\u3061\u624B\u6570\u6599\u30FB\u7A0E ${money(fee)}\uFF09\uFF0F\u3053\u306E\u4FA1\u683C\u3067\u306E\u5229\u56DE\u308A <b>${(s.noi / Math.max(1, price) * 100).toFixed(2)}%</b>\uFF0F\u67FB\u5B9A\u6BD4 ${((price / Math.max(1, s.value) - 1) * 100).toFixed(1)}%` + (price + fee > g.cash ? '<br><span style="color:var(--red)">\u624B\u5143\u8CC7\u91D1\u304C\u8DB3\u308A\u306A\u3044\u3002\u5148\u306B\u501F\u5165\u3092\u8D77\u3053\u3059\u3053\u3068\u3002</span>' : "");
+      };
+      if (inp) inp.oninput = () => sync(+inp.value || 0);
+      if (rng) rng.oninput = () => sync(+rng.value || 0);
+      sync(inp ? +inp.value || 0 : 0);
+      const go = document.querySelector("[data-std]");
+      if (go) go.onclick = () => {
+        const price = Math.round((+inp.value || 0) * 100);
+        if (price <= 0) return toast("\u91D1\u984D\u3092\u5165\u308C\u308B\u3053\u3068", "bad");
+        const r = ctx2.trading.bidStanding(g, offer, price, ctx2.rng, ctx2.news || null);
+        last = r;
+        if (r.ok) {
+          closeModal();
+          toast(`${c.building && c.building.name || d.name}\u3092\u53D6\u5F97\u3057\u305F`, "good");
+          ctx2.refresh && ctx2.refresh();
+          after && after(r);
+          return;
+        }
+        if (r.close || offer.bids >= MAX_BIDS) {
+          toast(r.message, "bad");
+          ctx2.trading.passStanding(g, offer, null);
+          closeModal();
+          ctx2.refresh && ctx2.refresh();
+          return;
+        }
+        refresh2();
       };
     }
   }
@@ -15755,7 +16127,12 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     discTab: "people",
     startProject: startProject2,
     acquireNow,
-    focusCell
+    focusCell,
+    // 一棟買いの交渉はダイアログの中で完結するので、必要な口をここから渡す
+    trading: trading_exports,
+    get rng() {
+      return new RNG((G ? G.rngState : 1) ^ 6221079);
+    }
   };
   function focusCell(c) {
     if (!c || !R) return;
@@ -16200,6 +16577,14 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         if (l) {
           focusCell(cellById(G, l.cellId));
           openDetail(G, l, ctx);
+        }
+        break;
+      }
+      case "std.detail": {
+        const o = (G.standing || []).find((x) => x.id === id);
+        if (o) {
+          focusCell(cellById(G, o.cellId));
+          openStandingDetail(G, o, ctx);
         }
         break;
       }

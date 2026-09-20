@@ -11,6 +11,7 @@ import { devPlan, landAppraisal, bestUseFit } from '../sim/valuation.js';
 import { orgPower } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
 import { RNG } from '../core/rng.js';
+import { standingRows, MAX_BIDS } from '../sim/trading.js';
 
 export const title = '用地取得';
 
@@ -72,10 +73,47 @@ export function render(g, ctx) {
     <div class="hint">用地開発部の人員と能力が高いほど、多くの売却情報が持ち込まれる。仲介子会社の買収も情報量を押し上げる。</div>
   `)}
   ${section('売却情報', `${g.listings.length}件`, cards)}
+  ${section('収益物件（一棟）', `${(g.standing || []).length}件`, standingCards(g))}
   ${unlocked(g, 'public') ? '' : section('公共案件', '未解禁',
     lockCard(UNLOCK_INFO.public, needFor(g, 'public'), ttmRevenue(g)))}
   ${section('保有中の未着工用地', `${owned.length}件`, ownedCards)}
   `;
+}
+
+/**
+ * 稼働中のビルの売り物件。
+ * 更地の売却情報と見分けがつくように、見せる数字を変える。
+ * 土地は坪単価、ビルは**利回り**で判断するものである。
+ */
+function standingCards(g) {
+  const rows = standingRows(g);
+  if (!rows.length) {
+    return empty('いま売りに出ている一棟物件はない。<br>用地開発部の情報力が高いほど、この手の話は早く回ってくる。');
+  }
+  return rows.map(r => {
+    const o = r.offer, s = o.spec, c = r.cell;
+    if (!c) return '';
+    return `<div class="card click" data-act="std.detail" data-id="${o.id}">
+      <div class="card-t">
+        <span class="card-n">${cityOf(c.d) === 'minato' ? '' : CITIES[cityOf(c.d)].short + '・'}${(c.building && c.building.name) || r.district.name}</span>
+        ${chip(USES[s.use].name, 'cyan')}
+        ${s.value >= 20000 ? chip('大型', 'gold') : ''}
+        ${isHome(g, c.d) ? chip('地盤', 'gold') : ''}
+      </div>
+      <div class="card-s">
+        ${r.district.name}　${GRADES[s.grade].name}／地上${s.floors}階／貸室 ${num(s.nra)}坪／築${s.age}年<br>
+        売主：${o.seller}
+      </div>
+      <div class="kv"><span class="k">売出価格</span><span class="v">${money(o.ask)}</span></div>
+      <div class="kv"><span class="k">当社査定</span><span class="v">${money(s.value)}</span></div>
+      <div class="kv"><span class="k">NOI利回り（売出価格に対して）</span><span class="v">${(r.yieldOnAsk * 100).toFixed(2)}%</span></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+        ${chip(`締切まで ${r.weeksLeft}週`, r.weeksLeft <= 2 ? 'red' : 'grey')}
+        ${chip(`稼働 ${Math.round(s.occupancy * 100)}%`, s.occupancy >= 0.9 ? 'green' : 'amber')}
+        ${o.bids ? chip(`交渉 ${o.bids}/${MAX_BIDS}回`, o.bids >= MAX_BIDS ? 'red' : 'amber') : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ------------------------------------------------------------
@@ -289,5 +327,140 @@ export function openDetail(g, listing, ctx) {
     };
     const cancel = body.querySelector('[data-cancel]');
     if (cancel) cancel.onclick = () => { listing.bid = null; toast('入札を取り下げた'); ctx.refresh(); closeModal(); };
+  }
+}
+
+// ------------------------------------------------------------
+//  収益物件（一棟）の詳細と価格交渉
+//
+//  用地の入札とは手触りを変えてある。
+//  こちらは**相対取引**で、提示したその場で返事が来る。
+//  同じ「入札して締切を待つ」にすると、二つある意味が無い。
+// ------------------------------------------------------------
+export function openStandingDetail(g, offer, ctx, after) {
+  const c = g.cells.find(x => x.id === offer.cellId);
+  if (!c) return;
+  const d = DISTRICTS[c.d];
+  const s = offer.spec;
+  let last = null;
+
+  openModal(`${(c.building && c.building.name) || d.name}　${num(s.nra)}坪`, buildHTML(), [
+    { label: '見送る', cls: 'ghost', onClick: () => { Pass(); } },
+    { label: '閉じる', cls: 'ghost' },
+  ]);
+  bind();
+
+  function Pass() {
+    const { passStanding } = ctx.trading;
+    passStanding(g, offer, ctx.news || null);
+    ctx.refresh && ctx.refresh();
+  }
+
+  function buildHTML() {
+    const room = Math.max(0, debtCapacity(g) - g.debt);
+    const power = g.cash + room;
+    const base = Math.min(offer.ask, Math.round(s.value * 1.02));
+    // 同じ金を開発に回した場合との比較。**これを出さないと判断できない。**
+    // 一棟買いは「安く買える」のではなく「時間を買う」ものである
+    const devYoc = 0.062;
+    return `
+    <div class="grid2">
+      ${mini('NOI（年額）', money(s.noi), `稼働 ${Math.round(s.occupancy * 100)}%`)}
+      ${mini('キャップレート', (s.cap * 100).toFixed(2) + '%', '当社の査定利回り')}
+      ${mini('当社査定', money(s.value), 'NOI ÷ キャップレート')}
+      ${mini('売出価格', money(offer.ask), `査定比 ${((offer.ask / Math.max(1, s.value) - 1) * 100).toFixed(1)}%`)}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>物件の概要</span></div>
+      ${kv('所在', `${CITIES[cityOf(c.d)].name}　${d.name}`)}
+      ${kv('用途', USES[s.use].name)}
+      ${kv('グレード', GRADES[s.grade].name)}
+      ${kv('規模', `地上${s.floors}階／延床 ${num(s.gfa)}坪／貸室 ${num(s.nra)}坪`)}
+      ${kv('築年数', `${s.age}年`)}
+      ${kv('現行賃料', `月坪 ${num(s.rent)}円`)}
+      ${kv('地区の相場', `月坪 ${num(s.marketRent)}円`)}
+      ${kv('稼働率', `${Math.round(s.occupancy * 100)}%`)}
+      <div class="hint">売主：${offer.seller}<br>${offer.note}</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>買うか、建てるか</span></div>
+      <div class="hint">
+        この物件を売出価格で買うと利回りは <b>${(s.noi / Math.max(1, offer.ask) * 100).toFixed(2)}%</b>。
+        同じ金額を開発に回した場合の開発利回りはおおむね ${(devYoc * 100).toFixed(1)}% である。<br>
+        一棟買いが有利なのは利回りではなく、<b>工期3〜4年ぶんの時間を買えること</b>と、
+        <b>一度に規模を増やせること</b>である。竣工リスクも、売れ残りのリスクも無い。
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>価格の提示</span><span class="note">投資余力 ${money(power)}</span></div>
+      ${offer.bids >= MAX_BIDS
+        ? '<div class="hint" style="color:var(--red)">これ以上の交渉には応じてもらえない。</div>'
+        : `<div class="field">
+        <label>提示額（億円）　残り ${MAX_BIDS - offer.bids} 回</label>
+        <input type="number" id="inpStd" value="${Math.round(base / 100)}" step="1" min="0">
+      </div>
+      <input type="range" id="rngStd" min="${Math.round(s.value * 0.6 / 100)}" max="${Math.round(offer.ask * 1.1 / 100)}" value="${Math.round(base / 100)}" style="width:100%;accent-color:var(--gold)">
+      <div id="stdInfo" class="hint"></div>
+      <div class="btnrow">
+        <button class="btn primary" data-std="1">この金額で買い付けを入れる</button>
+      </div>`}
+      ${last ? `<div class="card ${last.ok ? 'sel' : 'warn'}" style="margin-top:8px"><div class="card-s">${last.message || ''}</div></div>` : ''}
+      <div class="hint">売主には手放してよい下限がある。安く入れすぎると席を立たれる。
+        交渉は${MAX_BIDS}回まで。取得時には仲介手数料と税で価格の5%がかかる。</div>
+    </div>`;
+  }
+
+  function refresh() {
+    const el = document.getElementById('modalBody');
+    if (!el) return;
+    el.innerHTML = buildHTML();
+    bind();
+  }
+
+  function bind() {
+    const inp = document.getElementById('inpStd');
+    const rng = document.getElementById('rngStd');
+    const info = document.getElementById('stdInfo');
+    const sync = v => {
+      if (inp) inp.value = v;
+      if (rng) rng.value = v;
+      if (!info) return;
+      const price = v * 100;
+      const fee = Math.round(price * 0.05);
+      info.innerHTML = `取得原価 ${money(price + fee)}（うち手数料・税 ${money(fee)}）`
+        + `／この価格での利回り <b>${(s.noi / Math.max(1, price) * 100).toFixed(2)}%</b>`
+        + `／査定比 ${((price / Math.max(1, s.value) - 1) * 100).toFixed(1)}%`
+        + (price + fee > g.cash ? '<br><span style="color:var(--red)">手元資金が足りない。先に借入を起こすこと。</span>' : '');
+    };
+    if (inp) inp.oninput = () => sync(+inp.value || 0);
+    if (rng) rng.oninput = () => sync(+rng.value || 0);
+    sync(inp ? (+inp.value || 0) : 0);
+
+    const go = document.querySelector('[data-std]');
+    if (go) go.onclick = () => {
+      const price = Math.round((+inp.value || 0) * 100);
+      if (price <= 0) return toast('金額を入れること', 'bad');
+      const r = ctx.trading.bidStanding(g, offer, price, ctx.rng, ctx.news || null);
+      last = r;
+      if (r.ok) {
+        closeModal();
+        toast(`${(c.building && c.building.name) || d.name}を取得した`, 'good');
+        ctx.refresh && ctx.refresh();
+        after && after(r);
+        return;
+      }
+      if (r.close || offer.bids >= MAX_BIDS) {
+        // 交渉が終わったら、カードからも消す
+        toast(r.message, 'bad');
+        ctx.trading.passStanding(g, offer, null);
+        closeModal();
+        ctx.refresh && ctx.refresh();
+        return;
+      }
+      refresh();
+    };
   }
 }

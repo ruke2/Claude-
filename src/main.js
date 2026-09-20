@@ -13,6 +13,7 @@ import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
 import { hash2 } from './core/rng.js';
 import { DISTRICTS, USES, TERRAIN, GRADES, CITIES } from './data/city.js';
 import { RNG } from './core/rng.js';
+import * as Trading from './sim/trading.js';
 
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
@@ -65,6 +66,9 @@ let lastT = 0;
 const ctx = {
   refresh, rivalKey: 'rev', hrSort: 'ability', jobRankMode: 'pop', discTab: 'people',
   startProject, acquireNow, focusCell,
+  // 一棟買いの交渉はダイアログの中で完結するので、必要な口をここから渡す
+  trading: Trading,
+  get rng() { return new RNG((G ? G.rngState : 1) ^ 0x5eed17); },
 };
 
 /** 指定した区画を画面中央に寄せる */
@@ -499,6 +503,11 @@ function handleAction(act, id) {
     case 'land.detail': {
       const l = G.listings.find(x => x.id === id);
       if (l) { focusCell(cellById(G, l.cellId)); Land.openDetail(G, l, ctx); }
+      break;
+    }
+    case 'std.detail': {
+      const o = (G.standing || []).find(x => x.id === id);
+      if (o) { focusCell(cellById(G, o.cellId)); Land.openStandingDetail(G, o, ctx); }
       break;
     }
     case 'agenda.open': openAgendaItem(id); break;

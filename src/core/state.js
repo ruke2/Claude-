@@ -322,6 +322,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     agenda: [],            // 年間の決裁事項（未処理のものが残る）
     bonuses: [],           // 賞与の支給記録
     jvOffers: [],          // 競合からの共同事業の打診
+    standing: [],          // 売りに出ている稼働中のビル（一棟買い）
     relations: {},         // 競合との関係値（共同事業の通りやすさ）
     union: { formed: false, disputes: 0, history: [] },   // 労働組合
     pop: null,             // 地区ごとの人口（createGame の最後で seed する）
