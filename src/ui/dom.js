@@ -28,11 +28,17 @@ export function openModal(title, bodyHTML, buttons = []) {
 export function closeModal() { $('#modalWrap').classList.add('hidden'); modalCb = null; }
 
 let toastTimer = null;
+/** ダイアログが開いているか（トーストの出る位置を決めるのに使う） */
+const dialogOpen = () => ['#modalWrap', '#reportWrap']
+  .some(s => { const e = $(s); return e && !e.classList.contains('hidden'); });
+
 export function toast(msg, kind = '') {
   const old = document.querySelector('.toast');
   if (old) old.remove();
   const el = document.createElement('div');
-  el.className = 'toast ' + kind;
+  // 狭い画面のダイアログは画面の下に貼り付く。
+  // そのままだとトーストがボタンの上に重なって押せなくなるので、上から出す
+  el.className = 'toast ' + kind + (dialogOpen() ? ' over' : '');
   el.innerHTML = msg;
   document.body.appendChild(el);
   clearTimeout(toastTimer);

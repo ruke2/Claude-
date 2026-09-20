@@ -34,9 +34,11 @@ const TABS = [
 
 export function render(g, ctx) {
   const tab = (ctx && ctx.discTab) || 'people';
-  const nav = `<div class="btnrow" style="margin-bottom:10px">
+  // M3 のフィルターチップの並びに寄せて、1行で横に流す。
+  // 折り返すと8個で4行になり、狭い画面では中身が見えなくなる
+  const nav = `<div class="tabrow"><div class="tabrow-in">
     ${TABS.map(t => `<button class="btn sm ${t.id === tab ? 'primary' : ''}" data-act="disc.tab" data-id="${t.id}">${t.icon} ${t.name}</button>`).join('')}
-  </div>`;
+  </div></div>`;
   const body = tab === 'people' ? people(g)
     : tab === 'survey' ? survey(g)
       : tab === 'rating' ? rating(g)

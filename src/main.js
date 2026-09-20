@@ -460,7 +460,13 @@ function openPanel(key) {
   if (!mod) return;
   if (currentPanel === key) return closePanel();
   currentPanel = key;
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.panel === key));
+  document.querySelectorAll('.tab').forEach(b => {
+    const on = b.dataset.panel === key;
+    b.classList.toggle('on', on);
+    // 狭い画面ではタブバーが横スクロールする。
+    // 選んだタブが画面の外にいることがあるので、寄せてやる
+    if (on && IS_SMALL) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  });
   $('#panel').classList.remove('hidden');
   $('#panelTitle').textContent = mod.title;
   refresh();
