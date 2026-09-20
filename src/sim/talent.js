@@ -4,7 +4,8 @@
 //    当たれば早く育つが、外すと周りが白ける。
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
-import { DEPTS, DEPT_IDS, RANKS, TOP_STAFF_RANK, OFFICER_RANKS, rankName } from '../data/hrdata.js';
+import { DEPTS, DEPT_IDS, RANKS, TOP_STAFF_RANK, OFFICER_RANKS, rankName,
+  teamsOf, teamById } from '../data/hrdata.js';
 import { avgAbility } from '../core/state.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 
@@ -50,6 +51,18 @@ export function acceptPosting(g, post, staffId, news) {
   if (!s) return '対象がいない';
   const from = s.dept;
   s.dept = post.dept;
+  // **部を移したら課も配り直すこと。** 置き忘れると
+  // 「販売事業部の用地調査課」のような所属になる。
+  // 公募の枠に課が指定してあればそこへ、無ければ人の少ない課へ入れる
+  if (post.team && teamById(post.team)) s.team = post.team;
+  else {
+    const list = teamsOf(post.dept);
+    if (list.length) {
+      const cnt = list.map(t => ({ t, n: g.staff.filter(x => x.team === t.id && !x.subsidiary).length }));
+      cnt.sort((a, b) => a.n - b.n);
+      s.team = cnt[0].t.id;
+    }
+  }
   // 手を挙げて通った異動は、通常の異動と違って士気が上がる
   s.morale = clamp01(s.morale + 0.16);
   s.loyalty = clamp01(s.loyalty + 0.08);

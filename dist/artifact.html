@@ -3382,6 +3382,62 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     corp: { id: "corp", name: "\u7D4C\u55B6\u4F01\u753B\u90E8", short: "\u7D4C\u4F01", icon: "\u25CE", key: "lead", desc: "M&A\u3068\u5168\u793E\u6226\u7565\u3002\u30C7\u30E5\u30FC\u30C7\u30EA\u30B8\u30A7\u30F3\u30B9\u7CBE\u5EA6\u3068\u7D71\u5408\u6210\u529F\u7387\u3092\u4E0A\u3052\u308B\u3002" }
   };
   var DEPT_IDS = Object.keys(DEPTS);
+  var TEAMS = {
+    land: [
+      { id: "land1", name: "\u7B2C\u4E00\u958B\u767A\u8AB2", short: "\u958B\u767A\u4E00", desc: "\u6E4A\u90FD\u5E02\u306E\u90FD\u5FC3\u90E8\u3092\u62C5\u5F53\u3059\u308B\u3002\u5927\u578B\u306E\u4ED5\u5165\u308C\u306F\u3053\u3053\u304C\u52D5\u304F\u3002" },
+      { id: "land2", name: "\u7B2C\u4E8C\u958B\u767A\u8AB2", short: "\u958B\u767A\u4E8C", desc: "\u90CA\u5916\u3068\u4ED6\u90FD\u5E02\u3092\u62C5\u5F53\u3059\u308B\u3002\u4EF6\u6570\u3092\u7A4D\u307F\u4E0A\u3052\u308B\u90E8\u968A\u3002" },
+      { id: "landS", name: "\u7528\u5730\u8ABF\u67FB\u8AB2", short: "\u8ABF\u67FB", desc: "\u6A29\u5229\u95A2\u4FC2\u3068\u6CD5\u898F\u5236\u3092\u6D17\u3046\u3002\u30C7\u30E5\u30FC\u30C7\u30EA\u30B8\u30A7\u30F3\u30B9\u306E\u7CBE\u5EA6\u3092\u652F\u3048\u308B\u3002" }
+    ],
+    plan: [
+      { id: "planP", name: "\u5546\u54C1\u4F01\u753B\u8AB2", short: "\u4F01\u753B", desc: "\u3069\u306E\u5C64\u306B\u4F55\u3092\u58F2\u308B\u304B\u3092\u6C7A\u3081\u308B\u3002\u7528\u9014\u3068\u30B0\u30EC\u30FC\u30C9\u306E\u5F53\u305F\u308A\u5916\u308C\u306F\u3053\u3053\u3002" },
+      { id: "planD", name: "\u8A2D\u8A08\u8AB2", short: "\u8A2D\u8A08", desc: "\u57FA\u672C\u8A2D\u8A08\u3068\u5B9F\u65BD\u8A2D\u8A08\u3002\u5BB9\u7A4D\u306E\u4F7F\u3044\u5207\u308A\u3068\u5DE5\u4E8B\u8CBB\u306B\u76F4\u7D50\u3059\u308B\u3002" },
+      { id: "planX", name: "\u30C7\u30B6\u30A4\u30F3\u8AB2", short: "\u610F\u5320", desc: "\u5916\u88C5\u3068\u5171\u7528\u90E8\u306E\u610F\u5320\u3002\u8868\u5F70\u3068\u5358\u4FA1\u306B\u52B9\u304F\u3002" }
+    ],
+    cons: [
+      { id: "consW", name: "\u5DE5\u52D9\u8AB2", short: "\u5DE5\u52D9", desc: "\u73FE\u5834\u306E\u5DE5\u7A0B\u7BA1\u7406\u3002\u9045\u5EF6\u3092\u51FA\u3055\u306A\u3044\u306E\u304C\u4ED5\u4E8B\u3067\u3042\u308B\u3002" },
+      { id: "consE", name: "\u7A4D\u7B97\u8AB2", short: "\u7A4D\u7B97", desc: "\u6570\u91CF\u3092\u62FE\u3044\u3001\u539F\u4FA1\u3092\u898B\u7A4D\u3082\u308B\u3002\u5EFA\u8A2D\u8CBB\u306E\u8D85\u904E\u3092\u6B62\u3081\u308B\u3002" },
+      { id: "consQ", name: "\u54C1\u8CEA\u7BA1\u7406\u8AB2", short: "\u54C1\u7BA1", desc: "\u65BD\u5DE5\u54C1\u8CEA\u3068\u691C\u67FB\u3002\u7AE3\u5DE5\u5F8C\u306E\u624B\u76F4\u3057\u3068\u8A55\u5224\u3092\u5DE6\u53F3\u3059\u308B\u3002" }
+    ],
+    sales: [
+      { id: "sales1", name: "\u8CA9\u58F2\u4E00\u8AB2", short: "\u8CA9\u58F2\u4E00", desc: "\u90FD\u5FC3\u306E\u30BF\u30EF\u30FC\u3068\u9AD8\u984D\u7269\u4EF6\u3092\u6271\u3046\u3002" },
+      { id: "sales2", name: "\u8CA9\u58F2\u4E8C\u8AB2", short: "\u8CA9\u58F2\u4E8C", desc: "\u90CA\u5916\u306E\u5206\u8B72\u3068\u6238\u5EFA\u3092\u6271\u3046\u3002" },
+      { id: "salesP", name: "\u55B6\u696D\u63A8\u9032\u8AB2", short: "\u63A8\u9032", desc: "\u8CA9\u58F2\u8A08\u753B\u3068\u5E83\u544A\u3002\u30E2\u30C7\u30EB\u30EB\u30FC\u30E0\u306E\u96C6\u5BA2\u3092\u4F5C\u308B\u3002" }
+    ],
+    lease: [
+      { id: "leaseL", name: "\u30EA\u30FC\u30B7\u30F3\u30B0\u8AB2", short: "LS", desc: "\u30C6\u30CA\u30F3\u30C8\u8A98\u81F4\u3002\u7A7A\u5BA4\u3092\u57CB\u3081\u308B\u306E\u304C\u4ED5\u4E8B\u3067\u3042\u308B\u3002" },
+      { id: "leaseP", name: "\u30D7\u30ED\u30D1\u30C6\u30A3\u30DE\u30CD\u30B8\u30E1\u30F3\u30C8\u8AB2", short: "PM", desc: "\u5EFA\u7269\u306E\u904B\u55B6\u3068\u4FEE\u7E55\u3002\u7A3C\u50CD\u3092\u5B88\u308A\u3001\u8CBB\u7528\u3092\u6291\u3048\u308B\u3002" },
+      { id: "leaseO", name: "\u904B\u55B6\u8AB2", short: "\u904B\u55B6", desc: "\u5546\u696D\u3068\u30DB\u30C6\u30EB\u306E\u904B\u55B6\u3002\u58F2\u4E0A\u6B69\u5408\u306E\u7269\u4EF6\u306F\u3053\u3053\u304C\u63E1\u308B\u3002" }
+    ],
+    fin: [
+      { id: "finT", name: "\u8CA1\u52D9\u8AB2", short: "\u8CA1\u52D9", desc: "\u8CC7\u91D1\u8ABF\u9054\u3068\u9280\u884C\u5BFE\u5FDC\u3002\u501F\u5165\u306E\u6761\u4EF6\u3092\u8A70\u3081\u308B\u3002" },
+      { id: "finA", name: "\u7D4C\u7406\u8AB2", short: "\u7D4C\u7406", desc: "\u6C7A\u7B97\u3068\u7A0E\u52D9\u3002\u6570\u5B57\u3092\u7DE0\u3081\u308B\u3002" },
+      { id: "finI", name: "IR\u8AB2", short: "IR", desc: "investor relations\u3002\u8AAC\u660E\u4F1A\u3068\u958B\u793A\u3092\u4F5C\u308B\u3002" }
+    ],
+    hr: [
+      { id: "hrP", name: "\u4EBA\u4E8B\u8AB2", short: "\u4EBA\u4E8B", desc: "\u8A55\u4FA1\u30FB\u7570\u52D5\u30FB\u51E6\u9047\u3002\u7D44\u7E54\u306E\u5F62\u3092\u6C7A\u3081\u308B\u3002" },
+      { id: "hrR", name: "\u63A1\u7528\u8AB2", short: "\u63A1\u7528", desc: "\u65B0\u5352\u3068\u4E2D\u9014\u306E\u63A1\u7528\u3002\u6BCD\u96C6\u56E3\u3068\u5185\u5B9A\u627F\u8AFE\u7387\u3092\u4E0A\u3052\u308B\u3002" },
+      { id: "hrG", name: "\u7DCF\u52D9\u8AB2", short: "\u7DCF\u52D9", desc: "\u672C\u793E\u6A5F\u80FD\u3068\u6CD5\u52D9\u3002\u5730\u5473\u3060\u304C\u6B62\u307E\u308B\u3068\u5168\u90E8\u6B62\u307E\u308B\u3002" }
+    ],
+    corp: [
+      { id: "corpS", name: "\u7D4C\u55B6\u4F01\u753B\u8AB2", short: "\u7D4C\u4F01", desc: "\u4E2D\u671F\u7D4C\u55B6\u8A08\u753B\u3068\u5168\u793E\u306E\u6570\u5B57\u3092\u4F5C\u308B\u3002" },
+      { id: "corpM", name: "\u4E8B\u696D\u6295\u8CC7\u8AB2", short: "\u6295\u8CC7", desc: "M&A\u3068\u51FA\u8CC7\u3002\u30C7\u30E5\u30FC\u30C7\u30EA\u30B8\u30A7\u30F3\u30B9\u3068\u7D71\u5408\u3092\u62C5\u3046\u3002" },
+      { id: "corpC", name: "\u5E83\u5831\u8AB2", short: "\u5E83\u5831", desc: "\u5BFE\u5916\u767A\u4FE1\u3068\u30D6\u30E9\u30F3\u30C9\u3002\u5371\u6A5F\u306E\u3068\u304D\u306B\u3044\u3061\u3070\u3093\u5FD9\u3057\u3044\u3002" }
+    ]
+  };
+  var TEAM_BY_ID = {};
+  for (const d of DEPT_IDS) for (const t of TEAMS[d]) TEAM_BY_ID[t.id] = { ...t, dept: d };
+  var teamById = (id) => TEAM_BY_ID[id] || null;
+  var teamsOf = (dept) => TEAMS[dept] || [];
+  function affiliation(s) {
+    const d = DEPTS[s.dept];
+    const t = teamById(s.team);
+    if (!d) return "";
+    return t ? `${d.name} ${t.name}` : d.name;
+  }
+  function teamShort(s) {
+    const t = teamById(s.team);
+    return t ? t.short : DEPTS[s.dept] ? DEPTS[s.dept].short : "";
+  }
   var RANKS = [
     { id: 0, name: "\u793E\u54E1", short: "\u793E\u54E1", baseSalary: 5.4, slots: Infinity, minAbility: 0, span: 0 },
     { id: 1, name: "\u4E3B\u4EFB", short: "\u4E3B\u4EFB", baseSalary: 7, slots: Infinity, minAbility: 45, span: 0 },
@@ -3737,12 +3793,15 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       TOP_STAFF_RANK,
       rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4))
     );
+    const dp = dept || rng.pick(DEPT_IDS);
     const s = {
       id: uid("s"),
       name: name2 || rng.pick(LAST_NAMES) + " " + rng.pick(FIRST_NAMES_CLEAN),
       age,
-      dept: dept || rng.pick(DEPT_IDS),
+      dept: dp,
       rank: rk,
+      // 課（部の下の単位）。指定が無ければその部の課から1つ引く
+      team: opt.team || (teamsOf(dp)[0] ? rng.pick(teamsOf(dp)).id : null),
       abil,
       potential: Math.round(rng.range(potentialRange[0], potentialRange[1])),
       salary: 0,
@@ -6663,6 +6722,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   var SKIP_TOP = /* @__PURE__ */ new Set(["cells"]);
   var STEPS = [
+    // 部の下に課を置いた。課の無い社員には、その部の課を配る。
+    // **ID の無い社員を落とさないこと。** 課は見せ方の単位で、
+    // 付いていなくても計算は回る（`affiliation()` が部だけ返す）
+    (g) => {
+      for (const s of g.staff || []) {
+        if (s.team && teamById(s.team)) continue;
+        const list = teamsOf(s.dept);
+        if (!list.length) continue;
+        let h = 0;
+        for (const ch of String(s.id || s.name || "")) h = h * 31 + ch.charCodeAt(0) >>> 0;
+        s.team = list[h % list.length].id;
+      }
+    },
     // 給与を「全体の係数」から「役職ごとの基準額」に変えた
     (g) => {
       const pol = g.hrPolicy;
@@ -11950,6 +12022,15 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (!s) return "\u5BFE\u8C61\u304C\u3044\u306A\u3044";
     const from = s.dept;
     s.dept = post.dept;
+    if (post.team && teamById(post.team)) s.team = post.team;
+    else {
+      const list = teamsOf(post.dept);
+      if (list.length) {
+        const cnt = list.map((t) => ({ t, n: g.staff.filter((x) => x.team === t.id && !x.subsidiary).length }));
+        cnt.sort((a, b) => a.n - b.n);
+        s.team = cnt[0].t.id;
+      }
+    }
     s.morale = clamp01(s.morale + 0.16);
     s.loyalty = clamp01(s.loyalty + 0.08);
     s.movedWeek = g.week;
@@ -15216,6 +15297,37 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     title: () => title8
   });
   var title8 = "\u4EBA\u4E8B\u30FB\u7D44\u7E54";
+  function teamSection(g) {
+    const active = g.staff.filter((s) => !s.subsidiary);
+    const rows = DEPT_IDS.map((d) => {
+      const teams = teamsOf(d);
+      const inDept = active.filter((s) => s.dept === d);
+      if (!inDept.length && !teams.length) return "";
+      const body = teams.map((t) => {
+        const list = inDept.filter((s) => (s.team || teams[0].id) === t.id);
+        const head = list.filter((s) => s.rank >= 3).sort((a, b) => b.rank - a.rank)[0];
+        const ab = list.length ? list.reduce((a, s) => a + avgAbility(s), 0) / list.length : 0;
+        return `<tr class="${list.length ? "" : "warnrow"}">
+        <td>${t.name}</td>
+        <td>${list.length}</td>
+        <td>${list.length ? ab.toFixed(0) : "\u2014"}</td>
+        <td>${head ? `${head.name}\uFF08${rankName(g, head.rank)}\uFF09` : '<span style="color:var(--ink-mute)">\u9577\u304C\u3044\u306A\u3044</span>'}</td>
+      </tr>`;
+      }).join("");
+      return `<div class="sec" style="margin-bottom:14px">
+      <div class="sec-t"><span>${DEPTS[d].icon} ${DEPTS[d].name}</span><span class="note">${inDept.length}\u540D</span></div>
+      <table class="tbl">
+        <tr><th>\u8AB2</th><th>\u4EBA\u6570</th><th>\u5E73\u5747\u80FD\u529B</th><th>\u9577</th></tr>
+        ${body}
+      </table>
+    </div>`;
+    }).join("");
+    return section("\u8AB2\u5225\u306E\u9663\u5BB9", `${Object.values(TEAMS).flat().length}\u8AB2`, `
+    <div class="hint" style="margin-bottom:12px">\u90E8\u306E\u4E0B\u306B\u8AB2\u3092\u7F6E\u3044\u3066\u3044\u308B\u3002
+    \u8AB2\u9577\uFF08\u7B49\u7D1A3\uFF09\u4EE5\u4E0A\u304C\u8AB2\u306E\u9577\u306B\u306A\u308B\u3002\u4EBA\u304C\u3044\u306A\u3044\u8AB2\u306F\u8D64\u304F\u51FA\u308B\u3002<br>
+    <b>\u90E8\u9580\u306E\u529B\uFF08\u8CEA\u30FB\u91CF\uFF09\u306F\u90E8\u306E\u5358\u4F4D\u3067\u6C7A\u307E\u308B\u3002</b>\u8AB2\u306F\u914D\u5C5E\u3068\u898B\u305B\u65B9\u306E\u5358\u4F4D\u3067\u3042\u308B\u3002</div>
+    ${rows}`);
+  }
   function render8(g, ctx2) {
     const p = orgPower(g);
     const active = g.staff.filter((s) => !s.subsidiary);
@@ -15245,12 +15357,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       if (r.id >= 3) {
         return `<div class="org-lv">${members.map((x) => nodeHTML(g, x)).join("")}</div><div class="org-conn"></div>`;
       }
-      const byDept = {};
-      for (const x of members) byDept[x.dept] = (byDept[x.dept] || 0) + 1;
-      return `<div class="org-lv">${Object.entries(byDept).map(([d, n]) => `
-      <div class="org-node" data-act="hr.dept" data-id="${d}">
-        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${n}\u540D</div><div class="on-d">${DEPTS[d].short}</div>
-      </div>`).join("")}</div><div class="org-conn"></div>`;
+      const byTeam = {};
+      for (const x of members) {
+        const k = x.team || x.dept;
+        byTeam[k] = byTeam[k] || { n: 0, dept: x.dept, team: x.team };
+        byTeam[k].n++;
+      }
+      return `<div class="org-lv">${Object.values(byTeam).sort((a, b) => b.n - a.n).map((v) => {
+        const t = teamById(v.team);
+        return `<div class="org-node" data-act="hr.dept" data-id="${v.dept}">
+        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${v.n}\u540D</div>
+        <div class="on-d">${DEPTS[v.dept].short}\u30FB${t ? t.short : "\u2014"}</div>
+      </div>`;
+      }).join("")}</div><div class="org-conn"></div>`;
     }).join("");
     const progs = HR_PROGRAMS.map((pr) => `
     <div class="card click" data-act="hr.prog" data-id="${pr.field}">
@@ -15277,6 +15396,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </table>
     <div class="hint">\u540C\u6642\u306B\u9032\u3081\u3089\u308C\u308B\u958B\u767A\u6848\u4EF6\u306F ${projectCapacity(g)} \u4EF6\uFF08\u5EFA\u8A2D\u7BA1\u7406\u90E8\u3068\u5546\u54C1\u4F01\u753B\u90E8\u306E\u9663\u5BB9\u3067\u6C7A\u307E\u308B\uFF09\u3002</div>
   `)}
+
+  ${teamSection(g)}
 
   ${cultureSection(g)}
 
@@ -15430,7 +15551,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return `<div class="org-node" data-act="hr.staff" data-id="${s.id}">
     <div class="on-r">${rankName(g, s.rank)}</div>
     <div class="on-n">${s.name}</div>
-    <div class="on-d">${ov.length ? "\u7BA1\u638C " + ov.map((d) => DEPTS[d].short).join("\u30FB") : DEPTS[s.dept].short + "\u30FB" + s.age + "\u6B73"}</div>
+    <div class="on-d">${ov.length ? "\u7BA1\u638C " + ov.map((d) => DEPTS[d].short).join("\u30FB") : DEPTS[s.dept].short + "\u30FB" + teamShort(s)}</div>
   </div>`;
   }
   function listTable(g, list, sort = "ability") {
@@ -15443,7 +15564,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return `<table class="tbl">
     <tr><th>\u6C0F\u540D</th><th>\u90E8\u7F72</th><th>\u5F79\u8077</th><th>\u5E74\u9F62</th><th>\u80FD\u529B</th><th>\u5E74\u53CE</th><th>\u610F\u6B32</th></tr>
     ${sorted.map((s) => `<tr class="click" data-act="hr.staff" data-id="${s.id}">
-      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
+      <td>${s.name}</td><td>${DEPTS[s.dept].short}<span style="color:var(--ink-mute)">\u30FB${teamShort(s)}</span></td><td>${rankShort(g, s.rank)}</td>
       <td>${s.age}</td><td>${avgAbility(s).toFixed(0)}</td><td>${man(s.salary)}</td>
       <td style="color:${s.morale < 0.5 ? "var(--red)" : s.morale > 0.78 ? "var(--green)" : "inherit"}">${(s.morale * 100).toFixed(0)}</td>
     </tr>`).join("")}
@@ -15467,7 +15588,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
     <div class="sec">
       <div class="sec-t"><span>\u72B6\u614B</span></div>
-      ${kv("\u6240\u5C5E", DEPTS[s.dept].name + (s.subsidiary ? "\uFF08\u5B50\u4F1A\u793E\u3078\u51FA\u5411\u4E2D\uFF09" : ""))}
+      ${kv("\u6240\u5C5E", affiliation(s) + (s.subsidiary ? "\uFF08\u5B50\u4F1A\u793E\u3078\u51FA\u5411\u4E2D\uFF09" : ""))}
       ${kv("\u30E2\u30C1\u30D9\u30FC\u30B7\u30E7\u30F3", `${(s.morale * 100).toFixed(0)} / 100`)}
       ${bar(s.morale)}
       ${kv("\u5B9A\u7740\u5EA6", `${(s.loyalty * 100).toFixed(0)} / 100`)}

@@ -224,6 +224,21 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 役職名は `hrPolicy.rankNames` で改称できる。
 **表示は必ず `rankName(g, id)` を通すこと。** `RANKS[x].name` を直接出すと改称が反映されない。
 
+## 部と課
+
+`src/data/hrdata.js` の `DEPTS`（8部）と `TEAMS`（24課）。
+社員は `s.dept`（部）と `s.team`（課）の両方を持つ。
+
+- **課で能力や処理能力を動かさないこと。** `orgPower()` は部の単位で校正してある。
+  課は「誰がどこにいるか」を見せるための単位で、数値のバランスには触れない
+- 表示は必ず `affiliation(s)`（部＋課）と `teamShort(s)` を通す。
+  課の無い古いセーブでも落ちないよう、どちらも部だけを返す道がある
+- **部を移したら課も配り直すこと**（`talent.js` の `acceptPosting`）。
+  置き忘れると「販売事業部の用地調査課」のような所属になる
+- 古いセーブの社員には `save.js` の `STEPS` が課を配る。
+  同じ社員がいつ読んでも同じ課になるよう、IDのハッシュで決める
+- 課長（等級3）以上がその課の長として表示される。人がいない課は赤く出る
+
 ## 中期経営計画
 
 `src/sim/midplan.js`。3年または5年の数値目標を最大4つ掲げる。

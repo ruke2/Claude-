@@ -8,7 +8,7 @@
 //    データの形を変えたときは SAVE_VERSION を上げて migrate() で吸収する。
 // ============================================================
 import { createGame, syncUid, defaultRankPay } from './state.js';
-import { RANKS, CEO_RANK, TOP_STAFF_RANK, defaultRankNames } from '../data/hrdata.js';
+import { RANKS, CEO_RANK, TOP_STAFF_RANK, defaultRankNames, teamsOf, teamById } from '../data/hrdata.js';
 import { RIVAL_DEFS } from '../data/companies.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
@@ -126,6 +126,21 @@ const SKIP_TOP = new Set(['cells']);
  * 新しい版を出すたびにここへ足していく。古い順に並べること。
  */
 const STEPS = [
+  // 部の下に課を置いた。課の無い社員には、その部の課を配る。
+  // **ID の無い社員を落とさないこと。** 課は見せ方の単位で、
+  // 付いていなくても計算は回る（`affiliation()` が部だけ返す）
+  g => {
+    for (const s of g.staff || []) {
+      if (s.team && teamById(s.team)) continue;
+      const list = teamsOf(s.dept);
+      if (!list.length) continue;
+      // 同じ社員がいつ読んでも同じ課になるよう、IDから決める
+      let h = 0;
+      for (const ch of String(s.id || s.name || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      s.team = list[h % list.length].id;
+    }
+  },
+
   // 給与を「全体の係数」から「役職ごとの基準額」に変えた
   g => {
     const pol = g.hrPolicy;

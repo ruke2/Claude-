@@ -4,7 +4,8 @@
 import { money, num, pct, man, clamp, moneyHTML } from '../core/format.js';
 import { section, kv, mini, chip, bar, empty, openModal, closeModal, toast } from './dom.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITIES, ABILITY_IDS, HIRE_CHANNELS, HR_PROGRAMS,
-  CEO_RANK, OFFICER_RANKS, TOP_STAFF_RANK, rankName, rankShort, defaultRankNames } from '../data/hrdata.js';
+  CEO_RANK, OFFICER_RANKS, TOP_STAFF_RANK, rankName, rankShort, defaultRankNames,
+  TEAMS, teamsOf, teamById, affiliation, teamShort } from '../data/hrdata.js';
 import { orgPower, personnelCost, personnelCostYear, payIndex, hireStaff, salaryFairness, projectCapacity } from '../sim/hr.js';
 import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNELS, employerAppeal, estimate, makeOffer, withdrawOffer, followUp, allocateQuota } from '../sim/recruit.js';
 import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
@@ -20,6 +21,43 @@ import { officers, officerRoom, canAppoint, appoint as appointFn, dismiss as dis
   setOversight as setOversightFn, oversightOf, uncovered, ceo, ceoPay, payGapView, boardStrength } from '../sim/officers.js';
 
 export const title = '人事・組織';
+
+/**
+ * 課ごとの陣容。
+ * **ここで能力を計算し直さないこと。** 部の数字は `orgPower()` が持っており、
+ * 課は「誰がどこにいるか」を見せるための単位である。
+ */
+function teamSection(g) {
+  const active = g.staff.filter(s => !s.subsidiary);
+  const rows = DEPT_IDS.map(d => {
+    const teams = teamsOf(d);
+    const inDept = active.filter(s => s.dept === d);
+    if (!inDept.length && !teams.length) return '';
+    const body = teams.map(t => {
+      const list = inDept.filter(s => (s.team || teams[0].id) === t.id);
+      const head = list.filter(s => s.rank >= 3).sort((a, b) => b.rank - a.rank)[0];
+      const ab = list.length ? list.reduce((a, s) => a + avgAbility(s), 0) / list.length : 0;
+      return `<tr class="${list.length ? '' : 'warnrow'}">
+        <td>${t.name}</td>
+        <td>${list.length}</td>
+        <td>${list.length ? ab.toFixed(0) : '—'}</td>
+        <td>${head ? `${head.name}（${rankName(g, head.rank)}）` : '<span style="color:var(--ink-mute)">長がいない</span>'}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="sec" style="margin-bottom:14px">
+      <div class="sec-t"><span>${DEPTS[d].icon} ${DEPTS[d].name}</span><span class="note">${inDept.length}名</span></div>
+      <table class="tbl">
+        <tr><th>課</th><th>人数</th><th>平均能力</th><th>長</th></tr>
+        ${body}
+      </table>
+    </div>`;
+  }).join('');
+  return section('課別の陣容', `${Object.values(TEAMS).flat().length}課`, `
+    <div class="hint" style="margin-bottom:12px">部の下に課を置いている。
+    課長（等級3）以上が課の長になる。人がいない課は赤く出る。<br>
+    <b>部門の力（質・量）は部の単位で決まる。</b>課は配属と見せ方の単位である。</div>
+    ${rows}`);
+}
 
 export function render(g, ctx) {
   const p = orgPower(g);
@@ -54,12 +92,22 @@ export function render(g, ctx) {
       if (r.id >= 3) {
         return `<div class="org-lv">${members.map(x => nodeHTML(g, x)).join('')}</div><div class="org-conn"></div>`;
       }
-      const byDept = {};
-      for (const x of members) byDept[x.dept] = (byDept[x.dept] || 0) + 1;
-      return `<div class="org-lv">${Object.entries(byDept).map(([d, n]) => `
-      <div class="org-node" data-act="hr.dept" data-id="${d}">
-        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${n}名</div><div class="on-d">${DEPTS[d].short}</div>
-      </div>`).join('')}</div><div class="org-conn"></div>`;
+      // 係長以下は人数でまとめる。**部でまとめないこと。**
+      // 部だけだと「用地に12名」としか出ず、どの課が厚いのかが見えない
+      const byTeam = {};
+      for (const x of members) {
+        const k = x.team || x.dept;
+        byTeam[k] = byTeam[k] || { n: 0, dept: x.dept, team: x.team };
+        byTeam[k].n++;
+      }
+      return `<div class="org-lv">${Object.values(byTeam)
+        .sort((a, b) => b.n - a.n).map(v => {
+          const t = teamById(v.team);
+          return `<div class="org-node" data-act="hr.dept" data-id="${v.dept}">
+        <div class="on-r">${rankName(g, r.id)}</div><div class="on-n">${v.n}名</div>
+        <div class="on-d">${DEPTS[v.dept].short}・${t ? t.short : '—'}</div>
+      </div>`;
+        }).join('')}</div><div class="org-conn"></div>`;
     }).join('');
 
   const progs = HR_PROGRAMS.map(pr => `
@@ -89,6 +137,8 @@ export function render(g, ctx) {
     </table>
     <div class="hint">同時に進められる開発案件は ${projectCapacity(g)} 件（建設管理部と商品企画部の陣容で決まる）。</div>
   `)}
+
+  ${teamSection(g)}
 
   ${cultureSection(g)}
 
@@ -250,7 +300,7 @@ function nodeHTML(g, s) {
   return `<div class="org-node" data-act="hr.staff" data-id="${s.id}">
     <div class="on-r">${rankName(g, s.rank)}</div>
     <div class="on-n">${s.name}</div>
-    <div class="on-d">${ov.length ? '管掌 ' + ov.map(d => DEPTS[d].short).join('・') : DEPTS[s.dept].short + '・' + s.age + '歳'}</div>
+    <div class="on-d">${ov.length ? '管掌 ' + ov.map(d => DEPTS[d].short).join('・') : DEPTS[s.dept].short + '・' + teamShort(s)}</div>
   </div>`;
 }
 
@@ -264,7 +314,7 @@ export function listTable(g, list, sort = 'ability') {
   return `<table class="tbl">
     <tr><th>氏名</th><th>部署</th><th>役職</th><th>年齢</th><th>能力</th><th>年収</th><th>意欲</th></tr>
     ${sorted.map(s => `<tr class="click" data-act="hr.staff" data-id="${s.id}">
-      <td>${s.name}</td><td>${DEPTS[s.dept].short}</td><td>${rankShort(g, s.rank)}</td>
+      <td>${s.name}</td><td>${DEPTS[s.dept].short}<span style="color:var(--ink-mute)">・${teamShort(s)}</span></td><td>${rankShort(g, s.rank)}</td>
       <td>${s.age}</td><td>${avgAbility(s).toFixed(0)}</td><td>${man(s.salary)}</td>
       <td style="color:${s.morale < 0.5 ? 'var(--red)' : s.morale > 0.78 ? 'var(--green)' : 'inherit'}">${(s.morale * 100).toFixed(0)}</td>
     </tr>`).join('')}
@@ -296,7 +346,7 @@ export function openStaff(g, s, ctx) {
     </div>
     <div class="sec">
       <div class="sec-t"><span>状態</span></div>
-      ${kv('所属', DEPTS[s.dept].name + (s.subsidiary ? '（子会社へ出向中）' : ''))}
+      ${kv('所属', affiliation(s) + (s.subsidiary ? '（子会社へ出向中）' : ''))}
       ${kv('モチベーション', `${(s.morale * 100).toFixed(0)} / 100`)}
       ${bar(s.morale)}
       ${kv('定着度', `${(s.loyalty * 100).toFixed(0)} / 100`)}

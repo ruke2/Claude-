@@ -16,6 +16,80 @@ export const DEPTS = {
 export const DEPT_IDS = Object.keys(DEPTS);
 
 /**
+ * 課（部の下の単位）。
+ *
+ * 部だけだと「用地開発部の課長」が8人並ぶことになり、
+ * 誰が何をしているのか分からない。課まで置くと、
+ * 組織図も名刺も、実際の会社の見え方に近づく。
+ *
+ * **ここで能力や処理能力を動かさないこと。**
+ * `orgPower()` は部単位で校正してある。課は配属と見せ方の単位で、
+ * 数値のバランスには触れない。効かせるのは社内公募の適性だけである。
+ */
+export const TEAMS = {
+  land: [
+    { id: 'land1', name: '第一開発課', short: '開発一', desc: '湊都市の都心部を担当する。大型の仕入れはここが動く。' },
+    { id: 'land2', name: '第二開発課', short: '開発二', desc: '郊外と他都市を担当する。件数を積み上げる部隊。' },
+    { id: 'landS', name: '用地調査課', short: '調査', desc: '権利関係と法規制を洗う。デューデリジェンスの精度を支える。' },
+  ],
+  plan: [
+    { id: 'planP', name: '商品企画課', short: '企画', desc: 'どの層に何を売るかを決める。用途とグレードの当たり外れはここ。' },
+    { id: 'planD', name: '設計課', short: '設計', desc: '基本設計と実施設計。容積の使い切りと工事費に直結する。' },
+    { id: 'planX', name: 'デザイン課', short: '意匠', desc: '外装と共用部の意匠。表彰と単価に効く。' },
+  ],
+  cons: [
+    { id: 'consW', name: '工務課', short: '工務', desc: '現場の工程管理。遅延を出さないのが仕事である。' },
+    { id: 'consE', name: '積算課', short: '積算', desc: '数量を拾い、原価を見積もる。建設費の超過を止める。' },
+    { id: 'consQ', name: '品質管理課', short: '品管', desc: '施工品質と検査。竣工後の手直しと評判を左右する。' },
+  ],
+  sales: [
+    { id: 'sales1', name: '販売一課', short: '販売一', desc: '都心のタワーと高額物件を扱う。' },
+    { id: 'sales2', name: '販売二課', short: '販売二', desc: '郊外の分譲と戸建を扱う。' },
+    { id: 'salesP', name: '営業推進課', short: '推進', desc: '販売計画と広告。モデルルームの集客を作る。' },
+  ],
+  lease: [
+    { id: 'leaseL', name: 'リーシング課', short: 'LS', desc: 'テナント誘致。空室を埋めるのが仕事である。' },
+    { id: 'leaseP', name: 'プロパティマネジメント課', short: 'PM', desc: '建物の運営と修繕。稼働を守り、費用を抑える。' },
+    { id: 'leaseO', name: '運営課', short: '運営', desc: '商業とホテルの運営。売上歩合の物件はここが握る。' },
+  ],
+  fin: [
+    { id: 'finT', name: '財務課', short: '財務', desc: '資金調達と銀行対応。借入の条件を詰める。' },
+    { id: 'finA', name: '経理課', short: '経理', desc: '決算と税務。数字を締める。' },
+    { id: 'finI', name: 'IR課', short: 'IR', desc: 'investor relations。説明会と開示を作る。' },
+  ],
+  hr: [
+    { id: 'hrP', name: '人事課', short: '人事', desc: '評価・異動・処遇。組織の形を決める。' },
+    { id: 'hrR', name: '採用課', short: '採用', desc: '新卒と中途の採用。母集団と内定承諾率を上げる。' },
+    { id: 'hrG', name: '総務課', short: '総務', desc: '本社機能と法務。地味だが止まると全部止まる。' },
+  ],
+  corp: [
+    { id: 'corpS', name: '経営企画課', short: '経企', desc: '中期経営計画と全社の数字を作る。' },
+    { id: 'corpM', name: '事業投資課', short: '投資', desc: 'M&Aと出資。デューデリジェンスと統合を担う。' },
+    { id: 'corpC', name: '広報課', short: '広報', desc: '対外発信とブランド。危機のときにいちばん忙しい。' },
+  ],
+};
+
+/** 課のIDから中身を引く */
+const TEAM_BY_ID = {};
+for (const d of DEPT_IDS) for (const t of TEAMS[d]) TEAM_BY_ID[t.id] = { ...t, dept: d };
+export const teamById = id => TEAM_BY_ID[id] || null;
+
+/** その部の課の一覧 */
+export const teamsOf = dept => TEAMS[dept] || [];
+
+/** 社員の所属（部＋課）。課が無い古いセーブでも落ちないこと */
+export function affiliation(s) {
+  const d = DEPTS[s.dept];
+  const t = teamById(s.team);
+  if (!d) return '';
+  return t ? `${d.name} ${t.name}` : d.name;
+}
+export function teamShort(s) {
+  const t = teamById(s.team);
+  return t ? t.short : (DEPTS[s.dept] ? DEPTS[s.dept].short : '');
+}
+
+/**
  * 役職（index が等級）
  *  appoint … 自動昇格せず、社長（プレイヤー）が任命する役職
  *  CEO_RANK は社長の席で、社員は誰も就かない。座るのはプレイヤー本人である

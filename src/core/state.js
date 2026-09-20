@@ -10,7 +10,8 @@ import { DISTRICTS, MAP_ROWS, MAP_W, MAP_H, TERRAIN, terrainOf, elevationAt, USE
 import { RIVAL_DEFS } from '../data/companies.js';
 import { seedPopulation } from '../sim/population.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN,
-  BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX, defaultRankNames, TOP_STAFF_RANK } from '../data/hrdata.js';
+  BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX, defaultRankNames, TOP_STAFF_RANK,
+  teamsOf } from '../data/hrdata.js';
 
 export const DIFFICULTY = {
   easy:   { equity: 30000, label: 'やさしい', costVol: 0.6, rivalAgg: 0.8, demand: 1.08, rate: 0.009 },
@@ -169,10 +170,13 @@ export function makeStaff(rng, opt = {}) {
   // 社長の席（プレイヤー）には誰も座らせない
   const rk = Math.min(TOP_STAFF_RANK,
     rank ?? (age < 28 ? 0 : age < 33 ? rng.int(0, 1) : age < 38 ? rng.int(1, 2) : age < 45 ? rng.int(2, 3) : rng.int(3, 4)));
+  const dp = dept || rng.pick(DEPT_IDS);
   const s = {
     id: uid('s'),
     name: name || (rng.pick(LAST_NAMES) + ' ' + rng.pick(FIRST_NAMES_CLEAN)),
-    age, dept: dept || rng.pick(DEPT_IDS), rank: rk,
+    age, dept: dp, rank: rk,
+    // 課（部の下の単位）。指定が無ければその部の課から1つ引く
+    team: opt.team || (teamsOf(dp)[0] ? rng.pick(teamsOf(dp)).id : null),
     abil, potential: Math.round(rng.range(potentialRange[0], potentialRange[1])),
     salary: 0, loyalty: clamp01(loyalty + rng.range(-0.1, 0.1)),
     morale: clamp01(rng.range(0.55, 0.85)),
