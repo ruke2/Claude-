@@ -41,35 +41,35 @@ export const AREA_PROGRAMS = [
     effect: { safety: 0.30, brand: 0.9 },
     desc: '防災備蓄と一時滞在施設を街区で共同運用し、帰宅困難者の受け入れ訓練を行う。'
       + '災害時の被害を3割抑える。自治体との関係もできる。',
-    reads: '災害の被害（cityevents.js）',
+    reads: '災害時の被害',
   },
   {
     id: 'green', name: 'まちなみ緑化と広場の維持管理', icon: '🌳', cost: 46,
     effect: { land: 0.030, occ: 0.020, brand: 0.7 },
     desc: '歩道の植栽、広場の清掃・警備、street furniture の更新を街区でまとめて行う。'
       + '地区の地価が上がり、オフィスと住宅の稼働率も上向く。',
-    reads: '地価（valuation.js）・稼働率（sales.js）',
+    reads: '地区の地価・稼働率',
   },
   {
     id: 'event', name: 'にぎわいイベントとオープンカフェ', icon: '🎪', cost: 52,
     effect: { land: 0.014, occRetail: 0.045, pop: 0.05, brand: 1.2 },
     desc: 'マルシェ、屋外席の道路占用、季節のイベントを street の側から仕掛ける。'
       + '商業とホテルの稼働率が上がり、その地区に住みたい人も増える。',
-    reads: '稼働率（sales.js）・人口の引力（population.js）',
+    reads: '商業とホテルの稼働率・地区の人口',
   },
   {
     id: 'mobility', name: 'エリア内交通とモビリティ', icon: '🚌', cost: 58,
     effect: { land: 0.034, occ: 0.014 },
     desc: '街区を巡るシャトルバスと自転車シェアを運行し、駅からの動線をつなぐ。'
       + '駅から遠い街区ほど効き目が大きく、地価に効く。',
-    reads: '地価（valuation.js）・稼働率（sales.js）',
+    reads: '地区の地価・稼働率',
   },
   {
     id: 'digital', name: 'エリアデータとサイネージ', icon: '📡', cost: 30,
     effect: { lead: 0.22, fee: 0.004, brand: 0.5 },
     desc: '人流データの計測とサイネージ広告を街区で共同運用する。'
       + 'テナントからの引き合いが増え、広告料の分配も入る。',
-    reads: 'テナントの引き合い（tenants.js）・フィー収入',
+    reads: 'テナントの引き合い・フィー収入',
   },
 ];
 

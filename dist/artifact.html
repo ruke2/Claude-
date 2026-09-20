@@ -2984,7 +2984,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       cost: 34,
       effect: { safety: 0.3, brand: 0.9 },
       desc: "\u9632\u707D\u5099\u84C4\u3068\u4E00\u6642\u6EDE\u5728\u65BD\u8A2D\u3092\u8857\u533A\u3067\u5171\u540C\u904B\u7528\u3057\u3001\u5E30\u5B85\u56F0\u96E3\u8005\u306E\u53D7\u3051\u5165\u308C\u8A13\u7DF4\u3092\u884C\u3046\u3002\u707D\u5BB3\u6642\u306E\u88AB\u5BB3\u30923\u5272\u6291\u3048\u308B\u3002\u81EA\u6CBB\u4F53\u3068\u306E\u95A2\u4FC2\u3082\u3067\u304D\u308B\u3002",
-      reads: "\u707D\u5BB3\u306E\u88AB\u5BB3\uFF08cityevents.js\uFF09"
+      reads: "\u707D\u5BB3\u6642\u306E\u88AB\u5BB3"
     },
     {
       id: "green",
@@ -2993,7 +2993,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       cost: 46,
       effect: { land: 0.03, occ: 0.02, brand: 0.7 },
       desc: "\u6B69\u9053\u306E\u690D\u683D\u3001\u5E83\u5834\u306E\u6E05\u6383\u30FB\u8B66\u5099\u3001street furniture \u306E\u66F4\u65B0\u3092\u8857\u533A\u3067\u307E\u3068\u3081\u3066\u884C\u3046\u3002\u5730\u533A\u306E\u5730\u4FA1\u304C\u4E0A\u304C\u308A\u3001\u30AA\u30D5\u30A3\u30B9\u3068\u4F4F\u5B85\u306E\u7A3C\u50CD\u7387\u3082\u4E0A\u5411\u304F\u3002",
-      reads: "\u5730\u4FA1\uFF08valuation.js\uFF09\u30FB\u7A3C\u50CD\u7387\uFF08sales.js\uFF09"
+      reads: "\u5730\u533A\u306E\u5730\u4FA1\u30FB\u7A3C\u50CD\u7387"
     },
     {
       id: "event",
@@ -3002,7 +3002,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       cost: 52,
       effect: { land: 0.014, occRetail: 0.045, pop: 0.05, brand: 1.2 },
       desc: "\u30DE\u30EB\u30B7\u30A7\u3001\u5C4B\u5916\u5E2D\u306E\u9053\u8DEF\u5360\u7528\u3001\u5B63\u7BC0\u306E\u30A4\u30D9\u30F3\u30C8\u3092 street \u306E\u5074\u304B\u3089\u4ED5\u639B\u3051\u308B\u3002\u5546\u696D\u3068\u30DB\u30C6\u30EB\u306E\u7A3C\u50CD\u7387\u304C\u4E0A\u304C\u308A\u3001\u305D\u306E\u5730\u533A\u306B\u4F4F\u307F\u305F\u3044\u4EBA\u3082\u5897\u3048\u308B\u3002",
-      reads: "\u7A3C\u50CD\u7387\uFF08sales.js\uFF09\u30FB\u4EBA\u53E3\u306E\u5F15\u529B\uFF08population.js\uFF09"
+      reads: "\u5546\u696D\u3068\u30DB\u30C6\u30EB\u306E\u7A3C\u50CD\u7387\u30FB\u5730\u533A\u306E\u4EBA\u53E3"
     },
     {
       id: "mobility",
@@ -3011,7 +3011,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       cost: 58,
       effect: { land: 0.034, occ: 0.014 },
       desc: "\u8857\u533A\u3092\u5DE1\u308B\u30B7\u30E3\u30C8\u30EB\u30D0\u30B9\u3068\u81EA\u8EE2\u8ECA\u30B7\u30A7\u30A2\u3092\u904B\u884C\u3057\u3001\u99C5\u304B\u3089\u306E\u52D5\u7DDA\u3092\u3064\u306A\u3050\u3002\u99C5\u304B\u3089\u9060\u3044\u8857\u533A\u307B\u3069\u52B9\u304D\u76EE\u304C\u5927\u304D\u304F\u3001\u5730\u4FA1\u306B\u52B9\u304F\u3002",
-      reads: "\u5730\u4FA1\uFF08valuation.js\uFF09\u30FB\u7A3C\u50CD\u7387\uFF08sales.js\uFF09"
+      reads: "\u5730\u533A\u306E\u5730\u4FA1\u30FB\u7A3C\u50CD\u7387"
     },
     {
       id: "digital",
@@ -3020,7 +3020,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       cost: 30,
       effect: { lead: 0.22, fee: 4e-3, brand: 0.5 },
       desc: "\u4EBA\u6D41\u30C7\u30FC\u30BF\u306E\u8A08\u6E2C\u3068\u30B5\u30A4\u30CD\u30FC\u30B8\u5E83\u544A\u3092\u8857\u533A\u3067\u5171\u540C\u904B\u7528\u3059\u308B\u3002\u30C6\u30CA\u30F3\u30C8\u304B\u3089\u306E\u5F15\u304D\u5408\u3044\u304C\u5897\u3048\u3001\u5E83\u544A\u6599\u306E\u5206\u914D\u3082\u5165\u308B\u3002",
-      reads: "\u30C6\u30CA\u30F3\u30C8\u306E\u5F15\u304D\u5408\u3044\uFF08tenants.js\uFF09\u30FB\u30D5\u30A3\u30FC\u53CE\u5165"
+      reads: "\u30C6\u30CA\u30F3\u30C8\u306E\u5F15\u304D\u5408\u3044\u30FB\u30D5\u30A3\u30FC\u53CE\u5165"
     }
   ];
   var programById = (id) => AREA_PROGRAMS.find((p) => p.id === id);
@@ -13283,7 +13283,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     drug: { id: "drug", name: "\u30C9\u30E9\u30C3\u30B0\u30FB\u8ABF\u5264", icon: "\u{1F48A}" },
     furni: { id: "furni", name: "\u5BB6\u5177\u30FB\u30A4\u30F3\u30C6\u30EA\u30A2", icon: "\u{1F6CB}" },
     school: { id: "school", name: "\u5B66\u7FD2\u587E\u30FB\u30B9\u30AF\u30FC\u30EB", icon: "\u270F" },
-    clinic: { id: "clinic", name: "\u30AF\u30EA\u30CB\u30C3\u30AF\u30E2\u30FC\u30EB", icon: "\u{1FA7A}" }
+    clinic: { id: "clinic", name: "\u30AF\u30EA\u30CB\u30C3\u30AF\u30E2\u30FC\u30EB", icon: "\u{1FA7A}" },
+    service: { id: "service", name: "\u30B5\u30FC\u30D3\u30B9\u30FB\u91D1\u878D", icon: "\u{1F3E6}" }
   };
   var RETAIL_TENANTS = [
     { id: "r_aurelia", name: "\u30A2\u30A6\u30EC\u30EA\u30A2", cat: "apparel", size: 220, grade: 0.92, pay: 1.28, term: 6 },
@@ -13315,7 +13316,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     { id: "r_eikaiwa", name: "\u30A2\u30FC\u30C1\u82F1\u4F1A\u8A71", cat: "school", size: 130, grade: 0.58, pay: 1.08, term: 6 },
     { id: "r_clinic", name: "\u6E4A\u90FD\u30E1\u30C7\u30A3\u30AB\u30EB\u30E2\u30FC\u30EB", cat: "clinic", size: 420, grade: 0.68, pay: 1.14, term: 15 },
     { id: "r_dental", name: "\u3057\u304A\u307F\u6B6F\u79D1\u30FB\u77EF\u6B63", cat: "clinic", size: 90, grade: 0.6, pay: 1.12, term: 10 },
-    { id: "r_bank", name: "\u4E09\u548C\u9280\u884C \u652F\u5E97", cat: "clinic", size: 150, grade: 0.74, pay: 1.16, term: 15 }
+    { id: "r_bank", name: "\u4E09\u548C\u9280\u884C \u652F\u5E97", cat: "service", size: 150, grade: 0.74, pay: 1.16, term: 15 },
+    { id: "r_post", name: "\u6E4A\u90FD\u4E2D\u592E\u90F5\u4FBF\u5C40 \u5206\u5BA4", cat: "service", size: 190, grade: 0.44, pay: 0.92, term: 15 },
+    { id: "r_salon", name: "\u30D8\u30A2\u30B5\u30ED\u30F3 \u30A2\u30AA", cat: "service", size: 55, grade: 0.66, pay: 1.22, term: 5 },
+    { id: "r_travel", name: "\u307F\u306A\u3068\u65C5\u884C\u793E", cat: "service", size: 80, grade: 0.52, pay: 1.04, term: 6 }
   ];
   var LOGI_CATS = {
     ec: { id: "ec", name: "EC\u30FB\u901A\u8CA9", icon: "\u{1F4E6}" },
@@ -16153,7 +16157,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         const on = ar && ar.programs.includes(p.id);
         return `<div class="card ${on ? "sel" : ""} ${ar ? "click" : ""}" ${ar ? `data-prog="${p.id}"` : ""}>
         <div class="card-t"><span class="card-n">${p.icon} ${p.name}</span>
-          ${on ? chip("\u5B9F\u65BD\u4E2D", "green") : chip(money(Math.round(p.cost)) + " /\u4E07\u576A\xB7\u5E74", "grey")}</div>
+          ${on ? chip("\u5B9F\u65BD\u4E2D", "green") : chip(`\u5E74 ${num(p.cost * 100)}\u4E07\u5186\uFF0F\u81EA\u793E\u5EF6\u5E8A1\u4E07\u576A`, "grey")}</div>
         <div class="card-s">${p.desc}</div>
         <div class="hint">\u52B9\u304D\u5148\uFF1A${p.reads}</div>
       </div>`;

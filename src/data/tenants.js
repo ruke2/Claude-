@@ -28,6 +28,7 @@ export const RETAIL_CATS = {
   furni:   { id: 'furni',   name: '家具・インテリア', icon: '🛋' },
   school:  { id: 'school',  name: '学習塾・スクール', icon: '✏' },
   clinic:  { id: 'clinic',  name: 'クリニックモール', icon: '🩺' },
+  service: { id: 'service', name: 'サービス・金融', icon: '🏦' },
 };
 
 /**
@@ -65,7 +66,10 @@ export const RETAIL_TENANTS = [
   { id: 'r_eikaiwa',  name: 'アーチ英会話',         cat: 'school',  size: 130,  grade: 0.58, pay: 1.08, term: 6 },
   { id: 'r_clinic',   name: '湊都メディカルモール', cat: 'clinic',  size: 420,  grade: 0.68, pay: 1.14, term: 15 },
   { id: 'r_dental',   name: 'しおみ歯科・矯正',     cat: 'clinic',  size: 90,   grade: 0.60, pay: 1.12, term: 10 },
-  { id: 'r_bank',     name: '三和銀行 支店',        cat: 'clinic',  size: 150,  grade: 0.74, pay: 1.16, term: 15 },
+  { id: 'r_bank',     name: '三和銀行 支店',        cat: 'service', size: 150,  grade: 0.74, pay: 1.16, term: 15 },
+  { id: 'r_post',     name: '湊都中央郵便局 分室',  cat: 'service', size: 190,  grade: 0.44, pay: 0.92, term: 15 },
+  { id: 'r_salon',    name: 'ヘアサロン アオ',      cat: 'service', size: 55,   grade: 0.66, pay: 1.22, term: 5 },
+  { id: 'r_travel',   name: 'みなと旅行社',         cat: 'service', size: 80,   grade: 0.52, pay: 1.04, term: 6 },
 ];
 
 /** 物流テナントの業態 */

@@ -286,7 +286,7 @@ export function openArea(g, d, ctx) {
       const on = ar && ar.programs.includes(p.id);
       return `<div class="card ${on ? 'sel' : ''} ${ar ? 'click' : ''}" ${ar ? `data-prog="${p.id}"` : ''}>
         <div class="card-t"><span class="card-n">${p.icon} ${p.name}</span>
-          ${on ? chip('実施中', 'green') : chip(money(Math.round(p.cost)) + ' /万坪·年', 'grey')}</div>
+          ${on ? chip('実施中', 'green') : chip(`年 ${num(p.cost * 100)}万円／自社延床1万坪`, 'grey')}</div>
         <div class="card-s">${p.desc}</div>
         <div class="hint">効き先：${p.reads}</div>
       </div>`;
