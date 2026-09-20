@@ -541,6 +541,11 @@ function handleAction(act, id) {
       if (a) Asset.openRent(G, a, ctx);
       break;
     }
+    case 'asset.rebuild': {
+      const a = G.assets.find(x => x.id === id);
+      if (a) { focusCell(cellById(G, a.cellId)); Asset.openRebuild(G, a, ctx); }
+      break;
+    }
     case 'asset.sell': {
       const a = G.assets.find(x => x.id === id);
       if (!a) break;

@@ -26,6 +26,13 @@ export const FIT_MUL = fit => 0.26 + fit * 0.80;
  * **全国一律にしないこと。** 賃料は地方ほど安いのに工事費が同じだと、
  * 地方都市ではどの用途も残余法がほぼゼロになる
  */
+/**
+ * 建て替えで取った容積の割増。
+ * **`rebuild.js` を読み込まないこと。** 相互参照になる。
+ * 区画に貼ってある値をそのまま見るだけでよい。
+ */
+const farBonus = c => (c && c.rebuild ? c.rebuild.farBonus || 1 : 1);
+
 export const cityBuildMul = d => (CITIES[cityOf(d)] || {}).buildMul ?? 1;
 
 /**
@@ -77,7 +84,9 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
 
   // --- 規模 ---
   const mixedBonus = useId === 'mixed' ? 1.18 : 1;   // 総合設計制度による容積割増
-  const farUse = clamp01(0.80 + fit * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
+  // 建て替えで取った容積割増は clamp01 の外に掛ける（上限を超えて効くもの）。
+  // **`rebuild.js` から import しないこと。** valuation ↔ rebuild の相互参照になる
+  const farUse = clamp01(0.80 + fit * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus * farBonus(c);
   const gfa = Math.round(c.area * (c.far / 100) * farUse);
   const cover = COVER[useId] * (opt.coverMul ?? 1);
   const floors = Math.max(1, Math.round(gfa / Math.max(1, c.area * cover)));
@@ -203,7 +212,7 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
 
   const fitAvg = clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / totalFloors;
   const mixedBonus = 1.18;                                  // 総合設計制度の容積割増
-  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus;
+  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * (opt.farPenalty ?? 1) * mixedBonus * farBonus(c);
   const maxGfa = c.area * (c.far / 100) * farUse;
   const gfa = plate * totalFloors;
 
@@ -312,7 +321,7 @@ export function maxFloorsFor(g, c, stack) {
   const tf = clean.reduce((a, x) => a + x.floors, 0) || 1;
   const cover = clean.length ? clean.reduce((a, x) => a + COVER[x.use] * x.floors, 0) / tf : 0.4;
   const fitAvg = clean.length ? clean.reduce((a, x) => a + (d.fit[x.use] ?? 0.3) * x.floors, 0) / tf : 0.5;
-  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * 1.18;
+  const farUse = clamp01(0.80 + fitAvg * 0.18 + p.plan.quality / 900) * 1.18 * farBonus(c);
   const plate = c.area * cover;
   return Math.max(1, Math.floor(c.area * (c.far / 100) * farUse / Math.max(1, plate)));
 }

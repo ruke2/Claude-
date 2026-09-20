@@ -12,6 +12,7 @@ import { BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
 import { brandEffect, growBrand, getBrand } from './brands.js';
 import { demandMul } from './population.js';
 import { jvEffect, shareOf } from './jv.js';
+import { applyRebuild } from './rebuild.js';
 import { cultureEffects } from './culture.js';
 
 /** 複合開発（フロアスタック）の事業計画 */
@@ -25,6 +26,7 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
+  applyRebuild(cell, plan);
   applyJV(g, cell, plan, plan.leaseUse || stack[0].use);
   plan.totalCost = plan.landCost + plan.buildCost;
   plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
@@ -69,6 +71,7 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
+  applyRebuild(cell, plan);
   applyJV(g, cell, plan, useId);
   plan.totalCost = plan.landCost + plan.buildCost;
   if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);

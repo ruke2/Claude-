@@ -28,6 +28,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - `index.html` + `src/**` — 開発用のソース（ES Modules、HTTP経由でのみ動く）
 - `styles/main.css` — UI スタイル（白基調）
 - `src/core/lzw.js` — セーブの圧縮（localStorage の 5MB に収めるため）
+- `src/sim/trading.js` — ビルの一棟買い／`src/sim/rebuild.js` — 建て替え
 - `build.mjs` — esbuild で1ファイルに束ねる
 - `dist/skyline.html` — サーバー不要で開ける単一HTML
 - `dist/artifact.html` — Artifact 公開用（外側のタグなし）
@@ -499,6 +500,30 @@ over = load - 1
   土地の評価額と建物の再調達価格（築年ぶん減価）の比で按分する
 - 中古で買った建物は残りの使える年数が短い（`a.deprYears`）。
   `sales.js` の償却はこれを見る。無い古いセーブは従来どおり50年
+
+## 建て替え（スクラップ & ビルド）
+
+`src/sim/rebuild.js`。築30年（`REBUILD_AGE`）を過ぎた自社物件を解体し、建て直す。
+
+一度建てた区画が二度と使えないままだと、地図の一等地はすぐ尽きる。
+実際のデベロッパーは同じ土地を30年・50年おきに建て直して使う。
+
+- 旨みは**容積率の割増**にある。`SCHEMES` は3つ。
+  単純建替え（±0）／総合設計制度（+25%・工事費+5%・12週遅れ・敷地800坪以上）／
+  再開発等促進区（+55%・工事費+11%・30週遅れ・敷地2,200坪以上かつ時価80億以上）
+- 割増は `cell.rebuild.farBonus` として区画に貼り、`valuation.js` の `farUse` に掛ける。
+  **`rebuild.js` から import しないこと。** valuation ↔ rebuild の相互参照になるので、
+  `valuation.js` 側に `farBonus(c)` を持たせて区画の値を直接読む
+- 工事費の上乗せと手続きの遅れは `applyRebuild()` が事業計画に織り込む。
+  `project.js` の `applyProgram()` と同じ位置で呼ぶ
+- **「壊せば必ず得」にしないこと。** 単純建替えは延床が1.08倍にしかならず、
+  解体費・除却損・工事中に失う賃料を足すと割に合わない（実測で利益率17%・YoC 4.7%）。
+  容積の割増を取って初めて見合う（総合設計で1.35倍・25%・5.2%、
+  再開発等促進区で1.67倍・30%・5.6%）
+- 解体したら `cell.bookValue` と **`cell.lastPaid` の両方**を
+  （土地の簿価＋解体費）で置き直す。`feasibility()` は土地の原価を `lastPaid` から取るので、
+  置き忘れると次の事業計画が土地をいまの相場で買い直したことになる
+- 建物の残存簿価は除却損としてその期の損益に落ちる。解体費は土地の取得原価に含める
 
 ## 共同事業（他社との JV）
 
