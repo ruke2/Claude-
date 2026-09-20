@@ -22,6 +22,9 @@ import { stepAwards } from './awards.js';
 import { rollDisaster, stepRails } from './cityevents.js';
 import { stepRating, decayIr, questionsFor } from './ir.js';
 import { stepPostings } from './talent.js';
+import { stepPopulation } from './population.js';
+import { stepUnion } from './union.js';
+import { meetingDue, agendaOf } from './meeting.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -44,6 +47,8 @@ export function nextWeek(g) {
   rep.disaster = rollDisaster(g, rng, news);
   stepRails(g, rng, news);
   decayIr(g);
+  // 人口（四半期に1回だけ動く）
+  stepPopulation(g, rng, news);
 
   // 3. 入札の締切処理
   for (const l of g.listings.slice()) {
@@ -89,6 +94,10 @@ export function nextWeek(g) {
   // 6. 組織
   stepHR(g, rng, news);
   stepPostings(g, news);
+  // 労働組合（結成・春季交渉の要求・期限切れのゼロ回答）
+  rep.unionRound = stepUnion(g, rng, news);
+  // 定時株主総会（上場していれば年1回）
+  if (meetingDue(g)) rep.meeting = agendaOf(g);
   stepRecruit(g, rng, news);
   stepBrands(g, rng, news);
   stepCulture(g, rng, news);
@@ -132,6 +141,7 @@ export function nextWeek(g) {
   // 11. 自動進行を止めるべきか
   rep.interrupt = rep.quarterEnd || !!g.gameOver
     || rep.bids.length > 0 || rep.shocks.length > 0 || rep.completed.length > 0
+    || !!rep.meeting || !!rep.unionRound
     || news.some(n => n.major);
   rep.majorNews = news.filter(n => n.major);
   g.pendingReport = rep;

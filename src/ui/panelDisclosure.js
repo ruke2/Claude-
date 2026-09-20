@@ -15,6 +15,9 @@ import { ttm, buildBS, kpis } from '../sim/finance.js';
 import { ceo } from '../sim/officers.js';
 import { tierOf } from '../sim/company.js';
 import { avgAbility } from '../core/state.js';
+import { populationRows, cityTotals } from '../sim/population.js';
+import { holdersOf, scoreOf } from '../sim/meeting.js';
+import { hasUnion, densityOf, avgPay, marketPay } from '../sim/union.js';
 
 export const title = '開示・統合報告';
 
@@ -24,6 +27,8 @@ const TABS = [
   { id: 'rating', name: '格付け', icon: '◱' },
   { id: 'awards', name: '受賞歴', icon: '🏆' },
   { id: 'risk', name: 'リスクと街の変化', icon: '⚠' },
+  { id: 'pop', name: '人口と世帯', icon: '👥' },
+  { id: 'gov', name: 'コーポレート・ガバナンス', icon: '⚖' },
   { id: 'history', name: '沿革', icon: '📜' },
 ];
 
@@ -37,7 +42,9 @@ export function render(g, ctx) {
       : tab === 'rating' ? rating(g)
         : tab === 'awards' ? awards(g)
           : tab === 'risk' ? risk(g)
-            : history(g);
+            : tab === 'pop' ? population(g)
+              : tab === 'gov' ? governance(g)
+                : history(g);
   return nav + body;
 }
 
@@ -403,4 +410,105 @@ function history(g) {
     </div>
   ` : empty('まだ記録がない'))}
   `;
+}
+
+
+// ------------------------------------------------------------
+//  人口と世帯
+//    数字はすべて population.js から引く。ここで計算しない
+// ------------------------------------------------------------
+function population(g) {
+  const rows = populationRows(g);
+  const tot = cityTotals(g);
+  const cityCard = (cid) => {
+    const t = tot[cid]; if (!t || !t.base) return '';
+    const ch = (t.people / t.base - 1) * 100;
+    return `<div class="card">
+      <div class="card-t"><span class="card-n">${CITIES[cid].name}</span>
+        ${chip(`${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%`, ch >= 0 ? 'good' : 'bad')}</div>
+      <div class="card-s">
+        ${kv('人口', num(t.people) + '人')}
+        ${kv('世帯数', num(t.households) + '世帯')}
+        ${kv('1世帯あたり', (t.people / Math.max(1, t.households)).toFixed(2) + '人')}
+      </div></div>`;
+  };
+  const table = (cid) => {
+    const rs = rows.filter(r => r.city === cid);
+    if (!rs.length) return '';
+    return `<div class="sec"><div class="sec-t"><span>${CITIES[cid].name}の地区別</span></div>
+      <table class="tbl">
+        <tr><th>地区</th><th>人口</th><th>世帯数</th><th>1世帯</th><th>創業時比</th><th>引力</th></tr>
+        ${rs.map(r => `<tr>
+          <td>${r.short}</td>
+          <td>${num(r.people)}</td>
+          <td>${num(r.households)}</td>
+          <td>${r.size.toFixed(2)}</td>
+          <td style="color:${r.change >= 0 ? 'var(--good)' : 'var(--bad)'}">${r.change >= 0 ? '+' : ''}${r.change.toFixed(1)}%</td>
+          <td>${r.pull >= 0.2 ? '強い' : r.pull >= -0.1 ? 'ふつう' : '弱い'}</td>
+        </tr>`).join('')}
+      </table></div>`;
+  };
+  return `<div class="hint">人が増えている地区は住宅と商業の引き合いが強く、空室が埋まりやすい。
+    減っている地区では稼働率が落ちる。新線の開業は人の流れを変える。</div>
+    <div class="grid2" style="margin:10px 0">${Object.keys(CITIES).map(cityCard).join('')}</div>
+    ${Object.keys(CITIES).map(table).join('')}`;
+}
+
+// ------------------------------------------------------------
+//  コーポレート・ガバナンス（株主構成・総会・労使）
+// ------------------------------------------------------------
+function governance(g) {
+  const c = g.company;
+  if (!c.listed) {
+    return `<div class="hint">未上場のため、株主総会に関する開示はない。</div>` + laborSection(g);
+  }
+  const sc = scoreOf(g);
+  const hs = holdersOf(g);
+  const last = (g.meetings || []).slice(-1)[0];
+  return `<div class="grid3" style="margin-bottom:10px">
+      ${mini('配当性向', ((c.payout ?? 0.22) * 100).toFixed(0) + '%', c.lastDividend ? `${c.lastDividend.year}年 ${money(c.lastDividend.amount)}` : '—')}
+      ${mini('物言う株主', ((c.activistShare ?? 0.06) * 100).toFixed(1) + '%', c.mtgLoss ? `不振${c.mtgLoss}期` : '安定')}
+      ${mini('社外取締役', (c.outsideDirectors || 0) + '名', c.stockOption ? '株式報酬あり' : '—')}
+    </div>
+    <div class="card">
+      <div class="card-t"><span class="card-n">経営に対する評価</span>
+        ${chip(sc.total > 0.15 ? '良好' : sc.total < -0.15 ? '厳しい' : '中立', sc.total > 0.15 ? 'good' : sc.total < -0.15 ? 'bad' : 'grey')}</div>
+      <div class="card-s">
+        ${kv('ROE（年換算）', (sc.roe * 100).toFixed(1) + '%')}
+        ${kv('株価（直近1年）', (sc.priceUp >= 0 ? '+' : '') + (sc.priceUp * 100).toFixed(1) + '%')}
+      </div>
+    </div>
+    <div class="sec"><div class="sec-t"><span>株主構成</span></div>
+      <div class="card"><div class="card-s">${hs.map(h => kv(h.name, (h.share * 100).toFixed(1) + '%')).join('')}</div></div>
+    </div>
+    ${last ? `<div class="sec"><div class="sec-t"><span>直近の株主総会（${last.year}年）</span></div>
+      ${last.results.length ? last.results.map(r => `<div class="card">
+        <div class="card-t"><span class="card-n">${r.name}</span>
+          ${chip(r.pass ? '可決' : '否決', (r.kind === 'proposal') === r.pass ? 'bad' : 'good')}</div>
+        <div class="card-s">賛成 ${(r.yes * 100).toFixed(1)}%（必要 ${(r.need * 100).toFixed(0)}%）</div>
+      </div>`).join('') : '<div class="hint">付議された議案はなかった。</div>'}</div>` : ''}
+    ${laborSection(g)}`;
+}
+
+function laborSection(g) {
+  if (!hasUnion(g)) {
+    return `<div class="sec"><div class="sec-t"><span>労使関係</span></div>
+      <div class="hint">労働組合は組織されていない。従業員が増え、士気が下がるか残業が長引くと結成される。</div></div>`;
+  }
+  const h = (g.union.history || []).slice(-8).reverse();
+  const KIND = { full: ['満額回答', 'good'], settle: ['妥結', 'good'], grudging: ['不満を残して決着', 'amber'], break: ['決裂', 'bad'] };
+  return `<div class="sec"><div class="sec-t"><span>労使関係</span>
+      ${chip(`組織率 ${(densityOf(g) * 100).toFixed(0)}%`, 'grey')}</div>
+    <div class="card"><div class="card-s">
+      ${kv('組合結成', g.union.since + '年')}
+      ${kv('自社の平均年収', avgPay(g).toFixed(1) + '百万円')}
+      ${kv('同業他社の中央値', marketPay(g).toFixed(1) + '百万円')}
+      ${kv('交渉が決裂した回数', (g.union.disputes || 0) + '回')}
+    </div></div>
+    ${h.length ? `<table class="tbl" style="margin-top:8px">
+      <tr><th>年</th><th>要求</th><th>回答</th><th>結果</th></tr>
+      ${h.map(x => `<tr>
+        <td>${x.year}</td><td>${x.demand.toFixed(1)}%</td><td>${x.answer.toFixed(1)}%</td>
+        <td>${KIND[x.kind][0]}</td>
+      </tr>`).join('')}</table>` : ''}</div>`;
 }

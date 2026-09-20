@@ -13,6 +13,7 @@ import { RIVAL_DEFS } from '../data/companies.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
 import { marketRentRaw } from '../sim/valuation.js';
 import { costEquilibrium } from '../sim/market.js';
+import { ensurePopulation } from '../sim/population.js';
 import { grantExisting } from '../sim/company.js';
 import { clamp } from './format.js';
 import { syncCalendar } from './time.js';
@@ -180,6 +181,22 @@ const STEPS = [
     if (!m || !(m.costIdx > 0)) return;
     const eq = costEquilibrium(g);
     if (m.costIdx > eq * 1.06) m.costIdx = Math.round(eq * 1.03 * 1000) / 1000;
+  },
+
+  // 人口・株主総会・労働組合を後から足す。
+  // 人口は区画から逆算して置く（地区を足したぶんも作られる）
+  g => {
+    ensurePopulation(g);
+    const c = g.company;
+    if (c) {
+      if (typeof c.payout !== 'number') c.payout = 0.22;
+      if (typeof c.activistShare !== 'number') c.activistShare = 0.06;
+      if (typeof c.mtgLoss !== 'number') c.mtgLoss = 0;
+      if (typeof c.outsideDirectors !== 'number') c.outsideDirectors = 0;
+    }
+    if (!Array.isArray(g.meetings)) g.meetings = [];
+    if (!g.union || typeof g.union !== 'object') g.union = { formed: false, disputes: 0, history: [] };
+    if (!Array.isArray(g.union.history)) g.union.history = [];
   },
 
   // 地盤（創業の地）と、売上に応じた解禁を後から足す。

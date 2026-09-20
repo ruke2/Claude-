@@ -28,6 +28,8 @@ import { WORK_PROGRAMS } from './sim/workload.js';
 import { seismicOf, retrofitCost, retrofit } from './sim/cityevents.js';
 import { acceptPosting, fastTrack, fastTrackOdds } from './sim/talent.js';
 import { answerQuestion, closeBriefing } from './sim/ir.js';
+import { agendaOf, holdMeeting, supportFor, holdersOf } from './sim/meeting.js';
+import { answerRound, acceptanceOf } from './sim/union.js';
 import { rankName as rankNameOf } from './data/hrdata.js';
 import { avgAbility } from './core/state.js';
 import { ranking } from './sim/rivals.js';
@@ -833,7 +835,10 @@ function presentResults(reports) {
   refresh();
   const majors = reports.flatMap(r => r.majorNews || []);
   if (majors.length) toast(`${majors[0].icon} ${majors[0].text.slice(0, 40)}${majors[0].text.length > 40 ? '…' : ''}`, majors[0].type === 'fin' ? 'bad' : '');
-  if (G.gameOver) showGameOver();
+  // **決算週以外でも afterReport を通すこと。**
+  // 以前は決算報告を閉じたときにしか呼ばれておらず、
+  // 決算週に当たらない株主総会（6月）と春季交渉（2月）が一度も開かれなかった
+  afterReport();
 }
 
 /** 入札の開札結果 */
@@ -858,7 +863,7 @@ function showBidResult(bids) {
       ${win ? `<div class="btnrow"><button class="btn sm primary" data-plancell="${c.id}">この土地の事業計画を作る</button></div>` : ''}
     </div>`;
   }).join('');
-  openModal('入札の開札', html, [{ label: '閉じる', cls: 'ghost' }]);
+  openModal('入札の開札', html, [{ label: '閉じる', cls: 'ghost', act: () => { closeModal(); afterReport(); } }]);
   document.querySelectorAll('[data-plancell]').forEach(b => b.onclick = () => {
     const c = cellById(G, b.dataset.plancell);
     closeModal();
@@ -890,9 +895,156 @@ function monthOfWeek(week) { return dateLabelOf(week); }
 function afterReport() {
   refresh();
   if (G.gameOver) return showGameOver();
-  // 上場していれば、決算のあとに説明会が開かれる
   const rep = G.pendingReport;
-  if (rep && rep.briefing && rep.briefing.length) openBriefing(rep.briefing);
+  // 順に1つずつ出す。同じ週に総会と春闘が重なると片方が消えてしまう
+  if (rep && rep.meeting) { rep.meeting = null; return openMeeting(); }
+  if (rep && rep.unionRound) { rep.unionRound = null; return openShunto(); }
+  // 上場していれば、決算のあとに説明会が開かれる
+  if (rep && rep.briefing && rep.briefing.length) { const q = rep.briefing; rep.briefing = null; return openBriefing(q); }
+}
+
+// ------------------------------------------------------------
+//  定時株主総会
+//    議案をどう組むかはこちらが決める。賛成率は経営の成績で決まる。
+// ------------------------------------------------------------
+function openMeeting() {
+  const ag = agendaOf(G);
+  const sc = ag.score;
+  const picked = new Set();
+  draw();
+
+  function draw() {
+    const tone = sc.total > 0.15 ? 'good' : sc.total < -0.15 ? 'bad' : 'grey';
+    openModal(`第${G.year - G.company.founded + 1}期 定時株主総会`, `
+      <div class="card">
+        <div class="card-t"><span class="card-n">経営に対する評価</span>
+          ${chip(sc.total > 0.15 ? '良好' : sc.total < -0.15 ? '厳しい' : '中立', tone)}</div>
+        <div class="card-s">
+          ${kv('ROE（年換算）', (sc.roe * 100).toFixed(1) + '%')}
+          ${kv('株価（直近1年）', (sc.priceUp >= 0 ? '+' : '') + (sc.priceUp * 100).toFixed(1) + '%')}
+          ${kv('配当性向', (sc.div * 100).toFixed(0) + '%')}
+          ${kv('物言う株主の持株比率', ((G.company.activistShare || 0.06) * 100).toFixed(1) + '%')}
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>株主構成</span></div>
+        <div class="card"><div class="card-s">
+          ${holdersOf(G).map(h => kv(h.name, (h.share * 100).toFixed(1) + '%')).join('')}
+        </div></div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>会社提案（かける議案を選ぶ）</span></div>
+        ${ag.company.map(it => {
+          const yes = supportFor(G, it, false);
+          const on = picked.has(it.id);
+          return `<div class="card click ${on ? 'sel' : ''}" data-item="${it.id}">
+            <div class="card-t"><span class="card-n">${on ? '☑' : '☐'} ${it.name}</span>
+              ${chip(`想定賛成率 ${(yes * 100).toFixed(0)}%`, yes >= it.need ? 'good' : 'bad')}</div>
+            <div class="card-s">${it.desc}<br><span class="dim">可決には ${(it.need * 100).toFixed(0)}% が要る</span></div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${ag.heat > 0.28 ? `<div class="warnrow">株主提案が出される気配がある（緊張度 ${(ag.heat * 100).toFixed(0)}%）。
+        ${ag.proposals.map(p => p.name).join('／')}</div>` : ''}`,
+      [{ label: '総会を開く', cls: 'primary', onClick: run, close: false }]);
+    const body = document.getElementById('modalBody');
+    body.querySelectorAll('[data-item]').forEach(el => el.onclick = () => {
+      const id = el.dataset.item;
+      if (picked.has(id)) picked.delete(id); else picked.add(id);
+      draw();
+    });
+  }
+
+  function run() {
+    const rng = new RNG((G.rngState ^ 0x5bf03635) >>> 0);
+    const res = holdMeeting(G, [...picked], rng, G.news);
+    G.rngState = rng.s;
+    refresh();
+    const ng = res.results.filter(r => (r.kind === 'company' && !r.pass) || (r.kind === 'proposal' && r.pass));
+    openModal('株主総会の結果', `
+      ${res.results.length ? res.results.map(r => `<div class="card">
+        <div class="card-t"><span class="card-n">${r.name}</span>
+          ${chip(r.pass ? '可決' : '否決', (r.kind === 'proposal') === r.pass ? 'bad' : 'good')}</div>
+        <div class="card-s">賛成 ${(r.yes * 100).toFixed(1)}%（必要 ${(r.need * 100).toFixed(0)}%）</div>
+      </div>`).join('') : '<div class="hint">付議された議案はなかった。</div>'}
+      ${ng.length ? '<div class="warnrow">経営の説明責任が問われている。来期の成績次第では、より強い提案が出る。</div>' : ''}`,
+      [{ label: '閉じる', cls: 'primary', onClick: () => { refresh(); if (G.gameOver) showGameOver(); } }]);
+  }
+}
+
+// ------------------------------------------------------------
+//  春季交渉（春闘）
+//    要求に対していくらで回答するかを決める。差が大きいと決裂する。
+// ------------------------------------------------------------
+function openShunto() {
+  const r = G.union && G.union.round;
+  if (!r || r.result) return;
+  const d = r.demand;
+  let raise = Math.round(d.base * 0.6 * 10) / 10;
+  let hours = false, bonus = false;
+  draw();
+
+  function draw() {
+    const acc = acceptanceOf(d, { raise, hours, bonus });
+    const kind = acc >= 0.62 ? ['妥結', 'good'] : acc >= 0.34 ? ['不満を残して決着', 'amber'] : ['決裂', 'bad'];
+    const cost = (raise / 100) * personnelYear();
+    openModal(`${G.year}年 春季労使交渉`, `
+      <div class="card">
+        <div class="card-t"><span class="card-n">組合の要求</span>
+          ${chip(`ベア ${d.base.toFixed(1)}%`, 'amber')}</div>
+        <div class="card-s">
+          ${d.reasons.length ? `<ul style="margin:0 0 8px 1.1em;padding:0;line-height:1.9">
+              ${d.reasons.map(x => `<li>${x.text}</li>`).join('')}</ul>`
+            : '<div class="dim" style="margin-bottom:8px">とくに強い理由は挙げられていない。</div>'}
+          ${kv('組織率', (d.density * 100).toFixed(0) + '%')}
+          ${kv('自社の平均年収', d.mine.toFixed(1) + '百万円')}
+          ${kv('同業他社の中央値', d.mkt.toFixed(1) + '百万円')}
+          ${kv('全社平均の残業', d.ot.toFixed(0) + '時間/月')}
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>会社回答</span>${chip(kind[0], kind[1])}</div>
+        <div class="card"><div class="card-s">
+          <label class="lbl">ベースアップ <b style="color:var(--gold)">${raise.toFixed(1)}%</b></label>
+          <input type="range" id="shRaise" min="0" max="${Math.max(1, Math.ceil(d.base * 1.2 * 10))}" step="1" value="${Math.round(raise * 10)}" style="width:100%">
+          ${kv('人件費の増加（年間）', money(cost))}
+          <div class="card click ${hours ? 'sel' : ''}" data-opt="hours" style="margin-top:8px">
+            <div class="card-t"><span class="card-n">${hours ? '☑' : '☐'} 時間外労働の削減に踏み込む</div>
+            <div class="card-s">フレックスと外部委託を導入する。四半期ごとの固定費が増える。
+              ${d.wantHours ? '<b style="color:var(--gold)">組合はここを強く求めている。</b>' : ''}</div>
+          </div>
+          <div class="card click ${bonus ? 'sel' : ''}" data-opt="bonus">
+            <div class="card-t"><span class="card-n">${bonus ? '☑' : '☐'} 一時金を上積みする</div>
+            <div class="card-s">年収1ヶ月ぶんを一度だけ支給する。</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="hint">回答しないまま3月半ばを過ぎると、ゼロ回答として扱われる。</div>`,
+      [{ label: 'この内容で回答する', cls: 'primary', onClick: submit, close: false }]);
+    const body = document.getElementById('modalBody');
+    const sl = body.querySelector('#shRaise');
+    if (sl) sl.oninput = () => { raise = (+sl.value) / 10; draw(); };
+    body.querySelectorAll('[data-opt]').forEach(el => el.onclick = () => {
+      if (el.dataset.opt === 'hours') hours = !hours; else bonus = !bonus;
+      draw();
+    });
+  }
+
+  function personnelYear() {
+    const st = (G.staff || []).filter(x => !x.subsidiary);
+    const rp = G.hrPolicy.rankPay || [];
+    return st.reduce((a, x) => a + (rp[x.rank] || 0), 0);
+  }
+
+  function submit() {
+    if (bonus) G.cash -= Math.round(personnelYear() / 12);
+    const res = answerRound(G, { raise, hours, bonus }, G.news);
+    closeModal();
+    refresh();
+    toast(res.kind === 'break' ? '春季交渉は決裂した'
+      : res.kind === 'grudging' ? '不満を残したまま決着した' : '春季交渉が妥結した',
+      res.kind === 'break' ? 'bad' : res.kind === 'grudging' ? 'warn' : 'good');
+  }
 }
 
 // ------------------------------------------------------------

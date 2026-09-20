@@ -10,6 +10,7 @@ import { orgPower, projectCapacity } from './hr.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 import { BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
 import { brandEffect, growBrand, getBrand } from './brands.js';
+import { demandMul } from './population.js';
 import { cultureEffects } from './culture.js';
 
 /** 複合開発（フロアスタック）の事業計画 */
@@ -177,7 +178,8 @@ export function stepProjects(g, rng, news) {
 export function contractSpeed(g, use, price, marketPrice, p, districtId, brandId) {
   const gapRaw = marketPrice > 0 ? (price / marketPrice) : 1;
   const gap = clamp(2.15 - gapRaw * 1.15, 0.12, 1.85);        // 価格が安いほど速い
-  const dem = g.market.demand[use] ?? 1;
+  // 人が増えている地区は売れ足が速い
+  const dem = (g.market.demand[use] ?? 1) * demandMul(g, districtId, use);
   const sales = 0.55 + (p.sales.quality / 100) * 0.55 + p.sales.capacity / 130;
   const brand = 0.82 + g.company.brand / 260;
   // 販売子会社・販売仲介会社の寄与。

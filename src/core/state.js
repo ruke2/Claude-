@@ -8,6 +8,7 @@ import { syncCalendar } from './time.js';
 import { initCulture } from '../sim/culture.js';
 import { DISTRICTS, MAP_ROWS, MAP_W, MAP_H, TERRAIN, terrainOf, elevationAt, USES, FACADES } from '../data/city.js';
 import { RIVAL_DEFS } from '../data/companies.js';
+import { seedPopulation } from '../sim/population.js';
 import { DEPTS, DEPT_IDS, RANKS, ABILITY_IDS, LAST_NAMES, FIRST_NAMES_CLEAN,
   BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX, defaultRankNames, TOP_STAFF_RANK } from '../data/hrdata.js';
 
@@ -293,6 +294,12 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
       creditRating: 'BBB',
       // 決算説明会での受け答えの積み重ね
       irTrust: 0, irPrice: 0, irLastWeek: -1,
+      // 株主総会まわり
+      payout: 0.22,          // 配当性向
+      activistShare: 0.06,   // 物言う株主の持株比率
+      mtgLoss: 0,            // 成績不振で総会を迎えた回数
+      outsideDirectors: 0,
+      stockOption: false,
     },
     cash: Math.round(diff.equity * 0.55),
     debt: Math.round(diff.equity * 0.4),
@@ -311,6 +318,9 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     disasters: [],         // 被災の記録
     rails: [],             // 鉄道の整備計画
     postings: [],          // 社内公募
+    meetings: [],          // 株主総会の記録
+    union: { formed: false, disputes: 0, history: [] },   // 労働組合
+    pop: null,             // 地区ごとの人口（createGame の最後で seed する）
     ratingReport: null,    // 直近の格付けレポート
     ratingHistory: [],
     cells,
@@ -367,6 +377,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
   g.finance.quarterAcc = blankPL();
   g.weather = 'clear';
   syncCalendar(g);
+  g.pop = seedPopulation(g);
   return g;
 }
 

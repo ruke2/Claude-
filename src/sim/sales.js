@@ -6,6 +6,7 @@ import { DISTRICTS, USES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { contractSpeed } from './project.js';
 import { assetValue, currentNOI, subEffect, marketRentRaw } from './valuation.js';
+import { demandMul } from './population.js';
 import { growBrand, damageBrand } from './brands.js';
 import { isHome, HOME } from './company.js';
 import { perWeek, WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
@@ -104,7 +105,11 @@ export function stepAssets(g, rng, news) {
     // 地盤では地元のテナント網が効いて空室が埋まりやすい
     const lease = 0.80 + p.lease.quality / 340 + subEffect(g, 'occupancy') * 2
       + (isHome(g, a.district) ? HOME.occupancy : 0);
-    let target = clamp01((1.34 - gap * 0.36) * (0.70 + dem * 0.31) * lease);
+    // 地区の人口。増えていれば埋まりやすく、減っていれば空室が出る。
+    // **倍率は population.js の demandMul で 0.88〜1.14 に抑えてある。**
+    // ここで生の人口比を掛けると、人口が1割動いただけで収支がひっくり返る
+    const popMul = demandMul(g, a.district, a.use);
+    let target = clamp01((1.34 - gap * 0.36) * (0.70 + dem * 0.31) * lease * popMul);
     if (a.use === 'logi') target = clamp01(target * 1.06 + 0.04);
     if (a.use === 'hotel') target = clamp01(target * (0.74 + dem * 0.34));
     if (a.age > 25) target *= 0.94;

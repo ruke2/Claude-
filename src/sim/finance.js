@@ -285,6 +285,25 @@ export function closeQuarter(g, rng, news) {
   if (overdraft(g) > 0) g.crisis = (g.crisis || 0) + 1;
   else { g.crisis = 0; g.overdraftWeeks = 0; }
 
+  // 期末配当（上場していて、通期が黒字のときだけ）。
+  // **四半期ごとに払わないこと。** 年4回配当する日本の不動産会社はほとんど無い
+  if (g.company.listed && g.quarter === 4) {
+    const year = ttm(g);
+    if (year.net > 0) {
+      const payout = clamp(g.company.payout ?? 0.22, 0, 0.8);
+      const div = Math.round(year.net * payout);
+      if (div > 0) {
+        g.cash -= div;
+        g.finance.quarterAcc.dividend = div;
+        g.company.lastDividend = { year: g.year, amount: div, payout };
+        news && news.push({
+          icon: '💴', type: 'ir',
+          text: `期末配当を実施した。配当総額 ${Math.round(div / 100).toLocaleString()}億円（配当性向 ${(payout * 100).toFixed(0)}%）。`,
+        });
+      }
+    }
+  }
+
   g.finance.quarterAcc = blankPL();
   return pl;
 }
