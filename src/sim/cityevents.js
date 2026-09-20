@@ -37,6 +37,14 @@ export const HAZARD = {
   Q: { quake: 0.95, storm: 1.15, flood: 0.90 },
   L: { quake: 0.95, storm: 1.00, flood: 0.85 },
   C: { quake: 0.70, storm: 0.90, flood: 0.35 },   // 千歳丘：丘を削った造成地
+  D: { quake: 0.95, storm: 1.10, flood: 0.90 },   // 陽ノ浦駅前
+  O: { quake: 1.30, storm: 1.50, flood: 1.55 },   // 陽ノ浦港：海に面した低地
+  U: { quake: 1.10, storm: 1.20, flood: 1.30 },   // 湯ノ川：川沿い
+  X: { quake: 1.05, storm: 1.55, flood: 1.40 },   // 白浜：砂浜に面する
+  1: { quake: 0.90, storm: 0.85, flood: 0.80 },   // 八雲駅前
+  2: { quake: 0.95, storm: 0.85, flood: 0.90 },
+  3: { quake: 0.85, storm: 0.80, flood: 0.70 },
+  4: { quake: 0.65, storm: 0.80, flood: 0.30 },   // 白鷺台：台地
 };
 export const hazardOf = d => HAZARD[d] || { quake: 1, storm: 1, flood: 1 };
 

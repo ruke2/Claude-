@@ -90,7 +90,12 @@ export const PUBLIC_PROGRAMS = [
  * 大型案件が出る頻度が下がってしまう。面積ではなく金額で帯を切る。
  */
 /** 進出先の都市から持ち込まれる割合 */
-const CITY_SHARE = { tsurumino: 0.26 };
+/**
+ * 進出先の都市から持ち込まれる割合。
+ * **合計を 1.00 に近づけないこと。** 残りが湊都市のぶんになる。
+ * 新しい都市を足すたびに湊都市の案件が薄まるので、控えめに置く
+ */
+const CITY_SHARE = { tsurumino: 0.22, hinoura: 0.14, yakumo: 0.16 };
 
 const SIZE_BANDS = [
   { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・千歳丘・テクノパーク・北野）
@@ -174,6 +179,8 @@ export function generatePublic(g, rng, news) {
 export function citiesOpen(g) {
   const set = new Set(['minato']);
   if (unlocked(g, 'city2')) set.add('tsurumino');
+  if (unlocked(g, 'city3')) set.add('hinoura');
+  if (unlocked(g, 'city4')) set.add('yakumo');
   return set;
 }
 
@@ -207,7 +214,14 @@ export function generateListings(g, rng, news) {
     // 先に都市で絞ると、大型案件のある帯の出方まで動いてしまう
     const band = rng.weighted(SIZE_BANDS);
     let scope = pickBand(g, pool, SIZE_BANDS.indexOf(band));
-    const wantCity = reach.has('tsurumino') && rng.chance(CITY_SHARE.tsurumino) ? 'tsurumino' : 'minato';
+    // 進出済みの都市のなかから、割合に従って1つ選ぶ
+    let wantCity = 'minato';
+    let roll = rng.next();
+    for (const cid of ['tsurumino', 'hinoura', 'yakumo']) {
+      if (!reach.has(cid)) continue;
+      if (roll < CITY_SHARE[cid]) { wantCity = cid; break; }
+      roll -= CITY_SHARE[cid];
+    }
     const byCity = scope.filter(c => cityOf(c.d) === wantCity);
     if (byCity.length) scope = byCity;
     if (rng.chance(HOME.info)) {

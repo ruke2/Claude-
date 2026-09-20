@@ -3,7 +3,7 @@
 //  すべての金額は百万円、面積は坪
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
-import { DISTRICTS, USES, GRADES } from '../data/city.js';
+import { DISTRICTS, USES, GRADES, CITIES, cityOf } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { brandEffect } from './brands.js';
 import { cultureEffects } from './culture.js';
@@ -20,6 +20,13 @@ export const CAP_SPREAD = { office: 0, retail: 0.0065, hotel: 0.0105, logi: 0.00
  * 適合1.00 → 1.06倍、0.80 → 0.90倍、0.50 → 0.66倍、0.10 → 0.34倍。
  */
 export const FIT_MUL = fit => 0.26 + fit * 0.80;
+
+/**
+ * 建設費の地域差。
+ * **全国一律にしないこと。** 賃料は地方ほど安いのに工事費が同じだと、
+ * 地方都市ではどの用途も残余法がほぼゼロになる
+ */
+export const cityBuildMul = d => (CITIES[cityOf(d)] || {}).buildMul ?? 1;
 
 /**
  * 分譲の販売手数料率。
@@ -80,7 +87,7 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   // --- 建設費 ---
   const highRise = 1 + Math.max(0, floors - 28) * 0.0045;
   const costCut = 1 - subEffect(g, 'costCut') - clamp((p.cons.quality - 55) / 100 * 0.10, -0.05, 0.10);
-  const build = gfa * U.build * g.market.costIdx * G.costMul * highRise * costCut;
+  const build = gfa * U.build * g.market.costIdx * G.costMul * highRise * costCut * cityBuildMul(c.d);
   const softCost = build * 0.085;                      // 設計・監理・広告宣伝ほか
   const buildCost = Math.round(build + softCost);
 
@@ -219,7 +226,7 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
     // 建設費（複合は構造が複雑になるため割増）
     const highRise = 1 + Math.max(0, to - 28) * 0.0045;
     const costCut = 1 - subEffect(g, 'costCut') - clamp((p.cons.quality - 55) / 100 * 0.10, -0.05, 0.10);
-    const segBuild = area * U.build * 1.08 * g.market.costIdx * G.costMul * highRise * costCut;
+    const segBuild = area * U.build * 1.08 * g.market.costIdx * G.costMul * highRise * costCut * cityBuildMul(c.d);
     build += segBuild;
 
     const rec = { ...seg, from, to, area: Math.round(area), usable: Math.round(usable), floorMul: fmul, build: Math.round(segBuild * 1.085) };

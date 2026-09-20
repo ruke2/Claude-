@@ -107,15 +107,22 @@ export class CityRenderer {
     return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0 + 3, h: y1 - y0 + 3 };
   }
 
-  // 画面にその都市がだいたい収まる倍率に合わせる（小さい画面向け）
+  // 画面にその都市がだいたい収まる倍率に合わせる。
+  // **(w + h) で見積もらないこと。** 細長い街だと実際の画面上の幅とずれる。
+  // 回転も効くので、四隅を実際に変換して外接矩形を取る
   fit(cityId = this.city) {
     const b = this.cityBounds(cityId);
-    const wSpan = (b.w + b.h) * (TILE_W / 2);
-    const hSpan = (b.w + b.h) * (TILE_H / 2);
+    let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity;
+    for (const [gx, gy] of [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]]) {
+      const p = toScreen(gx, gy, 0, this.cam.rot, 1);
+      if (p.x < sx0) sx0 = p.x; if (p.x > sx1) sx1 = p.x;
+      if (p.y < sy0) sy0 = p.y; if (p.y > sy1) sy1 = p.y;
+    }
+    const wSpan = (sx1 - sx0) + TILE_W, hSpan = (sy1 - sy0) + TILE_H * 3;
     let idx = 0;
     for (let i = 0; i < ZOOM_STEPS.length; i++) {
       const z = ZOOM_STEPS[i];
-      if (wSpan * z <= this.w * 1.06 && hSpan * z <= this.h * 0.78) idx = i;
+      if (wSpan * z <= this.w * 0.98 && hSpan * z <= this.h * 0.80) idx = i;
     }
     this.cam.zoomIdx = idx;
     this.invalidate();

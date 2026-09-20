@@ -33,7 +33,7 @@ const HOUSEHOLD_SIZE = {
 const POP_SCALE = 30;
 
 /** 都市ごとの趨勢（年あたり） */
-const CITY_TREND = { minato: 0.0042, tsurumino: -0.0062 };
+const CITY_TREND = { minato: 0.0042, tsurumino: -0.0062, hinoura: -0.0085, yakumo: -0.0105 };
 
 /**
  * 地区の性格から、人がどれだけ住む場所かを決める。
