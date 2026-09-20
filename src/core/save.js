@@ -218,6 +218,7 @@ const STEPS = [
     if (!Array.isArray(g.bonuses)) g.bonuses = [];
     if (!Array.isArray(g.jvOffers)) g.jvOffers = [];
     if (!Array.isArray(g.standing)) g.standing = [];
+    if (!Array.isArray(g.assemblies)) g.assemblies = [];
     if (!g.relations || typeof g.relations !== 'object') g.relations = {};
     if (!g.union || typeof g.union !== 'object') g.union = { formed: false, disputes: 0, history: [] };
     if (!Array.isArray(g.union.history)) g.union.history = [];

@@ -284,6 +284,22 @@ function completeProject(g, pj, rng, news) {
   });
   cell.building.height = pj.heightM;
   if (pj.stack) cell.building.stack = pj.stack.map(x => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
+  // 集約した敷地は、隣の区画にも低層部を載せて一体に見せる。
+  // **種地を空き地のままにしないこと。** せっかく買い集めたのに、
+  // 塔が1区画に建って隣が更地のままでは、一体開発に見えない
+  for (const mid of cell.merged || []) {
+    const m = g.cells.find(x => x.id === mid);
+    if (!m) continue;
+    m.building = makeBuilding(rng, {
+      use: pj.use, floors: Math.max(2, Math.min(5, Math.round(pj.floors * 0.18))),
+      d: m.d, owner: 'player', grade: pj.grade, year: g.year, name: pj.name,
+    });
+    m.building.facade = cell.building.facade;      // 同じ意匠でそろえる
+    m.building.podiumOf = cell.id;                 // 単体の建物ではない
+    m.building.antenna = false;
+    m.building.crown = 0;
+    m.vacant = false;
+  }
   g.kpi.builtCount++;
   g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12000 ? 1.6 : 1), 0, 100);
   const ceq = cultureEffects(g);
@@ -377,6 +393,12 @@ export function canStart(g, cell, useId, gradeId) {
   if (!cell || cell.owner !== 'player') return '自社が所有していない区画である';
   if (cell.projectId) return 'すでに開発中である';
   if (cell.assetId || cell.invId) return 'すでに建物が建っている';
+  // 集約した敷地の一部（種地）は、単独では建てられない
+  if (cell.mergedInto) return 'この区画は隣の敷地に合筆されている';
+  if (cell.pendingMerge) return '用地集約の途中で取得した区画である。まとまるまで単独では着工できない';
+  if ((g.assemblies || []).some(a => a.baseId === cell.id)) {
+    return '用地集約の交渉中である。交渉を打ち切ってからでなければ着工できない';
+  }
   const running = g.projects.filter(p => p.status === 'construction').length;
   if (running >= projectCapacity(g)) return `同時進行できる案件数の上限（${projectCapacity(g)}件）に達している`;
   // 公共案件は提案どおりに作る義務がある

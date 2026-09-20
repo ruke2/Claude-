@@ -28,6 +28,7 @@ import { meetingDue, agendaOf } from './meeting.js';
 import { stepAgenda, pending } from './agenda.js';
 import { stepJV } from './jv.js';
 import { stepStanding } from './trading.js';
+import { stepAssembly } from './assembly.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -88,6 +89,8 @@ export function nextWeek(g) {
   stepJV(g, rng, news);
   // 稼働中のビルの売り物件（一棟買い）
   stepStanding(g, rng, news);
+  // 種地の取得（用地の集約）
+  stepAssembly(g, rng, news);
 
   // 5. 事業
   const before = g.assets.length + g.inventory.length;

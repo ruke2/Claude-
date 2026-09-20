@@ -14,6 +14,7 @@ import { hash2 } from './core/rng.js';
 import { DISTRICTS, USES, TERRAIN, GRADES, CITIES } from './data/city.js';
 import { RNG } from './core/rng.js';
 import * as Trading from './sim/trading.js';
+import * as Assembly from './sim/assembly.js';
 
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
@@ -68,6 +69,7 @@ const ctx = {
   startProject, acquireNow, focusCell,
   // 一棟買いの交渉はダイアログの中で完結するので、必要な口をここから渡す
   trading: Trading,
+  assembly: Assembly,
   get rng() { return new RNG((G ? G.rngState : 1) ^ 0x5eed17); },
 };
 
@@ -508,6 +510,16 @@ function handleAction(act, id) {
     case 'std.detail': {
       const o = (G.standing || []).find(x => x.id === id);
       if (o) { focusCell(cellById(G, o.cellId)); Land.openStandingDetail(G, o, ctx); }
+      break;
+    }
+    case 'asm.start': {
+      const c = cellById(G, id);
+      if (c) { focusCell(c); Land.openAssemblyStart(G, c, ctx); }
+      break;
+    }
+    case 'asm.open': {
+      const a = (G.assemblies || []).find(x => x.id === id);
+      if (a) { focusCell(cellById(G, a.baseId)); Land.openAssembly(G, a, ctx); }
       break;
     }
     case 'agenda.open': openAgendaItem(id); break;

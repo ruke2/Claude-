@@ -12,6 +12,7 @@ import { orgPower } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
 import { RNG } from '../core/rng.js';
 import { standingRows, MAX_BIDS } from '../sim/trading.js';
+import { assemblyRows, assemblyBases, neighborsOf, MAX_PARCELS, MAX_ASSEMBLIES } from '../sim/assembly.js';
 
 export const title = '用地取得';
 
@@ -77,7 +78,48 @@ export function render(g, ctx) {
   ${unlocked(g, 'public') ? '' : section('公共案件', '未解禁',
     lockCard(UNLOCK_INFO.public, needFor(g, 'public'), ttmRevenue(g)))}
   ${section('保有中の未着工用地', `${owned.length}件`, ownedCards)}
+  ${assemblySection(g)}
   `;
+}
+
+/**
+ * 用地の集約（種地の取得）。
+ * 大きな敷地は「探すもの」ではなく「作るもの」である、という節。
+ */
+function assemblySection(g) {
+  const rows = assemblyRows(g);
+  const bases = assemblyBases(g);
+  const body = `
+    <div class="hint" style="margin-bottom:10px">
+      隣り合う区画を買い足して、1つの大きな敷地にする。
+      種地は相場では買えず、地権者によっては折り合わない。
+      <b>1人でも折れないと敷地はつながらない。</b>
+      途中でやめても、買った土地は飛び地として手元に残る。
+    </div>
+    ${rows.map(r => {
+    const a = r.assembly;
+    return `<div class="card click ${r.holdouts ? 'warn' : ''}" data-act="asm.open" data-id="${a.id}">
+        <div class="card-t">
+          <span class="card-n">${r.district.name}　集約交渉</span>
+          ${chip(`${r.done}/${r.total}区画`, r.done === r.total ? 'green' : 'amber')}
+          ${r.holdouts ? chip(`ごねている ${r.holdouts}件`, 'red') : ''}
+        </div>
+        <div class="card-s">いまの敷地 ${num(r.baseArea)}坪　→　まとまれば <b>${num(r.futureArea)}坪</b></div>
+        <div class="kv"><span class="k">ここまでの支出</span><span class="v">${money(r.spent)}</span></div>
+        <div class="btnrow"><button class="btn sm primary" data-act="asm.open" data-id="${a.id}">交渉の状況を見る</button></div>
+      </div>`;
+  }).join('')}
+    ${rows.length >= MAX_ASSEMBLIES ? '' : bases.slice(0, 5).map(c => {
+    const nb = neighborsOf(g, c);
+    return `<div class="card click" data-act="asm.start" data-id="${c.id}">
+        <div class="card-t"><span class="card-n">${cityOf(c.d) === 'minato' ? '' : CITIES[cityOf(c.d)].short + '・'}${DISTRICTS[c.d].name}　${num(c.area)}坪</span>${chip('集約できる', 'cyan')}</div>
+        <div class="card-s">隣に買える区画が ${nb.length} つある（最大${MAX_PARCELS}区画まで交渉できる）<br>
+          まとまれば ${num(c.area + nb.slice(0, MAX_PARCELS).reduce((s, x) => s + x.area, 0))}坪 の敷地になる</div>
+        <div class="btnrow"><button class="btn sm" data-act="asm.start" data-id="${c.id}">集約を検討する</button></div>
+      </div>`;
+  }).join('')}
+    ${!rows.length && !bases.length ? empty('集約できる自社の更地がない。<br>隣に他社や個人の区画が残っている更地を持っていることが条件である。') : ''}`;
+  return section('用地の集約（種地の取得）', rows.length ? `${rows.length}件 交渉中` : '', body);
 }
 
 /**
@@ -461,6 +503,166 @@ export function openStandingDetail(g, offer, ctx, after) {
         return;
       }
       refresh();
+    };
+  }
+}
+
+// ------------------------------------------------------------
+//  用地の集約（種地の取得）
+// ------------------------------------------------------------
+export function openAssemblyStart(g, cell, ctx) {
+  const nb = neighborsOf(g, cell).slice(0, MAX_PARCELS);
+  if (!nb.length) { toast('隣に買える区画がない', 'bad'); return; }
+  const picked = new Set(nb.map(c => c.id));
+
+  openModal(`${DISTRICTS[cell.d].name}　用地の集約`, buildHTML(), [
+    { label: 'やめる', cls: 'ghost' },
+  ]);
+  bind();
+
+  function buildHTML() {
+    const chosen = nb.filter(c => picked.has(c.id));
+    const area = cell.area + chosen.reduce((s, c) => s + c.area, 0);
+    const app = chosen.reduce((s, c) => s + landAppraisal(g, c), 0);
+    return `
+    <div class="grid3">
+      ${mini('いまの敷地', `${num(cell.area)}坪`, DISTRICTS[cell.d].name)}
+      ${mini('まとまれば', `${num(area)}坪`, `${(area / Math.max(1, cell.area)).toFixed(2)}倍`)}
+      ${mini('種地の相場', money(app), '実際はこれより高く付く')}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>交渉する区画</span><span class="note">最大${MAX_PARCELS}区画</span></div>
+      ${nb.map(c => `<div class="card ${picked.has(c.id) ? 'sel' : ''} click" data-pick="${c.id}">
+        <div class="card-t"><span class="card-n">${num(c.area)}坪</span>${picked.has(c.id) ? chip('交渉する', 'cyan') : chip('外す', 'grey')}</div>
+        <div class="card-s">容積率 ${c.far}%／相場 ${money(landAppraisal(g, c))}
+          ${c.building ? `<br>いま建っているもの：${USES[c.building.use].name}（築${Math.max(0, g.year - c.building.year)}年）` : '<br>更地'}</div>
+      </div>`).join('')}
+    </div>
+    <div class="hint">
+      交渉を始めると、地権者ごとに希望価格が出る。<b>相場では買えない。</b>
+      足元を見られ、相場の1.2〜1.9倍を求められることが多い。<br>
+      提示額を出して待つと、週ごとに折れるかどうかが決まる。
+      粘りすぎると態度を硬化させ、希望価格が跳ね上がる。<br>
+      <b>交渉中は母屋の区画も着工できない。</b>打ち切れば着工できるが、
+      すでに買った種地は飛び地として残る。
+    </div>
+    <div class="btnrow">
+      <button class="btn primary" data-go="1" ${picked.size ? '' : 'disabled'}>この区画で交渉に入る</button>
+    </div>`;
+  }
+
+  function refresh() {
+    const el = document.getElementById('modalBody');
+    if (!el) return;
+    el.innerHTML = buildHTML();
+    bind();
+  }
+
+  function bind() {
+    document.querySelectorAll('[data-pick]').forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.pick;
+        if (picked.has(id)) picked.delete(id); else if (picked.size < MAX_PARCELS) picked.add(id);
+        refresh();
+      };
+    });
+    const go = document.querySelector('[data-go]');
+    if (go) go.onclick = () => {
+      const r = ctx.assembly.startAssembly(g, cell, nb.filter(c => picked.has(c.id)), ctx.rng, null);
+      if (!r.ok) return toast(r.message, 'bad');
+      closeModal();
+      toast('用地の集約に着手した。各区画に提示額を出すこと', 'good');
+      ctx.refresh && ctx.refresh();
+    };
+  }
+}
+
+/** 交渉の状況と、提示額の変更 */
+export function openAssembly(g, a, ctx) {
+  openModal(`${DISTRICTS[a.district].name}　集約の交渉`, buildHTML(), [
+    { label: '閉じる', cls: 'ghost' },
+  ]);
+  bind();
+
+  function buildHTML() {
+    const base = g.cells.find(c => c.id === a.baseId);
+    const done = a.parcels.filter(p => p.status === 'deal');
+    const future = (base ? base.area : 0) + a.parcels.reduce((s, p) => s + p.area, 0);
+    return `
+    <div class="grid3">
+      ${mini('まとまった区画', `${done.length}/${a.parcels.length}`, '全部そろって初めて合筆される')}
+      ${mini('いまの敷地', `${num(base ? base.area : 0)}坪`, `まとまれば ${num(future)}坪`)}
+      ${mini('ここまでの支出', money(a.spent), '打ち切っても戻らない')}
+    </div>
+
+    ${a.parcels.map((pc, i) => {
+      const st = pc.status === 'deal' ? chip('取得済', 'green')
+        : pc.status === 'holdout' ? chip('ごねている', 'red') : chip('交渉中', 'amber');
+      return `<div class="card ${pc.status === 'holdout' ? 'warn' : ''}">
+        <div class="card-t"><span class="card-n">${num(pc.area)}坪　${pc.owner}</span>${st}</div>
+        <div class="card-s">${pc.note}</div>
+        <div class="kv"><span class="k">相場</span><span class="v">${money(pc.appraisal)}</span></div>
+        <div class="kv"><span class="k">先方の希望</span><span class="v">${money(pc.ask)}<span style="color:var(--ink-mute)">（相場の${(pc.ask / Math.max(1, pc.appraisal)).toFixed(2)}倍）</span></span></div>
+        ${pc.status === 'deal'
+          ? `<div class="kv"><span class="k">取得額</span><span class="v up">${money(pc.paid || pc.offer)}</span></div>`
+          : `<div class="kv"><span class="k">いまの提示</span><span class="v">${pc.offer ? money(pc.offer) : '—'}</span></div>
+             <div class="kv"><span class="k">交渉の週数</span><span class="v">${pc.weeks}週</span></div>`}
+        ${pc.status === 'open' ? `
+        <div class="field" style="margin-top:8px">
+          <label>提示額（億円）</label>
+          <input type="number" id="ofs${i}" value="${Math.round((pc.offer || pc.ask * 0.92) / 100)}" step="1" min="0">
+        </div>
+        <div class="btnrow"><button class="btn sm primary" data-offer="${i}">この額で提示する</button></div>` : ''}
+        ${pc.status === 'holdout' ? `
+        <div class="hint">仲介やコンサルを入れて、もう一度話を持ちかけることはできる（費用 ${money(Math.round(pc.ask * 0.012))}）。
+          成否は用地開発部と経営企画部の力しだいである。</div>
+        <div class="btnrow"><button class="btn sm" data-reopen="${i}">話を持ちかける</button></div>` : ''}
+      </div>`;
+    }).join('')}
+
+    <div class="hint">提示額は何度でも変えられる。高く出すほど早くまとまるが、そのぶん土地の原価が上がる。
+      毎週、折れるかどうかが判定される。</div>
+    <div class="btnrow">
+      <button class="btn danger" data-abandon="1">交渉を打ち切る</button>
+    </div>`;
+  }
+
+  function refresh() {
+    const el = document.getElementById('modalBody');
+    if (!el) return;
+    el.innerHTML = buildHTML();
+    bind();
+  }
+
+  function bind() {
+    document.querySelectorAll('[data-offer]').forEach(b => {
+      b.onclick = () => {
+        const i = +b.dataset.offer;
+        const inp = document.getElementById('ofs' + i);
+        const amount = Math.round((+inp.value || 0) * 100);
+        if (amount <= 0) return toast('金額を入れること', 'bad');
+        const r = ctx.assembly.offerParcel(g, a, a.parcels[i], amount, null);
+        if (!r.ok) return toast(r.message, 'bad');
+        toast('提示した。返事は週を進めると来る');
+        refresh();
+        ctx.refresh && ctx.refresh();
+      };
+    });
+    document.querySelectorAll('[data-reopen]').forEach(b => {
+      b.onclick = () => {
+        const i = +b.dataset.reopen;
+        const r = ctx.assembly.reopenParcel(g, a, a.parcels[i], ctx.rng, null);
+        toast(r.ok ? '再び交渉のテーブルに着いた' : r.message, r.ok ? 'good' : 'bad');
+        refresh();
+        ctx.refresh && ctx.refresh();
+      };
+    });
+    const ab = document.querySelector('[data-abandon]');
+    if (ab) ab.onclick = () => {
+      ctx.assembly.abandonAssembly(g, a, null);
+      closeModal();
+      toast('交渉を打ち切った', 'warn');
+      ctx.refresh && ctx.refresh();
     };
   }
 }

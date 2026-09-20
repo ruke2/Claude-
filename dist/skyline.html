@@ -3712,6 +3712,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       // 競合からの共同事業の打診
       standing: [],
       // 売りに出ている稼働中のビル（一棟買い）
+      assemblies: [],
+      // 進行中の用地集約（種地の取得）
       relations: {},
       // 競合との関係値（共同事業の通りやすさ）
       union: { formed: false, disputes: 0, history: [] },
@@ -3811,6 +3813,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       buildSpend: 0,
       investCF: 0
     };
+  }
+  function cellAt(g, x, y) {
+    if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return null;
+    return g.cells[y * MAP_W + x];
   }
   function cellById(g, id) {
     return g.cells.find((c) => c.id === id);
@@ -5872,6 +5878,24 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     });
     cell.building.height = pj.heightM;
     if (pj.stack) cell.building.stack = pj.stack.map((x) => ({ use: x.use, floors: x.floors, from: x.from, to: x.to }));
+    for (const mid of cell.merged || []) {
+      const m = g.cells.find((x) => x.id === mid);
+      if (!m) continue;
+      m.building = makeBuilding(rng, {
+        use: pj.use,
+        floors: Math.max(2, Math.min(5, Math.round(pj.floors * 0.18))),
+        d: m.d,
+        owner: "player",
+        grade: pj.grade,
+        year: g.year,
+        name: pj.name
+      });
+      m.building.facade = cell.building.facade;
+      m.building.podiumOf = cell.id;
+      m.building.antenna = false;
+      m.building.crown = 0;
+      m.vacant = false;
+    }
     g.kpi.builtCount++;
     g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12e3 ? 1.6 : 1), 0, 100);
     const ceq = cultureEffects(g);
@@ -5990,6 +6014,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (!cell || cell.owner !== "player") return "\u81EA\u793E\u304C\u6240\u6709\u3057\u3066\u3044\u306A\u3044\u533A\u753B\u3067\u3042\u308B";
     if (cell.projectId) return "\u3059\u3067\u306B\u958B\u767A\u4E2D\u3067\u3042\u308B";
     if (cell.assetId || cell.invId) return "\u3059\u3067\u306B\u5EFA\u7269\u304C\u5EFA\u3063\u3066\u3044\u308B";
+    if (cell.mergedInto) return "\u3053\u306E\u533A\u753B\u306F\u96A3\u306E\u6577\u5730\u306B\u5408\u7B46\u3055\u308C\u3066\u3044\u308B";
+    if (cell.pendingMerge) return "\u7528\u5730\u96C6\u7D04\u306E\u9014\u4E2D\u3067\u53D6\u5F97\u3057\u305F\u533A\u753B\u3067\u3042\u308B\u3002\u307E\u3068\u307E\u308B\u307E\u3067\u5358\u72EC\u3067\u306F\u7740\u5DE5\u3067\u304D\u306A\u3044";
+    if ((g.assemblies || []).some((a) => a.baseId === cell.id)) {
+      return "\u7528\u5730\u96C6\u7D04\u306E\u4EA4\u6E09\u4E2D\u3067\u3042\u308B\u3002\u4EA4\u6E09\u3092\u6253\u3061\u5207\u3063\u3066\u304B\u3089\u3067\u306A\u3051\u308C\u3070\u7740\u5DE5\u3067\u304D\u306A\u3044";
+    }
     const running = g.projects.filter((p) => p.status === "construction").length;
     if (running >= projectCapacity(g)) return `\u540C\u6642\u9032\u884C\u3067\u304D\u308B\u6848\u4EF6\u6570\u306E\u4E0A\u9650\uFF08${projectCapacity(g)}\u4EF6\uFF09\u306B\u9054\u3057\u3066\u3044\u308B`;
     const pg = cell.program;
@@ -6491,6 +6520,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       if (!Array.isArray(g.bonuses)) g.bonuses = [];
       if (!Array.isArray(g.jvOffers)) g.jvOffers = [];
       if (!Array.isArray(g.standing)) g.standing = [];
+      if (!Array.isArray(g.assemblies)) g.assemblies = [];
       if (!g.relations || typeof g.relations !== "object") g.relations = {};
       if (!g.union || typeof g.union !== "object") g.union = { formed: false, disputes: 0, history: [] };
       if (!Array.isArray(g.union.history)) g.union.history = [];
@@ -10019,6 +10049,243 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }).sort((a, b) => b.offer.spec.value - a.offer.spec.value);
   }
 
+  // src/sim/assembly.js
+  var assembly_exports = {};
+  __export(assembly_exports, {
+    MAX_ASSEMBLIES: () => MAX_ASSEMBLIES,
+    MAX_PARCELS: () => MAX_PARCELS,
+    abandonAssembly: () => abandonAssembly,
+    activeFor: () => activeFor,
+    assemblyBases: () => assemblyBases,
+    assemblyRows: () => assemblyRows,
+    mergeAssembly: () => mergeAssembly,
+    neighborsOf: () => neighborsOf,
+    offerParcel: () => offerParcel,
+    reopenParcel: () => reopenParcel,
+    startAssembly: () => startAssembly,
+    stepAssembly: () => stepAssembly
+  });
+  var MAX_PARCELS = 3;
+  var MAX_ASSEMBLIES = 2;
+  var OWNERS = [
+    { name: "\u500B\u4EBA\u5730\u6A29\u8005\uFF08\u76F8\u7D9A\u3067\u53D6\u5F97\uFF09", resist: 0.28, note: "\u76F8\u7D9A\u3067\u53D7\u3051\u7D99\u3044\u3060\u571F\u5730\u3067\u3001\u601D\u3044\u5165\u308C\u306F\u8584\u3044\u3002" },
+    { name: "\u500B\u4EBA\u5730\u6A29\u8005\uFF08\u5148\u4EE3\u304B\u3089\u306E\u5C45\u5B85\uFF09", resist: 0.78, note: "\u5148\u4EE3\u304B\u3089\u3053\u306E\u571F\u5730\u306B\u4F4F\u3093\u3067\u304A\u308A\u3001\u52D5\u304F\u6C17\u306F\u306A\u3044\u3068\u3044\u3046\u3002" },
+    { name: "\u4E2D\u5C0F\u306E\u4E8B\u696D\u4F1A\u793E", resist: 0.42, note: "\u793E\u5C4B\u3068\u3057\u3066\u4F7F\u3063\u3066\u3044\u308B\u304C\u3001\u79FB\u8EE2\u5148\u304C\u3042\u308C\u3070\u5FDC\u3058\u308B\u69CB\u3048\u3067\u3042\u308B\u3002" },
+    { name: "\u501F\u5730\u4EBA\u3064\u304D\u306E\u5E95\u5730", resist: 0.66, note: "\u501F\u5730\u4EBA\u3068\u306E\u8ABF\u6574\u304C\u5FC5\u8981\u3067\u3001\u8A71\u304C\u4E8C\u91CD\u306B\u306A\u308B\u3002" },
+    { name: "\u5B97\u6559\u6CD5\u4EBA", resist: 0.84, note: "\u7C21\u5358\u306B\u624B\u653E\u3059\u6027\u8CEA\u306E\u571F\u5730\u3067\u306F\u306A\u3044\u3002" },
+    { name: "\u4E0D\u52D5\u7523\u696D\u8005\uFF08\u8EE2\u58F2\u76EE\u7684\uFF09", resist: 0.18, note: "\u7AEF\u304B\u3089\u58F2\u308B\u524D\u63D0\u3067\u6301\u3063\u3066\u304A\u308A\u3001\u5024\u6BB5\u3055\u3048\u5408\u3048\u3070\u65E9\u3044\u3002" },
+    { name: "\u99D0\u8ECA\u5834\u904B\u55B6\u4F1A\u793E", resist: 0.24, note: "\u66AB\u5B9A\u5229\u7528\u306E\u99D0\u8ECA\u5834\u3067\u3001\u53CE\u76CA\u306F\u5927\u304D\u304F\u306A\u3044\u3002" },
+    { name: "\u5730\u5143\u306E\u5546\u5E97\u4E3B", resist: 0.55, note: "\u4EE3\u66FF\u306E\u5E97\u8217\u3092\u7528\u610F\u3067\u304D\u308B\u304B\u304C\u7126\u70B9\u306B\u306A\u308B\u3002" }
+  ];
+  var DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  function neighborsOf(g, cell) {
+    const out = [];
+    for (const [dx, dy] of DIRS) {
+      const n = cellAt(g, cell.gx + dx, cell.gy + dy);
+      if (!n) continue;
+      if (n.terrain !== TERRAIN.LOT || !n.d) continue;
+      if (n.d !== cell.d) continue;
+      if (n.owner === "player" || n.assetId || n.projectId || n.invId) continue;
+      if (n.mergedInto || n.onSale) continue;
+      out.push(n);
+    }
+    return out;
+  }
+  function assemblyBases(g) {
+    return g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId && !c.assetId && !c.invId && !c.mergedInto && !activeFor(g, c.id) && neighborsOf(g, c).length > 0);
+  }
+  function activeFor(g, cellId) {
+    return (g.assemblies || []).find((a) => a.baseId === cellId) || null;
+  }
+  function startAssembly(g, base, targets, rng, news) {
+    g.assemblies = g.assemblies || [];
+    if (g.assemblies.length >= MAX_ASSEMBLIES) {
+      return { ok: false, message: `\u540C\u6642\u306B\u9032\u3081\u3089\u308C\u308B\u4EA4\u6E09\u306F${MAX_ASSEMBLIES}\u4EF6\u307E\u3067\u3067\u3042\u308B` };
+    }
+    if (!targets.length) return { ok: false, message: "\u96A3\u306B\u8CB7\u3048\u308B\u533A\u753B\u304C\u306A\u3044" };
+    const bag = rng.shuffle(OWNERS.slice());
+    const parcels = targets.slice(0, MAX_PARCELS).map((c, i) => {
+      const o = bag[i % bag.length];
+      const app = landAppraisal(g, c);
+      return {
+        cellId: c.id,
+        area: c.area,
+        appraisal: Math.round(app),
+        // 種地は相場では買えない。足元を見られる
+        ask: Math.round(app * (1.22 + o.resist * 0.55 + rng.range(-0.06, 0.1))),
+        owner: o.name,
+        note: o.note,
+        resist: clamp01(o.resist + rng.range(-0.08, 0.08)),
+        offer: 0,
+        weeks: 0,
+        status: "open"
+        // open / deal / holdout
+      };
+    });
+    const a = {
+      id: uid("G"),
+      baseId: base.id,
+      district: base.d,
+      parcels,
+      week: g.week,
+      spent: 0,
+      rounds: 0
+    };
+    g.assemblies.push(a);
+    news && news.push({
+      icon: "\u{1F91D}",
+      type: "land",
+      major: true,
+      text: `${DISTRICTS[base.d].name}\u3067\u7528\u5730\u306E\u96C6\u7D04\u306B\u7740\u624B\u3057\u305F\u3002\u96A3\u63A5${parcels.length}\u533A\u753B\u306E\u5730\u6A29\u8005\u3068\u4EA4\u6E09\u306B\u5165\u308B\u3002`
+    });
+    return { ok: true, assembly: a };
+  }
+  function offerParcel(g, a, parcel, amount, news) {
+    if (parcel.status !== "open") return { ok: false, message: "\u3053\u306E\u533A\u753B\u306E\u4EA4\u6E09\u306F\u7D42\u308F\u3063\u3066\u3044\u308B" };
+    if (amount > g.cash) return { ok: false, message: "\u624B\u5143\u8CC7\u91D1\u304C\u8DB3\u308A\u306A\u3044" };
+    parcel.offer = Math.round(amount);
+    a.rounds++;
+    return { ok: true };
+  }
+  function stepAssembly(g, rng, news) {
+    for (const a of (g.assemblies || []).slice()) {
+      const p = orgPower(g);
+      const cell = g.cells.find((c) => c.id === a.baseId);
+      const skill = clamp01(0.42 + (p.land.quality - 55) / 200 + (cell && isHome(g, cell.d) ? 0.1 : 0));
+      for (const pc of a.parcels) {
+        if (pc.status !== "open") continue;
+        pc.weeks++;
+        if (pc.offer <= 0) continue;
+        const ratio = pc.offer / Math.max(1, pc.ask);
+        let chance = clamp01((ratio - 0.86) * 1.9) * (1 - pc.resist * 0.55) * (0.5 + skill * 0.7);
+        chance *= 1 + Math.min(0.6, pc.weeks * 0.02);
+        if (rng.chance(chance * 0.13)) {
+          acquireParcel(g, a, pc, news);
+          continue;
+        }
+        const hard = (0.01 + pc.resist * 0.017) * clamp(1.7 - ratio, 0.3, 1.5);
+        if (pc.weeks > 6 && rng.chance(hard)) {
+          pc.status = "holdout";
+          pc.ask = Math.round(pc.ask * (1.18 + pc.resist * 0.25));
+          pc.resist = clamp01(pc.resist + 0.15);
+          news && news.push({
+            icon: "\u{1F645}",
+            type: "land",
+            major: true,
+            text: `${DISTRICTS[a.district].name}\u306E\u96C6\u7D04\u3067\u3001${pc.owner}\u304C\u614B\u5EA6\u3092\u786C\u5316\u3055\u305B\u305F\u3002\u5E0C\u671B\u4FA1\u683C\u306F${Math.round(pc.ask / 100).toLocaleString()}\u5104\u5186\u306B\u5F15\u304D\u4E0A\u3052\u3089\u308C\u3066\u3044\u308B\u3002`
+          });
+        }
+      }
+      if (a.parcels.every((pc) => pc.status === "deal")) mergeAssembly(g, a, news);
+    }
+  }
+  function reopenParcel(g, a, pc, rng, news) {
+    if (pc.status !== "holdout") return { ok: false, message: "\u305D\u306E\u533A\u753B\u306F\u3054\u306D\u3066\u3044\u306A\u3044" };
+    const p = orgPower(g);
+    const fee = Math.round(pc.ask * 0.012);
+    if (fee > g.cash) return { ok: false, message: "\u624B\u5143\u8CC7\u91D1\u304C\u8DB3\u308A\u306A\u3044" };
+    g.cash -= fee;
+    a.spent += fee;
+    const skill = clamp01(0.35 + (p.land.quality - 55) / 200 + (p.corp.quality - 55) / 320);
+    if (rng.chance(skill * 0.55)) {
+      pc.status = "open";
+      pc.weeks = 0;
+      news && news.push({ icon: "\u{1F91D}", type: "land", text: `${pc.owner}\u304C\u518D\u3073\u4EA4\u6E09\u306E\u30C6\u30FC\u30D6\u30EB\u306B\u7740\u3044\u305F\u3002` });
+      return { ok: true, fee };
+    }
+    return { ok: false, fee, message: "\u53D6\u308A\u4ED8\u304F\u5CF6\u3082\u306A\u304B\u3063\u305F\u3002\u8CBB\u7528\u3060\u3051\u304C\u304B\u304B\u3063\u305F" };
+  }
+  function acquireParcel(g, a, pc, news) {
+    const cell = g.cells.find((c) => c.id === pc.cellId);
+    if (!cell) {
+      pc.status = "deal";
+      return;
+    }
+    const fee = Math.round(pc.offer * 0.035);
+    g.cash -= pc.offer + fee;
+    a.spent += pc.offer + fee;
+    cell.owner = "player";
+    cell.building = null;
+    cell.vacant = true;
+    cell.bookValue = pc.offer + fee;
+    cell.lastPaid = pc.offer + fee;
+    cell.pendingMerge = a.baseId;
+    pc.status = "deal";
+    pc.paid = pc.offer + fee;
+    news && news.push({
+      icon: "\u{1F4DC}",
+      type: "land",
+      text: `${DISTRICTS[a.district].name}\u306E\u7A2E\u57301\u533A\u753B\uFF08${pc.area.toLocaleString()}\u576A\uFF09\u3092${Math.round(pc.offer / 100).toLocaleString()}\u5104\u5186\u3067\u53D6\u5F97\u3057\u305F\uFF08${pc.owner}\uFF09\u3002`
+    });
+  }
+  function mergeAssembly(g, a, news) {
+    const base = g.cells.find((c) => c.id === a.baseId);
+    if (!base) return;
+    let added = 0, addedValue = 0;
+    let book = base.bookValue || base.lastPaid || 0;
+    for (const pc of a.parcels) {
+      const c = g.cells.find((x) => x.id === pc.cellId);
+      if (!c || pc.status !== "deal") continue;
+      added += c.area;
+      addedValue += c.baseValue || 0;
+      book += c.bookValue || 0;
+      c.mergedInto = base.id;
+      c.pendingMerge = null;
+      c.area = 0;
+      c.baseValue = 0;
+      c.bookValue = 0;
+      c.lastPaid = 0;
+      c.vacant = true;
+      c.owner = "player";
+    }
+    base.area += added;
+    base.baseValue = (base.baseValue || 0) + addedValue;
+    base.bookValue = Math.round(book);
+    base.lastPaid = Math.round(book);
+    base.merged = (base.merged || []).concat(a.parcels.filter((p) => p.status === "deal").map((p) => p.cellId));
+    const i = (g.assemblies || []).indexOf(a);
+    if (i >= 0) g.assemblies.splice(i, 1);
+    news && news.push({
+      icon: "\u{1F3D7}",
+      type: "land",
+      major: true,
+      text: `${DISTRICTS[a.district].name}\u306E\u7528\u5730\u96C6\u7D04\u304C\u307E\u3068\u307E\u3063\u305F\u3002\u6577\u5730\u306F ${(base.area - added).toLocaleString()}\u576A \u2192 <b>${base.area.toLocaleString()}\u576A</b> \u306B\u306A\u3063\u305F\uFF08\u53D6\u5F97\u8CBB\u306E\u5408\u8A08 ${Math.round(a.spent / 100).toLocaleString()}\u5104\u5186\uFF09\u3002`
+    });
+  }
+  function abandonAssembly(g, a, news) {
+    const got = a.parcels.filter((p) => p.status === "deal").length;
+    for (const pc of a.parcels) {
+      const c = g.cells.find((x) => x.id === pc.cellId);
+      if (c) c.pendingMerge = null;
+    }
+    const i = (g.assemblies || []).indexOf(a);
+    if (i >= 0) g.assemblies.splice(i, 1);
+    news && news.push({
+      icon: "\u2014",
+      type: "land",
+      major: got > 0,
+      text: `${DISTRICTS[a.district].name}\u306E\u7528\u5730\u96C6\u7D04\u3092\u65AD\u5FF5\u3057\u305F\u3002` + (got ? `\u3059\u3067\u306B\u53D6\u5F97\u3057\u305F${got}\u533A\u753B\u306F\u3001\u98DB\u3073\u5730\u306E\u307E\u307E\u624B\u5143\u306B\u6B8B\u308B\u3002` : "\u53D6\u5F97\u3057\u305F\u533A\u753B\u306F\u7121\u3044\u3002")
+    });
+  }
+  function assemblyRows(g) {
+    return (g.assemblies || []).map((a) => {
+      const base = g.cells.find((c) => c.id === a.baseId);
+      const done = a.parcels.filter((p) => p.status === "deal");
+      const futureArea = (base ? base.area : 0) + a.parcels.reduce((s, p) => s + p.area, 0);
+      return {
+        assembly: a,
+        base,
+        district: DISTRICTS[a.district],
+        done: done.length,
+        total: a.parcels.length,
+        futureArea,
+        baseArea: base ? base.area : 0,
+        spent: a.spent,
+        holdouts: a.parcels.filter((p) => p.status === "holdout").length
+      };
+    });
+  }
+
   // src/sim/sales.js
   function stepInventory(g, rng, news) {
     const p = orgPower(g);
@@ -12272,6 +12539,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     generatePublic(g, rng, news);
     stepJV(g, rng, news);
     stepStanding(g, rng, news);
+    stepAssembly(g, rng, news);
     const before = g.assets.length + g.inventory.length;
     stepProjects(g, rng, news);
     if (g.assets.length + g.inventory.length > before) rep.completed.push(true);
@@ -13228,6 +13496,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   // src/ui/panelLand.js
   var panelLand_exports = {};
   __export(panelLand_exports, {
+    openAssembly: () => openAssembly,
+    openAssemblyStart: () => openAssemblyStart,
     openDetail: () => openDetail,
     openStandingDetail: () => openStandingDetail,
     render: () => render3,
@@ -13295,7 +13565,43 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       lockCard(UNLOCK_INFO.public, needFor(g, "public"), ttmRevenue(g))
     )}
   ${section("\u4FDD\u6709\u4E2D\u306E\u672A\u7740\u5DE5\u7528\u5730", `${owned.length}\u4EF6`, ownedCards)}
+  ${assemblySection(g)}
   `;
+  }
+  function assemblySection(g) {
+    const rows = assemblyRows(g);
+    const bases = assemblyBases(g);
+    const body = `
+    <div class="hint" style="margin-bottom:10px">
+      \u96A3\u308A\u5408\u3046\u533A\u753B\u3092\u8CB7\u3044\u8DB3\u3057\u3066\u30011\u3064\u306E\u5927\u304D\u306A\u6577\u5730\u306B\u3059\u308B\u3002
+      \u7A2E\u5730\u306F\u76F8\u5834\u3067\u306F\u8CB7\u3048\u305A\u3001\u5730\u6A29\u8005\u306B\u3088\u3063\u3066\u306F\u6298\u308A\u5408\u308F\u306A\u3044\u3002
+      <b>1\u4EBA\u3067\u3082\u6298\u308C\u306A\u3044\u3068\u6577\u5730\u306F\u3064\u306A\u304C\u3089\u306A\u3044\u3002</b>
+      \u9014\u4E2D\u3067\u3084\u3081\u3066\u3082\u3001\u8CB7\u3063\u305F\u571F\u5730\u306F\u98DB\u3073\u5730\u3068\u3057\u3066\u624B\u5143\u306B\u6B8B\u308B\u3002
+    </div>
+    ${rows.map((r) => {
+      const a = r.assembly;
+      return `<div class="card click ${r.holdouts ? "warn" : ""}" data-act="asm.open" data-id="${a.id}">
+        <div class="card-t">
+          <span class="card-n">${r.district.name}\u3000\u96C6\u7D04\u4EA4\u6E09</span>
+          ${chip(`${r.done}/${r.total}\u533A\u753B`, r.done === r.total ? "green" : "amber")}
+          ${r.holdouts ? chip(`\u3054\u306D\u3066\u3044\u308B ${r.holdouts}\u4EF6`, "red") : ""}
+        </div>
+        <div class="card-s">\u3044\u307E\u306E\u6577\u5730 ${num(r.baseArea)}\u576A\u3000\u2192\u3000\u307E\u3068\u307E\u308C\u3070 <b>${num(r.futureArea)}\u576A</b></div>
+        <div class="kv"><span class="k">\u3053\u3053\u307E\u3067\u306E\u652F\u51FA</span><span class="v">${money(r.spent)}</span></div>
+        <div class="btnrow"><button class="btn sm primary" data-act="asm.open" data-id="${a.id}">\u4EA4\u6E09\u306E\u72B6\u6CC1\u3092\u898B\u308B</button></div>
+      </div>`;
+    }).join("")}
+    ${rows.length >= MAX_ASSEMBLIES ? "" : bases.slice(0, 5).map((c) => {
+      const nb = neighborsOf(g, c);
+      return `<div class="card click" data-act="asm.start" data-id="${c.id}">
+        <div class="card-t"><span class="card-n">${cityOf(c.d) === "minato" ? "" : CITIES[cityOf(c.d)].short + "\u30FB"}${DISTRICTS[c.d].name}\u3000${num(c.area)}\u576A</span>${chip("\u96C6\u7D04\u3067\u304D\u308B", "cyan")}</div>
+        <div class="card-s">\u96A3\u306B\u8CB7\u3048\u308B\u533A\u753B\u304C ${nb.length} \u3064\u3042\u308B\uFF08\u6700\u5927${MAX_PARCELS}\u533A\u753B\u307E\u3067\u4EA4\u6E09\u3067\u304D\u308B\uFF09<br>
+          \u307E\u3068\u307E\u308C\u3070 ${num(c.area + nb.slice(0, MAX_PARCELS).reduce((s, x) => s + x.area, 0))}\u576A \u306E\u6577\u5730\u306B\u306A\u308B</div>
+        <div class="btnrow"><button class="btn sm" data-act="asm.start" data-id="${c.id}">\u96C6\u7D04\u3092\u691C\u8A0E\u3059\u308B</button></div>
+      </div>`;
+    }).join("")}
+    ${!rows.length && !bases.length ? empty("\u96C6\u7D04\u3067\u304D\u308B\u81EA\u793E\u306E\u66F4\u5730\u304C\u306A\u3044\u3002<br>\u96A3\u306B\u4ED6\u793E\u3084\u500B\u4EBA\u306E\u533A\u753B\u304C\u6B8B\u3063\u3066\u3044\u308B\u66F4\u5730\u3092\u6301\u3063\u3066\u3044\u308B\u3053\u3068\u304C\u6761\u4EF6\u3067\u3042\u308B\u3002") : ""}`;
+    return section("\u7528\u5730\u306E\u96C6\u7D04\uFF08\u7A2E\u5730\u306E\u53D6\u5F97\uFF09", rows.length ? `${rows.length}\u4EF6 \u4EA4\u6E09\u4E2D` : "", body);
   }
   function standingCards(g) {
     const rows = standingRows(g);
@@ -13658,6 +13964,154 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
           return;
         }
         refresh2();
+      };
+    }
+  }
+  function openAssemblyStart(g, cell, ctx2) {
+    const nb = neighborsOf(g, cell).slice(0, MAX_PARCELS);
+    if (!nb.length) {
+      toast("\u96A3\u306B\u8CB7\u3048\u308B\u533A\u753B\u304C\u306A\u3044", "bad");
+      return;
+    }
+    const picked = new Set(nb.map((c) => c.id));
+    openModal(`${DISTRICTS[cell.d].name}\u3000\u7528\u5730\u306E\u96C6\u7D04`, buildHTML(), [
+      { label: "\u3084\u3081\u308B", cls: "ghost" }
+    ]);
+    bind();
+    function buildHTML() {
+      const chosen = nb.filter((c) => picked.has(c.id));
+      const area = cell.area + chosen.reduce((s, c) => s + c.area, 0);
+      const app = chosen.reduce((s, c) => s + landAppraisal(g, c), 0);
+      return `
+    <div class="grid3">
+      ${mini("\u3044\u307E\u306E\u6577\u5730", `${num(cell.area)}\u576A`, DISTRICTS[cell.d].name)}
+      ${mini("\u307E\u3068\u307E\u308C\u3070", `${num(area)}\u576A`, `${(area / Math.max(1, cell.area)).toFixed(2)}\u500D`)}
+      ${mini("\u7A2E\u5730\u306E\u76F8\u5834", money(app), "\u5B9F\u969B\u306F\u3053\u308C\u3088\u308A\u9AD8\u304F\u4ED8\u304F")}
+    </div>
+    <div class="sec">
+      <div class="sec-t"><span>\u4EA4\u6E09\u3059\u308B\u533A\u753B</span><span class="note">\u6700\u5927${MAX_PARCELS}\u533A\u753B</span></div>
+      ${nb.map((c) => `<div class="card ${picked.has(c.id) ? "sel" : ""} click" data-pick="${c.id}">
+        <div class="card-t"><span class="card-n">${num(c.area)}\u576A</span>${picked.has(c.id) ? chip("\u4EA4\u6E09\u3059\u308B", "cyan") : chip("\u5916\u3059", "grey")}</div>
+        <div class="card-s">\u5BB9\u7A4D\u7387 ${c.far}%\uFF0F\u76F8\u5834 ${money(landAppraisal(g, c))}
+          ${c.building ? `<br>\u3044\u307E\u5EFA\u3063\u3066\u3044\u308B\u3082\u306E\uFF1A${USES[c.building.use].name}\uFF08\u7BC9${Math.max(0, g.year - c.building.year)}\u5E74\uFF09` : "<br>\u66F4\u5730"}</div>
+      </div>`).join("")}
+    </div>
+    <div class="hint">
+      \u4EA4\u6E09\u3092\u59CB\u3081\u308B\u3068\u3001\u5730\u6A29\u8005\u3054\u3068\u306B\u5E0C\u671B\u4FA1\u683C\u304C\u51FA\u308B\u3002<b>\u76F8\u5834\u3067\u306F\u8CB7\u3048\u306A\u3044\u3002</b>
+      \u8DB3\u5143\u3092\u898B\u3089\u308C\u3001\u76F8\u5834\u306E1.2\u301C1.9\u500D\u3092\u6C42\u3081\u3089\u308C\u308B\u3053\u3068\u304C\u591A\u3044\u3002<br>
+      \u63D0\u793A\u984D\u3092\u51FA\u3057\u3066\u5F85\u3064\u3068\u3001\u9031\u3054\u3068\u306B\u6298\u308C\u308B\u304B\u3069\u3046\u304B\u304C\u6C7A\u307E\u308B\u3002
+      \u7C98\u308A\u3059\u304E\u308B\u3068\u614B\u5EA6\u3092\u786C\u5316\u3055\u305B\u3001\u5E0C\u671B\u4FA1\u683C\u304C\u8DF3\u306D\u4E0A\u304C\u308B\u3002<br>
+      <b>\u4EA4\u6E09\u4E2D\u306F\u6BCD\u5C4B\u306E\u533A\u753B\u3082\u7740\u5DE5\u3067\u304D\u306A\u3044\u3002</b>\u6253\u3061\u5207\u308C\u3070\u7740\u5DE5\u3067\u304D\u308B\u304C\u3001
+      \u3059\u3067\u306B\u8CB7\u3063\u305F\u7A2E\u5730\u306F\u98DB\u3073\u5730\u3068\u3057\u3066\u6B8B\u308B\u3002
+    </div>
+    <div class="btnrow">
+      <button class="btn primary" data-go="1" ${picked.size ? "" : "disabled"}>\u3053\u306E\u533A\u753B\u3067\u4EA4\u6E09\u306B\u5165\u308B</button>
+    </div>`;
+    }
+    function refresh2() {
+      const el = document.getElementById("modalBody");
+      if (!el) return;
+      el.innerHTML = buildHTML();
+      bind();
+    }
+    function bind() {
+      document.querySelectorAll("[data-pick]").forEach((b) => {
+        b.onclick = () => {
+          const id = b.dataset.pick;
+          if (picked.has(id)) picked.delete(id);
+          else if (picked.size < MAX_PARCELS) picked.add(id);
+          refresh2();
+        };
+      });
+      const go = document.querySelector("[data-go]");
+      if (go) go.onclick = () => {
+        const r = ctx2.assembly.startAssembly(g, cell, nb.filter((c) => picked.has(c.id)), ctx2.rng, null);
+        if (!r.ok) return toast(r.message, "bad");
+        closeModal();
+        toast("\u7528\u5730\u306E\u96C6\u7D04\u306B\u7740\u624B\u3057\u305F\u3002\u5404\u533A\u753B\u306B\u63D0\u793A\u984D\u3092\u51FA\u3059\u3053\u3068", "good");
+        ctx2.refresh && ctx2.refresh();
+      };
+    }
+  }
+  function openAssembly(g, a, ctx2) {
+    openModal(`${DISTRICTS[a.district].name}\u3000\u96C6\u7D04\u306E\u4EA4\u6E09`, buildHTML(), [
+      { label: "\u9589\u3058\u308B", cls: "ghost" }
+    ]);
+    bind();
+    function buildHTML() {
+      const base = g.cells.find((c) => c.id === a.baseId);
+      const done = a.parcels.filter((p) => p.status === "deal");
+      const future = (base ? base.area : 0) + a.parcels.reduce((s, p) => s + p.area, 0);
+      return `
+    <div class="grid3">
+      ${mini("\u307E\u3068\u307E\u3063\u305F\u533A\u753B", `${done.length}/${a.parcels.length}`, "\u5168\u90E8\u305D\u308D\u3063\u3066\u521D\u3081\u3066\u5408\u7B46\u3055\u308C\u308B")}
+      ${mini("\u3044\u307E\u306E\u6577\u5730", `${num(base ? base.area : 0)}\u576A`, `\u307E\u3068\u307E\u308C\u3070 ${num(future)}\u576A`)}
+      ${mini("\u3053\u3053\u307E\u3067\u306E\u652F\u51FA", money(a.spent), "\u6253\u3061\u5207\u3063\u3066\u3082\u623B\u3089\u306A\u3044")}
+    </div>
+
+    ${a.parcels.map((pc, i) => {
+        const st = pc.status === "deal" ? chip("\u53D6\u5F97\u6E08", "green") : pc.status === "holdout" ? chip("\u3054\u306D\u3066\u3044\u308B", "red") : chip("\u4EA4\u6E09\u4E2D", "amber");
+        return `<div class="card ${pc.status === "holdout" ? "warn" : ""}">
+        <div class="card-t"><span class="card-n">${num(pc.area)}\u576A\u3000${pc.owner}</span>${st}</div>
+        <div class="card-s">${pc.note}</div>
+        <div class="kv"><span class="k">\u76F8\u5834</span><span class="v">${money(pc.appraisal)}</span></div>
+        <div class="kv"><span class="k">\u5148\u65B9\u306E\u5E0C\u671B</span><span class="v">${money(pc.ask)}<span style="color:var(--ink-mute)">\uFF08\u76F8\u5834\u306E${(pc.ask / Math.max(1, pc.appraisal)).toFixed(2)}\u500D\uFF09</span></span></div>
+        ${pc.status === "deal" ? `<div class="kv"><span class="k">\u53D6\u5F97\u984D</span><span class="v up">${money(pc.paid || pc.offer)}</span></div>` : `<div class="kv"><span class="k">\u3044\u307E\u306E\u63D0\u793A</span><span class="v">${pc.offer ? money(pc.offer) : "\u2014"}</span></div>
+             <div class="kv"><span class="k">\u4EA4\u6E09\u306E\u9031\u6570</span><span class="v">${pc.weeks}\u9031</span></div>`}
+        ${pc.status === "open" ? `
+        <div class="field" style="margin-top:8px">
+          <label>\u63D0\u793A\u984D\uFF08\u5104\u5186\uFF09</label>
+          <input type="number" id="ofs${i}" value="${Math.round((pc.offer || pc.ask * 0.92) / 100)}" step="1" min="0">
+        </div>
+        <div class="btnrow"><button class="btn sm primary" data-offer="${i}">\u3053\u306E\u984D\u3067\u63D0\u793A\u3059\u308B</button></div>` : ""}
+        ${pc.status === "holdout" ? `
+        <div class="hint">\u4EF2\u4ECB\u3084\u30B3\u30F3\u30B5\u30EB\u3092\u5165\u308C\u3066\u3001\u3082\u3046\u4E00\u5EA6\u8A71\u3092\u6301\u3061\u304B\u3051\u308B\u3053\u3068\u306F\u3067\u304D\u308B\uFF08\u8CBB\u7528 ${money(Math.round(pc.ask * 0.012))}\uFF09\u3002
+          \u6210\u5426\u306F\u7528\u5730\u958B\u767A\u90E8\u3068\u7D4C\u55B6\u4F01\u753B\u90E8\u306E\u529B\u3057\u3060\u3044\u3067\u3042\u308B\u3002</div>
+        <div class="btnrow"><button class="btn sm" data-reopen="${i}">\u8A71\u3092\u6301\u3061\u304B\u3051\u308B</button></div>` : ""}
+      </div>`;
+      }).join("")}
+
+    <div class="hint">\u63D0\u793A\u984D\u306F\u4F55\u5EA6\u3067\u3082\u5909\u3048\u3089\u308C\u308B\u3002\u9AD8\u304F\u51FA\u3059\u307B\u3069\u65E9\u304F\u307E\u3068\u307E\u308B\u304C\u3001\u305D\u306E\u3076\u3093\u571F\u5730\u306E\u539F\u4FA1\u304C\u4E0A\u304C\u308B\u3002
+      \u6BCE\u9031\u3001\u6298\u308C\u308B\u304B\u3069\u3046\u304B\u304C\u5224\u5B9A\u3055\u308C\u308B\u3002</div>
+    <div class="btnrow">
+      <button class="btn danger" data-abandon="1">\u4EA4\u6E09\u3092\u6253\u3061\u5207\u308B</button>
+    </div>`;
+    }
+    function refresh2() {
+      const el = document.getElementById("modalBody");
+      if (!el) return;
+      el.innerHTML = buildHTML();
+      bind();
+    }
+    function bind() {
+      document.querySelectorAll("[data-offer]").forEach((b) => {
+        b.onclick = () => {
+          const i = +b.dataset.offer;
+          const inp = document.getElementById("ofs" + i);
+          const amount = Math.round((+inp.value || 0) * 100);
+          if (amount <= 0) return toast("\u91D1\u984D\u3092\u5165\u308C\u308B\u3053\u3068", "bad");
+          const r = ctx2.assembly.offerParcel(g, a, a.parcels[i], amount, null);
+          if (!r.ok) return toast(r.message, "bad");
+          toast("\u63D0\u793A\u3057\u305F\u3002\u8FD4\u4E8B\u306F\u9031\u3092\u9032\u3081\u308B\u3068\u6765\u308B");
+          refresh2();
+          ctx2.refresh && ctx2.refresh();
+        };
+      });
+      document.querySelectorAll("[data-reopen]").forEach((b) => {
+        b.onclick = () => {
+          const i = +b.dataset.reopen;
+          const r = ctx2.assembly.reopenParcel(g, a, a.parcels[i], ctx2.rng, null);
+          toast(r.ok ? "\u518D\u3073\u4EA4\u6E09\u306E\u30C6\u30FC\u30D6\u30EB\u306B\u7740\u3044\u305F" : r.message, r.ok ? "good" : "bad");
+          refresh2();
+          ctx2.refresh && ctx2.refresh();
+        };
+      });
+      const ab = document.querySelector("[data-abandon]");
+      if (ab) ab.onclick = () => {
+        ctx2.assembly.abandonAssembly(g, a, null);
+        closeModal();
+        toast("\u4EA4\u6E09\u3092\u6253\u3061\u5207\u3063\u305F", "warn");
+        ctx2.refresh && ctx2.refresh();
       };
     }
   }
@@ -16359,6 +16813,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     focusCell,
     // 一棟買いの交渉はダイアログの中で完結するので、必要な口をここから渡す
     trading: trading_exports,
+    assembly: assembly_exports,
     get rng() {
       return new RNG((G ? G.rngState : 1) ^ 6221079);
     }
@@ -16814,6 +17269,22 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         if (o) {
           focusCell(cellById(G, o.cellId));
           openStandingDetail(G, o, ctx);
+        }
+        break;
+      }
+      case "asm.start": {
+        const c = cellById(G, id);
+        if (c) {
+          focusCell(c);
+          openAssemblyStart(G, c, ctx);
+        }
+        break;
+      }
+      case "asm.open": {
+        const a = (G.assemblies || []).find((x) => x.id === id);
+        if (a) {
+          focusCell(cellById(G, a.baseId));
+          openAssembly(G, a, ctx);
         }
         break;
       }
