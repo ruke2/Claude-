@@ -15,6 +15,7 @@ import { DISTRICTS, USES, TERRAIN, GRADES, CITIES } from './data/city.js';
 import { RNG } from './core/rng.js';
 import * as Trading from './sim/trading.js';
 import * as Assembly from './sim/assembly.js';
+import { openCard } from './ui/card.js';
 
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
@@ -513,6 +514,12 @@ function handleAction(act, id) {
     case 'std.detail': {
       const o = (G.standing || []).find(x => x.id === id);
       if (o) { focusCell(cellById(G, o.cellId)); Land.openStandingDetail(G, o, ctx); }
+      break;
+    }
+    case 'card': {
+      // id があればその社員の名刺、無ければ社長（プレイヤー本人）の名刺
+      const s = id ? G.staff.find(x => x.id === id) : null;
+      openCard(G, s || null);
       break;
     }
     case 'asm.start': {

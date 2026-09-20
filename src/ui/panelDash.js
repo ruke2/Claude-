@@ -7,11 +7,13 @@ import { kpis, ttm, unrealizedGain, buildBS, overdraft, debtCapacity, effectiveR
 import { personnelCost, payIndex, projectCapacity } from '../sim/hr.js';
 import { ranking } from '../sim/rivals.js';
 import { orgPower } from '../sim/hr.js';
-import { USES, DISTRICTS } from '../data/city.js';
+import { USES, DISTRICTS, CITIES, cityOf } from '../data/city.js';
 import { TIERS, UNLOCK_INFO, tierOf, nextTier, unlocked, ttmRevenue } from '../sim/company.js';
 import { PLAN_METRICS, PLAN_METRIC_IDS, PLAN_SPANS, valueOf, fmtTarget, progressOf,
   planProgress, weeksLeft, ambitionOf, startPlan, abandonPlan } from '../sim/midplan.js';
 import { ceo } from '../sim/officers.js';
+import { logoSVG } from './card.js';
+import { CEO_RANK, rankName } from '../data/hrdata.js';
 import { agendaRows, yearPlan } from '../sim/agenda.js';
 
 export const title = '経営ダッシュボード';
@@ -45,6 +47,7 @@ export function render(g) {
     <div class="newsitem"><span class="ico">${n.icon}</span><span>${n.text}</span></div>`).join('') || empty('まだニュースはない');
 
   return `
+  ${companyCard(g)}
   ${agendaSection(g)}
   ${alerts(g, k, t, p)}
   ${section('主要指標', `直近4四半期（${g.year}年 ${g.month}月 第${g.weekOfMonth}週目時点）`, `
@@ -268,6 +271,29 @@ function midPlanSection(g) {
     </div>
     ${histHTML}
   `);
+}
+
+/**
+ * 会社の顔。社章と社名、社長、地盤をひとまとめに出す。
+ * 「いま自分は何という会社を経営しているのか」を、
+ * ダッシュボードの先頭で一目で分かるようにするための節である。
+ */
+function companyCard(g) {
+  const me = ceo(g);
+  const d = DISTRICTS[g.company.home] || DISTRICTS.T;
+  const c = CITIES[cityOf(d.id)] || CITIES.minato;
+  return section('', '', `
+    <div class="card" style="display:flex;align-items:center;gap:16px">
+      <div style="flex:0 0 auto">${logoSVG(52)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:800;line-height:1.25">${g.company.name}</div>
+        <div class="card-s" style="margin-top:3px">
+          ${rankName(g, CEO_RANK)}　${me.name}<br>
+          地盤 ${c.name}・${d.name}／創業 ${me.since || g.year}年
+        </div>
+      </div>
+      <button class="btn sm tonal" data-act="card">名刺</button>
+    </div>`);
 }
 
 // ------------------------------------------------------------

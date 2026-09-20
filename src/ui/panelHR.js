@@ -11,6 +11,7 @@ import { NG_SCHEDULE, UNIVERSITIES, TIERS, FACULTIES, RECRUIT_INVEST, MID_CHANNE
 import { AXES, AXIS_IDS, cultureEffects, cultureLabel, cultureAlignment, changeCost, setCulture } from '../sim/culture.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
 import { avgAbility, baseSalaryFor, stdSalary, rankPayOf, defaultRankPay } from '../core/state.js';
+import { openCard, logoSVG } from './card.js';
 import { ranking, industryPay } from '../sim/rivals.js';
 import { jobRanking, selfRank, rivalPull } from '../sim/jobrank.js';
 import { openPosting, acceptPosting, canFastTrack, fastTrackOdds, fastTrack, fastTrackCandidates } from '../sim/talent.js';
@@ -357,8 +358,11 @@ export function openStaff(g, s, ctx) {
     </div>
     <div class="sec">
       <div class="sec-t"><span>人事措置</span></div>
-      <div class="field"><label>異動先</label>
+      <div class="field"><label>異動先（部）</label>
         <select id="selDept">${DEPT_IDS.map(d => `<option value="${d}" ${d === s.dept ? 'selected' : ''}>${DEPTS[d].name}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>異動先（課）</label>
+        <select id="selTeam">${teamsOf(s.dept).map(t => `<option value="${t.id}" ${t.id === s.team ? 'selected' : ''}>${t.name}</option>`).join('')}</select>
       </div>
       <div class="field"><label>年収（万円）</label>
         <input type="number" id="inpSal" value="${Math.round(s.salary * 100)}" step="10">
@@ -368,6 +372,7 @@ export function openStaff(g, s, ctx) {
     </div>
   `, [
     { label: '閉じる', cls: 'ghost' },
+    { label: '名刺', cls: 'tonal', close: false, onClick: () => openCard(g, s) },
     {
       label: '退職勧奨', cls: 'danger', onClick: () => {
         const cost = Math.round(s.salary * 0.8);
@@ -392,8 +397,18 @@ export function openStaff(g, s, ctx) {
     {
       label: '変更を適用', cls: '', onClick: () => {
         const d = document.getElementById('selDept').value;
+        const tm = document.getElementById('selTeam').value;
         const sal = (+document.getElementById('inpSal').value) / 100;
-        if (d !== s.dept) { s.dept = d; s.morale = Math.max(0, s.morale - 0.03); }
+        if (d !== s.dept) {
+          s.dept = d;
+          s.morale = Math.max(0, s.morale - 0.03);
+          // **部を移したら課も入れ直すこと。** そのままだと部と課が食い違う
+          const list = teamsOf(d);
+          s.team = (list.find(t => t.id === tm) ? tm : (list[0] && list[0].id)) || null;
+        } else if (tm && tm !== s.team) {
+          s.team = tm;
+          s.morale = Math.max(0, s.morale - 0.01);   // 同じ部の中の異動は軽い
+        }
         if (Math.abs(sal - s.salary) > 0.01) {
           s.morale = Math.min(1, s.morale + (sal > s.salary ? 0.08 : -0.12));
           s.salary = Math.round(sal * 10) / 10;
@@ -1054,6 +1069,7 @@ export function openCeo(g, ctx) {
     </div>
   `, [
     { label: '閉じる', cls: 'ghost' },
+    { label: '名刺', cls: 'tonal', close: false, onClick: () => openCard(g, null) },
     {
       label: '変更を適用', cls: 'primary', onClick: () => {
         const n = (document.getElementById('inpCeoName').value || '').trim().slice(0, 12);

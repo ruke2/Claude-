@@ -943,6 +943,47 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   .ticker-track{animation:none}
 }
 
+/* ============================================================
+   名刺
+   日本の名刺（91×55mm）の比率。紙に見えるよう、影は1段だけ
+   ============================================================ */
+.meishi{
+  position:relative;width:100%;max-width:430px;margin:0 auto;
+  aspect-ratio:91/55;
+  background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);
+  border:1px solid var(--line-soft);border-radius:var(--r-xs);
+  box-shadow:var(--e3);
+  padding:22px 24px;display:flex;flex-direction:column;justify-content:space-between;
+  color:var(--ink);
+}
+/* 左端の紅い帯。名刺らしい「顔」を1本だけ入れる */
+.meishi::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+  border-radius:var(--r-xs) 0 0 var(--r-xs);
+  background:linear-gradient(180deg,#9E1B32 0%,#12294A 100%);
+}
+.meishi-top{display:flex;align-items:center;gap:13px}
+.meishi-logo{flex:0 0 auto}
+.meishi-name{font-size:17px;font-weight:800;letter-spacing:.01em;line-height:1.2}
+.meishi-kicker{
+  font-family:Oswald,sans-serif;font-weight:300;font-size:8px;letter-spacing:.18em;
+  color:var(--ink-dim);margin-top:3px;
+}
+.meishi-person{margin-top:auto}
+.meishi-belong{font-size:11px;color:var(--ink-dim)}
+.meishi-title{font-size:11.5px;color:var(--ink-dim);margin-top:2px}
+.meishi-pname{font-size:23px;font-weight:700;letter-spacing:.04em;margin-top:2px;line-height:1.2}
+.meishi-foot{
+  font-size:10px;line-height:1.7;color:var(--ink-dim);
+  border-top:1px solid var(--line-soft);padding-top:8px;
+}
+@media(max-width:820px){
+  .meishi{padding:18px 18px;max-width:none}
+  .meishi-name{font-size:15px}
+  .meishi-pname{font-size:20px}
+  .meishi-foot{font-size:9.5px}
+}
+
 </style>
 
 
@@ -10587,6 +10628,183 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     });
   }
 
+  // src/ui/dom.js
+  var $ = (s) => document.querySelector(s);
+  var modalCb = null;
+  function openModal(title12, bodyHTML, buttons = []) {
+    $("#modalTitle").textContent = title12;
+    $("#modalBody").innerHTML = bodyHTML;
+    const foot = $("#modalFoot");
+    foot.innerHTML = "";
+    for (const b of buttons) {
+      const el = document.createElement("button");
+      el.className = "btn " + (b.cls || "");
+      el.textContent = b.label;
+      el.disabled = !!b.disabled;
+      el.onclick = () => {
+        if (b.onClick) b.onClick();
+        if (b.close !== false) closeModal();
+      };
+      foot.appendChild(el);
+    }
+    $("#modalWrap").classList.remove("hidden");
+    return $("#modalBody");
+  }
+  function closeModal() {
+    $("#modalWrap").classList.add("hidden");
+    modalCb = null;
+  }
+  var toastTimer = null;
+  var dialogOpen = () => ["#modalWrap", "#reportWrap"].some((s) => {
+    const e = $(s);
+    return e && !e.classList.contains("hidden");
+  });
+  function toast(msg, kind = "") {
+    const old = document.querySelector(".toast");
+    if (old) old.remove();
+    const el = document.createElement("div");
+    el.className = "toast " + kind + (dialogOpen() ? " over" : "");
+    el.innerHTML = msg;
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.remove(), 3400);
+  }
+  function spark(values, opt = {}) {
+    const { w = 260, hgt = 46, color = "#2a7fd0", fill: fill2 = true, zero = false } = opt;
+    if (!values || values.length < 2) return "";
+    const min = Math.min(...values, zero ? 0 : Infinity);
+    const max = Math.max(...values, zero ? 0 : -Infinity);
+    const rng = max - min || 1;
+    const pts = values.map((v, i) => {
+      const x = i / (values.length - 1) * w;
+      const y = hgt - (v - min) / rng * (hgt - 6) - 3;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const area = fill2 ? `<polygon points="0,${hgt} ${pts.join(" ")} ${w},${hgt}" fill="url(#sg)" opacity=".22"/>` : "";
+    const zeroLine = min < 0 && max > 0 ? `<line x1="0" x2="${w}" y1="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" y2="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" stroke="rgba(22,32,47,.2)" stroke-dasharray="3 3"/>` : "";
+    return `<svg class="spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${area}${zeroLine}<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round"/>
+  </svg>`;
+  }
+  function bar(ratio, cls = "") {
+    const w = Math.max(0, Math.min(1, ratio)) * 100;
+    return `<div class="bar ${cls}"><i style="width:${w.toFixed(1)}%"></i></div>`;
+  }
+  function kv(k, v, cls = "") {
+    return `<div class="kv ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  }
+  function mini(k, v, s = "", color = "") {
+    return `<div class="mini"><div class="mini-k">${k}</div><div class="mini-v" ${color ? `style="color:${color}"` : ""}>${v}</div>${s ? `<div class="mini-s">${s}</div>` : ""}</div>`;
+  }
+  function chip(text, cls = "grey") {
+    return `<span class="chip ${cls}">${text}</span>`;
+  }
+  function section(title12, note, inner) {
+    return `<div class="sec"><div class="sec-t"><span>${title12}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
+  }
+  function empty(msg) {
+    return `<div class="empty">${msg}</div>`;
+  }
+  function lockCard(info, needRev, nowRev) {
+    const pct2 = Math.min(1, needRev > 0 ? nowRev / needRev : 1);
+    return `<div class="card lockcard">
+    <div class="card-t"><span class="card-n">\u{1F512} ${info.icon} ${info.name}</span>
+      <span class="chip amber">\u58F2\u4E0A\u9AD8 ${Math.round(needRev / 100).toLocaleString()}\u5104\u5186\u3067\u89E3\u7981</span></div>
+    <div class="card-s">${info.desc}</div>
+    <div class="kv" style="margin-top:7px"><span class="k">\u76F4\u8FD14\u56DB\u534A\u671F\u306E\u58F2\u4E0A\u9AD8</span>
+      <span class="v">${Math.round(nowRev / 100).toLocaleString()} / ${Math.round(needRev / 100).toLocaleString()} \u5104\u5186</span></div>
+    ${bar(pct2, "gold")}
+  </div>`;
+  }
+
+  // src/ui/card.js
+  var MARK_RED = "#9E1B32";
+  var MARK_NAVY = "#12294A";
+  function logoSVG(size = 64, opt = {}) {
+    const red = opt.red || MARK_RED;
+    const navy = opt.navy || MARK_NAVY;
+    const w = Math.round(size * 220 / 160);
+    return `<svg viewBox="0 0 220 160" width="${w}" height="${size}" role="img" aria-label="\u793E\u7AE0"
+    style="display:block;overflow:visible">
+    <g fill="none" stroke-linecap="square" stroke-linejoin="miter">
+      <!-- \u5916\u5074\uFF1A\u5DE6\u306E\u659C\u9762\u304C\u7D05\u3001\u53F3\u306E\u659C\u9762\u304C\u7D3A -->
+      <path d="M14 142 L110 14" stroke="${red}" stroke-width="13"/>
+      <path d="M110 14 L206 142" stroke="${navy}" stroke-width="13"/>
+      <!-- \u5185\u5074\uFF1A\u8272\u3092\u5165\u308C\u66FF\u3048\u3066\u7D44\u307F\u5408\u308F\u305B\u308B -->
+      <path d="M58 142 L110 72" stroke="${navy}" stroke-width="10"/>
+      <path d="M110 72 L162 142" stroke="${red}" stroke-width="10"/>
+      <!-- \u9802\u306E\u5C0F\u3055\u306A\u039B -->
+      <path d="M86 62 L110 34 L134 62" stroke="${red}" stroke-width="8"/>
+    </g>
+  </svg>`;
+  }
+  function phoneOf(g) {
+    let h = 0;
+    for (const ch of String(g.company.name || "")) h = h * 131 + ch.charCodeAt(0) >>> 0;
+    const a = 3e3 + h % 6e3;
+    const b = 1e3 + (h >>> 7) % 9e3;
+    return `03-${a}-${b}`;
+  }
+  function zipOf(g) {
+    let h = 7;
+    for (const ch of String(g.company.name || "")) h = h * 37 + ch.charCodeAt(0) >>> 0;
+    return `${100 + h % 60}-${String((h >>> 5) % 1e4).padStart(4, "0")}`;
+  }
+  function addressOf(g) {
+    const d = DISTRICTS[g.company.home] || DISTRICTS.T;
+    const c = CITIES[cityOf(d.id)] || CITIES.minato;
+    let h = 11;
+    for (const ch of String(g.company.name || "")) h = h * 17 + ch.charCodeAt(0) >>> 0;
+    const chome = 1 + h % 5, ban = 1 + (h >>> 3) % 20, go = 1 + (h >>> 6) % 30;
+    return {
+      line: `${c.name}${d.short}${"\u4E00\u4E8C\u4E09\u56DB\u4E94"[chome - 1]}\u4E01\u76EE${ban}\u756A${go}\u53F7`,
+      kana: d.kana || ""
+    };
+  }
+  function cardHTML(g, person = null) {
+    const me = ceo(g);
+    const isCeo = !person;
+    const name2 = isCeo ? me.name : person.name;
+    const title12 = isCeo ? rankName(g, CEO_RANK) : rankName(g, person.rank);
+    const belong = isCeo ? "" : affiliation(person);
+    const addr = addressOf(g);
+    return `
+  <div class="meishi">
+    <div class="meishi-top">
+      <div class="meishi-logo">${logoSVG(46)}</div>
+      <div class="meishi-co">
+        <div class="meishi-name">${g.company.name}</div>
+        <div class="meishi-kicker">REAL ESTATE &amp; URBAN DEVELOPMENT</div>
+      </div>
+    </div>
+    <div class="meishi-person">
+      ${belong ? `<div class="meishi-belong">${belong}</div>` : ""}
+      <div class="meishi-title">${title12}</div>
+      <div class="meishi-pname">${name2}</div>
+    </div>
+    <div class="meishi-foot">
+      <div>\u3012${zipOf(g)}\u3000${addr.line}</div>
+      <div>TEL ${phoneOf(g)}\u3000\uFF0F\u3000\u5275\u696D ${me.since || g.year}\u5E74</div>
+    </div>
+  </div>`;
+  }
+  function openCard(g, person = null) {
+    const isCeo = !person;
+    const title12 = isCeo ? "\u540D\u523A" : `\u540D\u523A\u3000${person.name}`;
+    const t = person && teamById(person.team);
+    openModal(title12, `
+    ${cardHTML(g, person)}
+    <div class="hint" style="margin-top:14px">
+      \u793E\u540D\u306F\u30BF\u30A4\u30C8\u30EB\u753B\u9762\u3067\u5165\u308C\u305F\u3082\u306E\u3001\u4F4F\u6240\u306F\u5730\u76E4\uFF08${(DISTRICTS[g.company.home] || DISTRICTS.T).name}\uFF09\u304B\u3089\u4F5C\u3063\u3066\u3044\u308B\u3002
+      ${isCeo ? "\u80A9\u66F8\u306F <b>\u4EBA\u4E8B\u30D1\u30CD\u30EB\u306E\u300C\u5F79\u8077\u540D\u3092\u6539\u79F0\u3059\u308B\u300D</b> \u3067\u5909\u3048\u3089\u308C\u308B\u3002" : `\u6240\u5C5E\u306F ${DEPTS[person.dept].name}${t ? " " + t.name : ""}\u3002\u7570\u52D5\u3059\u308C\u3070\u3053\u306E\u540D\u523A\u3082\u5909\u308F\u308B\u3002`}
+    </div>`, [
+      { label: "\u9589\u3058\u308B", cls: "ghost" }
+    ]);
+  }
+
   // src/sim/sales.js
   function stepInventory(g, rng, news) {
     const p = orgPower(g);
@@ -12896,98 +13114,6 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return rep;
   }
 
-  // src/ui/dom.js
-  var $ = (s) => document.querySelector(s);
-  var modalCb = null;
-  function openModal(title12, bodyHTML, buttons = []) {
-    $("#modalTitle").textContent = title12;
-    $("#modalBody").innerHTML = bodyHTML;
-    const foot = $("#modalFoot");
-    foot.innerHTML = "";
-    for (const b of buttons) {
-      const el = document.createElement("button");
-      el.className = "btn " + (b.cls || "");
-      el.textContent = b.label;
-      el.disabled = !!b.disabled;
-      el.onclick = () => {
-        if (b.onClick) b.onClick();
-        if (b.close !== false) closeModal();
-      };
-      foot.appendChild(el);
-    }
-    $("#modalWrap").classList.remove("hidden");
-    return $("#modalBody");
-  }
-  function closeModal() {
-    $("#modalWrap").classList.add("hidden");
-    modalCb = null;
-  }
-  var toastTimer = null;
-  var dialogOpen = () => ["#modalWrap", "#reportWrap"].some((s) => {
-    const e = $(s);
-    return e && !e.classList.contains("hidden");
-  });
-  function toast(msg, kind = "") {
-    const old = document.querySelector(".toast");
-    if (old) old.remove();
-    const el = document.createElement("div");
-    el.className = "toast " + kind + (dialogOpen() ? " over" : "");
-    el.innerHTML = msg;
-    document.body.appendChild(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.remove(), 3400);
-  }
-  function spark(values, opt = {}) {
-    const { w = 260, hgt = 46, color = "#2a7fd0", fill: fill2 = true, zero = false } = opt;
-    if (!values || values.length < 2) return "";
-    const min = Math.min(...values, zero ? 0 : Infinity);
-    const max = Math.max(...values, zero ? 0 : -Infinity);
-    const rng = max - min || 1;
-    const pts = values.map((v, i) => {
-      const x = i / (values.length - 1) * w;
-      const y = hgt - (v - min) / rng * (hgt - 6) - 3;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    const area = fill2 ? `<polygon points="0,${hgt} ${pts.join(" ")} ${w},${hgt}" fill="url(#sg)" opacity=".22"/>` : "";
-    const zeroLine = min < 0 && max > 0 ? `<line x1="0" x2="${w}" y1="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" y2="${(hgt - (0 - min) / rng * (hgt - 6) - 3).toFixed(1)}" stroke="rgba(22,32,47,.2)" stroke-dasharray="3 3"/>` : "";
-    return `<svg class="spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">
-    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${area}${zeroLine}<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round"/>
-  </svg>`;
-  }
-  function bar(ratio, cls = "") {
-    const w = Math.max(0, Math.min(1, ratio)) * 100;
-    return `<div class="bar ${cls}"><i style="width:${w.toFixed(1)}%"></i></div>`;
-  }
-  function kv(k, v, cls = "") {
-    return `<div class="kv ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  }
-  function mini(k, v, s = "", color = "") {
-    return `<div class="mini"><div class="mini-k">${k}</div><div class="mini-v" ${color ? `style="color:${color}"` : ""}>${v}</div>${s ? `<div class="mini-s">${s}</div>` : ""}</div>`;
-  }
-  function chip(text, cls = "grey") {
-    return `<span class="chip ${cls}">${text}</span>`;
-  }
-  function section(title12, note, inner) {
-    return `<div class="sec"><div class="sec-t"><span>${title12}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
-  }
-  function empty(msg) {
-    return `<div class="empty">${msg}</div>`;
-  }
-  function lockCard(info, needRev, nowRev) {
-    const pct2 = Math.min(1, needRev > 0 ? nowRev / needRev : 1);
-    return `<div class="card lockcard">
-    <div class="card-t"><span class="card-n">\u{1F512} ${info.icon} ${info.name}</span>
-      <span class="chip amber">\u58F2\u4E0A\u9AD8 ${Math.round(needRev / 100).toLocaleString()}\u5104\u5186\u3067\u89E3\u7981</span></div>
-    <div class="card-s">${info.desc}</div>
-    <div class="kv" style="margin-top:7px"><span class="k">\u76F4\u8FD14\u56DB\u534A\u671F\u306E\u58F2\u4E0A\u9AD8</span>
-      <span class="v">${Math.round(nowRev / 100).toLocaleString()} / ${Math.round(needRev / 100).toLocaleString()} \u5104\u5186</span></div>
-    ${bar(pct2, "gold")}
-  </div>`;
-  }
-
   // src/ui/panelDash.js
   var panelDash_exports = {};
   __export(panelDash_exports, {
@@ -13019,6 +13145,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const newsHTML = (g.news || []).slice(-8).reverse().map((n) => `
     <div class="newsitem"><span class="ico">${n.icon}</span><span>${n.text}</span></div>`).join("") || empty("\u307E\u3060\u30CB\u30E5\u30FC\u30B9\u306F\u306A\u3044");
     return `
+  ${companyCard(g)}
   ${agendaSection(g)}
   ${alerts(g, k, t, p)}
   ${section("\u4E3B\u8981\u6307\u6A19", `\u76F4\u8FD14\u56DB\u534A\u671F\uFF08${g.year}\u5E74 ${g.month}\u6708 \u7B2C${g.weekOfMonth}\u9031\u76EE\u6642\u70B9\uFF09`, `
@@ -13213,6 +13340,23 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
     ${histHTML}
   `);
+  }
+  function companyCard(g) {
+    const me = ceo(g);
+    const d = DISTRICTS[g.company.home] || DISTRICTS.T;
+    const c = CITIES[cityOf(d.id)] || CITIES.minato;
+    return section("", "", `
+    <div class="card" style="display:flex;align-items:center;gap:16px">
+      <div style="flex:0 0 auto">${logoSVG(52)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:800;line-height:1.25">${g.company.name}</div>
+        <div class="card-s" style="margin-top:3px">
+          ${rankName(g, CEO_RANK)}\u3000${me.name}<br>
+          \u5730\u76E4 ${c.name}\u30FB${d.name}\uFF0F\u5275\u696D ${me.since || g.year}\u5E74
+        </div>
+      </div>
+      <button class="btn sm tonal" data-act="card">\u540D\u523A</button>
+    </div>`);
   }
   function openPlan(g, ctx2) {
     const me = ceo(g);
@@ -15599,8 +15743,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
     <div class="sec">
       <div class="sec-t"><span>\u4EBA\u4E8B\u63AA\u7F6E</span></div>
-      <div class="field"><label>\u7570\u52D5\u5148</label>
+      <div class="field"><label>\u7570\u52D5\u5148\uFF08\u90E8\uFF09</label>
         <select id="selDept">${DEPT_IDS.map((d) => `<option value="${d}" ${d === s.dept ? "selected" : ""}>${DEPTS[d].name}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>\u7570\u52D5\u5148\uFF08\u8AB2\uFF09</label>
+        <select id="selTeam">${teamsOf(s.dept).map((t) => `<option value="${t.id}" ${t.id === s.team ? "selected" : ""}>${t.name}</option>`).join("")}</select>
       </div>
       <div class="field"><label>\u5E74\u53CE\uFF08\u4E07\u5186\uFF09</label>
         <input type="number" id="inpSal" value="${Math.round(s.salary * 100)}" step="10">
@@ -15610,6 +15757,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
   `, [
       { label: "\u9589\u3058\u308B", cls: "ghost" },
+      { label: "\u540D\u523A", cls: "tonal", close: false, onClick: () => openCard(g, s) },
       {
         label: "\u9000\u8077\u52E7\u5968",
         cls: "danger",
@@ -15640,10 +15788,16 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         cls: "",
         onClick: () => {
           const d = document.getElementById("selDept").value;
+          const tm = document.getElementById("selTeam").value;
           const sal = +document.getElementById("inpSal").value / 100;
           if (d !== s.dept) {
             s.dept = d;
             s.morale = Math.max(0, s.morale - 0.03);
+            const list = teamsOf(d);
+            s.team = (list.find((t) => t.id === tm) ? tm : list[0] && list[0].id) || null;
+          } else if (tm && tm !== s.team) {
+            s.team = tm;
+            s.morale = Math.max(0, s.morale - 0.01);
           }
           if (Math.abs(sal - s.salary) > 0.01) {
             s.morale = Math.min(1, s.morale + (sal > s.salary ? 0.08 : -0.12));
@@ -16290,6 +16444,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
   `, [
       { label: "\u9589\u3058\u308B", cls: "ghost" },
+      { label: "\u540D\u523A", cls: "tonal", close: false, onClick: () => openCard(g, null) },
       {
         label: "\u5909\u66F4\u3092\u9069\u7528",
         cls: "primary",
@@ -17621,6 +17776,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
           focusCell(cellById(G, o.cellId));
           openStandingDetail(G, o, ctx);
         }
+        break;
+      }
+      case "card": {
+        const s = id ? G.staff.find((x) => x.id === id) : null;
+        openCard(G, s || null);
         break;
       }
       case "asm.start": {

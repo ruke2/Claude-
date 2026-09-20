@@ -30,6 +30,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - `src/core/lzw.js` — セーブの圧縮（localStorage の 5MB に収めるため）
 - `src/sim/trading.js` — ビルの一棟買い／`src/sim/rebuild.js` — 建て替え
 - `src/sim/assembly.js` — 区画の集約（種地の取得）
+- `src/ui/card.js` — 名刺と社章（SVG）
 - `build.mjs` — esbuild で1ファイルに束ねる
 - `dist/skyline.html` — サーバー不要で開ける単一HTML
 - `dist/artifact.html` — Artifact 公開用（外側のタグなし）
@@ -238,6 +239,21 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - 古いセーブの社員には `save.js` の `STEPS` が課を配る。
   同じ社員がいつ読んでも同じ課になるよう、IDのハッシュで決める
 - 課長（等級3）以上がその課の長として表示される。人がいない課は赤く出る
+
+## 名刺と社章
+
+`src/ui/card.js`。社名はタイトル画面で入れたもの、氏名は社長（プレイヤー）本人。
+社員と役員の名刺も同じ形で出せる（人事パネルの社員詳細から）。
+
+- **社章は `logoSVG()` が SVG で描く。** 外から画像を読まないこと
+  （オフラインで壊れ、単一HTMLの容量も膨らむ。デザインの決めごとの節を見ること）。
+  紅（`#9E1B32`）と紺（`#12294A`）のΛを組み合わせた山型のマーク
+- 電話・郵便番号・住所は**社名から決める**。毎回 `rng` で振ると、
+  名刺を開くたびに番号が変わってしまう
+- **符号付きシフト（`>>`）を使わないこと。** ハッシュが 2^31 を超えると負になり、
+  剰余も負になって「03-7636--365」のような番号ができる。`>>>` を使う
+- 住所は地盤（`g.company.home`）の地区と都市から組み立てる
+- 名刺は `.meishi`（`styles/main.css` の末尾）。日本の名刺（91×55mm）の比率
 
 ## 中期経営計画
 
