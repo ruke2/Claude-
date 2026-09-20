@@ -11,6 +11,7 @@ import { WEEKS_PER_QUARTER } from '../core/time.js';
 import { BRAND_PREFIX, BRAND_CORE, OFFICE_SUFFIX } from '../data/hrdata.js';
 import { brandEffect, growBrand, getBrand } from './brands.js';
 import { demandMul } from './population.js';
+import { jvEffect, shareOf } from './jv.js';
 import { cultureEffects } from './culture.js';
 
 /** 複合開発（フロアスタック）の事業計画 */
@@ -24,6 +25,7 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
+  applyJV(g, cell, plan, plan.leaseUse || stack[0].use);
   plan.totalCost = plan.landCost + plan.buildCost;
   plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
@@ -35,6 +37,26 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
 }
 
 /** 企画段階の事業計画を作る（リスク反映済み） */
+/**
+ * 共同事業の効きを計画に乗せる。
+ * 相手の調達力で建設費が下がり、得意分野なら工期も縮む。
+ * 連名のブランドで単価がわずかに上がる。
+ *
+ * **持分をここで掛けないこと。** 計画は建物まるごと（100%）の姿で持ち、
+ * 持分は金が動くところ（出来高払い・竣工時）だけに効かせる
+ */
+function applyJV(g, cell, plan, useId) {
+  if (!cell.jv) return;
+  const e = jvEffect(g, cell.jv.rivalId, cell.jv.share, useId);
+  plan.buildCost = Math.round(plan.buildCost * (1 - e.costCut));
+  plan.weeks = Math.max(14, Math.round(plan.weeks * (1 - e.speedUp)));
+  if (plan.salePrice) plan.salePrice = Math.round(plan.salePrice * (1 + e.priceUp) * 1000) / 1000;
+  if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * (1 + e.priceUp));
+  if (plan.rent) plan.rent = Math.round(plan.rent * (1 + e.priceUp));
+  if (plan.noi) { plan.noi = Math.round(plan.noi * (1 + e.priceUp)); plan.assetValue = Math.round(plan.noi / plan.capRate); }
+  plan.jv = { ...cell.jv, effect: e };
+}
+
 export function feasibility(g, cell, useId, gradeId, brandId) {
   const eff = riskImpact(g, cell, (cell.risks || []).filter(r => true));
   const plan = devPlan(g, cell, useId, gradeId, {
@@ -47,6 +69,7 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   plan.weeks += eff.delay;
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
+  applyJV(g, cell, plan, useId);
   plan.totalCost = plan.landCost + plan.buildCost;
   if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
   if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * eff.priceMul);
@@ -112,6 +135,10 @@ export function startProject(g, cell, useId, gradeId, rng, news, brandId = null,
     saleCostShare: typeof plan.saleCostShare === 'number' ? plan.saleCostShare : (plan.saleArea > 0 ? 1 : 0),
     leaseUse: plan.leaseUse || null,
     preContract: 0, marketing: false, events: [],
+    // 共同事業。区画に貼ってあれば案件に引き継ぐ。
+    // **pj の数字は建物まるごと（100%）のままにしておくこと。**
+    // 持分を掛けるのは金が動くところ（出来高払い・竣工時の在庫と資産）だけである
+    jv: cell.jv ? { ...cell.jv } : null,
   };
   cell.projectId = pj.id;
   cell.vacant = false;
@@ -144,11 +171,12 @@ export function stepProjects(g, rng, news) {
     const total = Math.max(4, pj.weeks + pj.delay);
     pj.progress = clamp01(pj.elapsed / total);
 
-    // 出来高払い
+    // 出来高払い。共同事業なら自社の持分ぶんだけ払う
     const pay = Math.round(pj.budget / total);
-    pj.spent += pay;
-    g.cash -= pay;
-    g.finance.quarterAcc.buildSpend += pay;
+    const myPay = Math.round(pay * shareOf(pj));
+    pj.spent += pay;                 // 案件の出来高は100%で持つ
+    g.cash -= myPay;
+    g.finance.quarterAcc.buildSpend += myPay;
 
     // 工事イベント
     for (const ev of BUILD_EVENTS) {
@@ -262,6 +290,7 @@ function completeProject(g, pj, rng, news) {
   });
 
   const cost = pj.landCost + pj.spent;
+  const my = shareOf(pj);                 // 自社の持分（共同事業でなければ 1.00）
   // 総事業費を分譲と賃貸に割り振る比率。複合開発は実際のセグメント建設費で分ける
   const saleShare = saleCostShareOf(pj);
   // --- 分譲部分 ---
@@ -273,10 +302,13 @@ function completeProject(g, pj, rng, news) {
     const inv = {
       id: uid('I'), cellId: cell.id, projectId: pj.id, name: pj.name,
       use: pj.use, district: cell.d, grade: pj.grade, brandId: pj.brandId,
-      area: pj.saleArea, units: pj.plan.units || Math.round(pj.saleArea / 26),
+      // 共同事業は自社の持分ぶんだけを在庫に載せる。
+      // **売上と原価の両方に同じ持分を掛けること。** 片方だけだと利益が歪む
+      area: Math.round(pj.saleArea * my), units: Math.max(1, Math.round((pj.plan.units || Math.round(pj.saleArea / 26)) * my)),
       price, basePrice,
-      totalValue: Math.round(pj.saleArea * price),
-      cost: Math.round(cost * saleShare),
+      totalValue: Math.round(pj.saleArea * my * price),
+      cost: Math.round(cost * saleShare * my),
+      jv: pj.jv ? { ...pj.jv } : null,
       soldRatio: 0, revenue: 0, weeksOnSale: 0, completedWeek: g.week,
       impaired: 0, discount: 0,
       gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う
@@ -307,10 +339,11 @@ function completeProject(g, pj, rng, news) {
     const asset = {
       id: uid('A'), cellId: cell.id, projectId: pj.id, name: pj.name,
       use, district: cell.d, grade: pj.grade, brandId: pj.brandId,
-      nra: pj.nra, rent: 0, marketRent: 0,
+      nra: Math.round(pj.nra * my), rent: 0, marketRent: 0,
       occupancy: use === 'logi' ? 0.86 : 0.42,          // 竣工直後は稼働が低い
-      bookLand: Math.round(pj.landCost * share),
-      bookBuild: Math.round(pj.spent * share),
+      bookLand: Math.round(pj.landCost * share * my),
+      bookBuild: Math.round(pj.spent * share * my),
+      jv: pj.jv ? { ...pj.jv } : null,
       completedWeek: g.week, age: 0, lastRentReview: g.week,
       noi: 0, cumNoi: 0,
       gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う

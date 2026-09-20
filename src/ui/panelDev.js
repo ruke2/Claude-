@@ -10,6 +10,7 @@ import { weeksLabel } from '../core/time.js';
 import { brandsFor, brandEffect, BRAND_CATEGORIES } from '../sim/brands.js';
 import { orgPower, projectCapacity } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
+import { offerFor } from '../sim/jv.js';
 
 export const title = '開発事業';
 
@@ -47,11 +48,20 @@ export function render(g, ctx) {
   const idleCards = idle.length ? idle.map(c => {
     const d = DISTRICTS[c.d];
     const best = bestPlan(g, c);
+    const off = offerFor(g, c.id);
+    const rv = off ? g.rivals.find(r => r.id === off.rivalId) : null;
+    const jv = c.jv ? g.rivals.find(r => r.id === c.jv.rivalId) : null;
     return `<div class="card click" data-act="dev.plan" data-id="${c.id}">
-      <div class="card-t"><span class="card-n">${d.name}　${num(c.area)}坪</span>${chip('企画待ち', 'amber')}</div>
+      <div class="card-t"><span class="card-n">${d.name}　${num(c.area)}坪</span>
+        ${jv ? chip(`共同：${jv.short} ${Math.round((1 - c.jv.share) * 100)}%`, 'good') : chip('企画待ち', 'amber')}</div>
       <div class="card-s">容積率 ${c.far}%／推奨 ${USES[best.use].name}・${GRADES[best.grade].name}<br>
         想定事業利益 <b class="${best.profit >= 0 ? 'up' : 'down'}">${money(best.profit, { sign: true })}</b>（利益率 ${pct(best.margin)}）</div>
-      <div class="btnrow"><button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業計画を作る</button><button class="btn sm" data-act="focus" data-id="${c.id}">📍 地図で見る</button></div>
+      ${off && rv ? `<div class="warnrow">${rv.name}から共同事業の打診（先方 ${Math.round(off.theirShare * 100)}% 希望・あと${Math.max(0, off.deadline - g.week)}週）</div>` : ''}
+      <div class="btnrow">
+        <button class="btn sm primary" data-act="dev.plan" data-id="${c.id}">事業計画を作る</button>
+        ${off ? `<button class="btn sm" data-act="jv.open" data-id="${c.id}">🤝 共同事業を検討する</button>` : ''}
+        <button class="btn sm" data-act="focus" data-id="${c.id}">📍 地図で見る</button>
+      </div>
     </div>`;
   }).join('') : empty('企画待ちの用地はない。用地タブから土地を仕入れること。');
 

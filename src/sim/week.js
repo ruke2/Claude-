@@ -26,6 +26,7 @@ import { stepPopulation } from './population.js';
 import { stepUnion } from './union.js';
 import { meetingDue, agendaOf } from './meeting.js';
 import { stepAgenda, pending } from './agenda.js';
+import { stepJV } from './jv.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -82,6 +83,8 @@ export function nextWeek(g) {
   // 4. 新規の売り出し
   generateListings(g, rng, news);
   generatePublic(g, rng, news);
+  // 競合からの共同事業の打診
+  stepJV(g, rng, news);
 
   // 5. 事業
   const before = g.assets.length + g.inventory.length;

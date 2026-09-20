@@ -15,7 +15,7 @@ import { RNG } from './core/rng.js';
 
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
-import { startProject as simStart, canStart } from './sim/project.js';
+import { startProject as simStart, canStart, feasibility } from './sim/project.js';
 import { acquireForPlayer, holdingCost, generateListings as genListings } from './sim/land.js';
 import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
 import { sellAsset } from './sim/sales.js';
@@ -31,6 +31,7 @@ import { answerQuestion, closeBriefing } from './sim/ir.js';
 import { agendaOf, holdMeeting, supportFor, holdersOf } from './sim/meeting.js';
 import { answerRound, acceptanceOf } from './sim/union.js';
 import { settle, eventOf, pending as pendingAgenda } from './sim/agenda.js';
+import { offerFor, acceptJV, declineJV, jvEffect, relationOf, SHARE_MIN, SHARE_MAX } from './sim/jv.js';
 import { SEASONS, suggestedMonths, marketMonths, bonusCost, lastYearMonths, payBonus,
   monthlyPayroll, MONTHS_MAX } from './sim/bonus.js';
 import { rankName as rankNameOf, TOP_STAFF_RANK, OFFICER_RANKS } from './data/hrdata.js';
@@ -494,6 +495,11 @@ function handleAction(act, id) {
       break;
     }
     case 'agenda.open': openAgendaItem(id); break;
+    case 'jv.open': {
+      const c = cellById(G, id);
+      if (c) openJV(c);
+      break;
+    }
     case 'focus': {
       const c = cellById(G, id);
       if (c) { focusCell(c); closePanel(); toast('地図の中央に移動した'); }
@@ -1572,5 +1578,79 @@ function openHrCycle() {
     closeModal();
     refresh();
     toast('定期人事の方針を内示した');
+  }
+}
+
+
+// ------------------------------------------------------------
+//  共同事業
+//    持分を決めて組む。相手の希望から離れすぎるとまとまらない。
+// ------------------------------------------------------------
+function openJV(cell) {
+  const off = offerFor(G, cell.id);
+  if (!off) return toast('この用地に共同事業の打診は来ていない');
+  const rv = G.rivals.find(r => r.id === off.rivalId);
+  if (!rv) return;
+  const want = Math.round((1 - off.theirShare) * 100) / 100;     // 先方の希望に沿った自社持分
+  let share = want;
+  draw();
+
+  function draw() {
+    const e = jvEffect(G, rv.id, share, off.use);
+    const book = cell.bookValue || landAppraisal(G, cell);
+    const paid = Math.round(book * (1 - share));
+    const gap = Math.abs(share - want);
+    const room = 0.18 + relationOf(G, rv.id) * 0.10;
+    const ok = gap <= room;
+    const solo = feasibility(G, cell, off.use, 'standard');
+    openModal(`共同事業の検討　${DISTRICTS[cell.d].name}`, `
+      <div class="card">
+        <div class="card-t"><span class="card-n">${rv.name}</span>
+          ${chip(`関係 ${(relationOf(G, rv.id) * 100).toFixed(0)}`, 'grey')}</div>
+        <div class="card-s">
+          ${kv('先方の希望', `先方 ${Math.round(off.theirShare * 100)}%／自社 ${Math.round(want * 100)}%`)}
+          ${kv('得意分野', Object.entries(rv.focus).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([u]) => USES[u].name).join('・'))}
+          ${kv('従業員数', num(rv.employees) + '名')}
+          ${kv('回答期限', `あと${Math.max(0, off.deadline - G.week)}週`)}
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>出資比率</span>${chip(ok ? 'まとまる見込み' : '折り合わない', ok ? 'good' : 'bad')}</div>
+        <div class="card"><div class="card-s">
+          <label class="lbl">自社の持分 <b style="color:var(--gold)">${Math.round(share * 100)}%</b>
+            ／ ${rv.short} ${Math.round((1 - share) * 100)}%</label>
+          <input type="range" id="jvShare" min="${Math.round(SHARE_MIN * 100)}" max="${Math.round(SHARE_MAX * 100)}" step="5"
+            value="${Math.round(share * 100)}" style="width:100%">
+          ${kv('土地持分の譲渡で受け取る額', `<b style="color:var(--green)">${money(paid)}</b>`, 'big')}
+          ${kv('建設費の軽減', '−' + (e.costCut * 100).toFixed(1) + '%')}
+          ${kv('工期の短縮', '−' + (e.speedUp * 100).toFixed(1) + '%')}
+          ${kv('単価への上乗せ', (e.priceUp >= 0 ? '+' : '') + (e.priceUp * 100).toFixed(1) + '%')}
+        </div></div>
+      </div>
+      ${solo ? `<div class="sec">
+        <div class="sec-t"><span>単独で建てた場合との比較</span></div>
+        <div class="card"><div class="card-s">
+          ${kv('単独の事業利益', money(solo.profit, { sign: true }))}
+          ${kv('共同の自社取り分（概算）', money(Math.round(solo.profit * share * (1 + e.costCut + e.priceUp)), { sign: true }))}
+          ${kv('自社の資金負担', `${money(Math.round(solo.buildCost * share))}（単独なら ${money(solo.buildCost)}）`)}
+        </div></div>
+      </div>` : ''}
+      <div class="hint">持分を下げるほど資金は軽くなり、相手の調達力と施工力が濃く効く。
+        そのかわり売上も保有床も持分ぶんに減る。
+        先方の希望から離れすぎると話はまとまらない。</div>`,
+      [
+        { label: '見送る', cls: 'ghost', onClick: () => { declineJV(G, off, G.news); refresh(); } },
+        { label: 'この比率で合意する', cls: 'primary', disabled: !ok, onClick: submit, close: false },
+      ]);
+    const sl = document.getElementById('jvShare');
+    if (sl) sl.oninput = () => { share = (+sl.value) / 100; draw(); };
+  }
+
+  function submit() {
+    const r = acceptJV(G, cell, off, share, G.news);
+    closeModal();
+    refresh();
+    if (r.err) return toast(r.err, 'bad');
+    toast(`${rv.short}と共同事業で合意した（自社${Math.round(r.share * 100)}%）`, 'good');
   }
 }
