@@ -17,6 +17,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, CITIES, TERRAIN, cityOf } from '../data/city.js';
 import { WEEKS_PER_YEAR, WEEKS_PER_QUARTER } from '../core/time.js';
 import { railsOf } from './cityevents.js';
+import { areaEffect } from './area.js';
 
 /** 1世帯あたりの人数（地区の性格で変わる） */
 const HOUSEHOLD_SIZE = {
@@ -115,7 +116,9 @@ export function pullOf(g, id) {
   const afford = clamp(1 - Math.log10(Math.max(0.2, d.landPrice)) / 1.6, -0.4, 0.7);
   // 混みすぎると出ていく
   const crowd = p && p.base ? clamp((p.people / p.base - 1) * -0.6, -0.5, 0.3) : 0;
-  return clamp(station * 0.5 + rail * 2.2 + live * 0.5 + afford * 0.35 + crowd - 0.62, -0.9, 0.9);
+  // エリアマネジメントのにぎわい施策は、その街に住みたい人を増やす
+  const am = areaEffect(g, id, 'pop');
+  return clamp(station * 0.5 + rail * 2.2 + live * 0.5 + afford * 0.35 + crowd + am - 0.62, -0.9, 0.9);
 }
 
 /**

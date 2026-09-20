@@ -498,10 +498,11 @@ export function acquireForPlayer(g, listing, cell, amount, news) {
 }
 
 /** ライバルが落札したときの反映 */
-export function acquireForRival(g, listing, cell, rvId, amount) {
+export function acquireForRival(g, listing, cell, rvId, amount, rng) {
   const rv = g.rivals.find(r => r.id === rvId);
   cell.owner = rvId; cell.onSale = null; cell.vacant = true; cell.building = null;
-  cell.rivalDev = { week: g.week, weeks: 52 + Math.floor(Math.random() * 78), use: listing.bestUse };
+  // **`Math.random()` を使わないこと。** 乱数はシード付きに統一してある
+  cell.rivalDev = { week: g.week, weeks: rng ? rng.int(52, 129) : 90, use: listing.bestUse };
   if (rv) { rv.cash -= amount; rv.lots++; rv.momentum = Math.min(3, (rv.momentum || 0) + 1); }
   const idx = g.listings.indexOf(listing);
   if (idx >= 0) g.listings.splice(idx, 1);

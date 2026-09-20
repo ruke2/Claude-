@@ -1,7 +1,7 @@
 // ============================================================
 //  摩天楼の設計図 — エントリポイント
 // ============================================================
-import { createGame, cellById } from './core/state.js';
+import { createGame, cellById, isIdleLot, isOwnedCell } from './core/state.js';
 import { money, moneyUnit, num, pct, dcls, arrow } from './core/format.js';
 import { dateLabel, dateLabelOf, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
 import { SLOTS, SLOT_LABEL, BACKUP, listSaves, backupSave, saveTo, loadFrom, deleteSlot, latestSave,
@@ -52,6 +52,7 @@ import * as Land from './ui/panelLand.js';
 import * as Dev from './ui/panelDev.js';
 import * as Sales from './ui/panelSales.js';
 import * as Asset from './ui/panelAsset.js';
+import * as Tenant from './ui/panelTenant.js';
 import * as Fin from './ui/panelFin.js';
 import * as HR from './ui/panelHR.js';
 import * as MA from './ui/panelMA.js';
@@ -59,7 +60,7 @@ import * as Rival from './ui/panelRival.js';
 import * as Brand from './ui/panelBrand.js';
 import { buildReport } from './ui/report.js';
 
-const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival, disc: Disc };
+const PANELS = { dash: Dash, land: Land, dev: Dev, sales: Sales, asset: Asset, tenant: Tenant, fin: Fin, hr: HR, brand: Brand, ma: MA, rival: Rival, disc: Disc };
 
 
 let G = null, R = null;
@@ -429,13 +430,26 @@ function updateHover(c) {
     : c.owner && c.owner !== 'other' ? (G.rivals.find(r => r.id === c.owner) || {}).name
       : '一般事業者';
   const b = c.building;
+  // 合筆済みの種地は、面積も評価額も母屋に寄せてある
+  if (c.mergedInto) {
+    const base = cellById(G, c.mergedInto);
+    el.innerHTML = `${d.name}　所有：${owner}　<span style="color:var(--amber)">一体開発の敷地に合筆済み`
+      + (base ? `（${num(base.area)}坪の敷地の一部）` : '') + '</span>';
+    return;
+  }
   el.innerHTML = `${d.name}／${num(c.area)}坪・容積${c.far}%　所有：${owner}`
     + (b ? `　建物：${b.name}（${USES[b.use].name}・地上${b.floors}階）` : c.onSale ? '　<span style="color:#54d6ff">売却情報あり</span>' : '　更地');
 }
 
 function onCellClick(c) {
   if (c.onSale) { Land.openDetail(G, c.onSale, ctx); return; }
-  if (c.owner === 'player' && !c.building && !c.projectId) { Dev.openPlan(G, c, ctx); return; }
+  // 合筆済みの種地は母屋と一体の敷地である。
+  // そのまま事業化の画面を開くと 0坪の計画になるので、母屋に振り替える
+  if (c.mergedInto) {
+    const base = cellById(G, c.mergedInto);
+    if (base) { focusCell(base); return onCellClick(base); }
+  }
+  if (isIdleLot(c) && !c.assetId && !c.invId) { Dev.openPlan(G, c, ctx); return; }
   if (c.projectId) { openPanel('dev'); return; }
   if (c.invId) { openPanel('sales'); return; }
   if (c.assetId) { openPanel('asset'); return; }
@@ -514,6 +528,19 @@ function handleAction(act, id) {
     case 'std.detail': {
       const o = (G.standing || []).find(x => x.id === id);
       if (o) { focusCell(cellById(G, o.cellId)); Land.openStandingDetail(G, o, ctx); }
+      break;
+    }
+    case 'lead.open': {
+      const l = (G.leads || []).find(x => x.id === id);
+      if (l) {
+        const a = G.assets.find(x => x.id === l.assetId);
+        if (a) focusCell(cellById(G, a.cellId));
+        Tenant.openLead(G, l, ctx);
+      }
+      break;
+    }
+    case 'area.open': {
+      Tenant.openArea(G, id, ctx);
       break;
     }
     case 'card': {
@@ -1225,8 +1252,10 @@ function updateBadges() {
     // 決裁事項（人事・賞与・総会…）。放っておくと期限切れで既定処理になる
     dash: pendingAgenda(G).length,
     land: G.listings.filter(l => !l.bid).length,
-    dev: G.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId).length,
+    dev: G.cells.filter(isIdleLot).length,
     ma: G.maTargets.length,
+    // 未回答のテナント引き合い。放っておくと期限切れで流れる
+    tenant: (G.leads || []).filter(l => !l.offer).length,
     rival: G.takeoverOffer ? 1 : 0,
   };
   document.querySelectorAll('.tab').forEach(b => {

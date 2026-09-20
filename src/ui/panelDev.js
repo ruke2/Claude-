@@ -11,13 +11,14 @@ import { brandsFor, brandEffect, BRAND_CATEGORIES } from '../sim/brands.js';
 import { orgPower, projectCapacity } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
 import { offerFor } from '../sim/jv.js';
+import { isIdleLot } from '../core/state.js';
 
 export const title = '開発事業';
 
 export function render(g, ctx) {
   const p = orgPower(g);
   const cap = projectCapacity(g);
-  const idle = g.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId);
+  const idle = g.cells.filter(isIdleLot);
 
   const running = g.projects.length ? g.projects.map(pj => {
     const c = g.cells.find(x => x.id === pj.cellId);

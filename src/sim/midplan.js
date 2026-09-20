@@ -6,6 +6,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { TERRAIN } from '../data/city.js';
+import { isOwnedCell } from '../core/state.js';
 
 /**
  * 掲げられる目標。
@@ -56,7 +57,7 @@ export const PLAN_METRICS = {
   lots: {
     id: 'lots', name: '保有区画数', icon: '◈', unit: '区画', scale: 1, hard: 1.0,
     desc: '自社が持っている土地の数。仕入れの力がそのまま出る。',
-    get: g => (g.cells || []).filter(c => c.owner === 'player' && c.terrain === TERRAIN.LOT).length,
+    get: g => (g.cells || []).filter(c => isOwnedCell(c) && c.terrain === TERRAIN.LOT).length,
   },
   brand: {
     id: 'brand', name: '企業ブランド', icon: '◆', unit: '点', scale: 1, hard: 1.25,

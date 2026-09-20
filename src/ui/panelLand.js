@@ -13,12 +13,14 @@ import { debtCapacity } from '../sim/finance.js';
 import { RNG } from '../core/rng.js';
 import { standingRows, MAX_BIDS } from '../sim/trading.js';
 import { assemblyRows, assemblyBases, neighborsOf, MAX_PARCELS, MAX_ASSEMBLIES } from '../sim/assembly.js';
+import { isIdleLot } from '../core/state.js';
 
 export const title = '用地取得';
 
 export function render(g, ctx) {
   const p = orgPower(g);
-  const owned = g.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId);
+  // 合筆済みの種地は 0坪・0円なので、ここに並べない（state.js の isIdleLot）
+  const owned = g.cells.filter(isIdleLot);
   const bidding = g.listings.filter(l => l.bid);
 
   const cards = g.listings.length ? g.listings.map(l => {

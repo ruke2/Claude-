@@ -30,6 +30,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - `src/core/lzw.js` — セーブの圧縮（localStorage の 5MB に収めるため）
 - `src/sim/trading.js` — ビルの一棟買い／`src/sim/rebuild.js` — 建て替え
 - `src/sim/assembly.js` — 区画の集約（種地の取得）
+- `src/sim/tenants.js` — 大口テナント（リーシング）／`src/sim/area.js` — エリアマネジメント
 - `src/ui/card.js` — 名刺と社章（SVG）
 - `build.mjs` — esbuild で1ファイルに束ねる
 - `dist/skyline.html` — サーバー不要で開ける単一HTML
@@ -41,7 +42,10 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 
 - 内部の金額単位は**百万円**。表示は `src/core/format.js` の `money()` で億円・兆円に変換する
 - 1ターン = 1週。13週で四半期決算。カレンダーは `src/core/time.js`
-- 乱数はシード付き（`src/core/rng.js`）。`g.rngState` を毎ターン更新する
+- 乱数はシード付き（`src/core/rng.js`）。`g.rngState` を毎ターン更新する。
+  **`Math.random()` を使わないこと。** 同じセーブ・同じ操作で結果が変わり、
+  校正のための長期運転が再現しなくなる。`market.js` の `apply(g, rng)`、
+  `land.js` の `acquireForRival(..., rng)` のように、必要なら `rng` を引数で渡す
 - セーブは `src/core/save.js`（localStorage、4スロット＋オートセーブの退避1つ）。
   `pendingReport` など一時データは保存しない
 
@@ -292,7 +296,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 
 ## 就職先ランキング
 
-`src/data/employers.js`（架空の企業40社・11業界）と `src/sim/jobrank.js`。
+`src/data/employers.js`（架空の企業39社・11業界）と `src/sim/jobrank.js`。
 
 - 人気度 … 素の知名度＋年収の魅力＋直近の勢い。デベロッパー8社は `rivalId` で競合と連動する
 - 入社難易度 … 応募倍率（エントリー数 ÷ 採用予定数 × 選考の厳しさ）。
@@ -612,6 +616,13 @@ over = load - 1
   塔が1区画に建って隣が更地のままでは、一体開発に見えない
 - `canStart()` が3つを止める … 合筆済みの種地／合筆待ちの種地／交渉中の母屋
 - 打ち切ると、すでに買った種地は**飛び地として手元に残る**。これが集約の怖さである
+- **合筆済みの種地を「区画」として数えないこと。** 面積・評価額・簿価は母屋に寄せてあり、
+  残った区画は 0坪・0円である。所有者はプレイヤーのままなので、素朴に
+  `c.owner === 'player'` で数えると、用地パネルに
+  「0坪／取得 0億円／時価 0億円／保有コスト 0億円」のカードが並び、保有区画数も水増しになる。
+  判定は `core/state.js` の **`isOwnedCell(c)` と `isIdleLot(c)`** に集約してある。
+  数える側（用地・経営・開発・競合パネル、タブのバッジ、`workload` / `midplan` / `save`）は
+  必ずこれを通すこと。地図でクリックしたときは母屋に振り替える（`main.js` の `onCellClick`）
 
 ## 共同事業（他社との JV）
 
@@ -629,6 +640,61 @@ over = load - 1
 - **「利益が減るだけ」にしないこと。** 資金が軽くなり、相手の力を借りられるから組む。
   単独より良い場合があるから悩ましい、というのが狙いである
 - 先方の希望から離れた比率を出すとまとまらない。関係値（`g.relations`）が高いほど幅が広がる
+
+## 大口テナント（リーシング）
+
+`src/sim/tenants.js` と `src/data/tenants.js`。自社の賃貸物件に、名前のある会社が大口で入る。
+オフィスのテナントは**就職先ランキングの企業そのもの**（`data/employers.js`）で、
+商業30社・物流12社は `data/tenants.js` に別のマスタを持つ。
+
+- 引き合いは**空室のある物件にだけ**来る（`roomOf`）。1棟に出せるのは貸室の
+  `ANCHOR_CAP`（62%）まで。**1棟まるごとを1社に貸さないこと。**
+  共用部も一般テナントも無くなり、稼働率という指標そのものが意味を失う
+- 条件（賃料とフリーレント）を提示すると、先方の社内稟議を経て**1〜3週で返事が来る**。
+  一棟買い（その場で返事）と手触りを変えてある
+- 効き目は物件の `anchorShare` と `anchorRent` の2つだけに集約する。
+  稼働率は `sales.js` が `share + (1 - share) * 一般の稼働率` で下支えし、
+  賃料は `valuation.js` の **`effectiveRent()`** が加重平均を返す。
+  **`a.rent` のまま売上を立てないこと。** 画面のNOIと実際の入金がずれる
+- **「良いことだけ」にしないこと。** 契約期間中の賃料は動かせないので、
+  相場が上がっても据え置きになる。フリーレント中は賃料が入らない。抜けるときは床が一度に空く
+- マスタの `pay`（支払い力）は**面積で加重した平均が 1.00 付近**になるようにする。
+  地区の相場賃料はその用途の平均坪単価なので、ここがずれると
+  大口を入れるだけで得（または損）になる
+- 実測（5シード・20年・高グレードで建て続けた場合）：
+  断る → 稼働 84.9%・NOI 233億・NOI/坪 17.38。
+  希望の97%＋フリーレント3ヶ月 → 稼働 88.5%・NOI 258億・NOI/坪 16.90。
+  希望の108%＋フリーレント0 → 稼働 82.5%・NOI 250億・NOI/坪 16.93。
+  **総額と稼働は上がり、坪あたりは下がる**のが狙いである
+
+## エリアマネジメント
+
+`src/sim/area.js`。同じ地区に `AREA_MIN_ASSETS`（3棟）以上を持つと、街区の共同運営を始められる。
+
+- 施策は `AREA_PROGRAMS` の5つ（共同防災・緑化・にぎわい・モビリティ・エリアデータ）。
+  `effect` のキーは `areaEffect(g, d, key)` で引く。**キーを足したら必ずどこかで読むこと**
+
+| キー | 読んでいる場所 |
+| --- | --- |
+| `land` | `valuation.js` の `landAppraisal()`（`areaLift`） |
+| `occ` / `occRetail` | `sales.js` の稼働率（`areaOcc`） |
+| `lead` | `tenants.js` の引き合い確率と成約率 |
+| `pop` | `population.js` の `pullOf()` |
+| `safety` | `cityevents.js` の被害率（`areaSafety`） |
+| `fee` / `brand` | `area.js` の `stepArea()` |
+
+- 効き目は `maturityOf()`＝設立からの年数（`MATURE_YEARS` 5年で満額）×自社の延床シェア。
+  **シェアを無視しないこと。** 1棟しか持たない地区で街区を運営できると、
+  地価だけ上げて他社の土地を買い叩く道具になる
+- **効果は地区全体に及ぶ。** 他社の土地も一緒に値上がりし、自分の次の用地取得は高くつく。
+  先に買い集めてから始めるのが筋、という順番のある仕組みにしてある
+- `areaLift()` には天井（+10%）を置く。外すと施策を全部入れて長く続けたときに
+  地価が青天井に伸び、残余法がどの用途でも通ってしまう
+- **`areaShare()` は必ずキャッシュを通すこと。** 分母は全区画（6,400）の走査で、
+  `areaLift()` は `landAppraisal()` から呼ばれ、`land.js` の `pickBand()` が
+  毎週それを区画の数だけ叩く。素で計算すると週送りが目に見えて重くなる
+- **`area.js` から `valuation.js` を読まないこと**（相互参照になる）。
+  `area.js` は `core/format` と `data/city` しか読まない葉のモジュールにしてある
 
 ## 画面に出すタイミング
 

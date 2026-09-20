@@ -29,6 +29,8 @@ import { stepAgenda, pending } from './agenda.js';
 import { stepJV } from './jv.js';
 import { stepStanding } from './trading.js';
 import { stepAssembly } from './assembly.js';
+import { stepTenants } from './tenants.js';
+import { stepArea } from './area.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -72,7 +74,7 @@ export function nextWeek(g) {
       cell.bookValue = res.winner.amount + fee;
       rep.bids.push({ result: 'win', listing: l, cell, ...res });
     } else {
-      acquireForRival(g, l, cell, res.winner.id, res.winner.amount);
+      acquireForRival(g, l, cell, res.winner.id, res.winner.amount, rng);
       if (l.bid) {
         rep.bids.push({ result: 'lose', listing: l, cell, ...res });
         news.push({
@@ -99,7 +101,12 @@ export function nextWeek(g) {
   stepProjects(g, rng, news);
   if (g.assets.length + g.inventory.length > before) rep.completed.push(true);
   stepInventory(g, rng, news);
+  // **テナントは稼働率の計算より前に動かすこと。**
+  // 契約が決まった床（anchorShare）を stepAssets が稼働率の下支えに使う
+  stepTenants(g, rng, news);
   stepAssets(g, rng, news);
+  // 街区の共同運営（費用の計上とサイネージ収入）
+  stepArea(g, rng, news);
   stepMA(g, rng, news);
   if (g.maTargets.length < 3) g.maTargets.push(...generateTargets(g, rng, 3 - g.maTargets.length));
 

@@ -1033,6 +1033,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   <button class="tab" data-panel="dev"><i>▲</i><span>開発</span></button>
   <button class="tab" data-panel="sales"><i>¥</i><span>販売</span></button>
   <button class="tab" data-panel="asset"><i>▤</i><span>保有</span></button>
+  <button class="tab" data-panel="tenant"><i>◫</i><span>テナント</span></button>
   <button class="tab" data-panel="fin"><i>◱</i><span>財務</span></button>
   <button class="tab" data-panel="hr"><i>☗</i><span>人事</span></button>
   <button class="tab" data-panel="brand"><i>◆</i><span>ブランド</span></button>
@@ -1184,11 +1185,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
 
   // src/core/format.js
   function money(mm, opt = {}) {
-    const { sign = false, unit = true } = opt;
+    const { sign: sign2 = false, unit = true } = opt;
     if (mm === void 0 || mm === null || Number.isNaN(mm)) return "\u2014";
     const abs = Math.abs(mm);
     if (abs < 0.5) return unit ? "0\u5104\u5186" : "0";
-    const s = mm < 0 ? "\u25B3" : sign && mm > 0 ? "+" : "";
+    const s = mm < 0 ? "\u25B3" : sign2 && mm > 0 ? "+" : "";
     let v, u;
     if (abs >= 1e6) {
       v = (abs / 1e6).toFixed(2);
@@ -2972,6 +2973,214 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
   ];
 
+  // src/sim/area.js
+  var AREA_MIN_ASSETS = 3;
+  var MATURE_YEARS = 5;
+  var AREA_PROGRAMS = [
+    {
+      id: "safety",
+      name: "\u5171\u540C\u9632\u707D\u30FB\u5E30\u5B85\u56F0\u96E3\u8005\u652F\u63F4",
+      icon: "\u{1F6DF}",
+      cost: 34,
+      effect: { safety: 0.3, brand: 0.9 },
+      desc: "\u9632\u707D\u5099\u84C4\u3068\u4E00\u6642\u6EDE\u5728\u65BD\u8A2D\u3092\u8857\u533A\u3067\u5171\u540C\u904B\u7528\u3057\u3001\u5E30\u5B85\u56F0\u96E3\u8005\u306E\u53D7\u3051\u5165\u308C\u8A13\u7DF4\u3092\u884C\u3046\u3002\u707D\u5BB3\u6642\u306E\u88AB\u5BB3\u30923\u5272\u6291\u3048\u308B\u3002\u81EA\u6CBB\u4F53\u3068\u306E\u95A2\u4FC2\u3082\u3067\u304D\u308B\u3002",
+      reads: "\u707D\u5BB3\u306E\u88AB\u5BB3\uFF08cityevents.js\uFF09"
+    },
+    {
+      id: "green",
+      name: "\u307E\u3061\u306A\u307F\u7DD1\u5316\u3068\u5E83\u5834\u306E\u7DAD\u6301\u7BA1\u7406",
+      icon: "\u{1F333}",
+      cost: 46,
+      effect: { land: 0.03, occ: 0.02, brand: 0.7 },
+      desc: "\u6B69\u9053\u306E\u690D\u683D\u3001\u5E83\u5834\u306E\u6E05\u6383\u30FB\u8B66\u5099\u3001street furniture \u306E\u66F4\u65B0\u3092\u8857\u533A\u3067\u307E\u3068\u3081\u3066\u884C\u3046\u3002\u5730\u533A\u306E\u5730\u4FA1\u304C\u4E0A\u304C\u308A\u3001\u30AA\u30D5\u30A3\u30B9\u3068\u4F4F\u5B85\u306E\u7A3C\u50CD\u7387\u3082\u4E0A\u5411\u304F\u3002",
+      reads: "\u5730\u4FA1\uFF08valuation.js\uFF09\u30FB\u7A3C\u50CD\u7387\uFF08sales.js\uFF09"
+    },
+    {
+      id: "event",
+      name: "\u306B\u304E\u308F\u3044\u30A4\u30D9\u30F3\u30C8\u3068\u30AA\u30FC\u30D7\u30F3\u30AB\u30D5\u30A7",
+      icon: "\u{1F3AA}",
+      cost: 52,
+      effect: { land: 0.014, occRetail: 0.045, pop: 0.05, brand: 1.2 },
+      desc: "\u30DE\u30EB\u30B7\u30A7\u3001\u5C4B\u5916\u5E2D\u306E\u9053\u8DEF\u5360\u7528\u3001\u5B63\u7BC0\u306E\u30A4\u30D9\u30F3\u30C8\u3092 street \u306E\u5074\u304B\u3089\u4ED5\u639B\u3051\u308B\u3002\u5546\u696D\u3068\u30DB\u30C6\u30EB\u306E\u7A3C\u50CD\u7387\u304C\u4E0A\u304C\u308A\u3001\u305D\u306E\u5730\u533A\u306B\u4F4F\u307F\u305F\u3044\u4EBA\u3082\u5897\u3048\u308B\u3002",
+      reads: "\u7A3C\u50CD\u7387\uFF08sales.js\uFF09\u30FB\u4EBA\u53E3\u306E\u5F15\u529B\uFF08population.js\uFF09"
+    },
+    {
+      id: "mobility",
+      name: "\u30A8\u30EA\u30A2\u5185\u4EA4\u901A\u3068\u30E2\u30D3\u30EA\u30C6\u30A3",
+      icon: "\u{1F68C}",
+      cost: 58,
+      effect: { land: 0.034, occ: 0.014 },
+      desc: "\u8857\u533A\u3092\u5DE1\u308B\u30B7\u30E3\u30C8\u30EB\u30D0\u30B9\u3068\u81EA\u8EE2\u8ECA\u30B7\u30A7\u30A2\u3092\u904B\u884C\u3057\u3001\u99C5\u304B\u3089\u306E\u52D5\u7DDA\u3092\u3064\u306A\u3050\u3002\u99C5\u304B\u3089\u9060\u3044\u8857\u533A\u307B\u3069\u52B9\u304D\u76EE\u304C\u5927\u304D\u304F\u3001\u5730\u4FA1\u306B\u52B9\u304F\u3002",
+      reads: "\u5730\u4FA1\uFF08valuation.js\uFF09\u30FB\u7A3C\u50CD\u7387\uFF08sales.js\uFF09"
+    },
+    {
+      id: "digital",
+      name: "\u30A8\u30EA\u30A2\u30C7\u30FC\u30BF\u3068\u30B5\u30A4\u30CD\u30FC\u30B8",
+      icon: "\u{1F4E1}",
+      cost: 30,
+      effect: { lead: 0.22, fee: 4e-3, brand: 0.5 },
+      desc: "\u4EBA\u6D41\u30C7\u30FC\u30BF\u306E\u8A08\u6E2C\u3068\u30B5\u30A4\u30CD\u30FC\u30B8\u5E83\u544A\u3092\u8857\u533A\u3067\u5171\u540C\u904B\u7528\u3059\u308B\u3002\u30C6\u30CA\u30F3\u30C8\u304B\u3089\u306E\u5F15\u304D\u5408\u3044\u304C\u5897\u3048\u3001\u5E83\u544A\u6599\u306E\u5206\u914D\u3082\u5165\u308B\u3002",
+      reads: "\u30C6\u30CA\u30F3\u30C8\u306E\u5F15\u304D\u5408\u3044\uFF08tenants.js\uFF09\u30FB\u30D5\u30A3\u30FC\u53CE\u5165"
+    }
+  ];
+  var programById = (id) => AREA_PROGRAMS.find((p) => p.id === id);
+  function areaOf(g, d) {
+    return (g.areas || []).find((a) => a.d === d) || null;
+  }
+  function assetsIn(g, d) {
+    return (g.assets || []).filter((a) => a.district === d);
+  }
+  var SHARE_CACHE = { key: "", v: {} };
+  function areaShare(g, d) {
+    const key = `${g.week}|${(g.assets || []).length}|${(g.areas || []).length}|${g.cells.length}`;
+    if (SHARE_CACHE.key !== key) {
+      SHARE_CACHE.key = key;
+      SHARE_CACHE.v = {};
+    }
+    const hit = SHARE_CACHE.v[d];
+    if (hit !== void 0) return hit;
+    let mine = 0, all = 0;
+    for (const a of assetsIn(g, d)) mine += a.gfa || a.nra * 1.4;
+    for (const c of g.cells) {
+      if (c.d !== d || c.terrain !== TERRAIN.LOT) continue;
+      const b = c.building;
+      if (b) all += b.gfa || c.area * (b.floors || 4) * 0.55;
+    }
+    all = Math.max(all, mine);
+    const r = all > 0 ? clamp01(mine / all) : 0;
+    SHARE_CACHE.v[d] = r;
+    return r;
+  }
+  function canFound(g, d) {
+    if (!DISTRICTS[d]) return "\u5730\u533A\u304C\u898B\u3064\u304B\u3089\u306A\u3044";
+    if (areaOf(g, d)) return "\u3059\u3067\u306B\u8A2D\u7ACB\u3057\u3066\u3044\u308B";
+    const n = assetsIn(g, d).length;
+    if (n < AREA_MIN_ASSETS) return `\u3053\u306E\u5730\u533A\u306B\u4FDD\u6709\u7269\u4EF6\u304C${AREA_MIN_ASSETS}\u68DF\u5FC5\u8981\u3067\u3042\u308B\uFF08\u3044\u307E${n}\u68DF\uFF09`;
+    return null;
+  }
+  function found(g, d, news) {
+    const err = canFound(g, d);
+    if (err) return { ok: false, message: err };
+    if (!g.areas) g.areas = [];
+    const name2 = `${DISTRICTS[d].name}\u30A8\u30EA\u30A2\u30DE\u30CD\u30B8\u30E1\u30F3\u30C8\u5354\u8B70\u4F1A`;
+    g.areas.push({ d, name: name2, since: g.week, programs: [], cumCost: 0 });
+    g.company.brand = clamp(g.company.brand + 1.2, 0, 100);
+    news && news.push({
+      icon: "\u{1F3D9}",
+      type: "area",
+      major: true,
+      text: `\u3010${name2}\u3011\u3092\u8A2D\u7ACB\u3057\u305F\u3002\u8857\u533A\u306E\u5171\u540C\u904B\u55B6\u3092\u901A\u3058\u3066\u3001${DISTRICTS[d].name}\u305D\u306E\u3082\u306E\u306E\u4FA1\u5024\u3092\u5F15\u304D\u4E0A\u3052\u308B\u3002`
+    });
+    return { ok: true };
+  }
+  function dissolve(g, d, news) {
+    const i = (g.areas || []).findIndex((a2) => a2.d === d);
+    if (i < 0) return { ok: false, message: "\u8A2D\u7ACB\u3057\u3066\u3044\u306A\u3044" };
+    const a = g.areas[i];
+    g.areas.splice(i, 1);
+    g.company.brand = clamp(g.company.brand - 1.6, 0, 100);
+    news && news.push({ icon: "\u{1F3DA}", type: "area", text: `\u3010${a.name}\u3011\u3092\u89E3\u6563\u3057\u305F\u3002\u8857\u533A\u306E\u5171\u540C\u904B\u55B6\u306F\u7D42\u4E86\u3059\u308B\u3002` });
+    return { ok: true };
+  }
+  function toggleProgram(g, d, id) {
+    const a = areaOf(g, d);
+    if (!a || !programById(id)) return false;
+    const i = a.programs.indexOf(id);
+    if (i >= 0) a.programs.splice(i, 1);
+    else a.programs.push(id);
+    return true;
+  }
+  function maturityOf(g, a) {
+    const years = (g.week - a.since) / WEEKS_PER_YEAR;
+    const age = clamp01(years / MATURE_YEARS);
+    const share = clamp01(areaShare(g, a.d) / 0.45);
+    return clamp01(age * (0.35 + share * 0.65));
+  }
+  function areaEffect(g, d, key) {
+    const a = areaOf(g, d);
+    if (!a || !a.programs || !a.programs.length) return 0;
+    const m = maturityOf(g, a);
+    let v = 0;
+    for (const id of a.programs) {
+      const p = programById(id);
+      if (p && p.effect[key]) v += p.effect[key];
+    }
+    return v * m;
+  }
+  function areaLift(g, d) {
+    if (!g.areas || !g.areas.length) return 1;
+    return 1 + Math.min(0.1, areaEffect(g, d, "land"));
+  }
+  function areaOcc(g, d, use) {
+    if (!g.areas || !g.areas.length) return 1;
+    const base = areaEffect(g, d, "occ");
+    const retail = use === "retail" || use === "hotel" || use === "mixed" ? areaEffect(g, d, "occRetail") : 0;
+    return 1 + Math.min(0.08, base + retail);
+  }
+  function areaSafety(g, d) {
+    if (!g.areas || !g.areas.length) return 1;
+    return 1 - Math.min(0.3, areaEffect(g, d, "safety"));
+  }
+  function areaCost(g, d) {
+    const a = typeof d === "string" ? areaOf(g, d) : d;
+    if (!a) return 0;
+    let gfa = 0;
+    for (const x of assetsIn(g, a.d)) gfa += x.gfa || x.nra * 1.4;
+    const unit = Math.max(0.6, gfa / 1e4);
+    let c = 0;
+    for (const id of a.programs) {
+      const p = programById(id);
+      if (p) c += p.cost * unit;
+    }
+    return Math.round(c);
+  }
+  function totalAreaCost(g) {
+    return (g.areas || []).reduce((s, a) => s + areaCost(g, a), 0);
+  }
+  function stepArea(g, rng, news) {
+    if (!g.areas || !g.areas.length) return;
+    const cost = totalAreaCost(g) / WEEKS_PER_YEAR;
+    if (cost > 0) {
+      g.cash -= cost;
+      g.finance.quarterAcc.sga += cost;
+      for (const a of g.areas) a.cumCost = (a.cumCost || 0) + areaCost(g, a) / WEEKS_PER_YEAR;
+    }
+    let fee = 0;
+    for (const a of g.areas) {
+      const f = areaEffect(g, a.d, "fee");
+      if (f <= 0) continue;
+      for (const x of assetsIn(g, a.d)) fee += x.nra * x.rent * 12 / 1e6 * f / WEEKS_PER_YEAR;
+    }
+    if (fee > 0) {
+      g.cash += fee;
+      g.finance.quarterAcc.revFee += fee;
+    }
+    if (g.week % WEEKS_PER_QUARTER !== 0) return;
+    let br = 0;
+    for (const a of g.areas) br += areaEffect(g, a.d, "brand");
+    if (br > 0) g.company.brand = clamp(g.company.brand + br * 0.25, 0, 100);
+  }
+  function areaCandidates(g) {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const a of g.assets || []) {
+      if (seen.has(a.district)) continue;
+      seen.add(a.district);
+      const n = assetsIn(g, a.district).length;
+      out.push({
+        d: a.district,
+        name: DISTRICTS[a.district].name,
+        assets: n,
+        share: areaShare(g, a.district),
+        area: areaOf(g, a.district)
+      });
+    }
+    for (const x of g.areas || []) if (!seen.has(x.d)) {
+      out.push({ d: x.d, name: DISTRICTS[x.d].name, assets: 0, share: areaShare(g, x.d), area: x });
+    }
+    return out.sort((a, b) => (b.area ? 1 : 0) - (a.area ? 1 : 0) || b.assets - a.assets);
+  }
+
   // src/sim/cityevents.js
   var HAZARD = {
     T: { quake: 0.85, storm: 0.7, flood: 0.55 },
@@ -3103,13 +3312,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   function applyDisaster(g, D, rng, news) {
     const severity = rng.range(0.35, 1);
-    const title12 = rng.pick(D.titles);
+    const title13 = rng.pick(D.titles);
     const hits = [];
     let loss = 0, vacancyHit = 0;
     for (const a of g.assets || []) {
       const h = hazardOf(a.district)[D.key];
       const seis = D.seismicMatters ? seismicOf(a) : 1;
-      let rate = severity * h * 0.052 / Math.max(0.4, seis);
+      let rate = severity * h * 0.052 / Math.max(0.4, seis) * areaSafety(g, a.district);
       if (D.id === "flood") rate *= a.use === "logi" || a.use === "retail" ? 1.4 : 0.8;
       if (D.id === "snow") rate *= 0.25;
       rate = clamp(rate * rng.range(0.4, 1.6), 0, 0.42);
@@ -3144,7 +3353,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       kind: D.id,
       name: D.name,
       icon: D.icon,
-      title: title12,
+      title: title13,
       year: g.year,
       week: g.week,
       severity,
@@ -3160,7 +3369,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       icon: D.icon,
       type: "disaster",
       major: true,
-      text: `\u3010${title12}\u3011${D.desc}` + (hits.length ? `\u4FDD\u6709${hits.length}\u4EF6\u304C\u88AB\u707D\u3057\u3001\u5FA9\u65E7\u8CBB${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` : "\u5F53\u793E\u306E\u4FDD\u6709\u7269\u4EF6\u306B\u5927\u304D\u306A\u88AB\u5BB3\u306F\u306A\u304B\u3063\u305F\u3002") + (delayed ? `\u5DE5\u4E8B\u4E2D\u306E${delayed}\u4EF6\u3067\u5DE5\u671F\u304C\u5EF6\u3073\u305F\u3002` : "")
+      text: `\u3010${title13}\u3011${D.desc}` + (hits.length ? `\u4FDD\u6709${hits.length}\u4EF6\u304C\u88AB\u707D\u3057\u3001\u5FA9\u65E7\u8CBB${Math.round(loss / 100).toLocaleString()}\u5104\u5186\u3092\u7279\u5225\u640D\u5931\u306B\u8A08\u4E0A\u3057\u305F\u3002` : "\u5F53\u793E\u306E\u4FDD\u6709\u7269\u4EF6\u306B\u5927\u304D\u306A\u88AB\u5BB3\u306F\u306A\u304B\u3063\u305F\u3002") + (delayed ? `\u5DE5\u4E8B\u4E2D\u306E${delayed}\u4EF6\u3067\u5DE5\u671F\u304C\u5EF6\u3073\u305F\u3002` : "")
     });
     return rec;
   }
@@ -3337,7 +3546,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const live = residentialWeight(d);
     const afford = clamp(1 - Math.log10(Math.max(0.2, d.landPrice)) / 1.6, -0.4, 0.7);
     const crowd = p && p.base ? clamp((p.people / p.base - 1) * -0.6, -0.5, 0.3) : 0;
-    return clamp(station * 0.5 + rail * 2.2 + live * 0.5 + afford * 0.35 + crowd - 0.62, -0.9, 0.9);
+    const am = areaEffect(g, id, "pop");
+    return clamp(station * 0.5 + rail * 2.2 + live * 0.5 + afford * 0.35 + crowd + am - 0.62, -0.9, 0.9);
   }
   function stepPopulation(g, rng, news) {
     if (g.week % WEEKS_PER_QUARTER !== 0) return null;
@@ -4031,6 +4241,12 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       // 売りに出ている稼働中のビル（一棟買い）
       assemblies: [],
       // 進行中の用地集約（種地の取得）
+      tenancies: [],
+      // 大口テナントとの賃貸借契約
+      leads: [],
+      // テナントからの引き合い（リーシング）
+      areas: [],
+      // エリアマネジメント団体
       relations: {},
       // 競合との関係値（共同事業の通りやすさ）
       union: { formed: false, disputes: 0, history: [] },
@@ -4138,6 +4354,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   function cellById(g, id) {
     return g.cells.find((c) => c.id === id);
   }
+  var isOwnedCell = (c) => c.owner === "player" && !c.mergedInto;
+  var isIdleLot = (c) => isOwnedCell(c) && !c.isHQ && !c.building && !c.projectId && !c.assetId && !c.invId;
 
   // src/sim/officers.js
   var OVERSIGHT = {
@@ -4297,7 +4515,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const planning = projects.length - running;
     const inv = g.inventory || [];
     const assets = g.assets || [];
-    const lots = (g.cells || []).filter((c) => c.owner === "player" && c.terrain === TERRAIN.LOT);
+    const lots = (g.cells || []).filter((c) => isOwnedCell(c) && c.terrain === TERRAIN.LOT);
     const idleLots = lots.filter((c) => !c.building && !c.projectId).length;
     const listings = (g.listings || []).length;
     const staff = (g.staff || []).filter((s) => !s.subsidiary).length;
@@ -4979,7 +5197,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const d = DISTRICTS[c.d];
     const best = bestUseFit(c);
     const demand = g.market.demand[best] ?? 1;
-    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1) * railMul(g, c.d));
+    return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1) * railMul(g, c.d) * areaLift(g, c.d));
   }
   var BEST_FIT = {};
   function bestUseFit(c) {
@@ -5231,9 +5449,16 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const aged = 1 - Math.min(0.22, (a.age || 0) * 6e-3);
     return base * (0.86 + dem * 0.2) * g.market.priceIdx * aged;
   }
+  function effectiveRent(g, a) {
+    const share = clamp01(a.anchorShare || 0);
+    if (!(share > 0)) return a.rent;
+    const occ = Math.max(share, clamp01(a.occupancy || 0));
+    const w = occ > 0 ? Math.min(1, share / occ) : 0;
+    return (a.anchorRent || 0) * w + a.rent * (1 - w);
+  }
   function currentNOI(g, a) {
     const dem = g.market.demand[a.use] ?? 1;
-    const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
+    const gross = a.nra * effectiveRent(g, a) * 12 / 1e6 * a.occupancy;
     const opex = 0.24 - subEffect(g, "feeRate") * 2;
     const hotelMul = a.use === "hotel" ? (0.7 + dem * 0.35) * (1 + subEffect(g, "hotelNoi")) : 1;
     return Math.round(gross * (1 - clamp(opex, 0.16, 0.3)) * hotelMul);
@@ -5534,17 +5759,17 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const p = orgPower(g);
     const base = level === 1 ? 0.48 : 0.86;
     const skill = clamp01(base + (p.land.quality - 55) / 260 + (p.corp.quality - 55) / 420);
-    let found = 0;
+    let found2 = 0;
     for (const r of listing.risks) {
       if (r.found) continue;
       if (rng.chance(skill)) {
         r.found = true;
-        found++;
+        found2++;
       }
     }
     listing.ddLevel = Math.max(listing.ddLevel, level);
     listing.ddSkill = skill;
-    return found;
+    return found2;
   }
   function riskImpact(g, cell, risks) {
     const eff = { extraCost: 0, delay: 0, buildMul: 1, farMul: 1, floorMul: 1, priceMul: 1 };
@@ -5685,13 +5910,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
     return fee;
   }
-  function acquireForRival(g, listing, cell, rvId, amount) {
+  function acquireForRival(g, listing, cell, rvId, amount, rng) {
     const rv = g.rivals.find((r) => r.id === rvId);
     cell.owner = rvId;
     cell.onSale = null;
     cell.vacant = true;
     cell.building = null;
-    cell.rivalDev = { week: g.week, weeks: 52 + Math.floor(Math.random() * 78), use: listing.bestUse };
+    cell.rivalDev = { week: g.week, weeks: rng ? rng.int(52, 129) : 90, use: listing.bestUse };
     if (rv) {
       rv.cash -= amount;
       rv.lots++;
@@ -5748,7 +5973,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     g.jvOffers = (g.jvOffers || []).filter((o) => o.deadline > g.week);
     if (g.jvOffers.length >= 2) return;
     if (!rng.chance(0.55 / WEEKS_PER_QUARTER)) return;
-    const lots = g.cells.filter((c) => c.owner === "player" && c.vacant && !c.projectId && !c.assetId && !c.invId && !g.jvOffers.some((o) => o.cellId === c.id) && landAppraisal(g, c) >= JV_MIN_VALUE);
+    const lots = g.cells.filter((c) => isOwnedCell(c) && c.vacant && !c.projectId && !c.assetId && !c.invId && !g.jvOffers.some((o) => o.cellId === c.id) && landAppraisal(g, c) >= JV_MIN_VALUE);
     if (!lots.length) return;
     const cell = rng.pick(lots);
     const cands = (g.rivals || []).map((rv2) => ({ rv: rv2, a: appetiteOf(g, rv2, cell) })).filter((x) => x.a > 0.24);
@@ -6559,9 +6784,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       icon: "\u{1F477}",
       title: "\u5EFA\u8A2D\u6280\u80FD\u8005\u306E\u4E0D\u8DB3\u304C\u6DF1\u523B\u5316",
       text: "\u8077\u4EBA\u306E\u78BA\u4FDD\u304C\u96E3\u3057\u304F\u3001\u5404\u793E\u306E\u5DE5\u671F\u304C\u5168\u822C\u306B\u4F38\u3073\u3066\u3044\u308B\u3002",
-      apply: (g) => {
+      // **`Math.random()` を使わないこと。** 乱数はシード付きに統一してある
+      apply: (g, rng) => {
         g.market.costIdx *= 1.04;
-        for (const p of g.projects) if (Math.random() < 0.4) p.delay = (p.delay || 0) + 4;
+        for (const p of g.projects) if (rng.chance(0.4)) p.delay = (p.delay || 0) + 4;
       }
     }
   ];
@@ -6570,7 +6796,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     for (const s of SHOCKS) {
       if (s.minWeek && g.week < s.minWeek) continue;
       if (rng.chance(s.p / WEEKS_PER_QUARTER)) {
-        s.apply(g);
+        s.apply(g, rng);
         out.push(s);
       }
     }
@@ -6708,7 +6934,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     slot3: "\u30B9\u30ED\u30C3\u30C8 3",
     autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
   };
-  var SAVE_VERSION = 7;
+  var SAVE_VERSION = 8;
   var shrink = (k, v) => {
     if (typeof v !== "number" || !Number.isFinite(v) || Number.isInteger(v)) return v;
     const a = Math.abs(v);
@@ -6717,7 +6943,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return r === 0 && v !== 0 ? v : r;
   };
   function serialize(g) {
-    const { pendingReport, quarterNews, candidates, ...rest } = g;
+    const { pendingReport, quarterNews, candidates: candidates2, ...rest } = g;
     return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest }, shrink);
   }
   function metaOf(g) {
@@ -6777,6 +7003,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   var SKIP_TOP = /* @__PURE__ */ new Set(["cells"]);
   var STEPS = [
+    // 大口テナント（tenants.js）とエリアマネジメント（area.js）を足した。
+    // 入れ物が無い古いセーブでも落ちないようにする。
+    // **既存の物件に契約をでっち上げないこと。** 契約していない床の賃料が
+    // いきなり固定されて、賃料改定が効かなくなる
+    (g) => {
+      if (!Array.isArray(g.tenancies)) g.tenancies = [];
+      if (!Array.isArray(g.leads)) g.leads = [];
+      if (!Array.isArray(g.areas)) g.areas = [];
+      for (const a of g.assets || []) {
+        if (typeof a.anchorShare !== "number") a.anchorShare = 0;
+        if (typeof a.anchorRent !== "number") a.anchorRent = 0;
+      }
+    },
     // 部の下に課を置いた。課の無い社員には、その部の課を配る。
     // **ID の無い社員を落とさないこと。** 課は見せ方の単位で、
     // 付いていなくても計算は回る（`affiliation()` が部だけ返す）
@@ -6887,7 +7126,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       if (!g.company) return;
       if (!g.company.home) {
         const n = {};
-        for (const c of g.cells || []) if (c.owner === "player" && c.d) n[c.d] = (n[c.d] || 0) + 1;
+        for (const c of g.cells || []) if (isOwnedCell(c) && c.d) n[c.d] = (n[c.d] || 0) + 1;
         for (const a of g.assets || []) if (a.district) n[a.district] = (n[a.district] || 0) + 2;
         const top = Object.entries(n).sort((x, y) => y[1] - x[1])[0];
         g.company.home = top ? top[0] : "W";
@@ -9357,7 +9596,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       scale: 1,
       hard: 1,
       desc: "\u81EA\u793E\u304C\u6301\u3063\u3066\u3044\u308B\u571F\u5730\u306E\u6570\u3002\u4ED5\u5165\u308C\u306E\u529B\u304C\u305D\u306E\u307E\u307E\u51FA\u308B\u3002",
-      get: (g) => (g.cells || []).filter((c) => c.owner === "player" && c.terrain === TERRAIN.LOT).length
+      get: (g) => (g.cells || []).filter((c) => isOwnedCell(c) && c.terrain === TERRAIN.LOT).length
     },
     brand: {
       id: "brand",
@@ -10648,8 +10887,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   // src/ui/dom.js
   var $ = (s) => document.querySelector(s);
   var modalCb = null;
-  function openModal(title12, bodyHTML, buttons = []) {
-    $("#modalTitle").textContent = title12;
+  function openModal(title13, bodyHTML, buttons = []) {
+    $("#modalTitle").textContent = title13;
     $("#modalBody").innerHTML = bodyHTML;
     const foot = $("#modalFoot");
     foot.innerHTML = "";
@@ -10719,8 +10958,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   function chip(text, cls = "grey") {
     return `<span class="chip ${cls}">${text}</span>`;
   }
-  function section(title12, note, inner) {
-    return `<div class="sec"><div class="sec-t"><span>${title12}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
+  function section(title13, note, inner) {
+    return `<div class="sec"><div class="sec-t"><span>${title13}</span>${note ? `<span class="note">${note}</span>` : ""}</div>${inner}</div>`;
   }
   function empty(msg) {
     return `<div class="empty">${msg}</div>`;
@@ -10785,7 +11024,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const me = ceo(g);
     const isCeo = !person;
     const name2 = isCeo ? me.name : person.name;
-    const title12 = isCeo ? rankName(g, CEO_RANK) : rankName(g, person.rank);
+    const title13 = isCeo ? rankName(g, CEO_RANK) : rankName(g, person.rank);
     const belong = isCeo ? "" : affiliation(person);
     const addr = addressOf(g);
     return `
@@ -10799,7 +11038,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>
     <div class="meishi-person">
       ${belong ? `<div class="meishi-belong">${belong}</div>` : ""}
-      <div class="meishi-title">${title12}</div>
+      <div class="meishi-title">${title13}</div>
       <div class="meishi-pname">${name2}</div>
     </div>
     <div class="meishi-foot">
@@ -10810,9 +11049,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   function openCard(g, person = null) {
     const isCeo = !person;
-    const title12 = isCeo ? "\u540D\u523A" : `\u540D\u523A\u3000${person.name}`;
+    const title13 = isCeo ? "\u540D\u523A" : `\u540D\u523A\u3000${person.name}`;
     const t = person && teamById(person.team);
-    openModal(title12, `
+    openModal(title13, `
     ${cardHTML(g, person)}
     <div class="hint" style="margin-top:14px">
       \u793E\u540D\u306F\u30BF\u30A4\u30C8\u30EB\u753B\u9762\u3067\u5165\u308C\u305F\u3082\u306E\u3001\u4F4F\u6240\u306F\u5730\u76E4\uFF08${(DISTRICTS[g.company.home] || DISTRICTS.T).name}\uFF09\u304B\u3089\u4F5C\u3063\u3066\u3044\u308B\u3002
@@ -10903,10 +11142,12 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       const gap = a.rent / Math.max(1, a.marketRent);
       const lease = 0.8 + p.lease.quality / 340 + subEffect(g, "occupancy") * 2 + (isHome(g, a.district) ? HOME.occupancy : 0);
       const popMul = demandMul(g, a.district, a.use);
-      let target = clamp01((1.34 - gap * 0.36) * (0.7 + dem * 0.31) * lease * popMul);
+      let target = clamp01((1.34 - gap * 0.36) * (0.7 + dem * 0.31) * lease * popMul * areaOcc(g, a.district, a.use));
       if (a.use === "logi") target = clamp01(target * 1.06 + 0.04);
       if (a.use === "hotel") target = clamp01(target * (0.74 + dem * 0.34));
       if (a.age > 25) target *= 0.94;
+      const anchor = clamp01(a.anchorShare || 0);
+      if (anchor > 0) target = clamp01(anchor + (1 - anchor) * target);
       if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
       a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 6e-3));
       if (g.week - a.lastRentReview >= 104) {
@@ -10924,7 +11165,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       }
       const noiY = currentNOI(g, a);
       a.noi = noiY;
-      const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
+      const grossW = a.nra * effectiveRent(g, a) * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
       const opexW = grossW * 0.24;
       const deprW = a.bookBuild / ((a.deprYears || 50) * WEEKS_PER_YEAR);
       a.bookBuild = Math.max(0, a.bookBuild - deprW);
@@ -11055,19 +11296,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const cost = Math.round(t.askPrice * (level === 1 ? 6e-3 : 0.018));
     const base = level === 1 ? 0.45 : 0.85;
     const skill = clamp01(base + (p.corp.quality - 55) / 240 + (p.fin.quality - 55) / 380);
-    let found = 0;
+    let found2 = 0;
     for (const r of t.risks) {
       if (r.found) continue;
       if (rng.chance(skill)) {
         r.found = true;
-        found++;
+        found2++;
       }
     }
     t.ddLevel = Math.max(t.ddLevel, level);
     t.ddSkill = skill;
     g.cash -= cost;
     g.finance.quarterAcc.cogsOther += cost;
-    return { cost, found };
+    return { cost, found: found2 };
   }
   function acquire(g, t, price, rng, news) {
     const p = orgPower(g);
@@ -13028,6 +13269,413 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }).sort((x, y) => x.month - y.month);
   }
 
+  // src/data/tenants.js
+  var RETAIL_CATS = {
+    apparel: { id: "apparel", name: "\u30A2\u30D1\u30EC\u30EB", icon: "\u{1F454}" },
+    food: { id: "food", name: "\u98F2\u98DF", icon: "\u{1F37D}" },
+    grocery: { id: "grocery", name: "\u98DF\u54C1\u30B9\u30FC\u30D1\u30FC", icon: "\u{1F6D2}" },
+    elec: { id: "elec", name: "\u5BB6\u96FB\u30FBIT", icon: "\u{1F50C}" },
+    culture: { id: "culture", name: "\u66F8\u7C4D\u30FB\u6587\u5316", icon: "\u{1F4DA}" },
+    sports: { id: "sports", name: "\u30B9\u30DD\u30FC\u30C4", icon: "\u26F9" },
+    cinema: { id: "cinema", name: "\u30B7\u30CD\u30DE\u30FB\u5A2F\u697D", icon: "\u{1F3AC}" },
+    fitness: { id: "fitness", name: "\u30D5\u30A3\u30C3\u30C8\u30CD\u30B9", icon: "\u{1F3CB}" },
+    variety: { id: "variety", name: "\u96D1\u8CA8\u30FB\u751F\u6D3B", icon: "\u{1F380}" },
+    drug: { id: "drug", name: "\u30C9\u30E9\u30C3\u30B0\u30FB\u8ABF\u5264", icon: "\u{1F48A}" },
+    furni: { id: "furni", name: "\u5BB6\u5177\u30FB\u30A4\u30F3\u30C6\u30EA\u30A2", icon: "\u{1F6CB}" },
+    school: { id: "school", name: "\u5B66\u7FD2\u587E\u30FB\u30B9\u30AF\u30FC\u30EB", icon: "\u270F" },
+    clinic: { id: "clinic", name: "\u30AF\u30EA\u30CB\u30C3\u30AF\u30E2\u30FC\u30EB", icon: "\u{1FA7A}" }
+  };
+  var RETAIL_TENANTS = [
+    { id: "r_aurelia", name: "\u30A2\u30A6\u30EC\u30EA\u30A2", cat: "apparel", size: 220, grade: 0.92, pay: 1.28, term: 6 },
+    { id: "r_kobaco", name: "\u30B3\u30D0\u30B3", cat: "apparel", size: 380, grade: 0.62, pay: 1.02, term: 6 },
+    { id: "r_lumine", name: "\u30EB\u30DF\u30CA\u30FB\u30BB\u30EC\u30AF\u30C8", cat: "apparel", size: 160, grade: 0.8, pay: 1.2, term: 5 },
+    { id: "r_haretoke", name: "\u30CF\u30EC\u30C8\u30B1", cat: "apparel", size: 300, grade: 0.48, pay: 0.94, term: 6 },
+    { id: "r_kuretake", name: "\u5449\u7AF9\u5C4B", cat: "food", size: 120, grade: 0.7, pay: 1.35, term: 5 },
+    { id: "r_bistro", name: "\u30D3\u30B9\u30C8\u30ED\u30FB\u30CA\u30AE", cat: "food", size: 95, grade: 0.86, pay: 1.42, term: 5 },
+    { id: "r_men", name: "\u9EBA\u5C4B \u56DB\u5B63", cat: "food", size: 45, grade: 0.3, pay: 1.18, term: 4 },
+    { id: "r_cafe", name: "\u30AB\u30D5\u30A7\u30FB\u30BD\u30EB\u30CA", cat: "food", size: 70, grade: 0.55, pay: 1.24, term: 5 },
+    { id: "r_teppan", name: "\u9244\u677F \u304B\u307E\u3069", cat: "food", size: 130, grade: 0.74, pay: 1.3, term: 6 },
+    { id: "r_marche", name: "\u30DE\u30EB\u30B7\u30A7\u6F6E", cat: "grocery", size: 620, grade: 0.4, pay: 0.82, term: 15 },
+    { id: "r_seikatsu", name: "\u751F\u6D3B\u826F\u54C1\u30B9\u30C8\u30A2", cat: "grocery", size: 900, grade: 0.34, pay: 0.76, term: 15 },
+    { id: "r_denki", name: "\u30E4\u30DE\u30CD\u96FB\u6A5F", cat: "elec", size: 1400, grade: 0.38, pay: 0.72, term: 12 },
+    { id: "r_appl", name: "\u30BD\u30E9\u30FB\u30B9\u30C8\u30A2", cat: "elec", size: 180, grade: 0.95, pay: 1.55, term: 8 },
+    { id: "r_books", name: "\u6587\u6797\u5802\u66F8\u5E97", cat: "culture", size: 480, grade: 0.56, pay: 0.86, term: 8 },
+    { id: "r_gallery", name: "\u30AE\u30E3\u30E9\u30EA\u30FC\u5982\u6708", cat: "culture", size: 150, grade: 0.88, pay: 0.9, term: 5 },
+    { id: "r_sports", name: "\u30B9\u30DD\u30FC\u30C4\u96F7\u9CE5", cat: "sports", size: 560, grade: 0.44, pay: 0.84, term: 10 },
+    { id: "r_cinema", name: "\u30B7\u30CD\u30DE\u30FB\u30A2\u30B9\u30C8\u30E9", cat: "cinema", size: 2200, grade: 0.66, pay: 0.68, term: 20 },
+    { id: "r_amuse", name: "\u30A2\u30DF\u30E5\u30FC\u30BA\u6E4A", cat: "cinema", size: 950, grade: 0.36, pay: 0.78, term: 10 },
+    { id: "r_gym", name: "\u30D5\u30A3\u30C3\u30C8\u30CD\u30B9\u30FB\u30BC\u30ED", cat: "fitness", size: 700, grade: 0.5, pay: 0.8, term: 12 },
+    { id: "r_yoga", name: "\u30E8\u30AC\u30B9\u30BF\u30B8\u30AA\u51EA", cat: "fitness", size: 180, grade: 0.72, pay: 1.06, term: 6 },
+    { id: "r_zakka", name: "\u66AE\u3089\u3057\u306E\u5668 \u3044\u308D\u306F", cat: "variety", size: 210, grade: 0.64, pay: 1.04, term: 6 },
+    { id: "r_loft", name: "\u30ED\u30D5\u30C6\u30A3", cat: "variety", size: 840, grade: 0.58, pay: 0.92, term: 10 },
+    { id: "r_drug", name: "\u304F\u3059\u308A\u306E\u5343\u6B73", cat: "drug", size: 260, grade: 0.3, pay: 0.96, term: 8 },
+    { id: "r_pharm", name: "\u8ABF\u5264\u85AC\u5C40\u30A2\u30AA\u30A4", cat: "drug", size: 60, grade: 0.42, pay: 1.1, term: 6 },
+    { id: "r_furni", name: "\u30CE\u30EB\u30C7\u30A3\u30FB\u30DB\u30FC\u30E0", cat: "furni", size: 1800, grade: 0.46, pay: 0.66, term: 15 },
+    { id: "r_juku", name: "\u9032\u5B66\u30BC\u30DF\u6E4A\u90FD", cat: "school", size: 240, grade: 0.4, pay: 1, term: 8 },
+    { id: "r_eikaiwa", name: "\u30A2\u30FC\u30C1\u82F1\u4F1A\u8A71", cat: "school", size: 130, grade: 0.58, pay: 1.08, term: 6 },
+    { id: "r_clinic", name: "\u6E4A\u90FD\u30E1\u30C7\u30A3\u30AB\u30EB\u30E2\u30FC\u30EB", cat: "clinic", size: 420, grade: 0.68, pay: 1.14, term: 15 },
+    { id: "r_dental", name: "\u3057\u304A\u307F\u6B6F\u79D1\u30FB\u77EF\u6B63", cat: "clinic", size: 90, grade: 0.6, pay: 1.12, term: 10 },
+    { id: "r_bank", name: "\u4E09\u548C\u9280\u884C \u652F\u5E97", cat: "clinic", size: 150, grade: 0.74, pay: 1.16, term: 15 }
+  ];
+  var LOGI_CATS = {
+    ec: { id: "ec", name: "EC\u30FB\u901A\u8CA9", icon: "\u{1F4E6}" },
+    tpl: { id: "tpl", name: "3PL\u30FB\u5009\u5EAB", icon: "\u{1F3ED}" },
+    food: { id: "food", name: "\u98DF\u54C1\u5378", icon: "\u{1F96C}" },
+    pharma: { id: "pharma", name: "\u533B\u85AC\u54C1\u5378", icon: "\u{1F489}" },
+    parts: { id: "parts", name: "\u81EA\u52D5\u8ECA\u90E8\u54C1", icon: "\u{1F527}" },
+    cold: { id: "cold", name: "\u51B7\u51CD\u30FB\u51B7\u8535", icon: "\u2744" }
+  };
+  var LOGI_TENANTS = [
+    { id: "l_sora", name: "\u30BD\u30E9\u30DE\u30FC\u30C8\u7269\u6D41", cat: "ec", size: 6500, grade: 0.3, pay: 1.06, term: 10 },
+    { id: "l_quick", name: "\u30AF\u30A4\u30C3\u30AF\u30B3\u30DE\u30FC\u30B9\u6E4A", cat: "ec", size: 2200, grade: 0.26, pay: 1.12, term: 7 },
+    { id: "l_yamabiko", name: "\u5C71\u5F66\u904B\u8F38", cat: "tpl", size: 5200, grade: 0.2, pay: 0.94, term: 12 },
+    { id: "l_nissho", name: "\u65E5\u7FD4\u30ED\u30B8\u30B9\u30C6\u30A3\u30AF\u30B9", cat: "tpl", size: 8200, grade: 0.24, pay: 0.92, term: 15 },
+    { id: "l_kaiyo", name: "\u6D77\u6D0B\u9678\u904B", cat: "tpl", size: 3400, grade: 0.16, pay: 0.88, term: 10 },
+    { id: "l_midori", name: "\u307F\u3069\u308A\u98DF\u54C1\u6D41\u901A", cat: "food", size: 2800, grade: 0.22, pay: 0.96, term: 12 },
+    { id: "l_kura", name: "\u8535\u524D\u30D5\u30FC\u30BA", cat: "food", size: 1600, grade: 0.18, pay: 0.9, term: 10 },
+    { id: "l_yakuhin", name: "\u5E38\u78D0\u85AC\u54C1\u6D41\u901A", cat: "pharma", size: 1900, grade: 0.46, pay: 1.2, term: 15 },
+    { id: "l_toyosu", name: "\u8C4A\u6D32\u81EA\u52D5\u8ECA \u90E8\u54C1\u30BB\u30F3\u30BF\u30FC", cat: "parts", size: 4600, grade: 0.28, pay: 0.98, term: 15 },
+    { id: "l_sunwave", name: "\u30B5\u30F3\u30A6\u30A7\u30FC\u30D6\u96FB\u6A5F \u6E4A\u90FDDC", cat: "parts", size: 3100, grade: 0.26, pay: 0.96, term: 12 },
+    { id: "l_frozen", name: "\u30D5\u30ED\u30FC\u30BA\u30F3\u30FB\u30E9\u30A4\u30F3", cat: "cold", size: 2400, grade: 0.4, pay: 1.24, term: 15 },
+    { id: "l_kirinza", name: "\u9E92\u9E9F\u5EA7\u30D3\u30D0\u30EC\u30C3\u30B8 \u914D\u9001\u30BB\u30F3\u30BF\u30FC", cat: "cold", size: 3600, grade: 0.3, pay: 1.02, term: 12 }
+  ];
+  function officeDemand(e) {
+    const staff = (e.hire || 40) * 24;
+    return Math.max(250, Math.min(16e3, Math.round(staff * 3.3 * 0.55)));
+  }
+  function officeGrade(e) {
+    const pay2 = e.pay || 11;
+    return Math.max(0.1, Math.min(1, (e.pop || 70) / 130 + (pay2 - 9) / 40));
+  }
+
+  // src/sim/tenants.js
+  var ANCHOR_USES = ["office", "retail", "logi", "mixed"];
+  var ANCHOR_CAP = 0.62;
+  var MAX_LEADS = 6;
+  var RENEW_LEAD = 26;
+  var FREE_MAX = 12;
+  var GRADE_Q = { standard: 0.35, high: 0.68, luxury: 0.94 };
+  function qualityOf(g, a) {
+    const d = DISTRICTS[a.district];
+    const aged = Math.max(0, 1 - (a.age || 0) * 0.012);
+    return clamp01((GRADE_Q[a.grade] ?? 0.35) * (0.72 + aged * 0.28) + (d ? d.station * 0.12 : 0));
+  }
+  function tenanciesOf(g, assetId) {
+    return (g.tenancies || []).filter((t) => t.assetId === assetId);
+  }
+  function anchorArea(g, a) {
+    let s = 0;
+    for (const t of tenanciesOf(g, a.id)) s += t.area;
+    return s;
+  }
+  function roomOf(g, a) {
+    const cap = a.nra * ANCHOR_CAP - anchorArea(g, a);
+    const vacant = a.nra * (1 - clamp01(a.occupancy || 0)) * 1.25;
+    return Math.max(0, Math.min(cap, vacant));
+  }
+  function syncAnchors(g) {
+    const byAsset = {};
+    for (const t of g.tenancies || []) {
+      const b = byAsset[t.assetId] || (byAsset[t.assetId] = { area: 0, rentArea: 0 });
+      b.area += t.area;
+      b.rentArea += t.area * (g.week < (t.freeUntil || 0) ? 0 : t.rent);
+    }
+    for (const a of g.assets) {
+      const b = byAsset[a.id];
+      if (!b || !(a.nra > 0)) {
+        a.anchorShare = 0;
+        a.anchorRent = 0;
+        continue;
+      }
+      a.anchorShare = clamp01(b.area / a.nra);
+      a.anchorRent = Math.round(b.rentArea / Math.max(1, b.area));
+    }
+  }
+  function candidates(g, a) {
+    const q = qualityOf(g, a);
+    const room = roomOf(g, a);
+    const taken = new Set(tenanciesOf(g, a.id).map((t) => t.tid));
+    const out = [];
+    const kinds = a.use === "mixed" ? ["office", "retail"] : [a.use];
+    for (const kind of kinds) {
+      if (kind === "office") {
+        for (const e of EMPLOYERS) {
+          const need = officeDemand(e);
+          if (taken.has(e.id) || need > room * 1.15) continue;
+          const grade = officeGrade(e);
+          if (grade > q + 0.24) continue;
+          out.push({
+            kind: "office",
+            tid: e.id,
+            name: e.name,
+            icon: "\u{1F3E2}",
+            catName: e.ind,
+            need,
+            grade,
+            pay: 0.88 + grade * 0.3,
+            term: 5 + Math.round(grade * 5),
+            credit: grade
+          });
+        }
+      } else {
+        const list = kind === "retail" ? RETAIL_TENANTS : LOGI_TENANTS;
+        const cats = kind === "retail" ? RETAIL_CATS : LOGI_CATS;
+        for (const t of list) {
+          if (taken.has(t.id) || t.size > room * 1.15) continue;
+          if (t.grade > q + 0.24) continue;
+          out.push({
+            kind,
+            tid: t.id,
+            name: t.name,
+            icon: (cats[t.cat] || {}).icon || "\u{1F3EC}",
+            catName: (cats[t.cat] || {}).name || "",
+            need: t.size,
+            grade: t.grade,
+            pay: t.pay,
+            term: t.term,
+            credit: clamp01(0.32 + t.grade * 0.42 + (t.term >= 10 ? 0.12 : 0))
+          });
+        }
+      }
+    }
+    return out;
+  }
+  function leadChance(g, a, p) {
+    const room = roomOf(g, a);
+    if (room < 60) return 0;
+    const d = DISTRICTS[a.district];
+    const fit = d ? d.fit[a.use] ?? 0.4 : 0.4;
+    const dem = g.market.demand[a.use] ?? 1;
+    return clamp01(
+      Math.min(0.9, room / (a.nra * 0.5)) * 0.1 * (0.55 + fit * 0.7) * (0.6 + dem * 0.45) * (0.72 + p.lease.quality / 200) * (0.9 + g.company.brand / 400) * (isHome(g, a.district) ? 1.12 : 1) * (1 + areaEffect(g, a.district, "lead"))
+    );
+  }
+  function wantRent(g, a, cand, rng) {
+    const base = a.marketRent > 0 ? a.marketRent : a.rent;
+    const mood = 0.94 + (g.market.demand[a.use] ?? 1) * 0.08;
+    return Math.max(1, Math.round(base * cand.pay * mood * rng.range(0.95, 1.06)));
+  }
+  function makeLead(g, a, rng, cand, renewOf) {
+    const room = renewOf ? renewOf.area : roomOf(g, a);
+    const area = Math.max(30, Math.round(Math.min(cand.need, room) * (renewOf ? 1 : rng.range(0.78, 1))));
+    const term = renewOf ? Math.max(3, Math.round(cand.term * 0.8)) : cand.term;
+    return {
+      id: uid("TN"),
+      assetId: a.id,
+      assetName: a.name,
+      district: a.district,
+      kind: cand.kind,
+      tid: cand.tid,
+      name: cand.name,
+      icon: cand.icon,
+      catName: cand.catName,
+      area,
+      term,
+      credit: cand.credit,
+      grade: cand.grade,
+      want: wantRent(g, a, cand, rng),
+      deadline: rng.int(4, 9),
+      renewOf: renewOf ? renewOf.id : null,
+      offer: null,
+      answerAt: 0,
+      week: g.week
+    };
+  }
+  function acceptChance(g, lead, offer) {
+    const a = g.assets.find((x) => x.id === lead.assetId);
+    if (!a) return 0;
+    const p = orgPower(g);
+    const months = lead.term * 12;
+    const eff = offer.rent / Math.max(1, lead.want) * (1 - clamp01((offer.free || 0) / months));
+    let c = clamp01(0.6 + (1 - eff) * 2.5);
+    const q = qualityOf(g, a);
+    c *= clamp01(0.55 + (q - lead.grade) * 1.1) * 1.45;
+    c *= 0.8 + p.lease.quality / 260;
+    c *= 0.88 + g.company.brand / 100 * 0.26;
+    if (isHome(g, a.district)) c *= 1.06;
+    c *= 1 + areaEffect(g, a.district, "lead") * 0.6;
+    if (lead.renewOf) c *= 1.22;
+    return clamp01(c);
+  }
+  function respondLead(g, lead, offer, rng) {
+    const a = g.assets.find((x) => x.id === lead.assetId);
+    if (!a) return { ok: false, message: "\u7269\u4EF6\u304C\u898B\u3064\u304B\u3089\u306A\u3044" };
+    const months = lead.term * 12;
+    const free = clamp(Math.round(offer.free || 0), 0, Math.min(FREE_MAX, Math.floor(months * 0.25)));
+    const rent = Math.max(1, Math.round(offer.rent));
+    lead.offer = { rent, free };
+    lead.answerAt = g.week + rng.int(1, 3);
+    lead.deadline = Math.max(lead.deadline, lead.answerAt - g.week + 1);
+    return { ok: true };
+  }
+  function declineLead(g, lead) {
+    const i = (g.leads || []).indexOf(lead);
+    if (i >= 0) g.leads.splice(i, 1);
+  }
+  function sign(g, lead, news) {
+    const a = g.assets.find((x) => x.id === lead.assetId);
+    if (!a) return;
+    const free = lead.offer.free || 0;
+    if (lead.renewOf) {
+      const t = (g.tenancies || []).find((x) => x.id === lead.renewOf);
+      if (t) {
+        t.rent = lead.offer.rent;
+        t.term = lead.term;
+        t.start = g.week;
+        t.endWeek = g.week + Math.round(lead.term * WEEKS_PER_YEAR);
+        t.freeUntil = g.week + Math.round(free * WEEKS_PER_YEAR / 12);
+        t.renewAsked = false;
+        t.renewals = (t.renewals || 0) + 1;
+        news.push({
+          icon: "\u{1F91D}",
+          type: "lease",
+          major: true,
+          text: `\u3010${a.name}\u3011${lead.name}\u3068\u306E\u8CC3\u8CB8\u501F\u5951\u7D04\u3092\u66F4\u65B0\u3057\u305F\uFF08${lead.area.toLocaleString()}\u576A\u30FB\u6708\u576A${lead.offer.rent.toLocaleString()}\u5186\u30FB${lead.term}\u5E74\uFF09\u3002`
+        });
+      }
+      return;
+    }
+    g.tenancies.push({
+      id: uid("T"),
+      assetId: a.id,
+      kind: lead.kind,
+      tid: lead.tid,
+      name: lead.name,
+      icon: lead.icon,
+      catName: lead.catName,
+      area: lead.area,
+      rent: lead.offer.rent,
+      term: lead.term,
+      credit: lead.credit,
+      start: g.week,
+      endWeek: g.week + Math.round(lead.term * WEEKS_PER_YEAR),
+      freeUntil: g.week + Math.round(free * WEEKS_PER_YEAR / 12),
+      renewAsked: false,
+      renewals: 0
+    });
+    if (lead.credit > 0.78) g.company.brand = clamp(g.company.brand + 0.5, 0, 100);
+    news.push({
+      icon: "\u{1F91D}",
+      type: "lease",
+      major: true,
+      text: `\u3010${a.name}\u3011${lead.name}\u304C${lead.area.toLocaleString()}\u576A\u3092\u8CC3\u501F\u3059\u308B\u3053\u3068\u3067\u5408\u610F\u3057\u305F\uFF08\u6708\u576A${lead.offer.rent.toLocaleString()}\u5186\u30FB${lead.term}\u5E74\u30FB\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8${free}\u30F6\u6708\uFF09\u3002`
+    });
+  }
+  function vacate(g, t, reason, news) {
+    const a = g.assets.find((x) => x.id === t.assetId);
+    const i = g.tenancies.indexOf(t);
+    if (i >= 0) g.tenancies.splice(i, 1);
+    if (!a) return;
+    news.push({
+      icon: "\u{1F4E4}",
+      type: "lease",
+      major: true,
+      text: `\u3010${a.name}\u3011${t.name}\u304C${t.area.toLocaleString()}\u576A\u3092\u9000\u53BB\u3057\u305F\uFF08${reason}\uFF09\u3002\u8CB8\u5BA4\u306E${Math.round(t.area / Math.max(1, a.nra) * 100)}%\u304C\u4E00\u5EA6\u306B\u7A7A\u304F\u3002`
+    });
+  }
+  function stepTenants(g, rng, news) {
+    if (!g.tenancies) g.tenancies = [];
+    if (!g.leads) g.leads = [];
+    const p = orgPower(g);
+    syncAnchors(g);
+    for (const t of g.tenancies.slice()) {
+      const a = g.assets.find((x) => x.id === t.assetId);
+      if (!a) {
+        const i = g.tenancies.indexOf(t);
+        if (i >= 0) g.tenancies.splice(i, 1);
+        continue;
+      }
+      if (rng.chance(0.03 / WEEKS_PER_YEAR * (1.6 - t.credit))) {
+        const penalty = Math.round(t.area * t.rent * 6 / 1e6);
+        g.cash += penalty;
+        g.finance.quarterAcc.revLease += penalty;
+        vacate(g, t, `\u4E2D\u9014\u89E3\u7D04\u3002\u9055\u7D04\u91D1${penalty.toLocaleString()}\u767E\u4E07\u5186\u3092\u53D7\u9818`, news);
+        continue;
+      }
+      if (!t.renewAsked && g.week >= t.endWeek - RENEW_LEAD) {
+        t.renewAsked = true;
+        const cand = {
+          kind: t.kind,
+          tid: t.tid,
+          name: t.name,
+          icon: t.icon,
+          catName: t.catName,
+          need: t.area,
+          grade: t.credit,
+          pay: 0,
+          term: t.term,
+          credit: t.credit
+        };
+        const base = a.marketRent > 0 ? a.marketRent : a.rent;
+        cand.pay = clamp(t.rent / Math.max(1, base), 0.55, 1.75);
+        const lead = makeLead(g, a, rng, cand, t);
+        lead.deadline = Math.max(6, Math.min(RENEW_LEAD - 2, lead.deadline + 8));
+        g.leads.push(lead);
+        news.push({
+          icon: "\u{1F4C4}",
+          type: "lease",
+          text: `\u3010${a.name}\u3011${t.name}\u306E\u8CC3\u8CB8\u501F\u5951\u7D04\u304C${Math.round((t.endWeek - g.week) / 4.33)}\u30F6\u6708\u5F8C\u306B\u6E80\u4E86\u3059\u308B\u3002\u66F4\u65B0\u6761\u4EF6\u306E\u63D0\u793A\u3092\u6C42\u3081\u3089\u308C\u3066\u3044\u308B\u3002`
+        });
+      }
+      if (g.week >= t.endWeek) vacate(g, t, "\u5951\u7D04\u671F\u9593\u306E\u6E80\u4E86", news);
+    }
+    for (const l of g.leads.slice()) {
+      if (l.offer && g.week >= l.answerAt) {
+        const ok = rng.chance(acceptChance(g, l, l.offer));
+        const i = g.leads.indexOf(l);
+        if (i >= 0) g.leads.splice(i, 1);
+        if (ok) sign(g, l, news);
+        else {
+          const a = g.assets.find((x) => x.id === l.assetId);
+          news.push({
+            icon: "\u2716",
+            type: "lease",
+            text: `\u3010${a ? a.name : ""}\u3011${l.name}\u3068\u306E${l.renewOf ? "\u66F4\u65B0" : "\u5165\u5C45"}\u4EA4\u6E09\u306F\u307E\u3068\u307E\u3089\u306A\u304B\u3063\u305F\uFF08\u63D0\u793A \u6708\u576A${l.offer.rent.toLocaleString()}\u5186\uFF0F\u5148\u65B9\u306E\u6C34\u6E96 ${l.want.toLocaleString()}\u5186\uFF09\u3002`
+          });
+        }
+        continue;
+      }
+      if (!l.offer) {
+        l.deadline--;
+        if (l.deadline <= 0) {
+          const i = g.leads.indexOf(l);
+          if (i >= 0) g.leads.splice(i, 1);
+          const a = g.assets.find((x) => x.id === l.assetId);
+          news.push({
+            icon: "\u231B",
+            type: "lease",
+            text: `\u3010${a ? a.name : ""}\u3011${l.name}\u304B\u3089\u306E\u5F15\u304D\u5408\u3044\u306F\u3001\u56DE\u7B54\u304C\u7121\u3044\u307E\u307E\u53D6\u308A\u4E0B\u3052\u3089\u308C\u305F\u3002`
+          });
+        }
+      }
+    }
+    if (g.leads.filter((l) => !l.renewOf).length < MAX_LEADS) {
+      for (const a of g.assets) {
+        if (!ANCHOR_USES.includes(a.use)) continue;
+        if (g.leads.some((l) => l.assetId === a.id && !l.renewOf)) continue;
+        if (!rng.chance(leadChance(g, a, p))) continue;
+        const cands = candidates(g, a);
+        if (!cands.length) continue;
+        const room = roomOf(g, a);
+        const cand = rng.weighted(cands.map((c) => ({ c, w: Math.pow(clamp01(c.need / Math.max(1, room)), 0.6) + 0.15 }))).c;
+        g.leads.push(makeLead(g, a, rng, cand, null));
+        break;
+      }
+    }
+    syncAnchors(g);
+  }
+  function tenantSummary(g) {
+    const ts = g.tenancies || [];
+    let area = 0, rentAnnual = 0, free = 0;
+    for (const t of ts) {
+      area += t.area;
+      if (g.week < (t.freeUntil || 0)) free++;
+      else rentAnnual += t.area * t.rent * 12 / 1e6;
+    }
+    const nra = g.assets.filter((a) => ANCHOR_USES.includes(a.use)).reduce((s, a) => s + a.nra, 0);
+    return { count: ts.length, area, share: nra > 0 ? area / nra : 0, rentAnnual: Math.round(rentAnnual), free };
+  }
+
   // src/sim/week.js
   function nextWeek(g) {
     const rng = new RNG((g.rngState ^ g.week * 2654435761) >>> 0);
@@ -13068,7 +13716,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         cell.bookValue = res.winner.amount + fee;
         rep.bids.push({ result: "win", listing: l, cell, ...res });
       } else {
-        acquireForRival(g, l, cell, res.winner.id, res.winner.amount);
+        acquireForRival(g, l, cell, res.winner.id, res.winner.amount, rng);
         if (l.bid) {
           rep.bids.push({ result: "lose", listing: l, cell, ...res });
           news.push({
@@ -13089,7 +13737,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     stepProjects(g, rng, news);
     if (g.assets.length + g.inventory.length > before) rep.completed.push(true);
     stepInventory(g, rng, news);
+    stepTenants(g, rng, news);
     stepAssets(g, rng, news);
+    stepArea(g, rng, news);
     stepMA(g, rng, news);
     if (g.maTargets.length < 3) g.maTargets.push(...generateTargets(g, rng, 3 - g.maTargets.length));
     stepHR(g, rng, news);
@@ -13213,7 +13863,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       ${mini("\u4FDD\u6709\u8CC3\u8CB8\u7269\u4EF6", g.assets.length + "\u4EF6", money(g.assets.reduce((a, x) => a + (x.bookLand + x.bookBuild), 0)))}
       ${mini("\u5206\u8B72\u5728\u5EAB", g.inventory.length + "\u4EF6", money(g.inventory.reduce((a, x) => a + x.cost * (1 - x.soldRatio), 0)))}
       ${mini("\u958B\u767A\u4E2D", g.projects.length + `/${projectCapacity(g)}\u4EF6`, "\u540C\u6642\u9032\u884C\u306E\u4E0A\u9650")}
-      ${mini("\u672A\u7740\u5DE5\u306E\u7528\u5730", g.cells.filter((c) => c.owner === "player" && !c.building && !c.projectId).length + "\u4EF6", "")}
+      ${mini("\u672A\u7740\u5DE5\u306E\u7528\u5730", g.cells.filter(isIdleLot).length + "\u4EF6", "")}
     </div>
   `)}
 
@@ -13252,7 +13902,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (k.equityRatio < 0.18) list.push({ lv: "amber", t: `\u81EA\u5DF1\u8CC7\u672C\u6BD4\u7387 ${pct(k.equityRatio, 0)}`, d: `\u683C\u4ED8\u306F ${k.rating.id}\u3002\u91D1\u5229\u306F ${pct(k.rate, 2)} \u307E\u3067\u4E0A\u304C\u3063\u3066\u3044\u308B\u3002` });
     const stale = g.inventory.filter((i) => i.weeksOnSale >= 104 && i.soldRatio < 0.8);
     if (stale.length) list.push({ lv: "amber", t: `\u9577\u671F\u5728\u5EAB ${stale.length}\u4EF6`, d: `${stale.map((i) => i.name).join("\u30FB")}\u3002\u5024\u4E0B\u3052\u3057\u306A\u3051\u308C\u3070\u8A55\u4FA1\u640D\u304C\u7D9A\u304F\u3002` });
-    const idle = g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId);
+    const idle = g.cells.filter(isIdleLot);
     if (idle.length >= 3) list.push({ lv: "amber", t: `\u672A\u7740\u5DE5\u306E\u7528\u5730 ${idle.length}\u4EF6`, d: "\u4FDD\u6709\u3057\u3066\u3044\u308B\u3060\u3051\u3067\u56FA\u5B9A\u8CC7\u7523\u7A0E\u3068\u91D1\u5229\u304C\u304B\u304B\u308B\u3002\u65E9\u671F\u306B\u4E8B\u696D\u5316\u3059\u308B\u304B\u3001\u65B9\u91DD\u3092\u898B\u76F4\u3059\u3053\u3068\u3002" });
     if (!g.projects.length && !g.inventory.length && g.week > 26) list.push({ lv: "amber", t: "\u958B\u767A\u30D1\u30A4\u30D7\u30E9\u30A4\u30F3\u304C\u5207\u308C\u3066\u3044\u308B", d: "\u9032\u884C\u4E2D\u306E\u6848\u4EF6\u3082\u8CA9\u58F2\u4E2D\u306E\u5728\u5EAB\u3082\u306A\u3044\u3002\u6570\u5E74\u5F8C\u306E\u58F2\u4E0A\u304C\u30BC\u30ED\u306B\u306A\u308B\u3002\u7528\u5730\u306E\u4ED5\u8FBC\u307F\u3092\u6025\u3050\u3053\u3068\u3002" });
     const mor = g.staff.length ? g.staff.reduce((a, s) => a + s.morale, 0) / g.staff.length : 1;
@@ -13977,7 +14627,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   var title3 = "\u7528\u5730\u53D6\u5F97";
   function render3(g, ctx2) {
     const p = orgPower(g);
-    const owned = g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId);
+    const owned = g.cells.filter(isIdleLot);
     const bidding = g.listings.filter((l) => l.bid);
     const cards = g.listings.length ? g.listings.map((l) => {
       const c = g.cells.find((x) => x.id === l.cellId);
@@ -14259,9 +14909,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         g.cash -= cost;
         g.finance.quarterAcc.cogsOther += cost;
         const rng = new RNG(g.rngState ^ listing.id.length * 7919 ^ g.week);
-        const found = runDueDiligence(g, listing, lv, rng);
+        const found2 = runDueDiligence(g, listing, lv, rng);
         g.rngState = rng.s;
-        toast(found ? `\u8ABF\u67FB\u306B\u3088\u308A${found}\u4EF6\u306E\u4E8B\u5B9F\u304C\u5224\u660E\u3057\u305F` : "\u7279\u6BB5\u306E\u554F\u984C\u306F\u767A\u898B\u3055\u308C\u306A\u304B\u3063\u305F", found ? "bad" : "good");
+        toast(found2 ? `\u8ABF\u67FB\u306B\u3088\u308A${found2}\u4EF6\u306E\u4E8B\u5B9F\u304C\u5224\u660E\u3057\u305F` : "\u7279\u6BB5\u306E\u554F\u984C\u306F\u767A\u898B\u3055\u308C\u306A\u304B\u3063\u305F", found2 ? "bad" : "good");
         ctx2.refresh();
         refresh2();
       });
@@ -14601,7 +15251,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   function render4(g, ctx2) {
     const p = orgPower(g);
     const cap = projectCapacity(g);
-    const idle = g.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId);
+    const idle = g.cells.filter(isIdleLot);
     const running = g.projects.length ? g.projects.map((pj) => {
       const c = g.cells.find((x) => x.id === pj.cellId);
       const total = Math.max(4, pj.weeks + pj.delay);
@@ -15233,17 +15883,321 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
   }
 
+  // src/ui/panelTenant.js
+  var panelTenant_exports = {};
+  __export(panelTenant_exports, {
+    openArea: () => openArea,
+    openLead: () => openLead,
+    render: () => render7,
+    title: () => title7
+  });
+  var title7 = "\u30C6\u30CA\u30F3\u30C8\u3068\u30A8\u30EA\u30A2";
+  var remainOf = (g, t) => Math.max(0, (t.endWeek - g.week) / 52);
+  function render7(g, ctx2) {
+    const p = orgPower(g);
+    const s = tenantSummary(g);
+    const leads = g.leads || [];
+    const leadCards = leads.length ? leads.map((l) => {
+      const a = g.assets.find((x) => x.id === l.assetId);
+      if (!a) return "";
+      const waiting = !!l.offer;
+      return `<div class="card ${waiting ? "" : "click"}" ${waiting ? "" : `data-act="lead.open" data-id="${l.id}"`}>
+      <div class="card-t"><span class="card-n">${l.icon} ${l.name}</span>
+        ${l.renewOf ? chip("\u66F4\u65B0", "amber") : chip("\u65B0\u898F", "cyan")}
+        ${waiting ? chip(`\u56DE\u7B54\u5F85\u3061 \u3042\u3068${Math.max(0, l.answerAt - g.week)}\u9031`, "grey") : chip(`\u671F\u9650 ${l.deadline}\u9031`, l.deadline <= 2 ? "red" : "grey")}</div>
+      <div class="card-s">${a.name}\uFF08${DISTRICTS[l.district].name}\uFF09\uFF0F${l.catName}</div>
+      ${kv("\u5E0C\u671B\u3059\u308B\u9762\u7A4D", `${num(l.area)}\u576A\uFF08\u8CB8\u5BA4\u306E${Math.round(l.area / Math.max(1, a.nra) * 100)}%\uFF09`)}
+      ${kv("\u5148\u65B9\u306E\u8CC3\u6599\u6C34\u6E96", `\u6708\u576A ${num(l.want)}\u5186`)}
+      ${kv("\u5951\u7D04\u671F\u9593", `${l.term}\u5E74`)}
+      ${waiting ? `<div class="hint">\u6708\u576A ${num(l.offer.rent)}\u5186\u30FB\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8${l.offer.free}\u30F6\u6708\u3067\u63D0\u793A\u6E08\u307F\u3002\u793E\u5185\u7A1F\u8B70\u306E\u56DE\u7B54\u3092\u5F85\u3063\u3066\u3044\u308B\u3002</div>` : '<div class="hint">\u62BC\u3057\u3066\u6761\u4EF6\u3092\u63D0\u793A\u3059\u308B\u3002</div>'}
+    </div>`;
+    }).join("") : empty("\u3044\u307E\u6765\u3066\u3044\u308B\u5F15\u304D\u5408\u3044\u306F\u7121\u3044");
+    const ts = (g.tenancies || []).slice().sort((x, y) => y.area * y.rent - x.area * x.rent);
+    const rows = ts.length ? ts.map((t) => {
+      const a = g.assets.find((x) => x.id === t.assetId);
+      const free = g.week < (t.freeUntil || 0);
+      const rem = remainOf(g, t);
+      const gap = a && a.marketRent > 0 ? t.rent / a.marketRent - 1 : 0;
+      return `<tr>
+      <td>${t.icon} ${t.name}</td>
+      <td>${a ? a.name : "\u2014"}</td>
+      <td style="text-align:right">${num(t.area)}\u576A</td>
+      <td style="text-align:right">${num(t.rent)}\u5186${free ? '<br><span class="chip amber">FR\u4E2D</span>' : ""}</td>
+      <td style="text-align:right;color:${Math.abs(gap) < 0.05 ? "var(--ink-mute)" : gap > 0 ? "var(--green)" : "var(--amber)"}">${(gap * 100).toFixed(0)}%</td>
+      <td style="text-align:right;${rem < 1 ? "color:var(--red)" : ""}">${rem.toFixed(1)}\u5E74</td>
+    </tr>`;
+    }).join("") : "";
+    const targets = g.assets.filter((a) => ANCHOR_USES.includes(a.use));
+    const assetRows = targets.length ? targets.map((a) => {
+      const room = roomOf(g, a);
+      const anchor = a.anchorShare || 0;
+      return `<tr>
+      <td>${a.name}</td>
+      <td>${USES[a.use].name}</td>
+      <td style="text-align:right">${num(a.nra)}\u576A</td>
+      <td style="text-align:right">${pct(anchor, 0)}</td>
+      <td style="text-align:right">${pct(a.occupancy, 0)}</td>
+      <td style="text-align:right">${num(Math.round(room))}\u576A</td>
+      <td style="text-align:right">${(qualityOf(g, a) * 100).toFixed(0)}</td>
+    </tr>`;
+    }).join("") : "";
+    const cands = areaCandidates(g);
+    const areaCards = cands.length ? cands.map((c) => {
+      const ar = c.area;
+      if (ar) {
+        const m = maturityOf(g, ar);
+        const progs = ar.programs.map((id) => {
+          const x = programById(id);
+          return x ? `${x.icon} ${x.name}` : "";
+        }).filter(Boolean);
+        return `<div class="card click" data-act="area.open" data-id="${c.d}">
+        <div class="card-t"><span class="card-n">\u{1F3D9} ${ar.name}</span>${chip(`\u6210\u719F ${pct(m, 0)}`, m > 0.7 ? "green" : "amber")}</div>
+        <div class="card-s">${c.name}\uFF0F\u81EA\u793E ${c.assets}\u68DF\uFF0F\u5EF6\u5E8A\u30B7\u30A7\u30A2 ${pct(c.share, 0)}</div>
+        ${kv("\u5730\u4FA1\u3078\u306E\u52B9\u304D\u76EE", `\xD7${areaLift(g, c.d).toFixed(3)}`)}
+        ${kv("\u5E74\u9593\u306E\u904B\u55B6\u8CBB", money(areaCost(g, c.d)))}
+        <div class="hint">${progs.length ? progs.join("\u3000") : "\u65BD\u7B56\u3092\u307E\u3060\u5165\u308C\u3066\u3044\u306A\u3044\u3002\u62BC\u3057\u3066\u9078\u3076\u3002"}</div>
+      </div>`;
+      }
+      const err = canFound(g, c.d);
+      return `<div class="card ${err ? "" : "click"}" ${err ? "" : `data-act="area.open" data-id="${c.d}"`}>
+      <div class="card-t"><span class="card-n">${c.name}</span>${chip(`${c.assets}\u68DF`, c.assets >= AREA_MIN_ASSETS ? "green" : "grey")}</div>
+      <div class="card-s">\u5EF6\u5E8A\u30B7\u30A7\u30A2 ${pct(c.share, 0)}</div>
+      <div class="hint">${err || "\u62BC\u3057\u3066\u5354\u8B70\u4F1A\u3092\u8A2D\u7ACB\u3059\u308B\u3002"}</div>
+    </div>`;
+    }).join("") : empty("\u4FDD\u6709\u7269\u4EF6\u306E\u3042\u308B\u5730\u533A\u304C\u307E\u3060\u7121\u3044");
+    return `
+  ${section("\u30C6\u30CA\u30F3\u30C8\u304B\u3089\u306E\u5F15\u304D\u5408\u3044", `${leads.length} / ${MAX_LEADS}`, `
+    <div class="hint" style="margin-bottom:10px">
+      \u7A7A\u5BA4\u306E\u3042\u308B\u81EA\u793E\u30D3\u30EB\u306B\u306F\u3001\u540D\u524D\u306E\u3042\u308B\u4F1A\u793E\u304B\u3089\u5F15\u304D\u5408\u3044\u304C\u6765\u308B\u3002
+      \u30AA\u30D5\u30A3\u30B9\u306E\u30C6\u30CA\u30F3\u30C8\u306F<b>\u5C31\u8077\u5148\u30E9\u30F3\u30AD\u30F3\u30B0\u306B\u8F09\u3063\u3066\u3044\u308B\u4F1A\u793E</b>\u305D\u306E\u3082\u306E\u3067\u3042\u308B\u3002
+      \u6761\u4EF6\u3092\u63D0\u793A\u3059\u308B\u3068\u3001\u5148\u65B9\u306E\u793E\u5185\u7A1F\u8B70\u3092\u7D4C\u30661\u301C3\u9031\u3067\u8FD4\u4E8B\u304C\u6765\u308B\u3002
+    </div>
+    ${leadCards}
+  `)}
+
+  ${section("\u5927\u53E3\u30C6\u30CA\u30F3\u30C8\u306E\u72B6\u6CC1", `${s.count}\u4EF6`, `
+    <div class="grid4">
+      ${mini("\u5951\u7D04\u4EF6\u6570", String(s.count), s.free > 0 ? `\u3046\u3061\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8\u4E2D ${s.free}\u4EF6` : "")}
+      ${mini("\u5951\u7D04\u9762\u7A4D", num(s.area) + "\u576A", `\u5927\u53E3\u6BD4\u7387 ${pct(s.share, 0)}`)}
+      ${mini("\u5E74\u9593\u306E\u5951\u7D04\u8CC3\u6599", money(s.rentAnnual), "\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8\u4E2D\u3092\u9664\u304F")}
+      ${mini("\u30EA\u30FC\u30B7\u30F3\u30B0\u529B", p.lease.quality.toFixed(0), "\u30D3\u30EB\u4E8B\u696D\u90E8\u306E\u80FD\u529B")}
+    </div>
+    ${rows ? `<table class="tbl" style="margin-top:12px">
+      <tr><th>\u30C6\u30CA\u30F3\u30C8</th><th>\u7269\u4EF6</th><th style="text-align:right">\u9762\u7A4D</th><th style="text-align:right">\u6708\u576A\u8CC3\u6599</th><th style="text-align:right">\u76F8\u5834\u6BD4</th><th style="text-align:right">\u6B8B\u5B58</th></tr>
+      ${rows}
+    </table>` : empty("\u5927\u53E3\u30C6\u30CA\u30F3\u30C8\u3068\u306E\u5951\u7D04\u306F\u307E\u3060\u7121\u3044")}
+    <div class="hint">\u5951\u7D04\u671F\u9593\u4E2D\u306E\u8CC3\u6599\u306F\u52D5\u304B\u305B\u306A\u3044\u3002\u76F8\u5834\u304C\u4E0A\u304C\u3063\u3066\u3082\u636E\u3048\u7F6E\u304D\u306B\u306A\u308B\u304B\u308F\u308A\u3001
+      \u305D\u306E\u5E8A\u306F\u7A7A\u304B\u306A\u3044\u3002<b>\u5B89\u5B9A\u3092\u8CB7\u3063\u3066\u4E0A\u632F\u308C\u3092\u624B\u653E\u3059</b>\u306E\u304C\u5927\u53E3\u30C6\u30CA\u30F3\u30C8\u3067\u3042\u308B\u3002</div>
+  `)}
+
+  ${assetRows ? section("\u7269\u4EF6\u3054\u3068\u306E\u57CB\u307E\u308A\u5177\u5408", `${targets.length}\u4EF6`, `
+    <table class="tbl">
+      <tr><th>\u7269\u4EF6</th><th>\u7528\u9014</th><th style="text-align:right">\u8CB8\u5BA4</th><th style="text-align:right">\u5927\u53E3</th><th style="text-align:right">\u7A3C\u50CD</th><th style="text-align:right">\u5927\u53E3\u306E\u4F59\u5730</th><th style="text-align:right">\u683C</th></tr>
+      ${assetRows}
+    </table>
+    <div class="hint">1\u68DF\u306E\u3046\u3061\u5927\u53E3\u306B\u51FA\u305B\u308B\u306E\u306F\u8CB8\u5BA4\u306E${pct(ANCHOR_CAP, 0)}\u307E\u3067\u3067\u3042\u308B\u3002
+      \u300C\u683C\u300D\u306F\u30B0\u30EC\u30FC\u30C9\u30FB\u7BC9\u5E74\u30FB\u99C5\u529B\u304B\u3089\u6C7A\u307E\u308B\u5EFA\u7269\u306E\u8A55\u4FA1\u3067\u3001\u3053\u308C\u304C\u4F4E\u3044\u3068\u4E00\u6D41\u4F01\u696D\u306F\u898B\u5411\u304D\u3082\u3057\u306A\u3044\u3002</div>
+  `) : ""}
+
+  ${section("\u30A8\u30EA\u30A2\u30DE\u30CD\u30B8\u30E1\u30F3\u30C8", (g.areas || []).length ? `\u5E74\u9593 ${money(totalAreaCost(g))}` : "", `
+    <div class="hint" style="margin-bottom:10px">
+      \u540C\u3058\u5730\u533A\u306B${AREA_MIN_ASSETS}\u68DF\u4EE5\u4E0A\u3092\u6301\u3064\u3068\u3001\u8857\u533A\u306E\u5171\u540C\u904B\u55B6\u3092\u59CB\u3081\u3089\u308C\u308B\u3002
+      \u7DD1\u5316\u30FB\u306B\u304E\u308F\u3044\u30FB\u9632\u707D\u30FB\u30E2\u30D3\u30EA\u30C6\u30A3\u3092\u81EA\u524D\u3067\u56DE\u3059\u3068\u3001<b>\u305D\u306E\u5730\u533A\u305D\u306E\u3082\u306E\u306E\u4FA1\u5024</b>\u304C\u4E0A\u304C\u308B\u3002
+      \u52B9\u304D\u76EE\u306F\u8A2D\u7ACB\u304B\u3089${MATURE_YEARS}\u5E74\u304B\u3051\u3066\u6E80\u984D\u306B\u306A\u308A\u3001\u81EA\u793E\u306E\u5EF6\u5E8A\u30B7\u30A7\u30A2\u304C\u5927\u304D\u3044\u307B\u3069\u5F37\u3044\u3002<br>
+      <b>\u52B9\u679C\u306F\u5730\u533A\u5168\u4F53\u306B\u53CA\u3076\u3002</b>\u4ED6\u793E\u306E\u571F\u5730\u3082\u4E00\u7DD2\u306B\u5024\u4E0A\u304C\u308A\u3059\u308B\u306E\u3067\u3001
+      \u8CB7\u3044\u96C6\u3081\u3066\u304B\u3089\u59CB\u3081\u308B\u306E\u304C\u7B4B\u3067\u3042\u308B\u3002
+    </div>
+    ${areaCards}
+  `)}
+  `;
+  }
+  function openLead(g, lead, ctx2) {
+    const a = g.assets.find((x) => x.id === lead.assetId);
+    if (!a) return;
+    let rent = Math.round(lead.want * 0.98);
+    let free = 3;
+    openModal(`${lead.icon} ${lead.name}`, build(), [
+      { label: "\u65AD\u308B", cls: "ghost", onClick: () => {
+        declineLead(g, lead);
+        ctx2.refresh();
+      } },
+      { label: "\u9589\u3058\u308B", cls: "ghost" }
+    ]);
+    bind();
+    function build() {
+      const months = lead.term * 12;
+      const maxFree = Math.min(FREE_MAX, Math.floor(months * 0.25));
+      return `
+    <div class="grid2">
+      ${mini("\u5E0C\u671B\u3059\u308B\u9762\u7A4D", num(lead.area) + "\u576A", `\u8CB8\u5BA4\u306E ${Math.round(lead.area / Math.max(1, a.nra) * 100)}%`)}
+      ${mini("\u5148\u65B9\u306E\u8CC3\u6599\u6C34\u6E96", num(lead.want) + "\u5186", "\u6708\u576A")}
+      ${mini("\u5951\u7D04\u671F\u9593", lead.term + "\u5E74", lead.renewOf ? "\u66F4\u65B0" : "\u65B0\u898F")}
+      ${mini("\u4FE1\u7528\u529B", (lead.credit * 100).toFixed(0), lead.credit > 0.75 ? "\u4E2D\u9014\u89E3\u7D04\u306F\u8D77\u304D\u306B\u304F\u3044" : "\u64A4\u9000\u306E risk \u304C\u3042\u308B")}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u7269\u4EF6\u3068\u76F8\u624B</span></div>
+      ${kv("\u7269\u4EF6", `${a.name}\uFF08${DISTRICTS[a.district].name}\uFF09`)}
+      ${kv("\u7528\u9014\u30FB\u30B0\u30EC\u30FC\u30C9", `${USES[a.use].name}\uFF0F${GRADES[a.grade].name}`)}
+      ${kv("\u5EFA\u7269\u306E\u683C", `${(qualityOf(g, a) * 100).toFixed(0)}\u3000\uFF08\u5148\u65B9\u304C\u6C42\u3081\u308B\u6C34\u6E96 ${(lead.grade * 100).toFixed(0)}\uFF09`)}
+      ${kv("\u3044\u307E\u306E\u52DF\u96C6\u8CC3\u6599", `\u6708\u576A ${num(a.rent)}\u5186`)}
+      ${kv("\u5730\u533A\u306E\u76F8\u5834", `\u6708\u576A ${num(a.marketRent || 0)}\u5186`)}
+      ${kv("\u3044\u307E\u306E\u7A3C\u50CD\u7387", pct(a.occupancy, 0))}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>\u6761\u4EF6\u306E\u63D0\u793A</span></div>
+      <div class="field">
+        <label>\u8CC3\u6599\uFF08\u6708\u576A\u30FB\u5186\uFF09</label>
+        <input type="number" id="inpRent" value="${rent}" step="100" min="1">
+      </div>
+      <input type="range" id="rngRent" min="${Math.round(lead.want * 0.7)}" max="${Math.round(lead.want * 1.4)}" value="${rent}" style="width:100%;accent-color:var(--gold)">
+      <div class="field" style="margin-top:10px">
+        <label>\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8\uFF08\u30F6\u6708\uFF0F\u4E0A\u9650 ${maxFree}\uFF09</label>
+        <input type="number" id="inpFree" value="${free}" step="1" min="0" max="${maxFree}">
+      </div>
+      <input type="range" id="rngFree" min="0" max="${maxFree}" value="${free}" style="width:100%;accent-color:var(--gold)">
+      <div id="leadInfo" class="hint"></div>
+      <div class="btnrow">
+        <button class="btn primary" data-lead="1">\u3053\u306E\u6761\u4EF6\u3067\u63D0\u793A\u3059\u308B</button>
+      </div>
+      <div class="hint">\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8\u306E\u9593\u306F\u8CC3\u6599\u304C\u5165\u3089\u306A\u3044\u3002\u305D\u306E\u3076\u3093\u76F8\u624B\u306F\u6C7A\u3081\u3084\u3059\u304F\u306A\u308B\u3002
+        \u8FD4\u4E8B\u306F\u793E\u5185\u7A1F\u8B70\u3092\u7D4C\u30661\u301C3\u9031\u3067\u6765\u308B\u3002<b>\u63D0\u793A\u306F1\u56DE\u304D\u308A</b>\u3067\u3001\u65AD\u3089\u308C\u308C\u3070\u3053\u306E\u8A71\u306F\u6D41\u308C\u308B\u3002</div>
+    </div>`;
+    }
+    function bind() {
+      const ir = document.getElementById("inpRent"), rr = document.getElementById("rngRent");
+      const iff = document.getElementById("inpFree"), rf = document.getElementById("rngFree");
+      const info = document.getElementById("leadInfo");
+      const sync = () => {
+        if (ir) ir.value = rent;
+        if (rr) rr.value = rent;
+        if (iff) iff.value = free;
+        if (rf) rf.value = free;
+        if (!info) return;
+        const ch = acceptChance(g, lead, { rent, free });
+        const annual = lead.area * rent * 12 / 1e6;
+        const lost = annual * free / 12;
+        info.innerHTML = `\u5E74\u9593\u306E\u5951\u7D04\u8CC3\u6599 <b>${money(Math.round(annual))}</b>\uFF0F\u30D5\u30EA\u30FC\u30EC\u30F3\u30C8\u3067\u624B\u653E\u3059\u984D ${money(Math.round(lost))}\uFF0F\u5148\u65B9\u306E\u6C34\u6E96\u6BD4 ${((rent / Math.max(1, lead.want) - 1) * 100).toFixed(0)}%<br>\u307E\u3068\u307E\u308B\u898B\u8FBC\u307F <b style="color:${ch > 0.66 ? "var(--green)" : ch > 0.33 ? "var(--amber)" : "var(--red)"}">${Math.round(ch * 100)}%</b>`;
+      };
+      const setR = (v) => {
+        rent = Math.max(1, Math.round(v));
+        sync();
+      };
+      const setF = (v) => {
+        free = Math.max(0, Math.round(v));
+        sync();
+      };
+      if (ir) ir.oninput = () => setR(+ir.value || 0);
+      if (rr) rr.oninput = () => setR(+rr.value || 0);
+      if (iff) iff.oninput = () => setF(+iff.value || 0);
+      if (rf) rf.oninput = () => setF(+rf.value || 0);
+      sync();
+      const go = document.querySelector("[data-lead]");
+      if (go) go.onclick = () => {
+        const r = respondLead(g, lead, { rent, free }, ctx2.rng);
+        if (!r.ok) return toast(r.message, "bad");
+        closeModal();
+        toast(`${lead.name}\u306B\u6761\u4EF6\u3092\u63D0\u793A\u3057\u305F\u3002\u56DE\u7B54\u3092\u5F85\u3064\u3002`, "good");
+        ctx2.refresh();
+      };
+    }
+  }
+  function openArea(g, d, ctx2) {
+    const dist = DISTRICTS[d];
+    if (!dist) return;
+    draw();
+    function draw() {
+      const ar = areaOf(g, d);
+      const err = canFound(g, d);
+      openModal(`${dist.name}\u3000\u30A8\u30EA\u30A2\u30DE\u30CD\u30B8\u30E1\u30F3\u30C8`, build(ar, err), buttons(ar, err));
+      bind();
+    }
+    function buttons(ar) {
+      const out = [];
+      if (!ar) {
+        out.push({
+          label: "\u5354\u8B70\u4F1A\u3092\u8A2D\u7ACB\u3059\u308B",
+          cls: "primary",
+          close: false,
+          disabled: !!canFound(g, d),
+          onClick: () => {
+            const r = found(g, d, null);
+            if (!r.ok) return toast(r.message, "bad");
+            toast(`${dist.name}\u3067\u5354\u8B70\u4F1A\u3092\u8A2D\u7ACB\u3057\u305F`, "good");
+            ctx2.refresh();
+            draw();
+          }
+        });
+      } else {
+        out.push({
+          label: "\u89E3\u6563\u3059\u308B",
+          cls: "danger",
+          close: false,
+          onClick: () => {
+            dissolve(g, d, null);
+            toast(`${dist.name}\u306E\u5354\u8B70\u4F1A\u3092\u89E3\u6563\u3057\u305F`, "bad");
+            ctx2.refresh();
+            draw();
+          }
+        });
+      }
+      out.push({ label: "\u9589\u3058\u308B", cls: "ghost" });
+      return out;
+    }
+    function build(ar, err) {
+      const share = areaShare(g, d);
+      const n = (g.assets || []).filter((a) => a.district === d).length;
+      const m = ar ? maturityOf(g, ar) : 0;
+      const progs = AREA_PROGRAMS.map((p) => {
+        const on = ar && ar.programs.includes(p.id);
+        return `<div class="card ${on ? "sel" : ""} ${ar ? "click" : ""}" ${ar ? `data-prog="${p.id}"` : ""}>
+        <div class="card-t"><span class="card-n">${p.icon} ${p.name}</span>
+          ${on ? chip("\u5B9F\u65BD\u4E2D", "green") : chip(money(Math.round(p.cost)) + " /\u4E07\u576A\xB7\u5E74", "grey")}</div>
+        <div class="card-s">${p.desc}</div>
+        <div class="hint">\u52B9\u304D\u5148\uFF1A${p.reads}</div>
+      </div>`;
+      }).join("");
+      return `
+    <div class="grid2">
+      ${mini("\u81EA\u793E\u306E\u4FDD\u6709\u7269\u4EF6", `${n}\u68DF`, `\u8A2D\u7ACB\u306B\u306F${AREA_MIN_ASSETS}\u68DF\u5FC5\u8981`)}
+      ${mini("\u5EF6\u5E8A\u30B7\u30A7\u30A2", pct(share, 0), "\u5730\u533A\u306E\u5EFA\u7269\u5168\u4F53\u306B\u5BFE\u3057\u3066")}
+      ${mini("\u6210\u719F\u5EA6", pct(m, 0), ar ? `${MATURE_YEARS}\u5E74\u3067\u6E80\u984D` : "\u672A\u8A2D\u7ACB")}
+      ${mini("\u5730\u4FA1\u3078\u306E\u52B9\u304D\u76EE", ar ? `\xD7${areaLift(g, d).toFixed(3)}` : "\u2014", "\u5730\u533A\u5168\u4F53\u306B\u639B\u304B\u308B")}
+    </div>
+    ${err && !ar ? `<div class="card warn" style="margin-top:10px"><div class="card-s">${err}</div></div>` : ""}
+    <div class="sec">
+      <div class="sec-t"><span>\u65BD\u7B56</span><span class="note">${ar ? `\u5E74\u9593 ${money(areaCost(g, d))}` : "\u8A2D\u7ACB\u5F8C\u306B\u9078\u3079\u308B"}</span></div>
+      ${progs}
+    </div>
+    <div class="hint">
+      \u904B\u55B6\u8CBB\u306F<b>\u81EA\u793E\u306E\u5EF6\u5E8A</b>\u306B\u6BD4\u4F8B\u3059\u308B\u3002\u6301\u3063\u3066\u3044\u308B\u307B\u3069\u52B9\u304D\u76EE\u3082\u8CBB\u7528\u3082\u5927\u304D\u3044\u3002<br>
+      \u52B9\u679C\u306F\u5730\u533A\u5168\u4F53\u306B\u53CA\u3076\u306E\u3067\u3001\u4ED6\u793E\u306E\u571F\u5730\u3082\u4E00\u7DD2\u306B\u5024\u4E0A\u304C\u308A\u3059\u308B\u3002
+      <b>\u5148\u306B\u8CB7\u3044\u96C6\u3081\u3066\u304B\u3089\u59CB\u3081\u308B\u3053\u3068\u3002</b>
+    </div>`;
+    }
+    function bind() {
+      for (const el of Array.from(document.querySelectorAll("[data-prog]"))) {
+        el.onclick = () => {
+          toggleProgram(g, d, el.dataset.prog);
+          ctx2.refresh();
+          draw();
+        };
+      }
+    }
+  }
+
   // src/ui/panelFin.js
   var panelFin_exports = {};
   __export(panelFin_exports, {
     openBorrow: () => openBorrow,
     openIPO: () => openIPO,
     openIssue: () => openIssue,
-    render: () => render7,
-    title: () => title7
+    render: () => render8,
+    title: () => title8
   });
-  var title7 = "\u8CA1\u52D9";
-  function render7(g, ctx2) {
+  var title8 = "\u8CA1\u52D9";
+  function render8(g, ctx2) {
     const k = kpis(g);
     const t = ttm(g);
     const h = g.finance.history;
@@ -15454,10 +16408,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     openRankNames: () => openRankNames,
     openSalaryPolicy: () => openSalaryPolicy,
     openStaff: () => openStaff,
-    render: () => render8,
-    title: () => title8
+    render: () => render9,
+    title: () => title9
   });
-  var title8 = "\u4EBA\u4E8B\u30FB\u7D44\u7E54";
+  var title9 = "\u4EBA\u4E8B\u30FB\u7D44\u7E54";
   function teamSection(g) {
     const active = g.staff.filter((s) => !s.subsidiary);
     const rows = DEPT_IDS.map((d) => {
@@ -15489,7 +16443,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     <b>\u90E8\u9580\u306E\u529B\uFF08\u8CEA\u30FB\u91CF\uFF09\u306F\u90E8\u306E\u5358\u4F4D\u3067\u6C7A\u307E\u308B\u3002</b>\u8AB2\u306F\u914D\u5C5E\u3068\u898B\u305B\u65B9\u306E\u5358\u4F4D\u3067\u3042\u308B\u3002</div>
     ${rows}`);
   }
-  function render8(g, ctx2) {
+  function render9(g, ctx2) {
     const p = orgPower(g);
     const active = g.staff.filter((s) => !s.subsidiary);
     const seconded = g.staff.filter((s) => s.subsidiary);
@@ -15783,7 +16737,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
           g.cash -= cost;
           g.finance.quarterAcc.extraordinary -= cost;
           g.staff.splice(g.staff.indexOf(s), 1);
-          for (const x of g.staff) if (Math.random() < 0.3) x.morale = Math.max(0, x.morale - 0.04);
+          const rg = ctx2.rng;
+          for (const x of g.staff) if (rg.chance(0.3)) x.morale = Math.max(0, x.morale - 0.04);
           toast(`${s.name}\u304C\u9000\u8077\u3057\u305F\uFF08\u5272\u5897\u9000\u8077\u91D1 ${money(cost)}\uFF09`, "bad");
           ctx2.refresh();
         }
@@ -16626,11 +17581,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   var panelMA_exports = {};
   __export(panelMA_exports, {
     openTarget: () => openTarget,
-    render: () => render9,
-    title: () => title9
+    render: () => render10,
+    title: () => title10
   });
-  var title9 = "M&A\u30FB\u5B50\u4F1A\u793E";
-  function render9(g, ctx2) {
+  var title10 = "M&A\u30FB\u5B50\u4F1A\u793E";
+  function render10(g, ctx2) {
     const p = orgPower(g);
     const subs = g.subsidiaries.length ? g.subsidiaries.map((s) => {
       const def = SUB_TYPES.find((x) => x.id === s.type);
@@ -16818,10 +17773,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   var panelRival_exports = {};
   __export(panelRival_exports, {
     openDetail: () => openDetail2,
-    render: () => render10,
-    title: () => title10
+    render: () => render11,
+    title: () => title11
   });
-  var title10 = "\u7AF6\u5408\u5206\u6790";
+  var title11 = "\u7AF6\u5408\u5206\u6790";
   var KEYS = [
     { k: "rev", n: "\u58F2\u4E0A\u9AD8" },
     { k: "op", n: "\u55B6\u696D\u5229\u76CA" },
@@ -16841,7 +17796,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (Math.abs(d) < 5e-3) return '\u3000<span class="flat">\u524D\u5E74\u6BD4 \xB10%</span>';
     return `\u3000<span class="${d > 0 ? "up" : "down"}">\u524D\u5E74\u6BD4 ${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}%</span>`;
   }
-  function render10(g, ctx2) {
+  function render11(g, ctx2) {
     const key = ctx2.rivalKey || "rev";
     const list = ranking(g, key);
     const me = list.find((x) => x.isPlayer);
@@ -16867,7 +17822,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   </table>`;
     const lotsByRival = {};
     for (const c of g.cells) if (c.owner && c.owner !== "other" && c.owner !== "player") lotsByRival[c.owner] = (lotsByRival[c.owner] || 0) + 1;
-    const myLots = g.cells.filter((c) => c.owner === "player").length;
+    const myLots = g.cells.filter(isOwnedCell).length;
     const totalLots = Math.max(1, g.cells.filter((c) => c.terrain === TERRAIN.LOT).length);
     return `
   ${section("\u696D\u754C\u30E9\u30F3\u30AD\u30F3\u30B0", `${KEYS.find((x) => x.k === key).n}\u9806`, `
@@ -16889,7 +17844,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       <tr><th>\u90FD\u5E02</th><th>\u5B85\u5730</th><th>\u5F53\u793E\u306E\u4FDD\u6709</th><th>\u30B7\u30A7\u30A2</th></tr>
       ${Object.values(CITIES).map((ct) => {
       const lots = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && cityOf(c.d) === ct.id);
-      const mine = lots.filter((c) => c.owner === "player").length;
+      const mine = lots.filter(isOwnedCell).length;
       return `<tr><td>${ct.name}</td><td>${num(lots.length)}\u533A\u753B</td><td>${mine}</td><td>${pct(mine / Math.max(1, lots.length), 1)}</td></tr>`;
     }).join("")}
     </table>
@@ -16901,7 +17856,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       <tr><th>\u90FD\u5E02</th><th>\u5730\u533A</th><th>\u5730\u76E4\u306B\u3057\u3066\u3044\u308B\u4F01\u696D</th><th>\u5F53\u793E\u4FDD\u6709</th></tr>
       ${Object.values(DISTRICTS).map((d) => {
       const rv = g.rivals.filter((r) => r.home === d.id);
-      const mine = g.cells.filter((c) => c.owner === "player" && c.d === d.id).length;
+      const mine = g.cells.filter((c) => isOwnedCell(c) && c.d === d.id).length;
       const isMine = g.company.home === d.id;
       return `<tr class="${isMine ? "me" : ""}">
         <td>${CITIES[d.city || "minato"].short}</td>
@@ -16993,7 +17948,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const k = kpis(g);
     const color = "#e3b558";
     const hist = (g.finance.history || []).slice(-16);
-    const lots = g.cells.filter((c) => c.owner === "player").length;
+    const lots = g.cells.filter(isOwnedCell).length;
     const list = ranking(g, "rev");
     const me = list.find((x) => x.isPlayer);
     const hr = playerHR(g);
@@ -17068,11 +18023,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     openAd: () => openAd,
     openNew: () => openNew,
     openRename: () => openRename,
-    render: () => render11,
-    title: () => title11
+    render: () => render12,
+    title: () => title12
   });
-  var title11 = "\u30D6\u30E9\u30F3\u30C9";
-  function render11(g, ctx2) {
+  var title12 = "\u30D6\u30E9\u30F3\u30C9";
+  function render12(g, ctx2) {
     const cards = g.brands.length ? g.brands.map((b) => {
       const C = BRAND_CATEGORIES[b.category], G2 = BRAND_GRADES[b.grade];
       const e = brandEffect(g, b.id);
@@ -17319,7 +18274,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
 
   // src/main.js
-  var PANELS = { dash: panelDash_exports, land: panelLand_exports, dev: panelDev_exports, sales: panelSales_exports, asset: panelAsset_exports, fin: panelFin_exports, hr: panelHR_exports, brand: panelBrand_exports, ma: panelMA_exports, rival: panelRival_exports, disc: panelDisclosure_exports };
+  var PANELS = { dash: panelDash_exports, land: panelLand_exports, dev: panelDev_exports, sales: panelSales_exports, asset: panelAsset_exports, tenant: panelTenant_exports, fin: panelFin_exports, hr: panelHR_exports, brand: panelBrand_exports, ma: panelMA_exports, rival: panelRival_exports, disc: panelDisclosure_exports };
   var G = null;
   var R = null;
   var currentPanel = null;
@@ -17699,6 +18654,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const d = DISTRICTS[c.d];
     const owner = c.owner === "player" ? G.company.name : c.owner && c.owner !== "other" ? (G.rivals.find((r) => r.id === c.owner) || {}).name : "\u4E00\u822C\u4E8B\u696D\u8005";
     const b = c.building;
+    if (c.mergedInto) {
+      const base = cellById(G, c.mergedInto);
+      el.innerHTML = `${d.name}\u3000\u6240\u6709\uFF1A${owner}\u3000<span style="color:var(--amber)">\u4E00\u4F53\u958B\u767A\u306E\u6577\u5730\u306B\u5408\u7B46\u6E08\u307F` + (base ? `\uFF08${num(base.area)}\u576A\u306E\u6577\u5730\u306E\u4E00\u90E8\uFF09` : "") + "</span>";
+      return;
+    }
     el.innerHTML = `${d.name}\uFF0F${num(c.area)}\u576A\u30FB\u5BB9\u7A4D${c.far}%\u3000\u6240\u6709\uFF1A${owner}` + (b ? `\u3000\u5EFA\u7269\uFF1A${b.name}\uFF08${USES[b.use].name}\u30FB\u5730\u4E0A${b.floors}\u968E\uFF09` : c.onSale ? '\u3000<span style="color:#54d6ff">\u58F2\u5374\u60C5\u5831\u3042\u308A</span>' : "\u3000\u66F4\u5730");
   }
   function onCellClick(c) {
@@ -17706,7 +18666,14 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       openDetail(G, c.onSale, ctx);
       return;
     }
-    if (c.owner === "player" && !c.building && !c.projectId) {
+    if (c.mergedInto) {
+      const base = cellById(G, c.mergedInto);
+      if (base) {
+        focusCell(base);
+        return onCellClick(base);
+      }
+    }
+    if (isIdleLot(c) && !c.assetId && !c.invId) {
       openPlan2(G, c, ctx);
       return;
     }
@@ -17793,6 +18760,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
           focusCell(cellById(G, o.cellId));
           openStandingDetail(G, o, ctx);
         }
+        break;
+      }
+      case "lead.open": {
+        const l = (G.leads || []).find((x) => x.id === id);
+        if (l) {
+          const a = G.assets.find((x) => x.id === l.assetId);
+          if (a) focusCell(cellById(G, a.cellId));
+          openLead(G, l, ctx);
+        }
+        break;
+      }
+      case "area.open": {
+        openArea(G, id, ctx);
         break;
       }
       case "card": {
@@ -18574,8 +19554,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       // 決裁事項（人事・賞与・総会…）。放っておくと期限切れで既定処理になる
       dash: pending(G).length,
       land: G.listings.filter((l) => !l.bid).length,
-      dev: G.cells.filter((c) => c.owner === "player" && !c.isHQ && !c.building && !c.projectId).length,
+      dev: G.cells.filter(isIdleLot).length,
       ma: G.maTargets.length,
+      // 未回答のテナント引き合い。放っておくと期限切れで流れる
+      tenant: (G.leads || []).filter((l) => !l.offer).length,
       rival: G.takeoverOffer ? 1 : 0
     };
     document.querySelectorAll(".tab").forEach((b) => {
@@ -18638,7 +19620,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         ${!recovery && s.meta && s.id !== "auto" ? `<button class="btn sm danger" data-dl="${s.id}">\u524A\u9664</button>` : ""}
       </div>
     </div>`;
-    const render12 = () => `
+    const render13 = () => `
     ${canSave ? "" : `<div class="card" style="border-color:rgba(196,52,74,.35);background:var(--red-soft)">
       <div class="card-t"><span class="card-n">\u26A0 \u3053\u306E\u753B\u9762\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044</span></div>
       <div class="card-s">\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u304B\u3001\u30D6\u30E9\u30A6\u30B6\u306E\u8A2D\u5B9A\u3067\u30C7\u30FC\u30BF\u306E\u4FDD\u5B58\u304C\u6B62\u3081\u3089\u308C\u3066\u3044\u308B\u3002
@@ -18682,11 +19664,11 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       iPhone \u306E Safari \u306F\u30017\u65E5\u9593\u305D\u306E\u30B5\u30A4\u30C8\u3092\u958B\u304B\u306A\u3044\u3067\u3044\u308B\u3068\u4FDD\u5B58\u30C7\u30FC\u30BF\u3092\u6D88\u3059\u3053\u3068\u304C\u3042\u308B\u3002
       \u30DB\u30FC\u30E0\u753B\u9762\u306B\u8FFD\u52A0\u3057\u3066\u3001\u305D\u3053\u304B\u3089\u904A\u3079\u3070\u3053\u306E\u5BFE\u8C61\u304B\u3089\u5916\u308C\u308B\u3002
     </div>`;
-    openModal("\u30BB\u30FC\u30D6\uFF0F\u30ED\u30FC\u30C9", render12(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
+    openModal("\u30BB\u30FC\u30D6\uFF0F\u30ED\u30FC\u30C9", render13(), [{ label: "\u9589\u3058\u308B", cls: "ghost" }]);
     const bind = () => {
       const body = $("#modalBody");
       const redraw = () => {
-        body.innerHTML = render12();
+        body.innerHTML = render13();
         bind();
       };
       body.querySelectorAll("[data-sv]").forEach((b) => b.onclick = () => {

@@ -15,7 +15,7 @@
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES } from '../data/city.js';
-import { uid } from '../core/state.js';
+import { uid, isOwnedCell } from '../core/state.js';
 import { WEEKS_PER_QUARTER } from '../core/time.js';
 import { landAppraisal, bestUseFit } from './valuation.js';
 import { cityOf } from '../data/city.js';
@@ -83,7 +83,7 @@ export function stepJV(g, rng, news) {
   if (!rng.chance(0.55 / WEEKS_PER_QUARTER)) return;      // 四半期に1件弱
 
   const lots = g.cells.filter(c =>
-    c.owner === 'player' && c.vacant && !c.projectId && !c.assetId && !c.invId
+    isOwnedCell(c) && c.vacant && !c.projectId && !c.assetId && !c.invId
     && !g.jvOffers.some(o => o.cellId === c.id)
     && landAppraisal(g, c) >= JV_MIN_VALUE);
   if (!lots.length) return;

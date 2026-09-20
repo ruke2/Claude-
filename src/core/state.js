@@ -328,6 +328,9 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     jvOffers: [],          // 競合からの共同事業の打診
     standing: [],          // 売りに出ている稼働中のビル（一棟買い）
     assemblies: [],        // 進行中の用地集約（種地の取得）
+    tenancies: [],         // 大口テナントとの賃貸借契約
+    leads: [],             // テナントからの引き合い（リーシング）
+    areas: [],             // エリアマネジメント団体
     relations: {},         // 競合との関係値（共同事業の通りやすさ）
     union: { formed: false, disputes: 0, history: [] },   // 労働組合
     pop: null,             // 地区ごとの人口（createGame の最後で seed する）
@@ -407,3 +410,22 @@ export function cellAt(g, x, y) {
   return g.cells[y * MAP_W + x];
 }
 export function cellById(g, id) { return g.cells.find(c => c.id === id); }
+
+/**
+ * 自社の区画か。
+ *
+ * **合筆済みの種地（`mergedInto`）を1区画として数えないこと。**
+ * 区画の集約（`sim/assembly.js`）でまとめたとき、種地の面積・評価額・簿価は
+ * すべて母屋に寄せてあり、残った区画は 0坪・0円である。
+ * 地図の上では母屋と一体の敷地なので、所有者はプレイヤーのままにしてある
+ * （`remapCells()` がIDで突き合わせるため、区画そのものは消せない）。
+ *
+ * これを弾かずに数えると、用地パネルに
+ * 「0坪／取得 0億円／時価 0億円／保有コスト 0億円」のカードが並び、
+ * 保有区画数も実際より多く出る。
+ */
+export const isOwnedCell = c => c.owner === 'player' && !c.mergedInto;
+
+/** 自社が持っていて、まだ何も建っていない用地 */
+export const isIdleLot = c => isOwnedCell(c)
+  && !c.isHQ && !c.building && !c.projectId && !c.assetId && !c.invId;

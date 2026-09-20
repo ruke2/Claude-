@@ -15,6 +15,7 @@ import { ceo } from '../sim/officers.js';
 import { logoSVG } from './card.js';
 import { CEO_RANK, rankName } from '../data/hrdata.js';
 import { agendaRows, yearPlan } from '../sim/agenda.js';
+import { isIdleLot } from '../core/state.js';
 
 export const title = '経営ダッシュボード';
 
@@ -98,7 +99,7 @@ export function render(g) {
       ${mini('保有賃貸物件', g.assets.length + '件', money(g.assets.reduce((a, x) => a + (x.bookLand + x.bookBuild), 0)))}
       ${mini('分譲在庫', g.inventory.length + '件', money(g.inventory.reduce((a, x) => a + x.cost * (1 - x.soldRatio), 0)))}
       ${mini('開発中', g.projects.length + `/${projectCapacity(g)}件`, '同時進行の上限')}
-      ${mini('未着工の用地', g.cells.filter(c => c.owner === 'player' && !c.building && !c.projectId).length + '件', '')}
+      ${mini('未着工の用地', g.cells.filter(isIdleLot).length + '件', '')}
     </div>
   `)}
 
@@ -142,7 +143,7 @@ function alerts(g, k, t, p) {
   const stale = g.inventory.filter(i => i.weeksOnSale >= 104 && i.soldRatio < 0.8);
   if (stale.length) list.push({ lv: 'amber', t: `長期在庫 ${stale.length}件`, d: `${stale.map(i => i.name).join('・')}。値下げしなければ評価損が続く。` });
 
-  const idle = g.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId);
+  const idle = g.cells.filter(isIdleLot);
   if (idle.length >= 3) list.push({ lv: 'amber', t: `未着工の用地 ${idle.length}件`, d: '保有しているだけで固定資産税と金利がかかる。早期に事業化するか、方針を見直すこと。' });
 
   if (!g.projects.length && !g.inventory.length && g.week > 26) list.push({ lv: 'amber', t: '開発パイプラインが切れている', d: '進行中の案件も販売中の在庫もない。数年後の売上がゼロになる。用地の仕込みを急ぐこと。' });

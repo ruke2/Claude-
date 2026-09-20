@@ -8,6 +8,7 @@ import { ttm, buildBS, kpis, sharePrice, marketCap } from '../sim/finance.js';
 import { cultureLabel, AXES } from '../sim/culture.js';
 import { USES, DISTRICTS, TERRAIN, CITIES, cityOf } from '../data/city.js';
 import { tierOf } from '../sim/company.js';
+import { isOwnedCell } from '../core/state.js';
 
 export const title = '競合分析';
 
@@ -60,7 +61,7 @@ export function render(g, ctx) {
 
   const lotsByRival = {};
   for (const c of g.cells) if (c.owner && c.owner !== 'other' && c.owner !== 'player') lotsByRival[c.owner] = (lotsByRival[c.owner] || 0) + 1;
-  const myLots = g.cells.filter(c => c.owner === 'player').length;
+  const myLots = g.cells.filter(isOwnedCell).length;
   // シェアの母数は市内の宅地の総数
   const totalLots = Math.max(1, g.cells.filter(c => c.terrain === TERRAIN.LOT).length);
 
@@ -84,7 +85,7 @@ export function render(g, ctx) {
       <tr><th>都市</th><th>宅地</th><th>当社の保有</th><th>シェア</th></tr>
       ${Object.values(CITIES).map(ct => {
     const lots = g.cells.filter(c => c.terrain === TERRAIN.LOT && c.d && cityOf(c.d) === ct.id);
-    const mine = lots.filter(c => c.owner === 'player').length;
+    const mine = lots.filter(isOwnedCell).length;
     return `<tr><td>${ct.name}</td><td>${num(lots.length)}区画</td><td>${mine}</td><td>${pct(mine / Math.max(1, lots.length), 1)}</td></tr>`;
   }).join('')}
     </table>
@@ -96,7 +97,7 @@ export function render(g, ctx) {
       <tr><th>都市</th><th>地区</th><th>地盤にしている企業</th><th>当社保有</th></tr>
       ${Object.values(DISTRICTS).map(d => {
     const rv = g.rivals.filter(r => r.home === d.id);
-    const mine = g.cells.filter(c => c.owner === 'player' && c.d === d.id).length;
+    const mine = g.cells.filter(c => isOwnedCell(c) && c.d === d.id).length;
     const isMine = g.company.home === d.id;
     return `<tr class="${isMine ? 'me' : ''}">
         <td>${CITIES[d.city || 'minato'].short}</td>
@@ -195,7 +196,7 @@ function openSelf(g, ctx) {
   const k = kpis(g);
   const color = '#e3b558';
   const hist = (g.finance.history || []).slice(-16);
-  const lots = g.cells.filter(c => c.owner === 'player').length;
+  const lots = g.cells.filter(isOwnedCell).length;
   const list = ranking(g, 'rev');
   const me = list.find(x => x.isPlayer);
   const hr = playerHR(g);

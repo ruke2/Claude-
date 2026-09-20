@@ -6,6 +6,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, TERRAIN, cityOf } from '../data/city.js';
 import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { uid } from '../core/state.js';
+import { areaSafety } from './area.js';
 
 // ------------------------------------------------------------
 //  ハザード — 地区ごとの弱さ
@@ -119,7 +120,8 @@ function applyDisaster(g, D, rng, news) {
     const h = hazardOf(a.district)[D.key];
     const seis = D.seismicMatters ? seismicOf(a) : 1;
     // 被害率：災害の強さ × 地区のもろさ ÷ 建物の性能
-    let rate = severity * h * 0.052 / Math.max(0.4, seis);
+    // エリアマネジメントの共同防災（備蓄・一時滞在施設・訓練）が被害を抑える
+    let rate = severity * h * 0.052 / Math.max(0.4, seis) * areaSafety(g, a.district);
     if (D.id === 'flood') rate *= (a.use === 'logi' || a.use === 'retail') ? 1.4 : 0.8;
     if (D.id === 'snow') rate *= 0.25;
     rate = clamp(rate * rng.range(0.4, 1.6), 0, 0.42);

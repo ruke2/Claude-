@@ -9,6 +9,7 @@ import { brandEffect } from './brands.js';
 import { cultureEffects } from './culture.js';
 import { homeMul } from './company.js';
 import { railMul } from './cityevents.js';
+import { areaLift } from './area.js';
 
 /** 用途別の建築面積率（敷地に対する各階の床の割合） */
 export const COVER = { office: .38, resi: .28, rental: .30, retail: .68, hotel: .36, logi: .76, house: .46, mixed: .40 };
@@ -54,8 +55,10 @@ export function landAppraisal(g, c) {
   const best = bestUseFit(c);
   const demand = g.market.demand[best] ?? 1;
   // 鉄道の整備計画が動いている沿線は、開業前から期待が地価に乗る
+  // エリアマネジメントは**地区全体**の地価を押し上げる。
+  // 自社物件だけでなく他社の土地も一緒に上がるので、先に買い集めてから始める
   return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24)
-    * (0.94 + d.station * 0.1) * railMul(g, c.d));
+    * (0.94 + d.station * 0.1) * railMul(g, c.d) * areaLift(g, c.d));
 }
 
 /**
@@ -363,10 +366,28 @@ export function marketRentRaw(g, a) {
   return base * (0.86 + dem * 0.2) * g.market.priceIdx * aged;
 }
 
+/**
+ * 大口テナントを織り込んだ実効賃料（月坪円）。
+ *
+ * 契約している床（`anchorShare`）は契約時の賃料（`anchorRent`）で固定され、
+ * 残りの床だけが募集賃料（`a.rent`）で動く。その加重平均である。
+ * **フリーレント中の契約は `tenants.js` の `syncAnchors()` が賃料0で数えている。**
+ *
+ * `rent × occupancy` で売上を出している側（`sales.js` と `currentNOI`）が
+ * どちらもこれを通すこと。片方だけだと、画面のNOIと実際の入金がずれる。
+ */
+export function effectiveRent(g, a) {
+  const share = clamp01(a.anchorShare || 0);
+  if (!(share > 0)) return a.rent;
+  const occ = Math.max(share, clamp01(a.occupancy || 0));
+  const w = occ > 0 ? Math.min(1, share / occ) : 0;
+  return (a.anchorRent || 0) * w + a.rent * (1 - w);
+}
+
 /** 保有資産の現在NOI（年額） */
 export function currentNOI(g, a) {
   const dem = g.market.demand[a.use] ?? 1;
-  const gross = a.nra * a.rent * 12 / 1e6 * a.occupancy;
+  const gross = a.nra * effectiveRent(g, a) * 12 / 1e6 * a.occupancy;
   const opex = 0.24 - subEffect(g, 'feeRate') * 2;
   // ホテルは運営会社（hotelNoi）を傘下に持つと運営効率が上がる
   const hotelMul = a.use === 'hotel' ? (0.7 + dem * 0.35) * (1 + subEffect(g, 'hotelNoi')) : 1;

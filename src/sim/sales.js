@@ -5,10 +5,11 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, USES } from '../data/city.js';
 import { orgPower } from './hr.js';
 import { contractSpeed } from './project.js';
-import { assetValue, currentNOI, subEffect, marketRentRaw } from './valuation.js';
+import { assetValue, currentNOI, subEffect, marketRentRaw, effectiveRent } from './valuation.js';
 import { demandMul } from './population.js';
 import { growBrand, damageBrand } from './brands.js';
 import { isHome, HOME } from './company.js';
+import { areaOcc } from './area.js';
 import { perWeek, WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
 /** 分譲在庫の販売 */
@@ -109,15 +110,24 @@ export function stepAssets(g, rng, news) {
     // **倍率は population.js の demandMul で 0.88〜1.14 に抑えてある。**
     // ここで生の人口比を掛けると、人口が1割動いただけで収支がひっくり返る
     const popMul = demandMul(g, a.district, a.use);
-    let target = clamp01((1.34 - gap * 0.36) * (0.70 + dem * 0.31) * lease * popMul);
+    // エリアマネジメントの効き目（緑化・にぎわい・モビリティ）
+    let target = clamp01((1.34 - gap * 0.36) * (0.70 + dem * 0.31) * lease * popMul
+      * areaOcc(g, a.district, a.use));
     if (a.use === 'logi') target = clamp01(target * 1.06 + 0.04);
     if (a.use === 'hotel') target = clamp01(target * (0.74 + dem * 0.34));
     if (a.age > 25) target *= 0.94;
+    // 大口テナントが押さえている床は空かない。
+    // **一般の稼働率に足さず、残りの床にだけ一般の稼働率を掛けること。**
+    // 足すと 100% を超えて、契約と空室の合計が貸室面積を上回る
+    const anchor = clamp01(a.anchorShare || 0);
+    if (anchor > 0) target = clamp01(anchor + (1 - anchor) * target);
     // 被災して復旧工事中の物件は、そのぶん埋まらない
     if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
     a.occupancy = clamp01(a.occupancy + (target - a.occupancy) * K_OCC + rng.normal(0, 0.006));
 
-    // 賃料改定（2年ごと）
+    // 賃料改定（2年ごと）。
+    // **動かせるのは募集中の一般区画だけである。** 契約期間中の大口テナントは
+    // `tenants.js` の契約賃料で固定されていて、ここでは動かない
     if (g.week - a.lastRentReview >= 104) {
       const power = 0.35 + p.lease.quality / 260;
       const newRent = Math.round(a.rent + (a.marketRent - a.rent) * clamp01(power));
@@ -133,7 +143,9 @@ export function stepAssets(g, rng, news) {
     // 収益計上（週次）
     const noiY = currentNOI(g, a);
     a.noi = noiY;
-    const grossW = a.nra * a.rent * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
+    // 大口テナントの契約賃料を織り込んだ実効賃料で計上する。
+    // **`a.rent` のまま計上しないこと。** currentNOI（画面に出るNOI）とずれる
+    const grossW = a.nra * effectiveRent(g, a) * 12 / 1e6 * a.occupancy / WEEKS_PER_YEAR;
     const opexW = grossW * 0.24;
     // 償却年数。自社で建てたものは50年、中古で取得したものは残りが短い
     // （`a.deprYears` が無い古いセーブは従来どおり50年で回る）

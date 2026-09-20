@@ -378,7 +378,9 @@ export function openStaff(g, s, ctx) {
         const cost = Math.round(s.salary * 0.8);
         g.cash -= cost; g.finance.quarterAcc.extraordinary -= cost;
         g.staff.splice(g.staff.indexOf(s), 1);
-        for (const x of g.staff) if (Math.random() < 0.3) x.morale = Math.max(0, x.morale - 0.04);
+        // **`Math.random()` を使わないこと。** 乱数はシード付きに統一してある
+        const rg = ctx.rng;
+        for (const x of g.staff) if (rg.chance(0.3)) x.morale = Math.max(0, x.morale - 0.04);
         toast(`${s.name}が退職した（割増退職金 ${money(cost)}）`, 'bad');
         ctx.refresh();
       }

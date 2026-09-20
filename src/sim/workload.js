@@ -7,6 +7,7 @@ import { clamp, clamp01 } from '../core/format.js';
 import { DEPT_IDS, DEPTS } from '../data/hrdata.js';
 import { WEEKS_PER_YEAR, WEEKS_PER_QUARTER } from '../core/time.js';
 import { TERRAIN } from '../data/city.js';
+import { isOwnedCell } from '../core/state.js';
 
 /** 所定内の労働時間（月） */
 export const BASE_HOURS = 160;
@@ -27,7 +28,7 @@ function workOf(g) {
   const planning = projects.length - running;
   const inv = g.inventory || [];
   const assets = g.assets || [];
-  const lots = (g.cells || []).filter(c => c.owner === 'player' && c.terrain === TERRAIN.LOT);
+  const lots = (g.cells || []).filter(c => isOwnedCell(c) && c.terrain === TERRAIN.LOT);
   const idleLots = lots.filter(c => !c.building && !c.projectId).length;
   const listings = (g.listings || []).length;
   const staff = (g.staff || []).filter(s => !s.subsidiary).length;

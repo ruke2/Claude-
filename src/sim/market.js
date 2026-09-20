@@ -151,7 +151,8 @@ export const SHOCKS = [
   {
     id: 'labor', p: 0.042, icon: '👷', title: '建設技能者の不足が深刻化',
     text: '職人の確保が難しく、各社の工期が全般に伸びている。',
-    apply: (g) => { g.market.costIdx *= 1.04; for (const p of g.projects) if (Math.random() < 0.4) p.delay = (p.delay || 0) + 4; },
+    // **`Math.random()` を使わないこと。** 乱数はシード付きに統一してある
+    apply: (g, rng) => { g.market.costIdx *= 1.04; for (const p of g.projects) if (rng.chance(0.4)) p.delay = (p.delay || 0) + 4; },
   },
 ];
 
@@ -159,7 +160,7 @@ export function rollShocks(g, rng) {
   const out = [];
   for (const s of SHOCKS) {
     if (s.minWeek && g.week < s.minWeek) continue;
-    if (rng.chance(s.p / WEEKS_PER_QUARTER)) { s.apply(g); out.push(s); }
+    if (rng.chance(s.p / WEEKS_PER_QUARTER)) { s.apply(g, rng); out.push(s); }
   }
   return out;
 }

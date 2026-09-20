@@ -7,7 +7,7 @@
 //    キーを変えると、それまでのセーブが二度と見つからなくなる。
 //    データの形を変えたときは SAVE_VERSION を上げて migrate() で吸収する。
 // ============================================================
-import { createGame, syncUid, defaultRankPay } from './state.js';
+import { createGame, syncUid, defaultRankPay, isOwnedCell } from './state.js';
 import { RANKS, CEO_RANK, TOP_STAFF_RANK, defaultRankNames, teamsOf, teamById } from '../data/hrdata.js';
 import { RIVAL_DEFS } from '../data/companies.js';
 import { salePriceOf, rentOf, saleCostShareOf } from '../sim/project.js';
@@ -29,7 +29,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 /**
  * 小数の桁を落とす。
@@ -126,6 +126,20 @@ const SKIP_TOP = new Set(['cells']);
  * 新しい版を出すたびにここへ足していく。古い順に並べること。
  */
 const STEPS = [
+  // 大口テナント（tenants.js）とエリアマネジメント（area.js）を足した。
+  // 入れ物が無い古いセーブでも落ちないようにする。
+  // **既存の物件に契約をでっち上げないこと。** 契約していない床の賃料が
+  // いきなり固定されて、賃料改定が効かなくなる
+  g => {
+    if (!Array.isArray(g.tenancies)) g.tenancies = [];
+    if (!Array.isArray(g.leads)) g.leads = [];
+    if (!Array.isArray(g.areas)) g.areas = [];
+    for (const a of g.assets || []) {
+      if (typeof a.anchorShare !== 'number') a.anchorShare = 0;
+      if (typeof a.anchorRent !== 'number') a.anchorRent = 0;
+    }
+  },
+
   // 部の下に課を置いた。課の無い社員には、その部の課を配る。
   // **ID の無い社員を落とさないこと。** 課は見せ方の単位で、
   // 付いていなくても計算は回る（`affiliation()` が部だけ返す）
@@ -245,7 +259,7 @@ const STEPS = [
     if (!g.company) return;
     if (!g.company.home) {
       const n = {};
-      for (const c of g.cells || []) if (c.owner === 'player' && c.d) n[c.d] = (n[c.d] || 0) + 1;
+      for (const c of g.cells || []) if (isOwnedCell(c) && c.d) n[c.d] = (n[c.d] || 0) + 1;
       for (const a of g.assets || []) if (a.district) n[a.district] = (n[a.district] || 0) + 2;
       const top = Object.entries(n).sort((x, y) => y[1] - x[1])[0];
       g.company.home = top ? top[0] : 'W';
