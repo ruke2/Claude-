@@ -1,0 +1,23 @@
+{
+  "name": "claude-",
+  "version": "1.0.0",
+  "description": "架空都市「湊都（みなと）市」を舞台にした、不動産デベロッパーの経営シミュレーションゲーム。 用地の仕入れから複合施設のフロア構成、ブランドづくり、販売・賃貸運用、資金調達、人事、M&A までを一貫して扱う。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ruke2/Claude-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ruke2/Claude-/issues"
+  },
+  "homepage": "https://github.com/ruke2/Claude-#readme",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

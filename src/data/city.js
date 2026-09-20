@@ -1,0 +1,742 @@
+// ============================================================
+//  湊都（みなと）市 — 都市データ
+//  金額単位: 百万円 / 面積単位: 坪
+// ============================================================
+import { hash2 } from '../core/rng.js';
+
+/** 地区定義 */
+export const DISTRICTS = {
+  T: {
+    city: 'minato',
+    id: 'T', lotSize: 1900, name: '常盤ビジネス地区', short: '常盤', kana: 'TOKIWA CBD',
+    desc: '大手町・丸の内に比肩する国内屈指のビジネス街。超高層オフィスが林立し、一区画の取得が数百億円規模になる。',
+    landPrice: 20.0,          // 百万円/坪（更地の相場）
+    farRange: [700, 1300],    // 容積率(%)
+    rentOffice: 41000,        // 円/坪/月
+    rentRetail: 34000,
+    rentResi: 22700,
+    rentHotel: 52000,
+    rentLogi: 7800,
+    priceResi: 5.8,           // 分譲 百万円/専有坪
+    capRate: 0.036,           // 還元利回り
+    station: 0.98,            // 駅力 0-1
+    fit: { office: 1.00, retail: 0.86, resi: 0.62, rental: 0.58, hotel: 0.84, logi: 0.10, house: 0.05, mixed: 0.96 },
+    height: [14, 54],      // 既存の建物の階数レンジ
+    usePool: ['office', 'office', 'office', 'mixed', 'retail', 'hotel', 'rental'],
+    hue: 208, elev: 2,
+  },
+  B: {
+    city: 'minato',
+    id: 'B', lotSize: 1650, name: '汐見ベイフロント', short: '汐見', kana: 'SHIOMI BAY',
+    desc: '再開発が進む湾岸エリア。タワーマンションと大型商業の主戦場で、供給過多リスクと隣り合わせ。',
+    landPrice: 7.3, farRange: [400, 900],
+    rentOffice: 24000, rentRetail: 26000, rentResi: 17800, rentHotel: 40000,
+    rentLogi: 6200,
+    priceResi: 4.3, capRate: 0.042, station: 0.76,
+    fit: { office: 0.70, retail: 0.88, resi: 1.00, rental: 0.92, hotel: 0.80, logi: 0.28, house: 0.20, mixed: 0.92 },
+    height: [6, 44],      // 既存の建物の階数レンジ
+    usePool: ['resi', 'rental', 'resi', 'retail', 'office', 'hotel', 'mixed'],
+    hue: 194, elev: 0,
+  },
+  A: {
+    city: 'minato',
+    id: 'A', lotSize: 420, name: '青葉台レジデンス', short: '青葉台', kana: 'AOBADAI',
+    desc: '高台の邸宅街。厳しい高さ制限と住民協定があり、低層・高単価の商品開発が求められる。',
+    landPrice: 3.1, farRange: [150, 300],
+    rentOffice: 13000, rentRetail: 15000, rentResi: 16200, rentHotel: 22000,
+    rentLogi: 4200,
+    priceResi: 4.0, capRate: 0.044, station: 0.58,
+    fit: { office: 0.22, retail: 0.34, resi: 0.92, rental: 0.74, hotel: 0.30, logi: 0.05, house: 1.00, mixed: 0.40 },
+    height: [2, 5],      // 既存の建物の階数レンジ
+    usePool: ['house', 'house', 'resi', 'rental'],
+    hue: 138, elev: 3,
+  },
+  K: {
+    city: 'minato',
+    id: 'K', lotSize: 380, name: '神楽坂旧市街', short: '神楽坂', kana: 'KAGURAZAKA',
+    desc: '路地と老舗が残る商業地。地権者が多く用地はまとまりにくいが、ホテル・商業の収益性は高い。',
+    landPrice: 6.4, farRange: [300, 700],
+    rentOffice: 22000, rentRetail: 33000, rentResi: 18400, rentHotel: 38000,
+    rentLogi: 5200,
+    priceResi: 4.5, capRate: 0.041, station: 0.84,
+    fit: { office: 0.62, retail: 1.00, resi: 0.70, rental: 0.76, hotel: 0.98, logi: 0.08, house: 0.24, mixed: 0.80 },
+    height: [3, 13],      // 既存の建物の階数レンジ
+    usePool: ['retail', 'hotel', 'office', 'rental', 'retail'],
+    hue: 28, elev: 1,
+  },
+  N: {
+    city: 'minato',
+    id: 'N', lotSize: 640, name: '北野ニュータウン', short: '北野', kana: 'KITANO NT',
+    desc: '郊外のファミリー層向け住宅地。用地は安いが単価も低く、量で稼ぐ薄利のエリア。',
+    landPrice: 1.25, farRange: [150, 400],
+    rentOffice: 11000, rentRetail: 13000, rentResi: 11300, rentHotel: 17000,
+    rentLogi: 4600,
+    priceResi: 2.3, capRate: 0.052, station: 0.42,
+    fit: { office: 0.20, retail: 0.52, resi: 0.86, rental: 0.82, hotel: 0.22, logi: 0.36, house: 0.94, mixed: 0.44 },
+    height: [3, 15],      // 既存の建物の階数レンジ
+    usePool: ['house', 'resi', 'rental', 'retail', 'house'],
+    hue: 96, elev: 1,
+  },
+  I: {
+    city: 'minato',
+    id: 'I', lotSize: 1500, name: '港南インターナショナル', short: '港南', kana: 'KONAN INTL',
+    desc: '外資系企業のアジア拠点と大使館が集まる国際地区。高級ホテルの需要が突出して高く、地価も常盤に次ぐ。',
+    landPrice: 12.3, farRange: [500, 1000],
+    rentOffice: 34000, rentRetail: 28000, rentResi: 19500, rentHotel: 42000,
+    rentLogi: 6800,
+    priceResi: 5.0, capRate: 0.038, station: 0.88,
+    fit: { office: 0.92, retail: 0.78, resi: 0.74, rental: 0.70, hotel: 1.00, logi: 0.12, house: 0.10, mixed: 0.90 },
+    height: [8, 40],      // 既存の建物の階数レンジ
+    usePool: ['office', 'hotel', 'office', 'mixed', 'retail', 'rental'],
+    hue: 252, elev: 1,
+  },
+  S: {
+    city: 'minato',
+    id: 'S', lotSize: 900, name: '桜川イノベーション', short: '桜川', kana: 'SAKURAGAWA',
+    desc: '大学と研究機関を核に再編が進む新興地区。研究開発型オフィスと若年層向け賃貸の需要が伸び続けている。',
+    landPrice: 3.2, farRange: [300, 600],
+    rentOffice: 24000, rentRetail: 19500, rentResi: 15200, rentHotel: 18000,
+    rentLogi: 5000,
+    priceResi: 3.5, capRate: 0.042, station: 0.66,
+    fit: { office: 0.88, retail: 0.62, resi: 0.78, rental: 0.90, hotel: 0.42, logi: 0.30, house: 0.62, mixed: 0.70 },
+    height: [3, 18],      // 既存の建物の階数レンジ
+    usePool: ['office', 'rental', 'retail', 'resi', 'office'],
+    hue: 168, elev: 1,
+  },
+  J: {
+    city: 'minato',
+    id: 'J', lotSize: 2600, name: '城東ロジスティクス', short: '城東', kana: 'JOTO LOGI',
+    desc: '工場跡地が広がる湾岸北部。大規模物流施設の適地で、EC需要を背景に賃料が上昇中。',
+    landPrice: 0.62, farRange: [200, 400],
+    rentOffice: 9500, rentRetail: 10000, rentResi: 9200, rentHotel: 13000, rentLogi: 5200,
+    priceResi: 1.9, capRate: 0.042, station: 0.30,
+    fit: { office: 0.16, retail: 0.30, resi: 0.40, rental: 0.38, hotel: 0.12, logi: 1.00, house: 0.44, mixed: 0.30 },
+    height: [1, 5],      // 既存の建物の階数レンジ
+    usePool: ['logi', 'logi', 'logi', 'house', 'retail'],
+    hue: 44, elev: 0,
+  },
+
+  // ---- ここから拡張された地区 ----
+  F: {
+    city: 'minato',
+    id: 'F', lotSize: 360, name: '藤ヶ丘ガーデンヒル', short: '藤ヶ丘', kana: 'FUJIGAOKA',
+    desc: '市内でもっとも地価の高い低層住宅街。厳しい高さ制限と景観協定があり、戸建と低層の高級分譲しか成り立たないが、単価は市内随一である。',
+    landPrice: 5.9,
+    farRange: [100, 200],
+    rentOffice: 12000,
+    rentRetail: 16500,
+    rentResi: 24500,
+    rentHotel: 27000,
+    rentLogi: 4000,
+    priceResi: 7.4,
+    capRate: 0.037,
+    station: 0.50,
+    fit: { office: 0.16, retail: 0.30, resi: 0.74, rental: 0.58, hotel: 0.26, logi: 0.04, house: 1.00, mixed: 0.30 },
+    height: [2, 5],      // 既存の建物の階数レンジ
+    usePool: ['house', 'house', 'house', 'resi', 'rental'],
+    hue: 334, elev: 4,
+  },
+  M: {
+    city: 'minato',
+    id: 'M', lotSize: 1200, name: '南雲メディカル・リサーチパーク', short: '南雲', kana: 'NAGUMO MRP',
+    desc: '大学病院と製薬・医療機器の研究拠点が集まる特区。研究開発型オフィスと、研究者向けの賃貸レジデンス、患者家族の長期滞在ホテルに需要がある。',
+    landPrice: 4.9,
+    farRange: [400, 800],
+    rentOffice: 29500,
+    rentRetail: 18000,
+    rentResi: 13800,
+    rentHotel: 31000,
+    rentLogi: 5400,
+    priceResi: 3.9,
+    capRate: 0.040,
+    station: 0.72,
+    fit: { office: 0.94, retail: 0.50, resi: 0.66, rental: 0.90, hotel: 0.70, logi: 0.18, house: 0.30, mixed: 0.78 },
+    height: [4, 22],      // 既存の建物の階数レンジ
+    usePool: ['office', 'office', 'rental', 'hotel', 'retail', 'resi'],
+    hue: 176, elev: 1,
+  },
+  E: {
+    city: 'minato',
+    id: 'E', lotSize: 2200, name: '湊都エアポートシティ', short: '空港', kana: 'AIRPORT CITY',
+    desc: '湊都空港に隣接する埋立地。連絡橋で本土とつながる。航空法の高さ制限があって高層は建てられないが、区画は市内最大で、航空貨物の物流施設と乗継客向けのホテルが主役になる。',
+    landPrice: 0.85,
+    farRange: [200, 400],
+    rentOffice: 18000,
+    rentRetail: 13000,
+    rentResi: 9500,
+    rentHotel: 23500,
+    rentLogi: 5600,
+    priceResi: 2.2,
+    capRate: 0.044,
+    station: 0.62,
+    fit: { office: 0.60, retail: 0.48, resi: 0.28, rental: 0.34, hotel: 0.96, logi: 0.94, house: 0.10, mixed: 0.62 },
+    height: [2, 16],      // 既存の建物の階数レンジ
+    usePool: ['hotel', 'logi', 'logi', 'office', 'retail', 'mixed'],
+    hue: 268, elev: 0,
+  },
+  W: {
+    city: 'minato',
+    id: 'W', lotSize: 300, name: '若葉町（対岸の旧市街）', short: '若葉町', kana: 'WAKABACHO',
+    desc: '湊川の対岸に残る古い商店街と長屋の街。区画は小さく地価も安い。小ぶりな賃貸レジデンスと近隣型商業を数で積み上げる、駆け出しのデベロッパー向けの土地である。',
+    landPrice: 1.05,
+    farRange: [200, 500],
+    rentOffice: 14000,
+    rentRetail: 20000,
+    rentResi: 13200,
+    rentHotel: 20000,
+    rentLogi: 4400,
+    priceResi: 2.75,
+    capRate: 0.050,
+    station: 0.56,
+    fit: { office: 0.34, retail: 0.76, resi: 0.78, rental: 0.88, hotel: 0.36, logi: 0.40, house: 0.34, mixed: 0.62 },
+    height: [2, 10],      // 既存の建物の階数レンジ
+    usePool: ['retail', 'rental', 'rental', 'resi', 'house', 'office'],
+    hue: 62, elev: 0,
+  },
+
+  // ---- ここから鶴見野市（海峡を挟んだ隣の市） ----
+  //  地価も賃料も湊都市より低いが、そのぶん利回りは高く、
+  //  大手が地盤を築いていないので腰を据えて取りにいける。
+  Y: {
+    city: 'tsurumino',
+    id: 'Y', lotSize: 1100, name: '鶴見野駅前', short: '鶴見野', kana: 'TSURUMINO EKIMAE',
+    desc: '人口60万の中核市・鶴見野の中心。新幹線の停車駅を核に、県庁と地方銀行の本店、百貨店が並ぶ。湊都市ほどの賃料は取れないが、キャップレートが高く利回りで稼げる。',
+    landPrice: 2.3,
+    farRange: [400, 700],
+    rentOffice: 19500,
+    rentRetail: 22500,
+    rentResi: 12500,
+    rentHotel: 23000,
+    rentLogi: 4800,
+    priceResi: 2.9,
+    capRate: 0.055,
+    station: 0.86,
+    fit: { office: 0.92, retail: 0.96, resi: 0.70, rental: 0.78, hotel: 0.62, logi: 0.20, house: 0.26, mixed: 0.84 },
+    height: [3, 18],
+    usePool: ['retail', 'office', 'retail', 'mixed', 'rental', 'hotel'],
+    hue: 18, elev: 1,
+  },
+  H: {
+    city: 'tsurumino',
+    id: 'H', lotSize: 520, name: '花園台', short: '花園台', kana: 'HANAZONODAI',
+    desc: '鶴見野駅からバスで20分の丘陵住宅地。区画は広く、庭付きの戸建がよく売れる。土地が安いので、数を捌けば確実に利益が積み上がる。',
+    landPrice: 0.69,
+    farRange: [150, 300],
+    rentOffice: 8500,
+    rentRetail: 12500,
+    rentResi: 10500,
+    rentHotel: 12000,
+    rentLogi: 4000,
+    priceResi: 2.05,
+    capRate: 0.058,
+    station: 0.38,
+    fit: { office: 0.16, retail: 0.48, resi: 0.82, rental: 0.78, hotel: 0.14, logi: 0.28, house: 1.00, mixed: 0.34 },
+    height: [2, 8],
+    usePool: ['house', 'house', 'resi', 'rental', 'retail'],
+    hue: 108, elev: 3,
+  },
+  R: {
+    city: 'tsurumino',
+    id: 'R', lotSize: 2400, name: '鶴見野臨港地区', short: '臨港', kana: 'RINKO',
+    desc: '重要港湾に面した広大な埋立地。高速道路のインターに直結し、広域配送の拠点に向く。区画あたりの面積は市内最大で、物流施設以外はまず成り立たない。',
+    landPrice: 0.37,
+    farRange: [200, 400],
+    rentOffice: 7500,
+    rentRetail: 8500,
+    rentResi: 7800,
+    rentHotel: 10500,
+    rentLogi: 5000,
+    priceResi: 1.55,
+    capRate: 0.048,
+    station: 0.22,
+    fit: { office: 0.14, retail: 0.22, resi: 0.30, rental: 0.32, hotel: 0.10, logi: 1.00, house: 0.38, mixed: 0.24 },
+    height: [1, 5],
+    usePool: ['logi', 'logi', 'logi', 'retail', 'house'],
+    hue: 38, elev: 0,
+  },
+  G: {
+    city: 'tsurumino',
+    id: 'G', lotSize: 760, name: '鶴見野学園都市', short: '学園都市', kana: 'GAKUEN CITY',
+    desc: '国立大学と高専、大学病院が集まる学園地区。学生と研究者の賃貸需要が途切れず、空室が出にくい。単身向けを数で積むのがこの街の定石である。',
+    landPrice: 1.24,
+    farRange: [250, 500],
+    rentOffice: 13500,
+    rentRetail: 15000,
+    rentResi: 12200,
+    rentHotel: 14500,
+    rentLogi: 4400,
+    priceResi: 2.1,
+    capRate: 0.052,
+    station: 0.62,
+    fit: { office: 0.58, retail: 0.74, resi: 0.80, rental: 1.00, hotel: 0.34, logi: 0.30, house: 0.56, mixed: 0.56 },
+    height: [3, 12],
+    usePool: ['rental', 'rental', 'retail', 'resi', 'office'],
+    hue: 152, elev: 1,
+  },
+
+  // ---- 第2次の拡張地区 ----
+  P: {
+    city: 'minato',
+    id: 'P', lotSize: 1600, name: '桜田官庁街', short: '官庁街', kana: 'SAKURADA GOV',
+    desc: '中央官庁と地方支分部局、業界団体の事務所が集まる街。借り手は動かず空室が出にくいので、キャップレートは市内で最も低い。そのかわり容積の割に高さ制限が厳しく、派手な建物は建たない。',
+    landPrice: 12.1,
+    farRange: [500, 900],
+    rentOffice: 31000,
+    rentRetail: 21000,
+    rentResi: 18000,
+    rentHotel: 30000,
+    rentLogi: 6000,
+    priceResi: 4.4,
+    capRate: 0.034,
+    station: 0.88,
+    fit: { office: 1.00, retail: 0.54, resi: 0.48, rental: 0.46, hotel: 0.50, logi: 0.06, house: 0.06, mixed: 0.78 },
+    height: [8, 26],
+    usePool: ['office', 'office', 'office', 'mixed', 'hotel'],
+    hue: 216, elev: 2,
+  },
+  Z: {
+    city: 'minato',
+    id: 'Z', lotSize: 420, name: '銀鈴町', short: '銀鈴町', kana: 'GINREI',
+    desc: '飲食店と劇場、ホテルがひしめく歓楽街。区画は小さいが坪あたりの賃料は市内随一で、ビル1棟に十数の店子が入る。景気の波をまともに受けるので、キャップレートは高めに見られる。',
+    landPrice: 19.5,
+    farRange: [550, 900],
+    rentOffice: 26000,
+    rentRetail: 46000,
+    rentResi: 19500,
+    rentHotel: 48000,
+    rentLogi: 6500,
+    priceResi: 4.6,
+    capRate: 0.045,
+    station: 0.94,
+    fit: { office: 0.44, retail: 1.00, resi: 0.34, rental: 0.40, hotel: 0.92, logi: 0.05, house: 0.04, mixed: 0.86 },
+    height: [4, 16],
+    usePool: ['retail', 'retail', 'retail', 'hotel', 'mixed'],
+    hue: 348, elev: 0,
+  },
+  V: {
+    city: 'minato',
+    id: 'V', lotSize: 3200, name: '汐凪ベイサイド', short: '汐凪', kana: 'SHIONAGI BAY',
+    desc: '倉庫街を丸ごと造り替えた湾岸の再開発地区。一区画が広く容積も緩いので、超高層の分譲タワーを何棟も建てられる。駅からは遠いが、眺望と供給の少なさで単価が保たれている。',
+    landPrice: 11.5,
+    farRange: [420, 780],
+    rentOffice: 19000,
+    rentRetail: 20000,
+    rentResi: 19500,
+    rentHotel: 30000,
+    rentLogi: 6200,
+    priceResi: 5.6,
+    capRate: 0.039,
+    station: 0.56,
+    fit: { office: 0.30, retail: 0.48, resi: 1.00, rental: 0.86, hotel: 0.58, logi: 0.14, house: 0.22, mixed: 0.66 },
+    height: [10, 46],
+    usePool: ['resi', 'resi', 'resi', 'rental', 'mixed'],
+    hue: 192, elev: 0,
+  },
+  Q: {
+    city: 'minato',
+    id: 'Q', lotSize: 2100, name: '瑞穂台ロードサイド', short: '瑞穂台', kana: 'MIZUHODAI',
+    desc: '環状道路沿いに大型店が並ぶ郊外。区画は広く地価は安いが、容積率が低いので高く積めない。平屋の商業施設と倉庫で床を稼ぐ街である。',
+    landPrice: 0.73,
+    farRange: [200, 350],
+    rentOffice: 11000,
+    rentRetail: 17500,
+    rentResi: 10500,
+    rentHotel: 14000,
+    rentLogi: 5400,
+    priceResi: 2.3,
+    capRate: 0.050,
+    station: 0.24,
+    fit: { office: 0.20, retail: 1.00, resi: 0.44, rental: 0.44, hotel: 0.26, logi: 0.72, house: 0.56, mixed: 0.34 },
+    height: [1, 6],
+    usePool: ['retail', 'retail', 'retail', 'logi', 'house'],
+    hue: 72, elev: 1,
+  },
+  L: {
+    city: 'tsurumino',
+    id: 'L', lotSize: 2000, name: '鶴見野テクノパーク', short: 'テクノパーク', kana: 'TECHNO PARK',
+    desc: '市が造成した内陸の工業団地。研究開発の拠点と中規模の倉庫が混在する。地価は市内最安の部類で、利回りだけを見れば湊都市のどの地区よりも良い。',
+    landPrice: 0.34,
+    farRange: [200, 400],
+    rentOffice: 10500,
+    rentRetail: 9000,
+    rentResi: 8200,
+    rentHotel: 10000,
+    rentLogi: 5300,
+    priceResi: 1.6,
+    capRate: 0.055,
+    station: 0.28,
+    fit: { office: 0.62, retail: 0.24, resi: 0.30, rental: 0.34, hotel: 0.12, logi: 1.00, house: 0.34, mixed: 0.28 },
+    height: [1, 7],
+    usePool: ['logi', 'logi', 'office', 'logi', 'rental'],
+    hue: 186, elev: 0,
+  },
+  C: {
+    city: 'tsurumino',
+    id: 'C', lotSize: 520, name: '千歳丘ニュータウン', short: '千歳丘', kana: 'CHITOSEGAOKA',
+    desc: '高度成長期に丘を削って造られた住宅団地。住民の高齢化が進み、建て替えの余地が大きい。区画は小さく、戸建分譲がいちばん素直に儲かる。',
+    landPrice: 0.68,
+    farRange: [100, 250],
+    rentOffice: 8500,
+    rentRetail: 11000,
+    rentResi: 10500,
+    rentHotel: 9500,
+    rentLogi: 3600,
+    priceResi: 2.0,
+    capRate: 0.056,
+    station: 0.36,
+    fit: { office: 0.12, retail: 0.42, resi: 0.62, rental: 0.56, hotel: 0.10, logi: 0.14, house: 1.00, mixed: 0.26 },
+    height: [2, 6],
+    usePool: ['house', 'house', 'house', 'resi', 'rental'],
+    hue: 96, elev: 3,
+  },
+
+  // ---- 陽ノ浦市（観光と港の街） ----
+  D: {
+    city: 'hinoura',
+    id: 'D', lotSize: 900, name: '陽ノ浦駅前', short: '陽ノ浦駅前', kana: 'HINOURA STN',
+    desc: '新幹線の停車駅を中心にした市の玄関口。土産物店と地場の百貨店が並び、観光の季節には人が溢れる。地価は湊都市の1割ほどだが、商業の坪単価は侮れない。',
+    landPrice: 2.62,
+    farRange: [400, 700],
+    rentOffice: 12500,
+    rentRetail: 19500,
+    rentResi: 11000,
+    rentHotel: 21000,
+    rentLogi: 4600,
+    priceResi: 2.2,
+    capRate: 0.052,
+    station: 0.92,
+    fit: { office: 0.66, retail: 1.00, resi: 0.54, rental: 0.60, hotel: 0.82, logi: 0.10, house: 0.14, mixed: 0.74 },
+    height: [3, 14],
+    usePool: ['retail', 'retail', 'office', 'hotel', 'mixed'],
+    hue: 20, elev: 1,
+  },
+  O: {
+    city: 'hinoura',
+    id: 'O', lotSize: 2400, name: '陽ノ浦港', short: '陽ノ浦港', kana: 'HINOURA PORT',
+    desc: '水産市場と倉庫が並ぶ港湾地区。観光客向けの海鮮市場が当たってからは、商業の引き合いも出てきた。区画が広く、物流の適地である。',
+    landPrice: 0.4,
+    farRange: [200, 350],
+    rentOffice: 7000,
+    rentRetail: 11500,
+    rentResi: 7200,
+    rentHotel: 11000,
+    rentLogi: 5100,
+    priceResi: 1.35,
+    capRate: 0.054,
+    station: 0.30,
+    fit: { office: 0.20, retail: 0.56, resi: 0.26, rental: 0.30, hotel: 0.34, logi: 1.00, house: 0.30, mixed: 0.26 },
+    height: [1, 5],
+    usePool: ['logi', 'logi', 'retail', 'logi', 'house'],
+    hue: 196, elev: 0,
+  },
+  U: {
+    city: 'hinoura',
+    id: 'U', lotSize: 1400, name: '湯ノ川温泉郷', short: '湯ノ川', kana: 'YUNOKAWA ONSEN',
+    desc: '川沿いに旅館が連なる温泉街。老舗の廃業が相次ぎ、まとまった敷地が出てくる。宿泊以外はまず成り立たないが、宿泊の単価は市内随一である。',
+    landPrice: 1.88,
+    farRange: [250, 450],
+    rentOffice: 8500,
+    rentRetail: 13000,
+    rentResi: 9000,
+    rentHotel: 27500,
+    rentLogi: 3800,
+    priceResi: 1.7,
+    capRate: 0.053,
+    station: 0.44,
+    fit: { office: 0.16, retail: 0.50, resi: 0.30, rental: 0.34, hotel: 1.00, logi: 0.06, house: 0.26, mixed: 0.44 },
+    height: [2, 10],
+    usePool: ['hotel', 'hotel', 'hotel', 'retail', 'house'],
+    hue: 340, elev: 2,
+  },
+  X: {
+    city: 'hinoura',
+    id: 'X', lotSize: 1800, name: '白浜リゾート', short: '白浜', kana: 'SHIRAHAMA',
+    desc: '砂浜に面した別荘地。リゾートホテルと分譲別荘が混在する。夏と冬で稼働の差が大きく、通年で埋めるには工夫が要る。',
+    landPrice: 1.02,
+    farRange: [200, 400],
+    rentOffice: 7800,
+    rentRetail: 12000,
+    rentResi: 10500,
+    rentHotel: 24000,
+    rentLogi: 3600,
+    priceResi: 2.35,
+    capRate: 0.052,
+    station: 0.26,
+    fit: { office: 0.12, retail: 0.44, resi: 0.58, rental: 0.40, hotel: 1.00, logi: 0.06, house: 0.62, mixed: 0.40 },
+    height: [1, 12],
+    usePool: ['hotel', 'resi', 'house', 'hotel', 'retail'],
+    hue: 172, elev: 1,
+  },
+
+  // ---- 八雲市（地方中枢都市） ----
+  1: {
+    city: 'yakumo',
+    id: '1', lotSize: 1100, name: '八雲駅前', short: '八雲駅前', kana: 'YAKUMO STN',
+    desc: '県庁所在地の中心市街。支店経済のオフィスと地場の商業が集まる。人口は減り続けているが、駅前への集約はむしろ進んでいる。',
+    landPrice: 6.07,
+    farRange: [500, 900],
+    rentOffice: 19000,
+    rentRetail: 21500,
+    rentResi: 12500,
+    rentHotel: 18000,
+    rentLogi: 5000,
+    priceResi: 2.5,
+    capRate: 0.047,
+    station: 0.90,
+    fit: { office: 0.86, retail: 1.00, resi: 0.56, rental: 0.64, hotel: 0.60, logi: 0.08, house: 0.10, mixed: 0.88 },
+    height: [4, 20],
+    usePool: ['retail', 'office', 'mixed', 'office', 'hotel'],
+    hue: 226, elev: 1,
+  },
+  2: {
+    city: 'yakumo',
+    id: '2', lotSize: 700, name: '桜木町', short: '桜木町', kana: 'SAKURAGICHO',
+    desc: '駅から歩ける距離の住宅地。単身と二人世帯が多く、賃貸の回転が速い。分譲より賃貸で積むほうが素直に回る。',
+    landPrice: 1.37,
+    farRange: [250, 450],
+    rentOffice: 10000,
+    rentRetail: 12500,
+    rentResi: 11500,
+    rentHotel: 11000,
+    rentLogi: 4000,
+    priceResi: 2.0,
+    capRate: 0.051,
+    station: 0.66,
+    fit: { office: 0.40, retail: 0.62, resi: 0.80, rental: 1.00, hotel: 0.26, logi: 0.14, house: 0.58, mixed: 0.50 },
+    height: [3, 12],
+    usePool: ['rental', 'rental', 'resi', 'retail', 'house'],
+    hue: 320, elev: 1,
+  },
+  3: {
+    city: 'yakumo',
+    id: '3', lotSize: 2300, name: '八雲南部工業団地', short: '南部工業', kana: 'YAKUMO SOUTH',
+    desc: '高速道路のインターに接した内陸の工業団地。地価は全地区で最も安く、開発利回りだけを見れば群を抜く。',
+    landPrice: 0.38,
+    farRange: [200, 400],
+    rentOffice: 8000,
+    rentRetail: 7500,
+    rentResi: 6800,
+    rentHotel: 8000,
+    rentLogi: 5000,
+    priceResi: 1.25,
+    capRate: 0.055,
+    station: 0.20,
+    fit: { office: 0.44, retail: 0.20, resi: 0.22, rental: 0.26, hotel: 0.08, logi: 1.00, house: 0.28, mixed: 0.22 },
+    height: [1, 6],
+    usePool: ['logi', 'logi', 'logi', 'office', 'house'],
+    hue: 60, elev: 0,
+  },
+  4: {
+    city: 'yakumo',
+    id: '4', lotSize: 520, name: '白鷺台', short: '白鷺台', kana: 'SHIRASAGIDAI',
+    desc: '市の北に広がる郊外の住宅地。区画は広く、庭付きの戸建が並ぶ。人口は緩やかに減っているが、建て替えの需要は途切れない。',
+    landPrice: 0.62,
+    farRange: [100, 250],
+    rentOffice: 7000,
+    rentRetail: 9500,
+    rentResi: 9500,
+    rentHotel: 8000,
+    rentLogi: 3400,
+    priceResi: 1.85,
+    capRate: 0.054,
+    station: 0.32,
+    fit: { office: 0.10, retail: 0.38, resi: 0.58, rental: 0.52, hotel: 0.08, logi: 0.12, house: 1.00, mixed: 0.22 },
+    height: [2, 5],
+    usePool: ['house', 'house', 'house', 'resi', 'retail'],
+    hue: 130, elev: 2,
+  },
+};
+
+/**
+ * 都市（地区の上位のまとまり）。
+ *
+ * `buildMul` は建設費の地域差。
+ * **建設費を全国一律にしないこと。** 賃料は地方ほど安いのに工事費が同じだと、
+ * 地方都市ではどの用途も「土地に払える上限（残余法）」がほぼゼロになり、
+ * 区画が数億円のまま動かない街ができてしまう。
+ * 実際にも、人件費と仮設のぶん地方の工事費は1〜2割安い。
+ */
+export const CITIES = {
+  minato: {
+    id: 'minato', name: '湊都市', short: '湊都市', buildMul: 1.00,
+    desc: '国内最大手デベロッパーがひしめく巨大都市。地価も賃料も高いが、キャップレートは低い。',
+  },
+  tsurumino: {
+    id: 'tsurumino', name: '鶴見野市', short: '鶴見野', buildMul: 1.00,
+    desc: '海峡を挟んだ人口60万の中核市。地価と賃料は湊都市の半分以下だが、キャップレートが高く、利回りで稼げる。大手が地盤にしていないので、腰を据えて取りにいける。',
+  },
+  hinoura: {
+    id: 'hinoura', name: '陽ノ浦市', short: '陽ノ浦', buildMul: 0.88,
+    desc: '人口30万の港町。温泉と海水浴で知られる観光地で、宿泊と商業の単価が地価に対して不釣り合いに高い。季節で稼働が大きく振れるのが難しいところである。',
+  },
+  yakumo: {
+    id: 'yakumo', name: '八雲市', short: '八雲', buildMul: 0.86,
+    desc: '人口40万の県庁所在地。人口は減り続けているが、駅前への集約が進んでおり、郊外から中心へという流れが読める。キャップレートは全都市で最も高い。',
+  },
+};
+
+/** その地区が属する都市 */
+export const cityOf = d => (DISTRICTS[d] && DISTRICTS[d].city) || 'minato';
+/** その都市に属する地区の一覧 */
+export const districtsOfCity = city => Object.values(DISTRICTS).filter(d => (d.city || 'minato') === city);
+
+
+/**
+ * 都市レイアウト（64×64）
+ *  湊都市　  T/B/A/K/N/J/I/S/F/M/E/W/P/Z/V/Q（左上）
+ *  鶴見野市　Y/H/R/G/L/C（32行目より下。海峡を挟んだ隣の市）
+ *  陽ノ浦市　D/O/U/X（48列目より右。海峡を挟んだ観光の街）
+ *  八雲市　  1/2/3/4（48行目より下。内陸の県庁所在地）
+ *
+ *  **左上の 40×40 は動かさないこと。** 右と下にだけ足していく。
+ *  区画のIDは p{x}_{y} なので、既存の座標が動かなければ
+ *  remapCells() が古いセーブの区画をそのまま引き継げる
+ *  .=道路  =:幹線  ~=水域  #=公園  ^=緑地/丘
+ *
+ *  ◆ 左上の 24×24（0〜23行の先頭24文字）は変更しないこと ◆
+ *    区画のIDは `p{x}_{y}` なので、既存の区画の座標が動かないかぎり
+ *    古いセーブはそのまま引き継げる。
+ *    地図を広げるときは、右側と下側にだけ足していく。
+ */
+export const MAP_W = 64, MAP_H = 64;
+export const MAP_ROWS = [
+  'AAA.AAA.NNN.N#N.SSS.SSS.FFF.FFF.~~~~~~~~PPP.PPP.~~~~~~~~~~~~~~~~',
+  'A#A.AAA.NNN.NNN.SSS.SSS.FFF.F#F.~~~~~~~~P#P.PPP.~~~~............',
+  'AAA.AAA.NNN.NNN.SSS.S^S.FF^.FFF.~~~~~~~~PPP.PP^.~~~~DDD.DDD.OOO.',
+  '================================~~~~~~~~========~~~~D#D.DDD.OOO.',
+  'AAA.AAA.N^N.NNN.SSS.SSS.FFF.FFF.~~~~~~~~PPP.PPP.~~~~DDD.DD^.OO#.',
+  'AAA.A^A.NNN.NNN.SSS.SSS.F#F.FFF.~~~~~~~~PPP.PPP.~~~~============',
+  'AAA.AAA.NNN.NNN.S#S.SSS.FFF.FF^.~~~~~~~~PP^.PPP.~~~~DDD.DDD.OOO.',
+  '................................~~~~~~~~........~~~~DDD.D#D.OOO.',
+  'KKK.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.~~~~DD^.DDD.OOO.',
+  'KKK.KKK.T#T.TTT.JJJ.JJJ.MMM.M#M.~~~~~~~~ZZZ.Z#Z.~~~~............',
+  'KK#.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.~~~~UUU.UUU.OOO.',
+  '================================~~~~~~~~========~~~~U#U.UUU.O^O.',
+  'KKK.KKK.TTT.TTT.JJJ.J#J.MMM.MMM.~~~~~~~~ZZZ.ZZZ.~~~~UUU.UU^.OOO.',
+  'KKK.KKK.TTT.TT#.JJJ.JJJ.M#M.MMM.~~~~~~~~Z^Z.ZZZ.~~~~============',
+  'KKK.KK^.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.~~~~UUU.UUU.XXX.',
+  '................................~~~~~~~~........~~~~UUU.U#U.XXX.',
+  'III.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~VVV.VVV.~~~~U^U.UUU.X#X.',
+  'I#I.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~VVV.V#V.~~~~............',
+  'III.III.BBB.BBB.BB#.JJJ~EEE.E#E.~~~~~~~~VVV.VV^.~~~~XXX.XXX.XXX.',
+  '===========~~~~=======~~========~~~~~~~~========~~~~X#X.XXX.XX^.',
+  '~II.BBB.BBB~~~~.BBB.~~~~EEE.EEE.~~~~~~~~VVV.VVV.~~~~XXX.XX^.XXX.',
+  '~~I.BBB.BB#~~~~.BB~~~~~~EEE.EE^.~~~~~~~~VVV.VVV.~~~~............',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~========~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.~~~~~~~~~~~~~~~~',
+  'W#W.WWW.WWW.WWW.~~~~~~~~EEE.E#E.~~~~~~~~QQQ.Q#Q.~~~~~~~~~~~~~~~~',
+  'WWW.WWW.WW^.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.~~~~~~~~~~~~~~~~',
+  '================~~~~~~~~========~~~~~~~~========~~~~~~~~~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.~~~~~~~~~~~~~~~~',
+  'WWW.W#W.WWW.W^W.~~~~~~~~E^E.EEE.~~~~~~~~Q^Q.QQQ.~~~~~~~~~~~~~~~~',
+  'WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '========================================~~~~~~~~~~~~~~~~~~~~~~~~',
+  'RRR.RRR.RRR.YYY.YYY.YYY.GGG.GGG.HHH.HHH.~~~~~~~~~~~~~~~~~~~~~~~~',
+  'RRR.RR^.RRR.Y#Y.YYY.YYY.GGG.G#G.HHH.HH^.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '========================================~~~~~~~~~~~~~~~~~~~~~~~~',
+  'RRR.RRR.~~~.YYY.YYY.Y#Y.GGG.GGG.HHH.HHH.~~~~~~~~~~~~~~~~~~~~~~~~',
+  'RR~.RRR.~~~.YYY.YYY.YYY.G#G.GGG.HHH.HHH.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~YYY.YYY.YYY.GGG.GGG.HHH.HHH.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~............................~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~L#L.LLL.LLL.CCC.C#C.CCC.CCC.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~LLL.LL^.LLL.CCC.CCC.CC^.CCC.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~============================~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~LLL.L^L.L#L.CCC.CCC.C^C.C#C.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~........................................~~~~~~~~~~~~~~~~~~~~',
+  '~~~~111.111.111.222.222.222.333.333.444.444.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~1#1.111.111.222.2#2.222.333.333.444.4#4.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~111.11^.111.222.222.22^.33^.333.444.444.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~========================================~~~~~~~~~~~~~~~~~~~~',
+  '~~~~111.111.111.222.222.222.333.333.444.444.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~111.1#1.11^.222.222.2#2.333.3#3.444.44^.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~111.111.111.222.222.222.333.333.444.444.~~~~~~~~~~~~~~~~~~~~',
+  '~~~~........................................~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+  '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+];
+
+export const TERRAIN = { ROAD: 'road', AVENUE: 'avenue', WATER: 'water', PARK: 'park', GREEN: 'green', LOT: 'lot' };
+
+export function terrainOf(ch) {
+  if (ch === '.') return TERRAIN.ROAD;
+  if (ch === '=') return TERRAIN.AVENUE;
+  if (ch === '~') return TERRAIN.WATER;
+  if (ch === '#') return TERRAIN.PARK;
+  if (ch === '^') return TERRAIN.GREEN;
+  return TERRAIN.LOT;
+}
+
+/** 区画の標高（丘陵の演出用） */
+export function elevationAt(x, y, districtId) {
+  const base = districtId && DISTRICTS[districtId] ? DISTRICTS[districtId].elev : 0;
+  return base * 0.5 + hash2(x, y, 77) * 0.6;
+}
+
+/** 建物用途マスタ */
+export const USES = {
+  office: {
+    id: 'office', name: 'オフィスビル', short: 'OFC', icon: '▮',
+    build: 1.85,            // 建築費 百万円/延床坪
+    weeks: 104,             // 標準工期（週）
+    efficiency: 0.60,       // 延床に対する貸室/専有比率
+    model: 'lease',
+    color: '#6fa6e8',
+    desc: '長期の賃料収入と含み益を生む主力アセット。稼働率は景況に敏感。',
+  },
+  resi: {
+    id: 'resi', name: '分譲マンション', short: 'RES', icon: '▤',
+    build: 1.05, weeks: 91, efficiency: 0.74, model: 'sale',
+    color: '#8fd4b0', desc: '竣工前から売れる回転型商品。売れ残ると在庫評価損が出る。',
+  },
+  rental: {
+    id: 'rental', name: '賃貸レジデンス', short: 'RNT', icon: '▥',
+    build: 0.92, weeks: 78, efficiency: 0.78, model: 'lease',
+    color: '#9fd0e8', desc: '景気変動に強い安定収益。利回りは低めだが空室リスクが小さい。',
+  },
+  retail: {
+    id: 'retail', name: '商業施設', short: 'RTL', icon: '▦',
+    build: 1.15, weeks: 78, efficiency: 0.66, model: 'lease',
+    color: '#f0b269', desc: '歩行者需要に強く依存。好立地では極めて高いNOIを生む。',
+  },
+  hotel: {
+    id: 'hotel', name: 'ホテル', short: 'HTL', icon: '▧',
+    build: 1.35, weeks: 104, efficiency: 0.58, model: 'lease',
+    color: '#e79ac0', desc: 'インバウンド循環の影響が最も大きい。好況期の収益は突出する。',
+  },
+  logi: {
+    id: 'logi', name: '物流施設', short: 'LOG', icon: '▬',
+    build: 0.48, weeks: 52, efficiency: 0.88, model: 'lease',
+    color: '#b9c2cf', desc: '工期が短く投資効率が高い。長期固定賃貸で不況耐性も高い。',
+  },
+  house: {
+    id: 'house', name: '戸建分譲', short: 'HSE', icon: '⌂',
+    build: 0.82, weeks: 39, efficiency: 0.80, model: 'sale',
+    color: '#c9d98f', desc: '小さく速く回せる。郊外では堅い需要があるが単価は伸びない。',
+  },
+  mixed: {
+    id: 'mixed', name: '複合再開発', short: 'MIX', icon: '◧',
+    build: 1.55, weeks: 143, efficiency: 0.68, model: 'both',
+    color: '#c4a6f0', desc: 'オフィス・商業・住宅を一体開発する大型案件。工期は長いが街の価値ごと押し上げる。',
+  },
+};
+
+/** 商品グレード */
+export const GRADES = {
+  standard: { id: 'standard', name: 'スタンダード', costMul: 1.00, priceMul: 1.00, brandGain: 0.4, demandMul: 1.00, desc: '標準仕様。無難だがブランドは積み上がらない。' },
+  high:     { id: 'high',     name: 'ハイグレード', costMul: 1.22, priceMul: 1.18, brandGain: 1.2, demandMul: 0.94, desc: '設備・共用部を強化。上位層を狙う。' },
+  luxury:   { id: 'luxury',   name: 'ラグジュアリー', costMul: 1.55, priceMul: 1.48, brandGain: 2.6, demandMul: 0.80, desc: '最高級仕様。当たれば単価も企業ブランドも跳ねる。' },
+};
+
+/** 建物の外観バリエーション */
+export const FACADES = ['curtain', 'grid', 'stone', 'brick', 'panel', 'terrace'];
