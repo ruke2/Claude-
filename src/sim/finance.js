@@ -49,6 +49,18 @@ export function debtCapacity(g) {
   return Math.round(Math.max(0, bs.equity * lev + collateral));
 }
 
+/**
+ * 投資余力（百万円）。いま手元にある現金と、まだ引ける借入枠の合計。
+ *
+ * 「この会社にどれくらいの大きさの話が持ち込まれるか」の物差しである。
+ * `trading.js` の一棟買いと `land.js` の売却情報が、どちらもこれを見ている。
+ * **片方だけ別の式にしないこと。** 一棟買いには200億のビルが回ってくるのに
+ * 用地は15億ばかり、といった食い違いが出る。
+ */
+export function investPower(g) {
+  return Math.max(2000, g.cash + Math.max(0, debtCapacity(g) - g.debt));
+}
+
 /** 借入枠を超えた分（当座借越）— 高い金利がかかる */
 export function overdraft(g) {
   return Math.max(0, g.debt - debtCapacity(g));

@@ -5347,9 +5347,22 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     // 中口（15〜60億／空港・鶴見野・桜川・神楽坂・瑞穂台）
     { min: 6e3, max: 2e4, w: 2.2 },
     // 大口（60〜200億／汐見・銀鈴町・南雲）
-    { min: 2e4, max: Infinity, w: 1.9 }
-    // 特大（200億〜／常盤・汐凪・官庁街・港南）
+    { min: 2e4, max: 6e4, w: 1.9 },
+    // 特大（200〜600億／常盤・汐凪・官庁街・港南）
+    { min: 6e4, max: Infinity, w: 1.2 }
+    // 超大型（600億〜／常盤・港南の大街区）
   ];
+  var SMALL_FLOOR = 0.05;
+  function bandWeights(power) {
+    const p = Math.max(2e3, power || 2e3);
+    return SIZE_BANDS.map((b) => {
+      const mid = b.max === Infinity ? b.min * 2.5 : Math.sqrt(Math.max(b.min, 200) * b.max);
+      const r = mid / p;
+      const big = r > 1.6 ? 0.04 : r > 1 ? 0.38 : 1;
+      const small = Math.min(1, Math.pow(r / SMALL_FLOOR, 0.55));
+      return { ...b, w: b.w * big * small };
+    });
+  }
   function pickBand(g, pool, bandIdx) {
     const inBand = (c, b) => {
       const v = landAppraisal(g, c);
@@ -5418,7 +5431,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (unlocked(g, "city5")) set.add("yukino");
     return set;
   }
-  function generateListings(g, rng, news) {
+  function generateListings(g, rng, news, power = 0) {
     const p = orgPower(g);
     const infoPower = p.land.quality / 100 + p.land.capacity / 26 + subEffect(g, "landInfo") * 2.5;
     const rate = (1.6 + infoPower * 1.5 + g.market.sentiment * 1.4) / 4.2;
@@ -5429,12 +5442,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const reach = citiesOpen(g);
     const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && reach.has(cityOf(c.d)) && !c.onSale && c.owner !== "player" && !c.projectId && !c.assetId && !c.invId);
     if (!pool.length) return;
+    const weights = bandWeights(power);
     for (let i = 0; i < n; i++) {
-      const band = rng.weighted(SIZE_BANDS);
-      let scope = pickBand(g, pool, SIZE_BANDS.indexOf(band));
+      const band = rng.weighted(weights);
+      let scope = pickBand(g, pool, weights.indexOf(band));
       let wantCity = "minato";
       let roll = rng.next();
-      for (const cid of ["tsurumino", "hinoura", "yakumo"]) {
+      for (const cid of Object.keys(CITY_SHARE)) {
         if (!reach.has(cid)) continue;
         if (roll < CITY_SHARE[cid]) {
           wantCity = cid;
@@ -9893,6 +9907,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const collateral = (bs.inventory + bs.land + bs.cip + bs.rental) * ltv + bs.hq * 0.45;
     return Math.round(Math.max(0, bs.equity * lev + collateral));
   }
+  function investPower(g) {
+    return Math.max(2e3, g.cash + Math.max(0, debtCapacity(g) - g.debt));
+  }
   function overdraft(g) {
     return Math.max(0, g.debt - debtCapacity(g));
   }
@@ -10257,7 +10274,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const reach = citiesOpen(g);
     const pool = g.cells.filter((c) => c.terrain === TERRAIN.LOT && c.d && reach.has(cityOf(c.d)) && c.building && TRADABLE.includes(c.building.use) && c.owner !== "player" && !c.assetId && !c.projectId && !c.invId && !(g.standing || []).some((o) => o.cellId === c.id));
     if (!pool.length) return;
-    const power = Math.max(2e3, g.cash + Math.max(0, debtCapacity(g) - g.debt));
+    const power = investPower(g);
     const fit = (v) => v > power * 1.6 ? 0.02 : v > power ? 0.35 : 1;
     const scored = pool.map((c) => {
       const a = appraiseStanding(g, c);
@@ -13063,7 +13080,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         }
       }
     }
-    generateListings(g, rng, news);
+    generateListings(g, rng, news, investPower(g));
     generatePublic(g, rng, news);
     stepJV(g, rng, news);
     stepStanding(g, rng, news);
@@ -17408,8 +17425,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         text: `${name2}\u304C\u5275\u696D\u3057\u305F\u3002${DISTRICTS[G.company.home].name}\u3092\u5730\u76E4\u306B\u3001${ceoName}\u304C\u4EE3\u8868\u53D6\u7DE0\u5F79\u793E\u9577\u3068\u3057\u3066\u4E8B\u696D\u3092\u958B\u59CB\u3059\u308B\u3002`
       }];
       const rng0 = new RNG(G.rngState ^ 12345);
-      generateListings(G, rng0, G.news);
-      generateListings(G, rng0, G.news);
+      generateListings(G, rng0, G.news, investPower(G));
+      generateListings(G, rng0, G.news, investPower(G));
       G.maTargets = generateTargets(G, rng0, 3);
       G.rngState = rng0.s;
     }

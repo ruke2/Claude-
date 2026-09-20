@@ -101,8 +101,52 @@ const SIZE_BANDS = [
   { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・千歳丘・テクノパーク・北野）
   { min: 1500, max: 6000, w: 2.7 },       // 中口（15〜60億／空港・鶴見野・桜川・神楽坂・瑞穂台）
   { min: 6000, max: 20000, w: 2.2 },      // 大口（60〜200億／汐見・銀鈴町・南雲）
-  { min: 20000, max: Infinity, w: 1.9 },  // 特大（200億〜／常盤・汐凪・官庁街・港南）
+  { min: 20000, max: 60000, w: 1.9 },     // 特大（200〜600億／常盤・汐凪・官庁街・港南）
+  { min: 60000, max: Infinity, w: 1.2 },  // 超大型（600億〜／常盤・港南の大街区）
 ];
+
+/**
+ * 投資余力に対して、これを下回る案件は「持ち込まれにくい」とみなす割合。
+ * 余力2兆円の会社に5億円の土地話は回ってこない、という手触りを出すための境目である。
+ */
+const SMALL_FLOOR = 0.05;
+
+/**
+ * 会社の規模に合わせて帯の重みを付け直す。
+ *
+ * 帯の境目は固定の金額なので、**これが無いと会社が兆円規模に育っても
+ * 同じ割合で15億の土地が回ってくる。**
+ * 実際には、大手デベロッパーに数億円の土地の話は持ち込まれない。
+ * 仲介は決済できる相手を選ぶし、社内の用地部も小口を追わなくなる。
+ *
+ * `power` は投資余力（現金＋借入余力）。`finance.js` の `investPower()` で、
+ * 一棟買い（`trading.js`）が出物を選ぶときと同じ物差しである。
+ *
+ * **小口をゼロにしないこと。** 地盤の小さな区画を押さえる動きは
+ * 規模が大きくなっても残る。比の冪乗で薄くしているので、
+ * どれだけ大きくなっても小口は4%ほど残り、絶えることはない。
+ * **大きすぎるものも出さないこと。** 買えない案件ばかり並ぶと、
+ * 見るものが無い週が続く（`trading.js` の `fit()` と同じ考え方）。
+ *
+ * **下駄（+0.12 のような定数）を履かせないこと。**
+ * 定数を足すと、余力が10兆円を超えたあたりで全部の帯がその定数に潰れ、
+ * かえって小口が戻ってくる（実測で 小口 10% → 15%）。
+ * 比の冪乗だけにしておくと、ある規模から先は
+ * 4 / 10 / 17 / 28 / 40% に落ち着いてそれ以上は動かない。
+ */
+function bandWeights(power) {
+  const p = Math.max(2000, power || 2000);
+  return SIZE_BANDS.map(b => {
+    // 帯を代表する金額。上限の無い帯は下限の2.5倍で見る
+    const mid = b.max === Infinity ? b.min * 2.5 : Math.sqrt(Math.max(b.min, 200) * b.max);
+    const r = mid / p;
+    // 買えない大きさは外す
+    const big = r > 1.6 ? 0.04 : r > 1.0 ? 0.38 : 1;
+    // 余力に対して小さすぎる案件は薄くなる
+    const small = Math.min(1, Math.pow(r / SMALL_FLOOR, 0.55));
+    return { ...b, w: b.w * big * small };
+  });
+}
 
 /**
  * その帯に入る区画を選ぶ。
@@ -185,8 +229,14 @@ export function citiesOpen(g) {
   return set;
 }
 
-/** 毎週の売却情報生成 */
-export function generateListings(g, rng, news) {
+/**
+ * 毎週の売却情報生成。
+ *
+ * `power` は投資余力（`finance.js` の `investPower()`）。
+ * **`land.js` から `finance.js` を読まないこと**（`finance.js` が
+ * `holdingCost` を読んでいるので相互参照になる）。呼ぶ側が渡す。
+ */
+export function generateListings(g, rng, news, power = 0) {
   const p = orgPower(g);
   // 用地部の情報力で入手できる案件数が増える
   // 販売仲介会社を傘下に持つと持ち込み件数が増える（landInfo）。
@@ -205,6 +255,10 @@ export function generateListings(g, rng, news) {
     && !c.onSale && c.owner !== 'player' && !c.projectId && !c.assetId && !c.invId);
   if (!pool.length) return;
 
+  // 帯の重みは会社の投資余力で変わる。
+  // 大きくなるほど小口の話が減り、大型の話が増える
+  const weights = bandWeights(power);
+
   for (let i = 0; i < n; i++) {
     // 情報の出どころを3段階で絞る。
     //  1) どの都市か … 進出先には地元のチームがいるので一定の割合で回ってくる
@@ -213,12 +267,14 @@ export function generateListings(g, rng, news) {
     //  3) 地盤か … 地元の地権者・仲介から先に話が来ることがある
     // 帯を先に決めてから都市と地盤で絞る。
     // 先に都市で絞ると、大型案件のある帯の出方まで動いてしまう
-    const band = rng.weighted(SIZE_BANDS);
-    let scope = pickBand(g, pool, SIZE_BANDS.indexOf(band));
+    const band = rng.weighted(weights);
+    let scope = pickBand(g, pool, weights.indexOf(band));
     // 進出済みの都市のなかから、割合に従って1つ選ぶ
+    // **`CITY_SHARE` に足した都市をこのループから漏らさないこと。**
+    // 以前 yukino が抜けていて、雪野市の用地だけ一度も回ってこなかった
     let wantCity = 'minato';
     let roll = rng.next();
-    for (const cid of ['tsurumino', 'hinoura', 'yakumo']) {
+    for (const cid of Object.keys(CITY_SHARE)) {
       if (!reach.has(cid)) continue;
       if (roll < CITY_SHARE[cid]) { wantCity = cid; break; }
       roll -= CITY_SHARE[cid];

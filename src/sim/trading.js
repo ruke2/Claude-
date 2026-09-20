@@ -25,7 +25,7 @@ import { WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 import { landAppraisal, marketRentRaw, currentNOI, subEffect, CAP_SPREAD, cityBuildMul } from './valuation.js';
 import { orgPower } from './hr.js';
 import { citiesOpen } from './land.js';
-import { debtCapacity } from './finance.js';
+import { investPower } from './finance.js';
 import { isHome, HOME } from './company.js';
 
 /** 一棟で売買できる用途（分譲は区分所有なので対象外） */
@@ -130,7 +130,7 @@ export function stepStanding(g, rng, news) {
   // ただし大きいほうにだけ寄せると、創業まもない会社に2,000億のビルを
   // 見せ続けることになる。**買える体力に見合ったものを出すこと。**
   // 実際にも、一棟の売り物件は決済できる相手にしか話が回らない。
-  const power = Math.max(2000, g.cash + Math.max(0, debtCapacity(g) - g.debt));
+  const power = investPower(g);
   // **買えない大きさだけを外すこと。** 「ちょうどいい大きさ」に寄せると、
   // 街のどのビルより体力が大きくなった会社に小口ばかりが回るようになる。
   // 買えるかぎりは大きいほうが話題になる、でよい

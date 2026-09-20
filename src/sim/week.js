@@ -14,7 +14,7 @@ import { stepBrands } from './brands.js';
 import { stepCulture } from './culture.js';
 import { stepRecruit } from './recruit.js';
 import { stepRivalsWeekly, stepRivalsQuarter, ranking } from './rivals.js';
-import { weeklyCosts, closeQuarter, kpis } from './finance.js';
+import { weeklyCosts, closeQuarter, kpis, investPower } from './finance.js';
 import { DISTRICTS } from '../data/city.js';
 import { stepTier } from './company.js';
 import { stepPlan } from './midplan.js';
@@ -83,7 +83,9 @@ export function nextWeek(g) {
     }
   }
   // 4. 新規の売り出し
-  generateListings(g, rng, news);
+  // 売却情報の規模は会社の投資余力で変わる（land.js の bandWeights）。
+  // land.js から finance.js を読めないので、ここで渡す
+  generateListings(g, rng, news, investPower(g));
   generatePublic(g, rng, news);
   // 競合からの共同事業の打診
   stepJV(g, rng, news);

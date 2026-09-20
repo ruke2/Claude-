@@ -18,7 +18,7 @@ import * as Assembly from './sim/assembly.js';
 import { openCard } from './ui/card.js';
 
 import { nextWeek } from './sim/week.js';
-import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
+import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus, investPower } from './sim/finance.js';
 import { startProject as simStart, canStart, feasibility } from './sim/project.js';
 import { acquireForPlayer, holdingCost, generateListings as genListings, citiesOpen } from './sim/land.js';
 import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
@@ -166,8 +166,8 @@ function startGame(saved) {
     }];
     // 初期の売却情報と買収候補を用意する
     const rng0 = new RNG(G.rngState ^ 12345);
-    genListings(G, rng0, G.news);
-    genListings(G, rng0, G.news);
+    genListings(G, rng0, G.news, investPower(G));
+    genListings(G, rng0, G.news, investPower(G));
     G.maTargets = genTargets(G, rng0, 3);
     G.rngState = rng0.s;
   }
