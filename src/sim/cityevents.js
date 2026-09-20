@@ -45,6 +45,14 @@ export const HAZARD = {
   2: { quake: 0.95, storm: 0.85, flood: 0.90 },
   3: { quake: 0.85, storm: 0.80, flood: 0.70 },
   4: { quake: 0.65, storm: 0.80, flood: 0.30 },   // 白鷺台：台地
+  5: { quake: 1.00, storm: 1.45, flood: 1.25 },   // 陽ノ浦マリーナ：海沿いの低地
+  6: { quake: 1.25, storm: 1.50, flood: 1.60 },   // 陽ノ浦臨港：埋立のふ頭
+  7: { quake: 1.30, storm: 1.20, flood: 1.35 },   // 湊都イーストゲート：新しい埋立地
+  8: { quake: 1.25, storm: 1.25, flood: 1.40 },   // 東雲：運河沿い
+  a: { quake: 0.80, storm: 0.60, flood: 0.75 },   // 雪野駅前：台風は来にくい
+  b: { quake: 0.85, storm: 0.60, flood: 0.80 },
+  c: { quake: 0.60, storm: 0.55, flood: 0.35 },   // 雪野北：丘の上
+  d: { quake: 1.15, storm: 0.90, flood: 1.30 },   // 雪野臨海：港の低地
 };
 export const hazardOf = d => HAZARD[d] || { quake: 1, storm: 1, flood: 1 };
 

@@ -19,7 +19,7 @@ import * as Assembly from './sim/assembly.js';
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus } from './sim/finance.js';
 import { startProject as simStart, canStart, feasibility } from './sim/project.js';
-import { acquireForPlayer, holdingCost, generateListings as genListings } from './sim/land.js';
+import { acquireForPlayer, holdingCost, generateListings as genListings, citiesOpen } from './sim/land.js';
 import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
 import { sellAsset } from './sim/sales.js';
 import { foundSubsidiary, liquidate, generateTargets as genTargets } from './sim/ma.js';
@@ -357,8 +357,11 @@ function bindInput() {
     if (v === 'rotate') R.rotateBy(1);
     if (v === 'reset') { R.cam.rot = 0; if (IS_SMALL) R.fit(R.city); else { R.cam.zoomIdx = 1; R.invalidate(); R.focusCity(R.city, 1); } }
     if (v === 'city') {
-      // 進出していない都市には飛べない
-      const ids = Object.keys(CITIES).filter(id => id === 'minato' || unlocked(G, 'city2'));
+      // 進出していない都市には飛べない。
+      // **`unlocked(G,'city2')` で一括判定しないこと。**
+      // 鶴見野を解禁しただけで、まだ出ていない街にも飛べてしまう
+      const open = citiesOpen(G);
+      const ids = Object.keys(CITIES).filter(id => open.has(id));
       if (ids.length < 2) return toast('まだ湊都市の外には出ていない', 'bad');
       const next = ids[(ids.indexOf(R.city) + 1) % ids.length];
       R.city = next;

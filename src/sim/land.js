@@ -95,7 +95,7 @@ export const PUBLIC_PROGRAMS = [
  * **合計を 1.00 に近づけないこと。** 残りが湊都市のぶんになる。
  * 新しい都市を足すたびに湊都市の案件が薄まるので、控えめに置く
  */
-const CITY_SHARE = { tsurumino: 0.22, hinoura: 0.14, yakumo: 0.16 };
+const CITY_SHARE = { tsurumino: 0.20, hinoura: 0.13, yakumo: 0.14, yukino: 0.12 };
 
 const SIZE_BANDS = [
   { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・千歳丘・テクノパーク・北野）
@@ -181,6 +181,7 @@ export function citiesOpen(g) {
   if (unlocked(g, 'city2')) set.add('tsurumino');
   if (unlocked(g, 'city3')) set.add('hinoura');
   if (unlocked(g, 'city4')) set.add('yakumo');
+  if (unlocked(g, 'city5')) set.add('yukino');
   return set;
 }
 
