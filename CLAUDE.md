@@ -27,6 +27,7 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 
 - `index.html` + `src/**` — 開発用のソース（ES Modules、HTTP経由でのみ動く）
 - `styles/main.css` — UI スタイル（白基調）
+- `src/core/lzw.js` — セーブの圧縮（localStorage の 5MB に収めるため）
 - `build.mjs` — esbuild で1ファイルに束ねる
 - `dist/skyline.html` — サーバー不要で開ける単一HTML
 - `dist/artifact.html` — Artifact 公開用（外側のタグなし）
@@ -62,6 +63,30 @@ node build.mjs     # src/ styles/ index.html → dist/skyline.html と dist/arti
 - ID（`uid()`）は読み込み時に `syncUid()` で振り直す。これを外すと、
   続きから始めたときに新しい案件が既存の案件と同じIDになる
 - 保存する形を変えたときは `SAVE_VERSION` を上げ、`migrate()` に処理を足す
+
+**localStorage は1オリジンあたり 5MB 前後しか使えない。**
+素のJSONは 64×64 の区画だけで 1MB、長く遊ぶと 2.3MB を超える。
+オート＋退避＋手動3つで必ず溢れるので、`src/core/lzw.js` を通してから書いている。
+
+- `saveTo()` は必ず `compress(serialize(g))` を書く。だいたい 1/12 になる
+  （2.33MB のセーブが 193KB。5枠ぜんぶ埋めても 967KB）
+- 読むときは `rawRead()` が `decompress()` を通す。
+  目印（`LZW1:`）が無ければ素のJSONとみなすので、**古いセーブはそのまま読める**
+- 起動時に `compactStorage()` が、圧縮されずに残っているセーブを縮めて置き直す。
+  **中身を解釈し直さないこと。** 文字列のまま縮める。`migrate()` を通すと
+  古いセーブがいまの形に書き換わってしまう
+- 出力は UTF-16 の1文字に1コード。**サロゲート領域（0xD800〜0xDFFF）を避けること。**
+  単独のサロゲートは localStorage を往復する間に置き換えられ、二度と戻せなくなる
+- `serialize()` の `shrink` が小数を第6位で切る。
+  乱数から出た `0.513797406386584` のような17桁が素のJSONの1割を占めており、
+  しかも規則が無いので圧縮がいちばん苦手とする並びだった。
+  **金額の桁が大きい値（1e9 以上）は丸めないこと。** ×1e6 が整数の安全範囲を超える
+- 容量が足りないときは `saveTo()` が捨ててよいものから順に手放す
+  （退避 → 古い自動セーブ → 昔の版のキー）。**いきなり諦めないこと。**
+  手放したときは必ず画面に知らせる
+- `totalSize()` は**文字数を2倍して**KBにする。localStorage は1文字を2バイトで数える
+- 圧縮は 2.3MB で 260ms ほどかかる。オートセーブは `requestIdleCallback` に載せ、
+  **画面を描き終えてから**走らせる。同じフレームで回すと週を進めた瞬間に固まって見える
 
 ## 竣工処理でいちばん壊れやすいところ
 

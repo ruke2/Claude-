@@ -17,6 +17,7 @@ import { ensurePopulation } from '../sim/population.js';
 import { grantExisting } from '../sim/company.js';
 import { clamp } from './format.js';
 import { syncCalendar } from './time.js';
+import { compress, decompress, MARK } from './lzw.js';
 
 const PREFIX = 'skyline_v3_';          // ← 変更禁止
 const META = 'skyline_v3_meta';        // ← 変更禁止
@@ -30,10 +31,28 @@ export const SLOT_LABEL = {
 };
 export const SAVE_VERSION = 7;
 
+/**
+ * 小数の桁を落とす。
+ * 乱数から出た値は `0.513797406386584` のように17桁も持っており、
+ * 意味の無い下の桁がセーブの1割を占めていた。おまけにこの桁は
+ * まったく規則が無いので、圧縮がいちばん苦手とする並びでもある。
+ * 小数第6位まで残す（金額の単位は百万円なので、誤差は1円に満たない）。
+ */
+const shrink = (k, v) => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || Number.isInteger(v)) return v;
+  const a = Math.abs(v);
+  // 桁が大きすぎると ×1e6 が整数の安全範囲（9,007兆）を超える。
+  // そこまで育った値は下の桁を落としても意味が無いので、そのまま置く
+  if (a >= 1e9) return v;
+  const r = Math.round(v * 1e6) / 1e6;
+  // 丸めて0になるほど小さい値は、0にすると割り算で壊れることがある
+  return r === 0 && v !== 0 ? v : r;
+};
+
 /** 保存用にゲーム状態を文字列化する（一時データは除く） */
 export function serialize(g) {
   const { pendingReport, quarterNews, candidates, ...rest } = g;
-  return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest });
+  return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest }, shrink);
 }
 
 function metaOf(g) {
@@ -356,7 +375,7 @@ function rawRead(slot) {
   if (!raw) raw = scanLegacy(slot);
   if (!raw) return null;
   try {
-    const obj = JSON.parse(raw);
+    const obj = JSON.parse(decompress(raw));
     const g = obj && obj.g ? obj.g : obj;
     return g && g.cells ? g : null;
   } catch (e) { return null; }
@@ -373,7 +392,7 @@ function scanLegacy(slot) {
       const raw = localStorage.getItem(k);
       if (!raw) continue;
       let at = 0;
-      try { at = JSON.parse(raw).savedAt || 0; } catch (e) { /* noop */ }
+      try { at = JSON.parse(decompress(raw)).savedAt || 0; } catch (e) { /* noop */ }
       if (at >= bestAt) { bestAt = at; best = raw; }
     }
   } catch (e) { return null; }
@@ -408,47 +427,89 @@ export function backupSave() {
   return { id: BACKUP, label: SLOT_LABEL[BACKUP], meta: m };
 }
 
-/** 保存する。戻り値は成否とメッセージ */
+/**
+ * 保存する。戻り値は成否とメッセージ。
+ *
+ * localStorage は1オリジンあたり 5MB 前後しか使えない。
+ * 長く遊ぶと素のJSONは 2MB を超え、オート＋退避＋手動3つで必ず溢れる。
+ * **必ず `compress()` を通してから書くこと。** だいたい 1/12 になる。
+ */
 export function saveTo(slot, g) {
+  const isFull = e => /quota|exceeded|storage/i.test(String((e && (e.name + ' ' + e.message)) || ''));
+  let text = '';
   try {
-    const text = serialize(g);
-    // オートセーブは上書きする前に1つ前を退避する。
-    // 万一おかしな状態が自動保存されても、直前まで戻れるようにするため。
-    if (slot === 'auto') {
-      try {
-        const prev = localStorage.getItem(KEY('auto'));
-        if (prev) {
-          localStorage.setItem(KEY(BACKUP), prev);
-          const meta0 = readMeta();
-          if (meta0.auto) { meta0[BACKUP] = meta0.auto; writeMeta(meta0); }
-        }
-      } catch (e) { /* 退避できなくても本体の保存は続ける */ }
-    }
-    localStorage.setItem(KEY(slot), text);
-    const meta = readMeta();
-    meta[slot] = metaOf(g);
-    writeMeta(meta);
-    return { ok: true, size: text.length };
+    text = compress(serialize(g));
   } catch (e) {
-    const full = /quota|exceeded/i.test(String(e && e.message));
-    // 容量が足りないときは、まず退避分を捨ててもう一度だけ試す
-    if (full && slot !== BACKUP) {
-      try {
-        localStorage.removeItem(KEY(BACKUP));
-        localStorage.setItem(KEY(slot), serialize(g));
-        const meta = readMeta();
-        meta[slot] = metaOf(g); delete meta[BACKUP];
-        writeMeta(meta);
-        return { ok: true, size: 0, note: '空き容量が足りないため、退避分を消した' };
-      } catch (e2) { /* それでも駄目なら下へ */ }
-    }
-    return {
-      ok: false,
-      message: full
-        ? '保存領域が足りない。不要なスロットを削除するか、ファイルに書き出すこと。'
-        : 'この環境では保存できない（プライベートモードの可能性がある）。',
-    };
+    return { ok: false, message: 'セーブデータを作れなかった。' };
   }
+
+  // オートセーブは上書きする前に1つ前を退避する。
+  // 万一おかしな状態が自動保存されても、直前まで戻れるようにするため。
+  if (slot === 'auto') {
+    try {
+      const prev = localStorage.getItem(KEY('auto'));
+      if (prev) {
+        localStorage.setItem(KEY(BACKUP), prev);
+        const meta0 = readMeta();
+        if (meta0.auto) { meta0[BACKUP] = meta0.auto; writeMeta(meta0); }
+      }
+    } catch (e) { /* 退避できなくても本体の保存は続ける */ }
+  }
+
+  // 書けるまで、捨ててよいものから順に手放す。
+  // **いきなり諦めないこと。** 昔のまま圧縮されていないセーブが1つ残っているだけで
+  // 空きを食い潰していることがあり、それを退かせば入る。
+  const giveUp = [
+    null,
+    () => localStorage.removeItem(KEY(BACKUP)),       // 1つ前の自動セーブ
+    () => slot !== 'auto' && localStorage.removeItem(KEY('auto')),
+    () => dropOtherOrigins(),                          // このゲーム以外の置き土産
+  ];
+  let freed = '';
+  for (let i = 0; i < giveUp.length; i++) {
+    try {
+      if (giveUp[i]) {
+        const note = giveUp[i]();
+        if (note === false) continue;
+        freed = i === 1 ? '空きが足りないので、ひとつ前の自動セーブを消した'
+          : i === 2 ? '空きが足りないので、古い自動セーブを消した'
+            : '空きが足りないので、使っていない保存データを消した';
+      }
+      localStorage.setItem(KEY(slot), text);
+      const meta = readMeta();
+      meta[slot] = metaOf(g);
+      if (i >= 1) delete meta[BACKUP];
+      if (i >= 2 && slot !== 'auto') delete meta.auto;
+      writeMeta(meta);
+      return { ok: true, size: text.length, note: freed || undefined };
+    } catch (e) {
+      if (!isFull(e)) {
+        return { ok: false, message: 'この環境では保存できない（プライベートモードの可能性がある）。' };
+      }
+    }
+  }
+  return {
+    ok: false,
+    message: '保存領域が足りない。不要なスロットを削除するか、ファイルに書き出すこと。',
+  };
+}
+
+/**
+ * このゲームが使っていない `skyline_` のキーを片づける。
+ * 昔の版のキー（`skyline_v1_` など）が残っていることがある。
+ * **いま使っているキーには触らないこと。**
+ */
+function dropOtherOrigins() {
+  const keep = new Set([META, ...SLOTS.map(KEY), KEY(BACKUP)]);
+  const doomed = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('skyline_') && !keep.has(k)) doomed.push(k);
+    }
+    for (const k of doomed) localStorage.removeItem(k);
+  } catch (e) { /* noop */ }
+  return doomed.length ? true : false;
 }
 
 /** 読み込む。古いセーブは自動で今の形に直す */
@@ -489,19 +550,49 @@ export function exportName(g) {
 /** 貼り付けたテキスト／読み込んだファイルから復元する */
 export function importText(text) {
   try {
-    const obj = JSON.parse(String(text).trim());
+    const obj = JSON.parse(decompress(String(text).trim()));
     return migrate(obj && obj.g ? obj.g : obj);
   } catch (e) { return null; }
 }
 
-/** 保存データの合計サイズ（KB） */
+/**
+ * すでに保存されているのに圧縮されていないものを、圧縮して置き直す。
+ * 起動時に1回だけ呼ぶ。
+ *
+ * **中身を解釈し直さないこと。** 文字列のまま縮めて書き戻す。
+ * `migrate()` を通すと、古いセーブがいまの形に書き換わってしまう。
+ */
+export function compactStorage() {
+  let saved = 0;
+  for (const slot of SLOTS.concat(BACKUP)) {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY(slot)); } catch (e) { continue; }
+    if (!raw || raw.startsWith(MARK)) continue;
+    try {
+      const packed = compress(raw);
+      if (packed.length >= raw.length) continue;      // 縮まないなら触らない
+      localStorage.setItem(KEY(slot), packed);
+      saved += raw.length - packed.length;
+    } catch (e) { /* 1つ失敗しても残りは続ける */ }
+  }
+  return Math.round(saved / 1024);
+}
+
+/**
+ * 保存データの合計サイズ（KB）。
+ * **文字数をそのままKBにしないこと。** localStorage は1文字を2バイトで数える。
+ * 半分の数字を見せていると、上限に近いことに気づけない。
+ */
 export function totalSize() {
   let n = 0;
   for (const s of SLOTS.concat(BACKUP)) {
     try { n += (localStorage.getItem(KEY(s)) || '').length; } catch (e) { /* noop */ }
   }
-  return Math.round(n / 1024);
+  return Math.round(n * 2 / 1024);
 }
+
+/** だいたいの上限（KB）。ブラウザは 5MB 前後で切ってくる */
+export const SIZE_LIMIT = 5 * 1024;
 
 /** この環境でセーブできるか */
 export function storageAvailable() {

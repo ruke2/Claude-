@@ -5,7 +5,8 @@ import { createGame, cellById } from './core/state.js';
 import { money, moneyUnit, num, pct, dcls, arrow } from './core/format.js';
 import { dateLabel, dateLabelOf, weeksLabel, WEEKS_PER_QUARTER, syncCalendar } from './core/time.js';
 import { SLOTS, SLOT_LABEL, BACKUP, listSaves, backupSave, saveTo, loadFrom, deleteSlot, latestSave,
-  exportText, exportName, importText, totalSize, storageAvailable, requestPersistence } from './core/save.js';
+  exportText, exportName, importText, totalSize, storageAvailable, requestPersistence,
+  compactStorage } from './core/save.js';
 import { CityRenderer, ZOOM_STEPS } from './render/city.js';
 import { toScreen } from './render/iso.js';
 import { WEATHERS, timeOfMonth, seasonOfMonth } from './render/palette.js';
@@ -1226,9 +1227,21 @@ function updateTicker() {
 // ------------------------------------------------------------
 //  セーブ／ロード
 // ------------------------------------------------------------
+/**
+ * オートセーブ。
+ * 圧縮に数百ミリ秒かかるので、**画面を描き終えてから**走らせる。
+ * 同じフレームで回すと、週を進めた瞬間に固まったように見える。
+ */
 function save() {
   if (!G || G.gameOver) return;
-  saveTo('auto', G);
+  const run = () => {
+    const r = saveTo('auto', G);
+    // 黙って失敗させないこと。気づかないまま何時間も遊ぶことになる
+    if (!r.ok) toast(r.message, 'bad');
+    else if (r.note) toast(r.note, 'warn');
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1200 });
+  else setTimeout(run, 60);
 }
 
 function fmtSaveMeta(m) {
@@ -1262,7 +1275,9 @@ function openSaveMenu() {
       普通のタブで開き直すこと。いまの進行はファイルに書き出せば残せる。</div>
     </div>`}
     <div class="hint" style="margin-bottom:10px">進行中のゲームを保存する。オートセーブは週を進めるたびに自動で更新される。
-    セーブはこのブラウザの中に残るので、ゲームを更新しても消えない。</div>
+    セーブはこのブラウザの中に残るので、ゲームを更新しても消えない。<br>
+    いまの使用量 <b>${totalSize()}KB</b>（ブラウザが使わせてくれるのは 5,000KB 前後）。
+    セーブは縮めて置いてあるので、長く遊んでも溢れにくい。</div>
     ${listSaves().map(s => slotCard(s, false)).join('')}
     ${bak ? `<div class="sec" style="margin-top:4px">
       <div class="sec-t"><span>復旧</span></div>
@@ -1272,7 +1287,7 @@ function openSaveMenu() {
     </div>` : ''}
 
     <div class="sec">
-      <div class="sec-t"><span>ファイルに残す</span><span class="note">使用中 ${totalSize()}KB</span></div>
+      <div class="sec-t"><span>ファイルに残す</span></div>
       <div class="hint">ブラウザのデータを消したり、機種を変えたりすると中のセーブは失われる。
       大事な進行はファイルに書き出しておくこと。</div>
       <div class="btnrow">
@@ -1405,6 +1420,10 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 // ブラウザにデータを消さないよう申請しておく（断られても実害はない）
 requestPersistence();
+
+// 前の版で圧縮せずに保存されたものを、縮めて置き直す。
+// 古いセーブが1つ残っているだけで空きを食い潰していることがある
+compactStorage();
 
 titleAnim();
 (function buildTitleSaves() {

@@ -6096,6 +6096,95 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return rng.weighted(M2.map(([k, w]) => ({ k, w }))).k;
   }
 
+  // src/core/lzw.js
+  var MARK = "LZW1:";
+  var LOW_MAX = 55296 - 32;
+  var HIGH_ROOM = 65536 - 57344;
+  var MAX_CODE = LOW_MAX + HIGH_ROOM;
+  var toChar = (c) => String.fromCharCode(c < LOW_MAX ? c + 32 : 57344 + (c - LOW_MAX));
+  var toCode = (ch) => {
+    const n = ch.charCodeAt(0);
+    return n >= 57344 ? LOW_MAX + (n - 57344) : n - 32;
+  };
+  var BASE = 256;
+  function toBytes(str) {
+    const b = new TextEncoder().encode(str);
+    let out = "";
+    for (let i = 0; i < b.length; i += 8192) {
+      out += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+    }
+    return out;
+  }
+  function fromBytes(latin) {
+    const b = new Uint8Array(latin.length);
+    for (let i = 0; i < latin.length; i++) b[i] = latin.charCodeAt(i) & 255;
+    return new TextDecoder().decode(b);
+  }
+  function compress(input) {
+    const s = String(input);
+    if (!s) return "";
+    try {
+      const src = toBytes(s);
+      const dict = /* @__PURE__ */ new Map();
+      let next = BASE;
+      const out = [];
+      let w = src[0] || "";
+      for (let i = 1; i < src.length; i++) {
+        const c = src[i];
+        const wc = w + c;
+        if (dict.has(wc)) {
+          w = wc;
+          continue;
+        }
+        out.push(w.length === 1 ? w.charCodeAt(0) : dict.get(w));
+        if (next < MAX_CODE) dict.set(wc, next++);
+        else {
+          dict.clear();
+          next = BASE;
+        }
+        w = c;
+      }
+      if (w !== "") out.push(w.length === 1 ? w.charCodeAt(0) : dict.get(w));
+      const parts = [MARK];
+      for (let i = 0; i < out.length; i += 4096) {
+        let chunk = "";
+        const end = Math.min(i + 4096, out.length);
+        for (let j = i; j < end; j++) chunk += toChar(out[j]);
+        parts.push(chunk);
+      }
+      return parts.join("");
+    } catch (e) {
+      return s;
+    }
+  }
+  function decompress(input) {
+    const s = String(input);
+    if (!s.startsWith(MARK)) return s;
+    const body = s.slice(MARK.length);
+    if (!body) return "";
+    const dict = [];
+    let next = BASE;
+    let prev = String.fromCharCode(toCode(body[0]));
+    const parts = [prev];
+    for (let i = 1; i < body.length; i++) {
+      const code = toCode(body[i]);
+      let entry;
+      if (code < BASE) entry = String.fromCharCode(code);
+      else if (dict[code - BASE] !== void 0) entry = dict[code - BASE];
+      else entry = prev + prev[0];
+      parts.push(entry);
+      if (next < MAX_CODE) {
+        dict[next - BASE] = prev + entry[0];
+        next++;
+      } else {
+        dict.length = 0;
+        next = BASE;
+      }
+      prev = entry;
+    }
+    return fromBytes(parts.join(""));
+  }
+
   // src/core/save.js
   var PREFIX = "skyline_v3_";
   var META = "skyline_v3_meta";
@@ -6110,9 +6199,16 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
   };
   var SAVE_VERSION = 7;
+  var shrink = (k, v) => {
+    if (typeof v !== "number" || !Number.isFinite(v) || Number.isInteger(v)) return v;
+    const a = Math.abs(v);
+    if (a >= 1e9) return v;
+    const r = Math.round(v * 1e6) / 1e6;
+    return r === 0 && v !== 0 ? v : r;
+  };
   function serialize(g) {
     const { pendingReport, quarterNews, candidates, ...rest } = g;
-    return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest });
+    return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest }, shrink);
   }
   function metaOf(g) {
     const bs = g.finance && g.finance.bs;
@@ -6386,7 +6482,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (!raw) raw = scanLegacy(slot);
     if (!raw) return null;
     try {
-      const obj = JSON.parse(raw);
+      const obj = JSON.parse(decompress(raw));
       const g = obj && obj.g ? obj.g : obj;
       return g && g.cells ? g : null;
     } catch (e) {
@@ -6404,7 +6500,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         if (!raw) continue;
         let at = 0;
         try {
-          at = JSON.parse(raw).savedAt || 0;
+          at = JSON.parse(decompress(raw)).savedAt || 0;
         } catch (e) {
         }
         if (at >= bestAt) {
@@ -6448,46 +6544,73 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     return { id: BACKUP, label: SLOT_LABEL[BACKUP], meta: m };
   }
   function saveTo(slot, g) {
+    const isFull = (e) => /quota|exceeded|storage/i.test(String(e && e.name + " " + e.message || ""));
+    let text = "";
     try {
-      const text = serialize(g);
-      if (slot === "auto") {
-        try {
-          const prev = localStorage.getItem(KEY("auto"));
-          if (prev) {
-            localStorage.setItem(KEY(BACKUP), prev);
-            const meta0 = readMeta();
-            if (meta0.auto) {
-              meta0[BACKUP] = meta0.auto;
-              writeMeta(meta0);
-            }
-          }
-        } catch (e) {
-        }
-      }
-      localStorage.setItem(KEY(slot), text);
-      const meta = readMeta();
-      meta[slot] = metaOf(g);
-      writeMeta(meta);
-      return { ok: true, size: text.length };
+      text = compress(serialize(g));
     } catch (e) {
-      const full = /quota|exceeded/i.test(String(e && e.message));
-      if (full && slot !== BACKUP) {
-        try {
-          localStorage.removeItem(KEY(BACKUP));
-          localStorage.setItem(KEY(slot), serialize(g));
-          const meta = readMeta();
-          meta[slot] = metaOf(g);
-          delete meta[BACKUP];
-          writeMeta(meta);
-          return { ok: true, size: 0, note: "\u7A7A\u304D\u5BB9\u91CF\u304C\u8DB3\u308A\u306A\u3044\u305F\u3081\u3001\u9000\u907F\u5206\u3092\u6D88\u3057\u305F" };
-        } catch (e2) {
+      return { ok: false, message: "\u30BB\u30FC\u30D6\u30C7\u30FC\u30BF\u3092\u4F5C\u308C\u306A\u304B\u3063\u305F\u3002" };
+    }
+    if (slot === "auto") {
+      try {
+        const prev = localStorage.getItem(KEY("auto"));
+        if (prev) {
+          localStorage.setItem(KEY(BACKUP), prev);
+          const meta0 = readMeta();
+          if (meta0.auto) {
+            meta0[BACKUP] = meta0.auto;
+            writeMeta(meta0);
+          }
+        }
+      } catch (e) {
+      }
+    }
+    const giveUp = [
+      null,
+      () => localStorage.removeItem(KEY(BACKUP)),
+      // 1つ前の自動セーブ
+      () => slot !== "auto" && localStorage.removeItem(KEY("auto")),
+      () => dropOtherOrigins()
+      // このゲーム以外の置き土産
+    ];
+    let freed = "";
+    for (let i = 0; i < giveUp.length; i++) {
+      try {
+        if (giveUp[i]) {
+          const note = giveUp[i]();
+          if (note === false) continue;
+          freed = i === 1 ? "\u7A7A\u304D\u304C\u8DB3\u308A\u306A\u3044\u306E\u3067\u3001\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6\u3092\u6D88\u3057\u305F" : i === 2 ? "\u7A7A\u304D\u304C\u8DB3\u308A\u306A\u3044\u306E\u3067\u3001\u53E4\u3044\u81EA\u52D5\u30BB\u30FC\u30D6\u3092\u6D88\u3057\u305F" : "\u7A7A\u304D\u304C\u8DB3\u308A\u306A\u3044\u306E\u3067\u3001\u4F7F\u3063\u3066\u3044\u306A\u3044\u4FDD\u5B58\u30C7\u30FC\u30BF\u3092\u6D88\u3057\u305F";
+        }
+        localStorage.setItem(KEY(slot), text);
+        const meta = readMeta();
+        meta[slot] = metaOf(g);
+        if (i >= 1) delete meta[BACKUP];
+        if (i >= 2 && slot !== "auto") delete meta.auto;
+        writeMeta(meta);
+        return { ok: true, size: text.length, note: freed || void 0 };
+      } catch (e) {
+        if (!isFull(e)) {
+          return { ok: false, message: "\u3053\u306E\u74B0\u5883\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044\uFF08\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u306E\u53EF\u80FD\u6027\u304C\u3042\u308B\uFF09\u3002" };
         }
       }
-      return {
-        ok: false,
-        message: full ? "\u4FDD\u5B58\u9818\u57DF\u304C\u8DB3\u308A\u306A\u3044\u3002\u4E0D\u8981\u306A\u30B9\u30ED\u30C3\u30C8\u3092\u524A\u9664\u3059\u308B\u304B\u3001\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3059\u3053\u3068\u3002" : "\u3053\u306E\u74B0\u5883\u3067\u306F\u4FDD\u5B58\u3067\u304D\u306A\u3044\uFF08\u30D7\u30E9\u30A4\u30D9\u30FC\u30C8\u30E2\u30FC\u30C9\u306E\u53EF\u80FD\u6027\u304C\u3042\u308B\uFF09\u3002"
-      };
     }
+    return {
+      ok: false,
+      message: "\u4FDD\u5B58\u9818\u57DF\u304C\u8DB3\u308A\u306A\u3044\u3002\u4E0D\u8981\u306A\u30B9\u30ED\u30C3\u30C8\u3092\u524A\u9664\u3059\u308B\u304B\u3001\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3059\u3053\u3068\u3002"
+    };
+  }
+  function dropOtherOrigins() {
+    const keep = /* @__PURE__ */ new Set([META, ...SLOTS.map(KEY), KEY(BACKUP)]);
+    const doomed = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("skyline_") && !keep.has(k)) doomed.push(k);
+      }
+      for (const k of doomed) localStorage.removeItem(k);
+    } catch (e) {
+    }
+    return doomed.length ? true : false;
   }
   function loadFrom(slot) {
     return migrate(rawRead(slot));
@@ -6512,11 +6635,31 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   function importText(text) {
     try {
-      const obj = JSON.parse(String(text).trim());
+      const obj = JSON.parse(decompress(String(text).trim()));
       return migrate(obj && obj.g ? obj.g : obj);
     } catch (e) {
       return null;
     }
+  }
+  function compactStorage() {
+    let saved = 0;
+    for (const slot of SLOTS.concat(BACKUP)) {
+      let raw = null;
+      try {
+        raw = localStorage.getItem(KEY(slot));
+      } catch (e) {
+        continue;
+      }
+      if (!raw || raw.startsWith(MARK)) continue;
+      try {
+        const packed = compress(raw);
+        if (packed.length >= raw.length) continue;
+        localStorage.setItem(KEY(slot), packed);
+        saved += raw.length - packed.length;
+      } catch (e) {
+      }
+    }
+    return Math.round(saved / 1024);
   }
   function totalSize() {
     let n = 0;
@@ -6526,8 +6669,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       } catch (e) {
       }
     }
-    return Math.round(n / 1024);
+    return Math.round(n * 2 / 1024);
   }
+  var SIZE_LIMIT = 5 * 1024;
   function storageAvailable() {
     try {
       localStorage.setItem("skyline_probe", "1");
@@ -7392,9 +7536,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       return { canvas: cv, ax: cx, ay: cy };
     }
     const vols = massingOf(b);
-    const shrink = (FOOT[b.use] || 0.86) * footMul;
+    const shrink2 = (FOOT[b.use] || 0.86) * footMul;
     const boxes = vols.map((v) => {
-      const k = (t) => 0.5 + (t - 0.5) * shrink;
+      const k = (t) => 0.5 + (t - 0.5) * shrink2;
       const o = volBox(cx, cy, w, h, k(v.u0), k(v.u1), k(v.v0), k(v.v1));
       return { v, o, H: Math.max(1.6, v.floors * fhM * Z_UNIT * zoom * (opt.heightMul ?? 1)) };
     }).sort((a, x) => a.o.depth - x.o.depth || a.H - x.H);
@@ -16845,7 +16989,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   function save() {
     if (!G || G.gameOver) return;
-    saveTo("auto", G);
+    const run = () => {
+      const r = saveTo("auto", G);
+      if (!r.ok) toast(r.message, "bad");
+      else if (r.note) toast(r.note, "warn");
+    };
+    if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 1200 });
+    else setTimeout(run, 60);
   }
   function fmtSaveMeta(m) {
     if (!m) return '<span style="color:var(--ink-mute)">\u7A7A\u304D</span>';
@@ -16874,7 +17024,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       \u666E\u901A\u306E\u30BF\u30D6\u3067\u958B\u304D\u76F4\u3059\u3053\u3068\u3002\u3044\u307E\u306E\u9032\u884C\u306F\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u305B\u3070\u6B8B\u305B\u308B\u3002</div>
     </div>`}
     <div class="hint" style="margin-bottom:10px">\u9032\u884C\u4E2D\u306E\u30B2\u30FC\u30E0\u3092\u4FDD\u5B58\u3059\u308B\u3002\u30AA\u30FC\u30C8\u30BB\u30FC\u30D6\u306F\u9031\u3092\u9032\u3081\u308B\u305F\u3073\u306B\u81EA\u52D5\u3067\u66F4\u65B0\u3055\u308C\u308B\u3002
-    \u30BB\u30FC\u30D6\u306F\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u306E\u4E2D\u306B\u6B8B\u308B\u306E\u3067\u3001\u30B2\u30FC\u30E0\u3092\u66F4\u65B0\u3057\u3066\u3082\u6D88\u3048\u306A\u3044\u3002</div>
+    \u30BB\u30FC\u30D6\u306F\u3053\u306E\u30D6\u30E9\u30A6\u30B6\u306E\u4E2D\u306B\u6B8B\u308B\u306E\u3067\u3001\u30B2\u30FC\u30E0\u3092\u66F4\u65B0\u3057\u3066\u3082\u6D88\u3048\u306A\u3044\u3002<br>
+    \u3044\u307E\u306E\u4F7F\u7528\u91CF <b>${totalSize()}KB</b>\uFF08\u30D6\u30E9\u30A6\u30B6\u304C\u4F7F\u308F\u305B\u3066\u304F\u308C\u308B\u306E\u306F 5,000KB \u524D\u5F8C\uFF09\u3002
+    \u30BB\u30FC\u30D6\u306F\u7E2E\u3081\u3066\u7F6E\u3044\u3066\u3042\u308B\u306E\u3067\u3001\u9577\u304F\u904A\u3093\u3067\u3082\u6EA2\u308C\u306B\u304F\u3044\u3002</div>
     ${listSaves().map((s) => slotCard(s, false)).join("")}
     ${bak ? `<div class="sec" style="margin-top:4px">
       <div class="sec-t"><span>\u5FA9\u65E7</span></div>
@@ -16884,7 +17036,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     </div>` : ""}
 
     <div class="sec">
-      <div class="sec-t"><span>\u30D5\u30A1\u30A4\u30EB\u306B\u6B8B\u3059</span><span class="note">\u4F7F\u7528\u4E2D ${totalSize()}KB</span></div>
+      <div class="sec-t"><span>\u30D5\u30A1\u30A4\u30EB\u306B\u6B8B\u3059</span></div>
       <div class="hint">\u30D6\u30E9\u30A6\u30B6\u306E\u30C7\u30FC\u30BF\u3092\u6D88\u3057\u305F\u308A\u3001\u6A5F\u7A2E\u3092\u5909\u3048\u305F\u308A\u3059\u308B\u3068\u4E2D\u306E\u30BB\u30FC\u30D6\u306F\u5931\u308F\u308C\u308B\u3002
       \u5927\u4E8B\u306A\u9032\u884C\u306F\u30D5\u30A1\u30A4\u30EB\u306B\u66F8\u304D\u51FA\u3057\u3066\u304A\u304F\u3053\u3068\u3002</div>
       <div class="btnrow">
@@ -17019,6 +17171,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     });
   }
   requestPersistence();
+  compactStorage();
   titleAnim();
   (function buildTitleSaves() {
     const box = document.getElementById("titleSaves");
