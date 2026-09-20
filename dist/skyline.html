@@ -1585,6 +1585,151 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       usePool: ["rental", "rental", "retail", "resi", "office"],
       hue: 152,
       elev: 1
+    },
+    // ---- 第2次の拡張地区 ----
+    P: {
+      city: "minato",
+      id: "P",
+      lotSize: 1600,
+      name: "\u685C\u7530\u5B98\u5E81\u8857",
+      short: "\u5B98\u5E81\u8857",
+      kana: "SAKURADA GOV",
+      desc: "\u4E2D\u592E\u5B98\u5E81\u3068\u5730\u65B9\u652F\u5206\u90E8\u5C40\u3001\u696D\u754C\u56E3\u4F53\u306E\u4E8B\u52D9\u6240\u304C\u96C6\u307E\u308B\u8857\u3002\u501F\u308A\u624B\u306F\u52D5\u304B\u305A\u7A7A\u5BA4\u304C\u51FA\u306B\u304F\u3044\u306E\u3067\u3001\u30AD\u30E3\u30C3\u30D7\u30EC\u30FC\u30C8\u306F\u5E02\u5185\u3067\u6700\u3082\u4F4E\u3044\u3002\u305D\u306E\u304B\u308F\u308A\u5BB9\u7A4D\u306E\u5272\u306B\u9AD8\u3055\u5236\u9650\u304C\u53B3\u3057\u304F\u3001\u6D3E\u624B\u306A\u5EFA\u7269\u306F\u5EFA\u305F\u306A\u3044\u3002",
+      landPrice: 12.1,
+      farRange: [500, 900],
+      rentOffice: 31e3,
+      rentRetail: 21e3,
+      rentResi: 18e3,
+      rentHotel: 3e4,
+      rentLogi: 6e3,
+      priceResi: 4.4,
+      capRate: 0.034,
+      station: 0.88,
+      fit: { office: 1, retail: 0.54, resi: 0.48, rental: 0.46, hotel: 0.5, logi: 0.06, house: 0.06, mixed: 0.78 },
+      height: [8, 26],
+      usePool: ["office", "office", "office", "mixed", "hotel"],
+      hue: 216,
+      elev: 2
+    },
+    Z: {
+      city: "minato",
+      id: "Z",
+      lotSize: 420,
+      name: "\u9280\u9234\u753A",
+      short: "\u9280\u9234\u753A",
+      kana: "GINREI",
+      desc: "\u98F2\u98DF\u5E97\u3068\u5287\u5834\u3001\u30DB\u30C6\u30EB\u304C\u3072\u3057\u3081\u304F\u6B53\u697D\u8857\u3002\u533A\u753B\u306F\u5C0F\u3055\u3044\u304C\u576A\u3042\u305F\u308A\u306E\u8CC3\u6599\u306F\u5E02\u5185\u968F\u4E00\u3067\u3001\u30D3\u30EB1\u68DF\u306B\u5341\u6570\u306E\u5E97\u5B50\u304C\u5165\u308B\u3002\u666F\u6C17\u306E\u6CE2\u3092\u307E\u3068\u3082\u306B\u53D7\u3051\u308B\u306E\u3067\u3001\u30AD\u30E3\u30C3\u30D7\u30EC\u30FC\u30C8\u306F\u9AD8\u3081\u306B\u898B\u3089\u308C\u308B\u3002",
+      landPrice: 19.5,
+      farRange: [550, 900],
+      rentOffice: 26e3,
+      rentRetail: 46e3,
+      rentResi: 19500,
+      rentHotel: 48e3,
+      rentLogi: 6500,
+      priceResi: 4.6,
+      capRate: 0.045,
+      station: 0.94,
+      fit: { office: 0.44, retail: 1, resi: 0.34, rental: 0.4, hotel: 0.92, logi: 0.05, house: 0.04, mixed: 0.86 },
+      height: [4, 16],
+      usePool: ["retail", "retail", "retail", "hotel", "mixed"],
+      hue: 348,
+      elev: 0
+    },
+    V: {
+      city: "minato",
+      id: "V",
+      lotSize: 3200,
+      name: "\u6C50\u51EA\u30D9\u30A4\u30B5\u30A4\u30C9",
+      short: "\u6C50\u51EA",
+      kana: "SHIONAGI BAY",
+      desc: "\u5009\u5EAB\u8857\u3092\u4E38\u3054\u3068\u9020\u308A\u66FF\u3048\u305F\u6E7E\u5CB8\u306E\u518D\u958B\u767A\u5730\u533A\u3002\u4E00\u533A\u753B\u304C\u5E83\u304F\u5BB9\u7A4D\u3082\u7DE9\u3044\u306E\u3067\u3001\u8D85\u9AD8\u5C64\u306E\u5206\u8B72\u30BF\u30EF\u30FC\u3092\u4F55\u68DF\u3082\u5EFA\u3066\u3089\u308C\u308B\u3002\u99C5\u304B\u3089\u306F\u9060\u3044\u304C\u3001\u773A\u671B\u3068\u4F9B\u7D66\u306E\u5C11\u306A\u3055\u3067\u5358\u4FA1\u304C\u4FDD\u305F\u308C\u3066\u3044\u308B\u3002",
+      landPrice: 11.5,
+      farRange: [420, 780],
+      rentOffice: 19e3,
+      rentRetail: 2e4,
+      rentResi: 19500,
+      rentHotel: 3e4,
+      rentLogi: 6200,
+      priceResi: 5.6,
+      capRate: 0.039,
+      station: 0.56,
+      fit: { office: 0.3, retail: 0.48, resi: 1, rental: 0.86, hotel: 0.58, logi: 0.14, house: 0.22, mixed: 0.66 },
+      height: [10, 46],
+      usePool: ["resi", "resi", "resi", "rental", "mixed"],
+      hue: 192,
+      elev: 0
+    },
+    Q: {
+      city: "minato",
+      id: "Q",
+      lotSize: 2100,
+      name: "\u745E\u7A42\u53F0\u30ED\u30FC\u30C9\u30B5\u30A4\u30C9",
+      short: "\u745E\u7A42\u53F0",
+      kana: "MIZUHODAI",
+      desc: "\u74B0\u72B6\u9053\u8DEF\u6CBF\u3044\u306B\u5927\u578B\u5E97\u304C\u4E26\u3076\u90CA\u5916\u3002\u533A\u753B\u306F\u5E83\u304F\u5730\u4FA1\u306F\u5B89\u3044\u304C\u3001\u5BB9\u7A4D\u7387\u304C\u4F4E\u3044\u306E\u3067\u9AD8\u304F\u7A4D\u3081\u306A\u3044\u3002\u5E73\u5C4B\u306E\u5546\u696D\u65BD\u8A2D\u3068\u5009\u5EAB\u3067\u5E8A\u3092\u7A3C\u3050\u8857\u3067\u3042\u308B\u3002",
+      landPrice: 0.73,
+      farRange: [200, 350],
+      rentOffice: 11e3,
+      rentRetail: 17500,
+      rentResi: 10500,
+      rentHotel: 14e3,
+      rentLogi: 5400,
+      priceResi: 2.3,
+      capRate: 0.05,
+      station: 0.24,
+      fit: { office: 0.2, retail: 1, resi: 0.44, rental: 0.44, hotel: 0.26, logi: 0.72, house: 0.56, mixed: 0.34 },
+      height: [1, 6],
+      usePool: ["retail", "retail", "retail", "logi", "house"],
+      hue: 72,
+      elev: 1
+    },
+    L: {
+      city: "tsurumino",
+      id: "L",
+      lotSize: 2e3,
+      name: "\u9DB4\u898B\u91CE\u30C6\u30AF\u30CE\u30D1\u30FC\u30AF",
+      short: "\u30C6\u30AF\u30CE\u30D1\u30FC\u30AF",
+      kana: "TECHNO PARK",
+      desc: "\u5E02\u304C\u9020\u6210\u3057\u305F\u5185\u9678\u306E\u5DE5\u696D\u56E3\u5730\u3002\u7814\u7A76\u958B\u767A\u306E\u62E0\u70B9\u3068\u4E2D\u898F\u6A21\u306E\u5009\u5EAB\u304C\u6DF7\u5728\u3059\u308B\u3002\u5730\u4FA1\u306F\u5E02\u5185\u6700\u5B89\u306E\u90E8\u985E\u3067\u3001\u5229\u56DE\u308A\u3060\u3051\u3092\u898B\u308C\u3070\u6E4A\u90FD\u5E02\u306E\u3069\u306E\u5730\u533A\u3088\u308A\u3082\u826F\u3044\u3002",
+      landPrice: 0.34,
+      farRange: [200, 400],
+      rentOffice: 10500,
+      rentRetail: 9e3,
+      rentResi: 8200,
+      rentHotel: 1e4,
+      rentLogi: 5300,
+      priceResi: 1.6,
+      capRate: 0.055,
+      station: 0.28,
+      fit: { office: 0.62, retail: 0.24, resi: 0.3, rental: 0.34, hotel: 0.12, logi: 1, house: 0.34, mixed: 0.28 },
+      height: [1, 7],
+      usePool: ["logi", "logi", "office", "logi", "rental"],
+      hue: 186,
+      elev: 0
+    },
+    C: {
+      city: "tsurumino",
+      id: "C",
+      lotSize: 520,
+      name: "\u5343\u6B73\u4E18\u30CB\u30E5\u30FC\u30BF\u30A6\u30F3",
+      short: "\u5343\u6B73\u4E18",
+      kana: "CHITOSEGAOKA",
+      desc: "\u9AD8\u5EA6\u6210\u9577\u671F\u306B\u4E18\u3092\u524A\u3063\u3066\u9020\u3089\u308C\u305F\u4F4F\u5B85\u56E3\u5730\u3002\u4F4F\u6C11\u306E\u9AD8\u9F62\u5316\u304C\u9032\u307F\u3001\u5EFA\u3066\u66FF\u3048\u306E\u4F59\u5730\u304C\u5927\u304D\u3044\u3002\u533A\u753B\u306F\u5C0F\u3055\u304F\u3001\u6238\u5EFA\u5206\u8B72\u304C\u3044\u3061\u3070\u3093\u7D20\u76F4\u306B\u5132\u304B\u308B\u3002",
+      landPrice: 0.68,
+      farRange: [100, 250],
+      rentOffice: 8500,
+      rentRetail: 11e3,
+      rentResi: 10500,
+      rentHotel: 9500,
+      rentLogi: 3600,
+      priceResi: 2,
+      capRate: 0.056,
+      station: 0.36,
+      fit: { office: 0.12, retail: 0.42, resi: 0.62, rental: 0.56, hotel: 0.1, logi: 0.14, house: 1, mixed: 0.26 },
+      height: [2, 6],
+      usePool: ["house", "house", "house", "resi", "rental"],
+      hue: 96,
+      elev: 3
     }
   };
   var CITIES = {
@@ -1602,49 +1747,57 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     }
   };
   var cityOf = (d) => DISTRICTS[d] && DISTRICTS[d].city || "minato";
-  var MAP_W = 40;
-  var MAP_H = 40;
+  var MAP_W = 48;
+  var MAP_H = 48;
   var MAP_ROWS = [
-    "AAA.AAA.NNN.N#N.SSS.SSS.FFF.FFF.~~~~~~~~",
-    "A#A.AAA.NNN.NNN.SSS.SSS.FFF.F#F.~~~~~~~~",
-    "AAA.AAA.NNN.NNN.SSS.S^S.FF^.FFF.~~~~~~~~",
-    "================================~~~~~~~~",
-    "AAA.AAA.N^N.NNN.SSS.SSS.FFF.FFF.~~~~~~~~",
-    "AAA.A^A.NNN.NNN.SSS.SSS.F#F.FFF.~~~~~~~~",
-    "AAA.AAA.NNN.NNN.S#S.SSS.FFF.FF^.~~~~~~~~",
-    "................................~~~~~~~~",
-    "KKK.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~",
-    "KKK.KKK.T#T.TTT.JJJ.JJJ.MMM.M#M.~~~~~~~~",
-    "KK#.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~",
-    "================================~~~~~~~~",
-    "KKK.KKK.TTT.TTT.JJJ.J#J.MMM.MMM.~~~~~~~~",
-    "KKK.KKK.TTT.TT#.JJJ.JJJ.M#M.MMM.~~~~~~~~",
-    "KKK.KK^.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~",
-    "................................~~~~~~~~",
-    "III.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~",
-    "I#I.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~",
-    "III.III.BBB.BBB.BB#.JJJ~EEE.E#E.~~~~~~~~",
-    "===========~~~~=======~~========~~~~~~~~",
-    "~II.BBB.BBB~~~~.BBB.~~~~EEE.EEE.~~~~~~~~",
-    "~~I.BBB.BB#~~~~.BB~~~~~~EEE.EE^.~~~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~========~~~~~~~~",
-    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~",
-    "W#W.WWW.WWW.WWW.~~~~~~~~EEE.E#E.~~~~~~~~",
-    "WWW.WWW.WW^.WWW.~~~~~~~~EEE.EEE.~~~~~~~~",
-    "================~~~~~~~~========~~~~~~~~",
-    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~",
-    "WWW.W#W.WWW.W^W.~~~~~~~~E^E.EEE.~~~~~~~~",
-    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-    "========================================",
-    "RRR.RRR.RRR.YYY.YYY.YYY.GGG.GGG.HHH.HHH.",
-    "RRR.RR^.RRR.Y#Y.YYY.YYY.GGG.G#G.HHH.HH^.",
-    "========================================",
-    "RRR.RRR.~~~.YYY.YYY.Y#Y.GGG.GGG.HHH.HHH.",
-    "RR~.RRR.~~~.YYY.YYY.YYY.G#G.GGG.HHH.HHH.",
-    "~~~~~~~~~~~~YYY.YYY.YYY.GGG.GGG.HHH.HHH."
+    "AAA.AAA.NNN.N#N.SSS.SSS.FFF.FFF.~~~~~~~~PPP.PPP.",
+    "A#A.AAA.NNN.NNN.SSS.SSS.FFF.F#F.~~~~~~~~P#P.PPP.",
+    "AAA.AAA.NNN.NNN.SSS.S^S.FF^.FFF.~~~~~~~~PPP.PP^.",
+    "================================~~~~~~~~========",
+    "AAA.AAA.N^N.NNN.SSS.SSS.FFF.FFF.~~~~~~~~PPP.PPP.",
+    "AAA.A^A.NNN.NNN.SSS.SSS.F#F.FFF.~~~~~~~~PPP.PPP.",
+    "AAA.AAA.NNN.NNN.S#S.SSS.FFF.FF^.~~~~~~~~PP^.PPP.",
+    "................................~~~~~~~~........",
+    "KKK.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.",
+    "KKK.KKK.T#T.TTT.JJJ.JJJ.MMM.M#M.~~~~~~~~ZZZ.Z#Z.",
+    "KK#.KKK.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.",
+    "================================~~~~~~~~========",
+    "KKK.KKK.TTT.TTT.JJJ.J#J.MMM.MMM.~~~~~~~~ZZZ.ZZZ.",
+    "KKK.KKK.TTT.TT#.JJJ.JJJ.M#M.MMM.~~~~~~~~Z^Z.ZZZ.",
+    "KKK.KK^.TTT.TTT.JJJ.JJJ.MMM.MMM.~~~~~~~~ZZZ.ZZZ.",
+    "................................~~~~~~~~........",
+    "III.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~VVV.VVV.",
+    "I#I.III.BBB.BBB.BBB.JJJ.EEE.EEE.~~~~~~~~VVV.V#V.",
+    "III.III.BBB.BBB.BB#.JJJ~EEE.E#E.~~~~~~~~VVV.VV^.",
+    "===========~~~~=======~~========~~~~~~~~========",
+    "~II.BBB.BBB~~~~.BBB.~~~~EEE.EEE.~~~~~~~~VVV.VVV.",
+    "~~I.BBB.BB#~~~~.BB~~~~~~EEE.EE^.~~~~~~~~VVV.VVV.",
+    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+    "~~~~~~~~~~~~~~~~~~~~~~~~========~~~~~~~~~~~~~~~~",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.",
+    "W#W.WWW.WWW.WWW.~~~~~~~~EEE.E#E.~~~~~~~~QQQ.Q#Q.",
+    "WWW.WWW.WW^.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.",
+    "================~~~~~~~~========~~~~~~~~========",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.",
+    "WWW.W#W.WWW.W^W.~~~~~~~~E^E.EEE.~~~~~~~~Q^Q.QQQ.",
+    "WWW.WWW.WWW.WWW.~~~~~~~~EEE.EEE.~~~~~~~~QQQ.QQQ.",
+    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+    "========================================~~~~~~~~",
+    "RRR.RRR.RRR.YYY.YYY.YYY.GGG.GGG.HHH.HHH.~~~~~~~~",
+    "RRR.RR^.RRR.Y#Y.YYY.YYY.GGG.G#G.HHH.HH^.~~~~~~~~",
+    "========================================~~~~~~~~",
+    "RRR.RRR.~~~.YYY.YYY.Y#Y.GGG.GGG.HHH.HHH.~~~~~~~~",
+    "RR~.RRR.~~~.YYY.YYY.YYY.G#G.GGG.HHH.HHH.~~~~~~~~",
+    "~~~~~~~~~~~~YYY.YYY.YYY.GGG.GGG.HHH.HHH.~~~~~~~~",
+    "~~~~~~~~~~~~............................~~~~~~~~",
+    "~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~",
+    "~~~~~~~~~~~~L#L.LLL.LLL.CCC.C#C.CCC.CCC.~~~~~~~~",
+    "~~~~~~~~~~~~LLL.LL^.LLL.CCC.CCC.CC^.CCC.~~~~~~~~",
+    "~~~~~~~~~~~~============================~~~~~~~~",
+    "~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~",
+    "~~~~~~~~~~~~LLL.L^L.L#L.CCC.CCC.C^C.C#C.~~~~~~~~",
+    "~~~~~~~~~~~~LLL.LLL.LLL.CCC.CCC.CCC.CCC.~~~~~~~~"
   ];
   var TERRAIN = { ROAD: "road", AVENUE: "avenue", WATER: "water", PARK: "park", GREEN: "green", LOT: "lot" };
   function terrainOf(ch) {
@@ -3554,7 +3707,17 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     H: { quake: 0.75, storm: 0.9, flood: 0.45 },
     R: { quake: 1.4, storm: 1.35, flood: 1.5 },
     // 臨港：埋立
-    G: { quake: 0.9, storm: 0.95, flood: 0.75 }
+    G: { quake: 0.9, storm: 0.95, flood: 0.75 },
+    P: { quake: 0.8, storm: 0.85, flood: 0.6 },
+    // 官庁街：耐震改修済みの庁舎が多い
+    Z: { quake: 1.25, storm: 1.05, flood: 1.1 },
+    // 銀鈴町：古い雑居ビルが密集
+    V: { quake: 1.4, storm: 1.3, flood: 1.5 },
+    // 汐凪：埋立の湾岸
+    Q: { quake: 0.95, storm: 1.15, flood: 0.9 },
+    L: { quake: 0.95, storm: 1, flood: 0.85 },
+    C: { quake: 0.7, storm: 0.9, flood: 0.35 }
+    // 千歳丘：丘を削った造成地
   };
   var hazardOf = (d) => HAZARD[d] || { quake: 1, storm: 1, flood: 1 };
   var DISASTERS = [
@@ -3801,8 +3964,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     const demand = g.market.demand[best] ?? 1;
     return Math.round(c.baseValue * g.market.priceIdx * (0.82 + demand * 0.24) * (0.94 + d.station * 0.1) * railMul(g, c.d));
   }
+  var BEST_FIT = {};
   function bestUseFit(c) {
-    const d = DISTRICTS[c.d];
+    const id = c.d;
+    if (BEST_FIT[id]) return BEST_FIT[id];
+    const d = DISTRICTS[id];
     let best = "office", bv = -1;
     for (const u in d.fit) {
       if (d.fit[u] > bv) {
@@ -3810,6 +3976,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
         best = u;
       }
     }
+    BEST_FIT[id] = best;
     return best;
   }
   function devPlan(g, c, useId, gradeId = "standard", opt = {}) {
@@ -3852,7 +4019,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if (leaseShare > 0) {
       const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi", mixed: "rentOffice", house: "rentResi" }[useId];
       const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-      const rent = baseRent * G2.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
+      const rent = baseRent * G2.priceMul * g.market.priceIdx * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
       out.rent = Math.round(rent);
       out.nra = Math.round(sellable * leaseShare);
       out.grossRent = Math.round(out.nra * rent * 12 / 1e6);
@@ -3941,7 +4108,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       } else {
         const rentKey = { office: "rentOffice", retail: "rentRetail", hotel: "rentHotel", logi: "rentLogi", rental: "rentResi", resi: "rentResi" }[seg.use] || "rentOffice";
         const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-        const rent2 = baseRent * G2.priceMul * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
+        const rent2 = baseRent * G2.priceMul * g.market.priceIdx * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
         rec.model = "lease";
         rec.rent = Math.round(rent2);
         rec.grossRent = Math.round(usable * rent2 * 12 / 1e6);
@@ -4158,14 +4325,29 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var CITY_SHARE = { tsurumino: 0.26 };
   var SIZE_BANDS = [
     { min: 0, max: 1500, w: 2.8 },
-    // 小口（〜15億／若葉町・北野・城東）
+    // 小口（〜15億／若葉町・千歳丘・テクノパーク・北野）
     { min: 1500, max: 6e3, w: 2.7 },
-    // 中口（15〜60億／神楽坂・桜川・藤ヶ丘・空港）
-    { min: 6e3, max: 2e4, w: 2.1 },
-    // 大口（60〜200億／汐見・南雲）
-    { min: 2e4, max: Infinity, w: 1.7 }
-    // 特大（200億〜／常盤・港南）
+    // 中口（15〜60億／空港・鶴見野・桜川・神楽坂・瑞穂台）
+    { min: 6e3, max: 2e4, w: 2.2 },
+    // 大口（60〜200億／汐見・銀鈴町・南雲）
+    { min: 2e4, max: Infinity, w: 1.9 }
+    // 特大（200億〜／常盤・汐凪・官庁街・港南）
   ];
+  function pickBand(g, pool, bandIdx) {
+    const inBand = (c, b) => {
+      const v = landAppraisal(g, c);
+      return v >= b.min && v < b.max;
+    };
+    for (let step = 0; step < SIZE_BANDS.length; step++) {
+      for (const dir of step === 0 ? [0] : [-step, step]) {
+        const b = SIZE_BANDS[bandIdx + dir];
+        if (!b) continue;
+        const s = pool.filter((c) => inBand(c, b));
+        if (s.length) return s;
+      }
+    }
+    return pool;
+  }
   function generatePublic(g, rng, news) {
     if (!unlocked(g, "public")) return;
     if (g.listings.filter((l) => l.kind === "public").length >= 2) return;
@@ -4229,8 +4411,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     if (!pool.length) return;
     for (let i = 0; i < n; i++) {
       const band = rng.weighted(SIZE_BANDS);
-      let scope = pool.filter((c2) => (c2.baseValue || 0) >= band.min && (c2.baseValue || 0) < band.max);
-      if (!scope.length) scope = pool;
+      let scope = pickBand(g, pool, SIZE_BANDS.indexOf(band));
       const wantCity = reach.has("tsurumino") && rng.chance(CITY_SHARE.tsurumino) ? "tsurumino" : "minato";
       const byCity = scope.filter((c2) => cityOf(c2.d) === wantCity);
       if (byCity.length) scope = byCity;
@@ -4881,7 +5062,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
   var K_COST = perWeek(0.14);
   function costEquilibrium(g) {
     const costTrend = 1 + g.week * 16e-5;
-    const boom = Math.max(0, Math.sin(g.market.cycle * Math.PI * 2)) * 0.2;
+    const boom = Math.sin(g.market.cycle * Math.PI * 2) * 0.2;
     return costTrend * (0.66 + g.market.priceIdx * 0.34) * (1 + boom);
   }
   function stepMarket(g, rng) {
@@ -5102,7 +5283,7 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
     slot3: "\u30B9\u30ED\u30C3\u30C8 3",
     autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
   };
-  var SAVE_VERSION = 6;
+  var SAVE_VERSION = 7;
   function serialize(g) {
     const { pendingReport, quarterNews, candidates, ...rest } = g;
     return JSON.stringify({ v: SAVE_VERSION, savedAt: Date.now(), g: rest });
@@ -5224,6 +5405,15 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       if (!m || !(m.costIdx > 0)) return;
       const eq = costEquilibrium(g);
       if (m.costIdx > eq * 1.12) m.costIdx = Math.round(eq * 1.06 * 1e3) / 1e3;
+    },
+    // 建設費指数の落ち着きどころの式が変わったときに、
+    // いまの水準が新しい目標から離れすぎていたら寄せ直す。
+    // 好況の資材高を片側だけ取っていた頃のセーブは、建設費が6%ほど高い位置にいる
+    (g) => {
+      const m = g.market;
+      if (!m || !(m.costIdx > 0)) return;
+      const eq = costEquilibrium(g);
+      if (m.costIdx > eq * 1.06) m.costIdx = Math.round(eq * 1.03 * 1e3) / 1e3;
     },
     // 地盤（創業の地）と、売上に応じた解禁を後から足す。
     // 地盤が決まっていないセーブは、いちばん多く区画を持っている地区を地盤とみなす
@@ -7610,11 +7800,11 @@ table.tbl tr.sum td{border-top:1.5px solid var(--line);font-weight:700;backgroun
       a.age += 1 / WEEKS_PER_YEAR;
       const dem = g.market.demand[a.use] ?? 1;
       const raw = marketRentRaw(g, a);
-      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+      if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
       a.marketRent = Math.round(raw * a.rentIndex);
       if (!(a.rent > 0)) {
         a.rent = Math.max(1, Math.round(a.marketRent || raw));
-        a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+        a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
         a.marketRent = Math.round(raw * a.rentIndex);
         news.push({
           icon: "\u{1F3E2}",

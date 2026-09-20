@@ -85,13 +85,13 @@ export function stepAssets(g, rng, news) {
     // グレードやブランド、駅力のぶんを相場側にも織り込まないと、
     // 高級物件は永久に「市場比+100%」と判定されて空室が増えてしまう
     const raw = marketRentRaw(g, a);
-    if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+    if (!(a.rentIndex > 0)) a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
     a.marketRent = Math.round(raw * a.rentIndex);
 
     // 賃料が抜けている物件（旧版の複合開発）は相場で埋める
     if (!(a.rent > 0)) {
       a.rent = Math.max(1, Math.round(a.marketRent || raw));
-      a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.4, 3.5);
+      a.rentIndex = clamp(a.rent / Math.max(1, raw), 0.25, 3.5);
       a.marketRent = Math.round(raw * a.rentIndex);
       news.push({
         icon: '🏢', type: 'lease',

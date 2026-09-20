@@ -27,7 +27,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** 保存用にゲーム状態を文字列化する（一時データは除く） */
 export function serialize(g) {
@@ -170,6 +170,16 @@ const STEPS = [
     if (!m || !(m.costIdx > 0)) return;
     const eq = costEquilibrium(g);
     if (m.costIdx > eq * 1.12) m.costIdx = Math.round(eq * 1.06 * 1000) / 1000;
+  },
+
+  // 建設費指数の落ち着きどころの式が変わったときに、
+  // いまの水準が新しい目標から離れすぎていたら寄せ直す。
+  // 好況の資材高を片側だけ取っていた頃のセーブは、建設費が6%ほど高い位置にいる
+  g => {
+    const m = g.market;
+    if (!m || !(m.costIdx > 0)) return;
+    const eq = costEquilibrium(g);
+    if (m.costIdx > eq * 1.06) m.costIdx = Math.round(eq * 1.03 * 1000) / 1000;
   },
 
   // 地盤（創業の地）と、売上に応じた解禁を後から足す。

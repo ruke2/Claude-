@@ -93,11 +93,40 @@ export const PUBLIC_PROGRAMS = [
 const CITY_SHARE = { tsurumino: 0.26 };
 
 const SIZE_BANDS = [
-  { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・北野・城東）
-  { min: 1500, max: 6000, w: 2.7 },       // 中口（15〜60億／神楽坂・桜川・藤ヶ丘・空港）
-  { min: 6000, max: 20000, w: 2.1 },      // 大口（60〜200億／汐見・南雲）
-  { min: 20000, max: Infinity, w: 1.7 },  // 特大（200億〜／常盤・港南）
+  { min: 0, max: 1500, w: 2.8 },          // 小口（〜15億／若葉町・千歳丘・テクノパーク・北野）
+  { min: 1500, max: 6000, w: 2.7 },       // 中口（15〜60億／空港・鶴見野・桜川・神楽坂・瑞穂台）
+  { min: 6000, max: 20000, w: 2.2 },      // 大口（60〜200億／汐見・銀鈴町・南雲）
+  { min: 20000, max: Infinity, w: 1.9 },  // 特大（200億〜／常盤・汐凪・官庁街・港南）
 ];
+
+/**
+ * その帯に入る区画を選ぶ。
+ *
+ * 帯の境目は「いまの相場での評価額」で見る。
+ * **固定の想定地価（baseValue）で切らないこと。** 相場が上がると
+ * 区画が実際より安い帯に居座り、特大の帯が空になっていく。
+ *
+ * 帯が空だったときは**隣の帯にずらす**。
+ * 以前はここで区画全体に戻していたため、自社が一等地を買い集めたあと
+ * 「特大の帯を引いたのに小口の区画が出てくる」状態になり、
+ * 長く遊ぶほど大型案件が出なくなっていた。
+ */
+function pickBand(g, pool, bandIdx) {
+  const inBand = (c, b) => {
+    const v = landAppraisal(g, c);
+    return v >= b.min && v < b.max;
+  };
+  for (let step = 0; step < SIZE_BANDS.length; step++) {
+    // 引いた帯 → 1つ下 → 1つ上 → 2つ下 … の順に探す
+    for (const dir of step === 0 ? [0] : [-step, step]) {
+      const b = SIZE_BANDS[bandIdx + dir];
+      if (!b) continue;
+      const s = pool.filter(c => inBand(c, b));
+      if (s.length) return s;
+    }
+  }
+  return pool;
+}
 
 /**
  * 公共案件の公募。
@@ -177,8 +206,7 @@ export function generateListings(g, rng, news) {
     // 帯を先に決めてから都市と地盤で絞る。
     // 先に都市で絞ると、大型案件のある帯の出方まで動いてしまう
     const band = rng.weighted(SIZE_BANDS);
-    let scope = pool.filter(c => (c.baseValue || 0) >= band.min && (c.baseValue || 0) < band.max);
-    if (!scope.length) scope = pool;
+    let scope = pickBand(g, pool, SIZE_BANDS.indexOf(band));
     const wantCity = reach.has('tsurumino') && rng.chance(CITY_SHARE.tsurumino) ? 'tsurumino' : 'minato';
     const byCity = scope.filter(c => cityOf(c.d) === wantCity);
     if (byCity.length) scope = byCity;

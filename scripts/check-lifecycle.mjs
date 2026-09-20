@@ -34,9 +34,13 @@ console.log(pad('案件', 30) + pad('計画の販売額', 14) + pad('在庫の�
 for (const cs of CASES) {
   const g = createGame({ companyName: '監査', difficulty: 'normal', seed: 11 });
   const rng = new RNG(7);
-  // 適地を選ぶ
+  // 適地を選ぶ。
+  // **用途に合わない地区で建てないこと。** 以前は先頭の区画を固定で使っており、
+  // 地区を足して並び順が変わったとたん、官庁街に物流施設を建てる検算になって
+  // 「市場比が竣工直後からずれ」と誤検知していた
+  const wantFit = cs.stack ? cs.stack[cs.stack.length - 1].use : cs.use;
   const cells = g.cells.filter(c => c.terrain === TERRAIN.LOT && c.d && !c.building && c.area > 800);
-  const cell = cells[0];
+  const cell = cells.find(c => (DISTRICTS[c.d].fit[wantFit] ?? 0) >= 0.7) || cells[0];
   cell.owner = 'player'; cell.vacant = true; cell.lastPaid = 5000; cell.bookValue = 5000;
   g.cash = 2_000_000;
 

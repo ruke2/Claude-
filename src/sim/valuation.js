@@ -44,11 +44,19 @@ export function landAppraisal(g, c) {
     * (0.94 + d.station * 0.1) * railMul(g, c.d));
 }
 
-/** その区画で最も適した用途 */
+/**
+ * その区画で最も適した用途。
+ * 地区の fit だけで決まるので、地区ごとに1回数えれば足りる
+ * （売却情報を作るとき全区画ぶん呼ばれる）
+ */
+const BEST_FIT = {};
 export function bestUseFit(c) {
-  const d = DISTRICTS[c.d];
+  const id = c.d;
+  if (BEST_FIT[id]) return BEST_FIT[id];
+  const d = DISTRICTS[id];
   let best = 'office', bv = -1;
   for (const u in d.fit) { if (d.fit[u] > bv) { bv = d.fit[u]; best = u; } }
+  BEST_FIT[id] = best;
   return best;
 }
 
@@ -110,7 +118,13 @@ export function devPlan(g, c, useId, gradeId = 'standard', opt = {}) {
   if (leaseShare > 0) {
     const rentKey = { office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi', rental: 'rentResi', resi: 'rentResi', mixed: 'rentOffice', house: 'rentResi' }[useId];
     const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-    const rent = baseRent * G.priceMul * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
+    // **価格指数を掛け忘れないこと。** 分譲単価（unitPrice）と保有物件の
+    // 市場賃料（marketRentRaw）には priceIdx が乗っているのに、ここだけ
+    // 素の相場のままだった。そのため長く遊ぶほど、建設費と地価だけが上がって
+    // 賃貸の収入が据え置かれ、オフィス・賃貸・物流・商業を本命とする地区の
+    // 事業利益率が 30年で 32% → 5%、若葉町や城東では赤字にまで落ちていた
+    const rent = baseRent * G.priceMul * g.market.priceIdx
+      * (0.86 + (g.market.demand[useId] ?? 1) * 0.2) * (0.92 + c.station * 0.16) * brandMul * fitMul * bf.rent;
     out.rent = Math.round(rent);                             // 円/坪/月
     out.nra = Math.round(sellable * leaseShare);
     out.grossRent = Math.round(out.nra * rent * 12 / 1e6);    // 百万円/年
@@ -222,7 +236,9 @@ export function devPlanStack(g, c, stack, gradeId = 'standard', opt = {}) {
     } else {
       const rentKey = { office: 'rentOffice', retail: 'rentRetail', hotel: 'rentHotel', logi: 'rentLogi', rental: 'rentResi', resi: 'rentResi' }[seg.use] || 'rentOffice';
       const baseRent = d[rentKey] ?? d.rentOffice * 0.6;
-      const rent = baseRent * G.priceMul * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2)
+      // devPlan と同じ物差しにする（priceIdx を掛ける）
+      const rent = baseRent * G.priceMul * g.market.priceIdx
+        * (0.86 + (g.market.demand[seg.use] ?? 1) * 0.2)
         * (0.92 + c.station * 0.16) * brandMul * fitMul * fmul * bf.rent;
       rec.model = 'lease';
       rec.rent = Math.round(rent);

@@ -31,8 +31,15 @@ const K_COST = perWeek(0.14);
  * どの用途でも残余法がマイナスになる。
  */
 export function costEquilibrium(g) {
-  const costTrend = 1 + g.week * 0.00016;                                   // 年 約+0.8%
-  const boom = Math.max(0, Math.sin(g.market.cycle * Math.PI * 2)) * 0.20;  // 好況局面の資材高
+  const costTrend = 1 + g.week * 0.00016;                       // 年 約+0.8%
+  // 好況の資材高と不況の資材安。
+  // **`Math.max(0, ...)` で上振れだけを取らないこと。**
+  // 半周期ぶんの上振れが平均に残り、建設費指数が価格指数より
+  // 恒久的に6%ほど高い位置に居座る。建設費指数は緩やかにしか動かないので
+  // （K_COST）、この片道ぶんがそのまま水準の差として積み上がり、
+  // 30年遊ぶと建設費÷価格が 1.04 → 1.20 まで開いて、
+  // どの地区でも事業利益率が2割から1割以下に落ちていた
+  const boom = Math.sin(g.market.cycle * Math.PI * 2) * 0.20;
   return costTrend * (0.66 + g.market.priceIdx * 0.34) * (1 + boom);
 }
 

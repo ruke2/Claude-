@@ -31,6 +31,12 @@ export const HAZARD = {
   H: { quake: 0.75, storm: 0.90, flood: 0.45 },
   R: { quake: 1.40, storm: 1.35, flood: 1.50 },   // 臨港：埋立
   G: { quake: 0.90, storm: 0.95, flood: 0.75 },
+  P: { quake: 0.80, storm: 0.85, flood: 0.60 },   // 官庁街：耐震改修済みの庁舎が多い
+  Z: { quake: 1.25, storm: 1.05, flood: 1.10 },   // 銀鈴町：古い雑居ビルが密集
+  V: { quake: 1.40, storm: 1.30, flood: 1.50 },   // 汐凪：埋立の湾岸
+  Q: { quake: 0.95, storm: 1.15, flood: 0.90 },
+  L: { quake: 0.95, storm: 1.00, flood: 0.85 },
+  C: { quake: 0.70, storm: 0.90, flood: 0.35 },   // 千歳丘：丘を削った造成地
 };
 export const hazardOf = d => HAZARD[d] || { quake: 1, storm: 1, flood: 1 };
 
