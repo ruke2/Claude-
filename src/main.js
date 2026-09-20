@@ -30,7 +30,10 @@ import { acceptPosting, fastTrack, fastTrackOdds } from './sim/talent.js';
 import { answerQuestion, closeBriefing } from './sim/ir.js';
 import { agendaOf, holdMeeting, supportFor, holdersOf } from './sim/meeting.js';
 import { answerRound, acceptanceOf } from './sim/union.js';
-import { rankName as rankNameOf } from './data/hrdata.js';
+import { settle, eventOf, pending as pendingAgenda } from './sim/agenda.js';
+import { SEASONS, suggestedMonths, marketMonths, bonusCost, lastYearMonths, payBonus,
+  monthlyPayroll, MONTHS_MAX } from './sim/bonus.js';
+import { rankName as rankNameOf, TOP_STAFF_RANK, OFFICER_RANKS } from './data/hrdata.js';
 import { avgAbility } from './core/state.js';
 import { ranking } from './sim/rivals.js';
 import { unlocked } from './sim/company.js';
@@ -490,6 +493,7 @@ function handleAction(act, id) {
       if (l) { focusCell(cellById(G, l.cellId)); Land.openDetail(G, l, ctx); }
       break;
     }
+    case 'agenda.open': openAgendaItem(id); break;
     case 'focus': {
       const c = cellById(G, id);
       if (c) { focusCell(c); closePanel(); toast('地図の中央に移動した'); }
@@ -896,8 +900,12 @@ function afterReport() {
   refresh();
   if (G.gameOver) return showGameOver();
   const rep = G.pendingReport;
-  // 順に1つずつ出す。同じ週に総会と春闘が重なると片方が消えてしまう
-  if (rep && rep.meeting) { rep.meeting = null; return openMeeting(); }
+  // 順に1つずつ出す。同じ週に総会と春闘が重なると片方が消えてしまう。
+  // 閉じても決裁事項として残るので、経営ダッシュボードからいつでも開き直せる
+  if (rep && rep.agenda && rep.agenda.raised && rep.agenda.raised.length) {
+    const id = rep.agenda.raised.shift();
+    return openAgendaItem(id);
+  }
   if (rep && rep.unionRound) { rep.unionRound = null; return openShunto(); }
   // 上場していれば、決算のあとに説明会が開かれる
   if (rep && rep.briefing && rep.briefing.length) { const q = rep.briefing; rep.briefing = null; return openBriefing(q); }
@@ -1165,6 +1173,8 @@ function updateHeader() {
 
 function updateBadges() {
   const counts = {
+    // 決裁事項（人事・賞与・総会…）。放っておくと期限切れで既定処理になる
+    dash: pendingAgenda(G).length,
     land: G.listings.filter(l => !l.bid).length,
     dev: G.cells.filter(c => c.owner === 'player' && !c.isHQ && !c.building && !c.projectId).length,
     ma: G.maTargets.length,
@@ -1433,3 +1443,134 @@ document.getElementById('btnStart').onclick = () => startGame(null);
   sel.onchange = draw;
   draw();
 })();
+
+
+// ------------------------------------------------------------
+//  決裁事項を開く
+//    どれも「決まった時期にしか出てこない」ものなので、
+//    閉じたあとでも経営ダッシュボードから開き直せるようにしてある
+// ------------------------------------------------------------
+function openAgendaItem(id) {
+  switch (id) {
+    case 'shunto': return openShunto();
+    case 'meeting': return openMeeting();
+    case 'bonusSummer': return openBonus('summer');
+    case 'bonusWinter': return openBonus('winter');
+    case 'hrCycle': return openHrCycle();
+    case 'recruitPlan': {
+      settle(G, 'recruitPlan');
+      openPanel('hr');
+      toast('人事パネルで翌年度の採用計画を決める');
+      return;
+    }
+    default: return;
+  }
+}
+
+// ------------------------------------------------------------
+//  賞与の決定（夏季・冬季）
+// ------------------------------------------------------------
+function openBonus(seasonId) {
+  const S = SEASONS[seasonId];
+  const sug = suggestedMonths(G);
+  const mkt = marketMonths(G);
+  const last = lastYearMonths(G, seasonId);
+  let months = sug;
+  draw();
+
+  function draw() {
+    const cost = bonusCost(G, months);
+    const vs = months - mkt;
+    const tone = vs >= 0.3 ? ['世間より厚い', 'good'] : vs <= -0.4 ? ['世間より薄い', 'bad'] : ['世間並み', 'grey'];
+    openModal(`${G.year}年 ${S.name}の決定`, `
+      <div class="card">
+        <div class="card-t"><span class="card-n">目安</span>${chip(`業績どおりなら ${sug.toFixed(1)}ヶ月`, 'grey')}</div>
+        <div class="card-s">
+          ${kv('世間水準（同業他社から逆算）', mkt.toFixed(1) + 'ヶ月')}
+          ${kv('前年の' + S.name, last == null ? '—' : last.toFixed(1) + 'ヶ月')}
+          ${kv('社員の月給合計', money(Math.round(monthlyPayroll(G))))}
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>支給月数</span>${chip(tone[0], tone[1])}</div>
+        <div class="card"><div class="card-s">
+          <label class="lbl">支給月数 <b style="color:var(--gold)">${months.toFixed(1)}ヶ月</b></label>
+          <input type="range" id="bnMonths" min="0" max="${Math.round(MONTHS_MAX * 10)}" step="1" value="${Math.round(months * 10)}" style="width:100%">
+          ${kv('支給総額', `<b>${money(cost)}</b>`, 'big')}
+          ${kv('支給後の現預金', money(G.cash - cost))}
+        </div></div>
+      </div>
+      <div class="hint">${S.label}。世間より厚ければ士気と定着が上がり、薄ければ下がる。
+        前年より下げたときの落胆は、上げたときの喜びより大きい。
+        決めないまま期限を過ぎると、業績どおりの目安（${sug.toFixed(1)}ヶ月）で支給される。</div>`,
+      [{ label: 'この月数で支給する', cls: 'primary', onClick: submit, close: false }]);
+    const sl = document.getElementById('bnMonths');
+    if (sl) sl.oninput = () => { months = (+sl.value) / 10; draw(); };
+  }
+
+  function submit() {
+    const r = payBonus(G, seasonId, months, G.news);
+    settle(G, seasonId === 'summer' ? 'bonusSummer' : 'bonusWinter');
+    closeModal();
+    refresh();
+    toast(`${S.name}を${r.months.toFixed(1)}ヶ月で支給した（${money(r.cost)}）`,
+      r.delta >= 0.03 ? 'good' : r.delta <= -0.04 ? 'bad' : '');
+  }
+}
+
+// ------------------------------------------------------------
+//  定期人事の内示
+//    4月の定期人事でどれだけ昇格させるかを決める
+// ------------------------------------------------------------
+function openHrCycle() {
+  const pol = G.hrPolicy;
+  let strict = pol.evalStrict ?? 0.5;
+  draw();
+
+  function draw() {
+    const active = G.staff.filter(s => !s.subsidiary);
+    // 等級ごとの「昇格を待っている人数」
+    const rows = [];
+    for (let r = 1; r <= TOP_STAFF_RANK; r++) {
+      if (OFFICER_RANKS.includes(r)) continue;
+      const def = RANKS[r];
+      const cur = active.filter(s => s.rank === r).length;
+      const room = def.slots === Infinity ? Infinity : Math.max(0, def.slots - cur);
+      const cands = active.filter(s => s.rank === r - 1 && avgAbility(s) >= def.minAbility && s.tenure >= 2);
+      const n = Math.min(room === Infinity ? 99 : room, Math.ceil(cands.length * (0.13 + strict * 0.12)));
+      if (cands.length) rows.push({ name: rankNameOf(G, r), cands: cands.length, room, n });
+    }
+    const total = rows.reduce((a, x) => a + x.n, 0);
+    openModal(`${G.year}年 定期人事の内示`, `
+      <div class="card">
+        <div class="card-t"><span class="card-n">4月の定期人事</span>${chip(`昇格見込み ${total}名`, total ? 'good' : 'grey')}</div>
+        <div class="card-s">評価を厳しくすると昇格は絞られ、実力のある社員に枠が回る。
+          緩めると多くが上がるが、等級に見合わない社員が増えて組織の質が落ちる。</div>
+      </div>
+      <div class="sec">
+        <div class="sec-t"><span>評価の厳しさ</span>
+          ${chip(strict >= 0.7 ? '厳しい' : strict <= 0.3 ? '緩い' : 'ふつう', strict >= 0.7 ? 'amber' : 'grey')}</div>
+        <div class="card"><div class="card-s">
+          <input type="range" id="hcStrict" min="0" max="100" step="5" value="${Math.round(strict * 100)}" style="width:100%">
+          <table class="tbl" style="margin-top:8px">
+            <tr><th>昇格先</th><th>有資格者</th><th>空き枠</th><th>昇格見込み</th></tr>
+            ${rows.map(x => `<tr><td>${x.name}</td><td>${x.cands}</td>
+              <td>${x.room === Infinity ? '—' : x.room}</td><td>${x.n}</td></tr>`).join('')}
+          </table>
+        </div></div>
+      </div>
+      <div class="hint">ここで決めた方針は、翌年1月の定期昇格に反映される。
+        執行役員から上は自動で上がらないので、人事パネルから任命する。</div>`,
+      [{ label: 'この方針で内示する', cls: 'primary', onClick: submit, close: false }]);
+    const sl = document.getElementById('hcStrict');
+    if (sl) sl.oninput = () => { strict = (+sl.value) / 100; draw(); };
+  }
+
+  function submit() {
+    G.hrPolicy.evalStrict = strict;
+    settle(G, 'hrCycle');
+    closeModal();
+    refresh();
+    toast('定期人事の方針を内示した');
+  }
+}

@@ -18,6 +18,7 @@ import { ttm } from './finance.js';
 import { workload } from './workload.js';
 import { orgPower } from './hr.js';
 import { surveyNow } from './survey.js';
+import { annualMonths, marketMonths } from './bonus.js';
 
 /** 組合ができる人数 */
 export const UNION_MIN_STAFF = 60;
@@ -78,6 +79,13 @@ export function demandOf(g) {
 
   // 3) 物価。価格指数が上がった年は実質賃金が目減りする
   base += clamp((g.market.priceIdx - 1) * 2.4, -1.0, 2.4);
+
+  // 3b) 賞与。年間の支給月数が世間より薄ければ、そのぶんベアで取りにくる
+  const bm = annualMonths(g), bmkt = marketMonths(g) * 2;
+  if (bm > 0 || (g.bonuses || []).length) {
+    base += clamp((bmkt - bm) * 0.45, -1.2, 2.2);
+    if (bm < bmkt - 0.8) reasons.push({ k: 'bonus', text: `年間の賞与が${bm.toFixed(1)}ヶ月にとどまり、世間水準（${bmkt.toFixed(1)}ヶ月）を下回っている` });
+  }
 
   // 4) 働き方。残業が長い年は賃上げより時短を求める
   const wantHours = ot >= 45;
@@ -219,8 +227,9 @@ export function stepUnion(g, rng, news) {
   if (!g.union.formed) return null;
 
   const r = g.union.round;
-  // 要求の提出
-  if ((!r || r.year < g.year) && g.weekOfYear === DEMAND_WEEK) return openRound(g, news);
+  // 要求の提出。
+  // **`=== DEMAND_WEEK` で判定しないこと。** 4週まとめて進めると飛び越える
+  if ((!r || r.year < g.year) && g.weekOfYear >= DEMAND_WEEK) return openRound(g, news);
   // 期限切れ：回答しないのは「ゼロ回答」と同じ
   if (r && !r.result && g.week >= r.deadline) {
     answerRound(g, { raise: 0, hours: false, bonus: false }, news);

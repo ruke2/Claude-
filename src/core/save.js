@@ -195,6 +195,8 @@ const STEPS = [
       if (typeof c.outsideDirectors !== 'number') c.outsideDirectors = 0;
     }
     if (!Array.isArray(g.meetings)) g.meetings = [];
+    if (!Array.isArray(g.agenda)) g.agenda = [];
+    if (!Array.isArray(g.bonuses)) g.bonuses = [];
     if (!g.union || typeof g.union !== 'object') g.union = { formed: false, disputes: 0, history: [] };
     if (!Array.isArray(g.union.history)) g.union.history = [];
   },

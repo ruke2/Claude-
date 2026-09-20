@@ -197,7 +197,9 @@ export function stepHR(g, rng, news) {
   }
 
   // --- エンゲージメントサーベイ（年1回・10月に実施） ---
-  if (g.weekOfYear === 39 && g.week > 26) runSurvey(g, news);
+  // **`=== 39` で判定しないこと。** まとめて進めると実施されない年ができる
+  if (g.weekOfYear >= 39 && g.week > 26
+    && !(g.surveys || []).some(x => x.year === g.year)) runSurvey(g, news);
 
   // 社長はプレイヤー本人なので、後継者を立てる処理は無い。
   // 万一、社員が社長の席に座っていたら（旧セーブ）一段下ろす

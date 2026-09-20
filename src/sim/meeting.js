@@ -251,9 +251,14 @@ export function holdMeeting(g, picked, rng, news) {
   return { score: sc, results };
 }
 
-/** 総会の週かどうか（上場していなければ開かない） */
+/**
+ * 総会を開ける状態か。
+ * 週の判定は agenda.js が持つ（まとめて進めても飛ばないように）。
+ * ここは「上場していて、今年まだ開いていない」だけを見る。
+ */
 export function meetingDue(g) {
-  return !!g.company.listed && g.weekOfYear === MEETING_WEEK;
+  if (!g.company.listed) return false;
+  return !(g.meetings || []).some(m => m.year === g.year);
 }
 
 export { WEEKS_PER_QUARTER };

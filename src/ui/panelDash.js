@@ -12,6 +12,7 @@ import { TIERS, UNLOCK_INFO, tierOf, nextTier, unlocked, ttmRevenue } from '../s
 import { PLAN_METRICS, PLAN_METRIC_IDS, PLAN_SPANS, valueOf, fmtTarget, progressOf,
   planProgress, weeksLeft, ambitionOf, startPlan, abandonPlan } from '../sim/midplan.js';
 import { ceo } from '../sim/officers.js';
+import { agendaRows, yearPlan } from '../sim/agenda.js';
 
 export const title = '経営ダッシュボード';
 
@@ -44,6 +45,7 @@ export function render(g) {
     <div class="newsitem"><span class="ico">${n.icon}</span><span>${n.text}</span></div>`).join('') || empty('まだニュースはない');
 
   return `
+  ${agendaSection(g)}
   ${alerts(g, k, t, p)}
   ${section('主要指標', `直近4四半期（${g.year}年 ${g.month}月 第${g.weekOfMonth}週目時点）`, `
     <div class="grid4">
@@ -375,4 +377,41 @@ export function openPlan(g, ctx) {
       ctx.refresh(); closeModal();
     };
   }
+}
+
+
+// ------------------------------------------------------------
+//  決裁事項と年間カレンダー
+//    人事も賞与も総会も、決まった時期にしか動かない。
+//    未処理を上に出しておかないと、そのまま通り過ぎてしまう。
+// ------------------------------------------------------------
+function agendaSection(g) {
+  const rows = agendaRows(g);
+  const plan = yearPlan(g);
+  const STATE = {
+    open: ['未決裁', 'amber'], done: ['決裁済', 'good'],
+    expired: ['期限切れ', 'bad'], future: ['—', 'grey'], skip: ['対象外', 'grey'],
+  };
+  const list = rows.length ? rows.map(r => `<div class="card click ${r.left <= 1 ? 'warn' : ''}" data-act="agenda.open" data-id="${r.id}">
+      <div class="card-t"><span class="card-n">${r.icon} ${r.name}</span>
+        ${chip(r.left <= 0 ? '今週が期限' : `あと${r.left}週`, r.left <= 1 ? 'bad' : r.left <= 3 ? 'amber' : 'grey')}</div>
+      <div class="card-s">${r.desc}</div>
+    </div>`).join('')
+    : '<div class="hint">いま決裁を待っているものはない。</div>';
+
+  return section('決裁事項', rows.length ? `未処理 ${rows.length}件` : '', `
+    ${list}
+    <div class="sec" style="margin-top:12px">
+      <div class="sec-t"><span>${g.year}年の予定</span></div>
+      <table class="tbl">
+        <tr><th>時期</th><th>内容</th><th>状態</th></tr>
+        ${plan.map(x => `<tr class="${x.state === 'open' ? 'me' : ''}">
+          <td>${x.month}月</td>
+          <td>${x.icon} ${x.name}</td>
+          <td>${x.state === 'open' && x.left != null ? `未決裁（あと${x.left}週）` : STATE[x.state][0]}</td>
+        </tr>`).join('')}
+      </table>
+      <div class="hint">期限までに決めなかったものは、既定の内容で処理される。</div>
+    </div>
+  `);
 }
