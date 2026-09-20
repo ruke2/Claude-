@@ -452,7 +452,7 @@ export const DISTRICTS = {
     city: 'hinoura',
     id: 'X', lotSize: 1800, name: '白浜リゾート', short: '白浜', kana: 'SHIRAHAMA',
     desc: '砂浜に面した別荘地。リゾートホテルと分譲別荘が混在する。夏と冬で稼働の差が大きく、通年で埋めるには工夫が要る。',
-    landPrice: 0.91,
+    landPrice: 1.02,
     farRange: [200, 400],
     rentOffice: 7800,
     rentRetail: 12000,
@@ -462,7 +462,7 @@ export const DISTRICTS = {
     priceResi: 2.35,
     capRate: 0.052,
     station: 0.26,
-    fit: { office: 0.12, retail: 0.44, resi: 0.72, rental: 0.48, hotel: 0.96, logi: 0.06, house: 0.66, mixed: 0.40 },
+    fit: { office: 0.12, retail: 0.44, resi: 0.58, rental: 0.40, hotel: 1.00, logi: 0.06, house: 0.62, mixed: 0.40 },
     height: [1, 12],
     usePool: ['hotel', 'resi', 'house', 'hotel', 'retail'],
     hue: 172, elev: 1,
@@ -571,7 +571,7 @@ export const CITIES = {
   },
   yakumo: {
     id: 'yakumo', name: '八雲市', short: '八雲', buildMul: 0.86,
-    desc: '人口90万の県庁所在地。人口は減り続けているが、駅前への集約が進んでおり、郊外から中心へという流れが読める。キャップレートは全都市で最も高い。',
+    desc: '人口40万の県庁所在地。人口は減り続けているが、駅前への集約が進んでおり、郊外から中心へという流れが読める。キャップレートは全都市で最も高い。',
   },
 };
 
