@@ -8,6 +8,7 @@ import { assetValue, currentNOI, subEffect } from '../sim/valuation.js';
 import { orgPower } from '../sim/hr.js';
 import { canRebuild, REBUILD_AGE, rebuildTargets, rebuildQuote, demolish,
   SCHEMES, schemeAvailable } from '../sim/rebuild.js';
+import { builderById, certById } from '../sim/build.js';
 
 export const title = '保有物件';
 
@@ -30,7 +31,9 @@ export function render(g, ctx) {
     const gap = a.rent / Math.max(1, a.marketRent) - 1;
     return `<div class="card">
       <div class="card-t"><span class="card-n">${a.name}</span>${chip(USES[a.use].name, 'cyan')}</div>
-      <div class="card-s">${d.name}／貸室${num(a.nra)}坪／築${a.age.toFixed(1)}年／${GRADES[a.grade].name}</div>
+      <div class="card-s">${d.name}／貸室${num(a.nra)}坪／築${a.age.toFixed(1)}年／${GRADES[a.grade].name}
+        ${certById(a.certId).id !== 'none' ? `　${chip(certById(a.certId).short + '認証', 'green')}` : ''}
+        ${builderById(a.builderId) ? `<br>施工 ${builderById(a.builderId).name}` : ''}</div>
       <div class="kv"><span class="k">稼働率</span><span class="v ${a.occupancy < 0.75 ? 'down' : a.occupancy > 0.93 ? 'up' : ''}">${pct(a.occupancy, 0)}</span></div>
       ${bar(a.occupancy, a.occupancy < 0.75 ? 'red' : '')}
       <div class="kv"><span class="k">賃料</span><span class="v">${num(a.rent)}円/坪·月　<span style="color:${Math.abs(gap) < 0.03 ? 'var(--ink-mute)' : gap > 0 ? 'var(--amber)' : 'var(--green)'}">市場比${(gap * 100).toFixed(0)}%</span></span></div>

@@ -5,6 +5,7 @@
 import { clamp, clamp01 } from '../core/format.js';
 import { ratingOf, buildBS, overdraft, debtCapacity } from './finance.js';
 import { planProgress } from './midplan.js';
+import { greenShare } from './build.js';
 
 // ------------------------------------------------------------
 //  格付け会社のレポート
@@ -40,6 +41,8 @@ export function outlookFactors(g) {
   const losses = h.filter(x => x.pl.net < 0).length;
   const od = overdraft(g);
   const room = Math.max(0, debtCapacity(g) - g.debt);
+  const green = greenShare(g);
+  const hasStock = (g.assets || []).length >= 4;
 
   return [
     { id: 'equity', name: '自己資本比率', v: equityRatio, good: equityRatio >= 0.34, bad: equityRatio < 0.20,
@@ -52,6 +55,10 @@ export function outlookFactors(g) {
       text: opTrend > 0.15 ? '営業利益は改善傾向にある。' : opTrend < -0.2 ? '営業利益が悪化しており、原価管理に課題がある。' : '利益水準に大きな変化はない。' },
     { id: 'liquidity', name: '流動性', v: room, good: od === 0 && room > rev * 0.3, bad: od > 0,
       text: od > 0 ? '借入枠を超過しており、資金繰りに強い警戒を要する。' : room > rev * 0.3 ? '調達余力は厚く、手元流動性に懸念はない。' : '調達余力はやや限られている。' },
+    { id: 'green', name: '環境性能', v: green, good: green >= 0.45, bad: green < 0.10 && hasStock,
+      text: green >= 0.45 ? '保有物件の環境認証取得が進んでおり、規制強化とテナント需要の変化に耐性がある。'
+        : green < 0.10 && hasStock ? '環境認証の取得がほとんど進んでおらず、将来の陳腐化リスクを織り込む必要がある。'
+          : '環境認証の取得は途上にある。' },
     { id: 'lease', name: 'ストック収益', v: (g.assets || []).length, good: (g.assets || []).length >= 8, bad: (g.assets || []).length === 0,
       text: (g.assets || []).length >= 8 ? '賃貸ストックからの安定収益が下支えとなっている。' : (g.assets || []).length === 0 ? '分譲に依存しており、市況悪化時の緩衝材がない。' : '賃貸ストックの積み上がりは途上にある。' },
   ];

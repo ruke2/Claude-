@@ -10,6 +10,7 @@ import { demandMul } from './population.js';
 import { growBrand, damageBrand } from './brands.js';
 import { isHome, HOME } from './company.js';
 import { areaOcc } from './area.js';
+import { certOccBonus } from './build.js';
 import { perWeek, WEEKS_PER_QUARTER, WEEKS_PER_YEAR } from '../core/time.js';
 
 /** 分譲在庫の販売 */
@@ -119,6 +120,8 @@ export function stepAssets(g, rng, news) {
     // 大口テナントが押さえている床は空かない。
     // **一般の稼働率に足さず、残りの床にだけ一般の稼働率を掛けること。**
     // 足すと 100% を超えて、契約と空室の合計が貸室面積を上回る
+    // 環境認証は空室を埋めやすくする（借りる側の選定基準に入っている）
+    target = clamp01(target + certOccBonus(a));
     const anchor = clamp01(a.anchorShare || 0);
     if (anchor > 0) target = clamp01(anchor + (1 - anchor) * target);
     // 被災して復旧工事中の物件は、そのぶん埋まらない

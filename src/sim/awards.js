@@ -5,6 +5,7 @@
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
 import { DISTRICTS, GRADES } from '../data/city.js';
+import { certMerit } from './build.js';
 
 /**
  * 賞の種類。
@@ -58,7 +59,8 @@ export function meritOf(g, a) {
   const place = d ? clamp(d.station * 14, 0, 14) : 6;
   const brand = clamp(g.company.brand / 9, 0, 11);
   const mix = a.use === 'mixed' ? 8 : a.use === 'office' || a.use === 'retail' ? 4 : 0;
-  return Math.round(gradeScore + size + height + place + brand + mix);
+  // 環境認証と施工の質も作品の評価に入る
+  return Math.round(gradeScore + size + height + place + brand + mix + certMerit(a));
 }
 
 /** その物件が狙える賞 */

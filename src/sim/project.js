@@ -13,10 +13,11 @@ import { brandEffect, growBrand, getBrand } from './brands.js';
 import { demandMul } from './population.js';
 import { jvEffect, shareOf } from './jv.js';
 import { applyRebuild } from './rebuild.js';
+import { applyBuild, builderById, certById, recordOrder, sizePenalty, DEFAULT_BUILDER } from './build.js';
 import { cultureEffects } from './culture.js';
 
 /** 複合開発（フロアスタック）の事業計画 */
-export function feasibilityStack(g, cell, stack, gradeId, brandId) {
+export function feasibilityStack(g, cell, stack, gradeId, brandId, opt = {}) {
   const eff = riskImpact(g, cell, cell.risks || []);
   const plan = devPlanStack(g, cell, stack, gradeId, {
     farPenalty: eff.farMul, landCost: cell.lastPaid || undefined, brandId,
@@ -27,6 +28,7 @@ export function feasibilityStack(g, cell, stack, gradeId, brandId) {
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
   applyRebuild(cell, plan);
+  applyBuild(g, plan, opt);
   applyJV(g, cell, plan, plan.leaseUse || stack[0].use);
   plan.totalCost = plan.landCost + plan.buildCost;
   plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
@@ -59,7 +61,7 @@ function applyJV(g, cell, plan, useId) {
   plan.jv = { ...cell.jv, effect: e };
 }
 
-export function feasibility(g, cell, useId, gradeId, brandId) {
+export function feasibility(g, cell, useId, gradeId, brandId, opt = {}) {
   const eff = riskImpact(g, cell, (cell.risks || []).filter(r => true));
   const plan = devPlan(g, cell, useId, gradeId, {
     farPenalty: eff.farMul, coverMul: 1 / Math.max(0.6, eff.floorMul) * eff.floorMul,
@@ -72,6 +74,8 @@ export function feasibility(g, cell, useId, gradeId, brandId) {
   plan.riskExtra = Math.round(eff.extraCost);
   applyProgram(cell, plan);
   applyRebuild(cell, plan);
+  // 発注先と環境認証。**`totalCost` を出す前に呼ぶこと**
+  applyBuild(g, plan, opt);
   applyJV(g, cell, plan, useId);
   plan.totalCost = plan.landCost + plan.buildCost;
   if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
@@ -119,14 +123,16 @@ function projectName(rng, use, districtId, grade) {
 }
 
 /** 着工 */
-export function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null) {
-  const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId) : feasibility(g, cell, useId, gradeId, brandId);
+export function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null, opt = {}) {
+  const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId, opt) : feasibility(g, cell, useId, gradeId, brandId, opt);
   if (!plan) return null;
   const bd = getBrand(g, brandId);
   const pj = {
     id: uid('P'), cellId: cell.id, district: cell.d,
     name: bd ? brandedName(rng, bd, useId, cell.d) : projectName(rng, useId, cell.d, gradeId),
     use: useId, grade: gradeId, brandId, stack: plan.stack || null,
+    // 発注先と環境認証。竣工時に資産・在庫へ引き継ぐ
+    builderId: plan.builderId || DEFAULT_BUILDER, certId: plan.certId || 'none',
     gfa: plan.gfa, floors: plan.floors, heightM: plan.heightM,
     sellable: plan.sellable, saleArea: plan.saleArea || 0, nra: plan.nra || 0,
     budget: plan.buildCost, spent: 0, overrun: 0,
@@ -146,9 +152,14 @@ export function startProject(g, cell, useId, gradeId, rng, news, brandId = null,
   cell.projectId = pj.id;
   cell.vacant = false;
   g.projects.push(pj);
+  recordOrder(g, pj.builderId);
+  const bd2 = builderById(pj.builderId), ct2 = certById(pj.certId);
   news && news.push({
     icon: '🏗', type: 'dev',
-    text: `${DISTRICTS[cell.d].name}で「${pj.name}」（${USES[useId].name}・地上${pj.floors}階）が着工。総事業費${Math.round((plan.totalCost) / 100).toLocaleString()}億円。`,
+    text: `${DISTRICTS[cell.d].name}で「${pj.name}」（${USES[useId].name}・地上${pj.floors}階）が着工。`
+      + `総事業費${Math.round((plan.totalCost) / 100).toLocaleString()}億円`
+      + (bd2 ? `／施工 ${bd2.name}` : '')
+      + (ct2 && ct2.id !== 'none' ? `／${ct2.short}認証を取得する` : '') + '。',
   });
   return pj;
 }
@@ -182,10 +193,14 @@ export function stepProjects(g, rng, news) {
     g.finance.quarterAcc.buildSpend += myPay;
 
     // 工事イベント
+    // 発注先の荒れ方。安い会社ほど工事中のできごとが増える
+    const bd = builderById(pj.builderId) || builderById(DEFAULT_BUILDER);
+    const bRisk = bd ? bd.risk * sizePenalty(bd, pj.gfa) : 1;
+    const bGood = bd ? 0.72 + bd.quality * 0.5 : 1;
     for (const ev of BUILD_EVENTS) {
       let pr = ev.p * ce.eventSwing;
-      if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk;
-      else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6);
+      if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk * bRisk;
+      else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6) * bGood;
       if (g.subsidiaries.some(s => s.type === 'construction')) pr *= ev.bad ? 0.78 : 1.18;
       if (rng.chance(pr / Math.max(1, total * 0.55 / WEEKS_PER_QUARTER))) {
         ev.apply(pj, g, rng);
@@ -301,7 +316,9 @@ function completeProject(g, pj, rng, news) {
     m.vacant = false;
   }
   g.kpi.builtCount++;
-  g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12000 ? 1.6 : 1), 0, 100);
+  g.company.brand = clamp(g.company.brand
+    + GRADES[pj.grade].brandGain * (pj.gfa > 12000 ? 1.6 : 1)
+    + certById(pj.certId).brand, 0, 100);
   const ceq = cultureEffects(g);
   if (pj.brandId) growBrand(g, pj.brandId, {
     area: pj.gfa, units: pj.plan.units || 0, supplied: true,
@@ -331,6 +348,7 @@ function completeProject(g, pj, rng, news) {
       soldRatio: 0, revenue: 0, weeksOnSale: 0, completedWeek: g.week,
       impaired: 0, discount: 0,
       gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う
+      builderId: pj.builderId || null, certId: pj.certId || 'none',
     };
     // 事前契約分を即時に売上計上
     const pre = clamp01(pj.preContract);
@@ -366,6 +384,7 @@ function completeProject(g, pj, rng, news) {
       completedWeek: g.week, age: 0, lastRentReview: g.week,
       noi: 0, cumNoi: 0,
       gfa: pj.gfa, floors: pj.floors,        // 表彰の審査に使う
+      builderId: pj.builderId || null, certId: pj.certId || 'none',
       seismic: 1.0,                          // 耐震性能（1.0 = 現行基準）
       damage: 0,                             // 災害で受けた損傷の累計
     };

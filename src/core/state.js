@@ -331,6 +331,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     tenancies: [],         // 大口テナントとの賃貸借契約
     leads: [],             // テナントからの引き合い（リーシング）
     areas: [],             // エリアマネジメント団体
+    builderRel: {},        // ゼネコンごとの発注実績（繰り返すと値引きが効く）
     relations: {},         // 競合との関係値（共同事業の通りやすさ）
     union: { formed: false, disputes: 0, history: [] },   // 労働組合
     pop: null,             // 地区ごとの人口（createGame の最後で seed する）

@@ -29,7 +29,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 /**
  * 小数の桁を落とす。
@@ -126,6 +126,22 @@ const SKIP_TOP = new Set(['cells']);
  * 新しい版を出すたびにここへ足していく。古い順に並べること。
  */
 const STEPS = [
+  // ゼネコン選定と環境認証（build.js）を足した。
+  // 既存の案件・物件には**認証を後付けしないこと。**
+  // 取っていないものを取ったことにすると、賃料と評価が勝手に上がる。
+  // 発注先は既定（準大手）として扱い、質の補正が中立になるようにする
+  g => {
+    if (!g.builderRel || typeof g.builderRel !== 'object') g.builderRel = {};
+    for (const pj of g.projects || []) {
+      if (!pj.builderId) pj.builderId = 'takanawa';
+      if (!pj.certId) pj.certId = 'none';
+    }
+    for (const a of (g.assets || []).concat(g.inventory || [])) {
+      if (!a.builderId) a.builderId = 'takanawa';
+      if (!a.certId) a.certId = 'none';
+    }
+  },
+
   // 大口テナント（tenants.js）とエリアマネジメント（area.js）を足した。
   // 入れ物が無い古いセーブでも落ちないようにする。
   // **既存の物件に契約をでっち上げないこと。** 契約していない床の賃料が

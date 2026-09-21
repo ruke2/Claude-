@@ -19,6 +19,7 @@ import { RETAIL_TENANTS, RETAIL_CATS, LOGI_TENANTS, LOGI_CATS, officeDemand, off
 import { orgPower } from './hr.js';
 import { isHome } from './company.js';
 import { areaEffect } from './area.js';
+import { certGradeBonus } from './build.js';
 import { WEEKS_PER_YEAR } from '../core/time.js';
 
 /** 大口テナントが入る用途 */
@@ -47,7 +48,9 @@ const GRADE_Q = { standard: 0.35, high: 0.68, luxury: 0.94 };
 export function qualityOf(g, a) {
   const d = DISTRICTS[a.district];
   const aged = Math.max(0, 1 - (a.age || 0) * 0.012);
-  return clamp01((GRADE_Q[a.grade] ?? 0.35) * (0.72 + aged * 0.28) + (d ? d.station * 0.12 : 0));
+  // 環境認証と施工の質が、テナントから見た建物の格を押し上げる
+  return clamp01((GRADE_Q[a.grade] ?? 0.35) * (0.72 + aged * 0.28)
+    + (d ? d.station * 0.12 : 0) + certGradeBonus(a));
 }
 
 /** その物件が結んでいる契約 */

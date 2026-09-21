@@ -20,6 +20,7 @@ import { openCard } from './ui/card.js';
 import { nextWeek } from './sim/week.js';
 import { kpis, ttm, buildBS, sharePrice, marketCap, ipoStatus, investPower } from './sim/finance.js';
 import { startProject as simStart, canStart, feasibility } from './sim/project.js';
+import { builderBusy, builderById, certById, DEFAULT_BUILDER } from './sim/build.js';
 import { acquireForPlayer, holdingCost, generateListings as genListings, citiesOpen } from './sim/land.js';
 import { landAppraisal, assetValue, currentNOI } from './sim/valuation.js';
 import { sellAsset } from './sim/sales.js';
@@ -846,11 +847,14 @@ function handleAction(act, id) {
 // ------------------------------------------------------------
 //  アクション
 // ------------------------------------------------------------
-function startProject(cell, use, grade, brandId, stack) {
+function startProject(cell, use, grade, brandId, stack, opt = {}) {
   const err = canStart(G, cell);
   if (err) return toast(err, 'bad');
+  // 手一杯のゼネコンには出せない。**画面だけの出し分けは素通りするので、ここでも見る**
+  const busy = builderBusy(G, opt.builderId || DEFAULT_BUILDER);
+  if (busy) return toast(busy, 'bad');
   const rng = new RNG(G.rngState ^ (G.week * 31337));
-  const pj = simStart(G, cell, use, grade, rng, G.news, brandId, stack);
+  const pj = simStart(G, cell, use, grade, rng, G.news, brandId, stack, opt);
   if (!pj) return toast('この構成では計画を作れない', 'bad');
   G.rngState = rng.s;
   R.invalidate();

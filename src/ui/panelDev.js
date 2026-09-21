@@ -12,6 +12,8 @@ import { orgPower, projectCapacity } from '../sim/hr.js';
 import { debtCapacity } from '../sim/finance.js';
 import { offerFor } from '../sim/jv.js';
 import { isIdleLot } from '../core/state.js';
+import { BUILDERS, CERTS, builderById, certById, certAvailable, builderBusy,
+  builderLoad, relOf, sizePenalty, DEFAULT_BUILDER } from '../sim/build.js';
 
 export const title = '開発事業';
 
@@ -30,7 +32,9 @@ export function render(g, ctx) {
         <span class="card-n">${pj.name}</span>
         ${chip(USES[pj.use].name, 'cyan')}
       </div>
-      <div class="card-s">${DISTRICTS[pj.district].name}／地上${pj.floors}階・延床${num(pj.gfa)}坪／${GRADES[pj.grade].name}</div>
+      <div class="card-s">${DISTRICTS[pj.district].name}／地上${pj.floors}階・延床${num(pj.gfa)}坪／${GRADES[pj.grade].name}
+        ${builderById(pj.builderId) ? `／施工 ${builderById(pj.builderId).name}` : ''}
+        ${certById(pj.certId).id !== 'none' ? `／${certById(pj.certId).short}認証` : ''}</div>
       ${bar(pj.progress, 'gold')}
       <div class="kv"><span class="k">進捗</span><span class="v">${(pj.progress * 100).toFixed(0)}%（残り${weeksLabel(remain)}）</span></div>
       <div class="kv"><span class="k">工事予算 / 支出</span><span class="v">${money(pj.budget)} / ${money(pj.spent)}</span></div>
@@ -45,6 +49,21 @@ export function render(g, ctx) {
       </div>
     </div>`;
   }).join('') : empty('進行中の開発案件はない');
+
+  // どのゼネコンにどれだけ出しているか。枠が埋まると次が出せなくなる
+  const builderRow = BUILDERS.map(b => {
+    const load = builderLoad(g, b.id), rel = relOf(g, b.id);
+    return `<tr>
+      <td>${b.name}<br><span class="note">${b.tier}</span></td>
+      <td style="text-align:right">×${b.cost.toFixed(3)}</td>
+      <td style="text-align:right">×${b.weeks.toFixed(2)}</td>
+      <td style="text-align:right">${(b.quality * 100).toFixed(0)}</td>
+      <td style="text-align:right">×${b.risk.toFixed(2)}</td>
+      <td style="text-align:right">${num(b.fitGfa)}坪</td>
+      <td style="text-align:right;${load >= b.cap ? 'color:var(--red)' : ''}">${load} / ${b.cap}</td>
+      <td style="text-align:right">${rel > 0 ? pct(rel * 0.035, 1) : '—'}</td>
+    </tr>`;
+  }).join('');
 
   const idleCards = idle.length ? idle.map(c => {
     const d = DISTRICTS[c.d];
@@ -76,6 +95,17 @@ export function render(g, ctx) {
     <div class="hint">建設管理部の能力が高いほど工期が短く、原価の超過も抑えられる。同時進行できる件数は建設管理部と商品企画部の陣容で決まる。</div>
   `)}
   ${section('進行中の案件', `${g.projects.length}件`, running)}
+  ${section('施工者', '受注枠は着工のたびに埋まる', `
+    <table class="tbl">
+      <tr><th>ゼネコン</th><th style="text-align:right">請負</th><th style="text-align:right">工期</th>
+        <th style="text-align:right">質</th><th style="text-align:right">荒れ</th>
+        <th style="text-align:right">得意な規模</th><th style="text-align:right">受注枠</th><th style="text-align:right">値引き</th></tr>
+      ${builderRow}
+    </table>
+    <div class="hint">安い会社ほど工期が延び、工事中の増額と事故が増え、出来上がりの質も落ちる。
+      得意な規模を超える仕事を出すと、請負金額も工事の荒れ方も跳ね上がる。
+      同じ会社に出し続けると値引きが効くが、受注枠は先に埋まる。</div>
+  `)}
   ${section('企画待ちの用地', `${idle.length}件`, idleCards)}
   `;
 }
@@ -130,6 +160,9 @@ export function openPlan(g, cell, ctx) {
   }
   let brandId = null;
   let stack = recommendStack(g, cell);
+  // 発注先と環境認証。前回と同じ相手を初期値にする（毎回選び直すのは煩わしい）
+  let builderId = lastBuilder(g);
+  let certId = 'none';
 
   openModal(`事業計画 — ${cityOf(cell.d) === 'minato' ? '' : CITIES[cityOf(cell.d)].short + '・'}${d.name} ${num(cell.area)}坪`, build(), []);
   bind();
@@ -138,7 +171,8 @@ export function openPlan(g, cell, ctx) {
     const avail = brandsFor(g, use);
     if (brandId && !avail.some(b => b.id === brandId)) brandId = null;
     const isMixed = use === 'mixed';
-    const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId) : feasibility(g, cell, use, grade, brandId);
+    const opt = { builderId, certId };
+    const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId, opt) : feasibility(g, cell, use, grade, brandId, opt);
     const bf = brandEffect(g, brandId);
     if (!plan) return '<div class="empty">構成を1つ以上指定すること</div>';
     const err = canStart(g, cell, use, grade);
@@ -174,6 +208,8 @@ export function openPlan(g, cell, ctx) {
           : 'ブランドを冠すると単価と契約速度が上がり、供給実績がブランドを育てる。')
         : `この用途（${USES[use].name}）に使えるブランドがない。ブランドタブから立ち上げられる。`}</div>
     </div>
+
+    ${builderSection(plan)}
 
     ${isMixed ? stackEditor(plan) : ''}
 
@@ -234,6 +270,60 @@ export function openPlan(g, cell, ctx) {
     ${isMixed && plan.over ? `<div class="card" style="border-color:rgba(255,107,122,.5)"><div class="card-s" style="color:var(--red)">容積率を超過している。延床${num(plan.gfa)}坪に対し、この敷地で建てられるのは${num(plan.maxGfa)}坪までである。階数を減らすこと。</div></div>` : ''}
     <div class="btnrow">
       <button class="btn primary wide" data-start="1" ${err || (isMixed && plan.over) ? 'disabled' : ''}>この計画で着工する</button>
+    </div>`;
+  }
+
+  /** 発注先と環境認証 */
+  function builderSection(plan) {
+    const b = builderById(builderId) || builderById(DEFAULT_BUILDER);
+    const cert = certById(certId);
+    const busy = builderBusy(g, b.id);
+    const pen = sizePenalty(b, plan.gfa);
+    const rel = relOf(g, b.id);
+    // 認証はグレードで取れるものが変わる。取れないものを選んだままにしない
+    const certs = CERTS.filter(c => certAvailable(c, grade));
+    if (!certs.some(c => c.id === certId)) certId = 'none';
+
+    return `<div class="sec">
+      <div class="sec-t"><span>発注先と環境性能</span></div>
+
+      <div class="field"><label>施工者</label>
+        <select id="selBuilder">
+          ${BUILDERS.map(x => {
+      const p2 = sizePenalty(x, plan.gfa);
+      const bz = builderBusy(g, x.id);
+      return `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''} ${bz && x.id !== b.id ? 'disabled' : ''}>`
+        + `${x.name}（${x.tier}）　請負 ×${(x.cost * p2).toFixed(2)} ／ 工期 ×${x.weeks.toFixed(2)}`
+        + `${bz ? '　※手一杯' : ''}</option>`;
+    }).join('')}
+        </select>
+      </div>
+      <div class="hint">${b.desc}</div>
+      <div class="grid3" style="margin-top:8px">
+        ${mini('出来上がりの質', (b.quality * 100).toFixed(0), '賃料と表彰に効く')}
+        ${mini('工事の荒れ方', '×' + (b.risk * pen).toFixed(2), '1.00が標準')}
+        ${mini('受注枠', `${builderLoad(g, b.id)} / ${b.cap}`, rel > 0 ? `発注実績で ${pct(rel * 0.035, 1)} 値引き` : '繰り返すと値引きが効く')}
+      </div>
+      ${pen > 1.005 ? `<div class="card warn" style="margin-top:8px"><div class="card-s">
+        延床 ${num(plan.gfa)}坪は${b.name}の得意な規模（${num(b.fitGfa)}坪まで）を超えている。
+        請負金額と工事の荒れ方が <b>${pct(pen - 1, 0)}</b> 上振れしている。</div></div>` : ''}
+      ${busy ? `<div class="card" style="border-color:rgba(255,107,122,.4);margin-top:8px"><div class="card-s" style="color:var(--red)">${busy}</div></div>` : ''}
+
+      <div class="field" style="margin-top:12px"><label>環境認証</label>
+        <select id="selCert">
+          ${certs.map(c => `<option value="${c.id}" ${c.id === certId ? 'selected' : ''}>`
+      + `${c.name}${c.id === 'none' ? '' : `　建設費 +${pct(c.cost, 1)} ／ 工期 +${c.weeks}週 ／ 賃料 +${pct(c.rent, 1)}`}</option>`).join('')}
+        </select>
+      </div>
+      <div class="hint">${cert.desc}${certs.length < CERTS.length
+      ? '<br>ゴールド以上はハイグレード以上の仕様でなければ取得できない。' : ''}</div>
+      ${cert.id !== 'none' ? `<div class="grid3" style="margin-top:8px">
+        ${mini('取得の費用', money(plan.certCost || 0), '建設費への上乗せ')}
+        ${mini('稼働率', '+' + pct(cert.occ, 1), '空室が埋まりやすくなる')}
+        ${mini('テナントの目線', '+' + (cert.grade * 100).toFixed(0), '建物の格に加算')}
+      </div>
+      <div class="hint">賃料のプレミアムと建設費の上乗せは、ほぼ釣り合うように置いてある。
+        効いてくるのは<b>大口テナントの目線・表彰・格付けの見通し</b>である。</div>` : ''}
     </div>`;
   }
 
@@ -301,7 +391,14 @@ export function openPlan(g, cell, ctx) {
     const sb = body.querySelector('#selBrand');
     if (sb) sb.onchange = e => { brandId = e.target.value || null; refresh(); };
     const st = body.querySelector('[data-start]');
-    if (st) st.onclick = () => { ctx.startProject(cell, use, grade, brandId, use === 'mixed' ? stack : null); closeModal(); };
+    if (st) st.onclick = () => {
+      ctx.startProject(cell, use, grade, brandId, use === 'mixed' ? stack : null, { builderId, certId });
+      closeModal();
+    };
+    const sbd = body.querySelector('#selBuilder');
+    if (sbd) sbd.onchange = e => { builderId = e.target.value; refresh(); };
+    const sct = body.querySelector('#selCert');
+    if (sct) sct.onchange = e => { certId = e.target.value; refresh(); };
   }
 }
 
@@ -356,4 +453,16 @@ export function openPricing(g, pj, ctx) {
       ctx.refresh(); closeModal();
     };
   }
+}
+
+
+/** 直近に発注したゼネコン。無ければ既定 */
+function lastBuilder(g) {
+  const rel = g.builderRel || {};
+  let best = DEFAULT_BUILDER, bv = -1;
+  for (const b of BUILDERS) {
+    const v = rel[b.id] || 0;
+    if (v > bv) { bv = v; best = b.id; }
+  }
+  return bv > 0 ? best : DEFAULT_BUILDER;
 }

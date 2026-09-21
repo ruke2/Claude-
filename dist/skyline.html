@@ -4267,6 +4267,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       // テナントからの引き合い（リーシング）
       areas: [],
       // エリアマネジメント団体
+      builderRel: {},
+      // ゼネコンごとの発注実績（繰り返すと値引きが効く）
       relations: {},
       // 競合との関係値（共同事業の通りやすさ）
       union: { formed: false, disputes: 0, history: [] },
@@ -5252,10 +5254,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const build = gfa * U.build * g.market.costIdx * G2.costMul * highRise * costCut * cityBuildMul(c.d);
     const softCost = build * 0.085;
     const buildCost = Math.round(build + softCost);
-    const sizePenalty = Math.floor(floors / 14) * 6 + (gfa > 2e4 ? 8 : 0);
+    const sizePenalty2 = Math.floor(floors / 14) * 6 + (gfa > 2e4 ? 8 : 0);
     const ce = cultureEffects(g);
     const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-    const weeks = Math.max(16, Math.round((U.weeks + sizePenalty) * (1 - speedUp) / ce.speedMul));
+    const weeks = Math.max(16, Math.round((U.weeks + sizePenalty2) * (1 - speedUp) / ce.speedMul));
     const brandMul = (1 + (g.company.brand - 40) / 420) * homeMul(g, c.d);
     const fitMul = FIT_MUL(fit);
     const bf = brandEffect(g, opt.brandId);
@@ -5376,10 +5378,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
     const softCost = build * 0.085;
     const buildCost = Math.round(build + softCost);
-    const sizePenalty = Math.floor(totalFloors / 14) * 6 + (gfa > 2e4 ? 8 : 0) + 12;
+    const sizePenalty2 = Math.floor(totalFloors / 14) * 6 + (gfa > 2e4 ? 8 : 0) + 12;
     const ceS = cultureEffects(g);
     const speedUp = subEffect(g, "speed") + clamp((p.cons.quality - 55) / 260, -0.05, 0.16);
-    const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty) * (1 - speedUp) / ceS.speedMul));
+    const weeks = Math.max(26, Math.round((USES.mixed.weeks + sizePenalty2) * (1 - speedUp) / ceS.speedMul));
     const capRate = clamp(d.capRate + 25e-4 + g.market.capShift - subEffect(g, "exitPremium") * 0.05, 0.024, 0.09);
     const assetValue2 = noi > 0 ? Math.round(noi / capRate) : 0;
     const saleSegs = segs.filter((x) => x.model === "sale");
@@ -6195,8 +6197,239 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }).sort((x, y) => y.slack - x.slack);
   }
 
+  // src/sim/build.js
+  var BUILDERS = [
+    {
+      id: "obashi",
+      name: "\u5927\u6A4B\u7D44",
+      short: "\u5927\u6A4B",
+      empId: "obashi",
+      tier: "\u30B9\u30FC\u30D1\u30FC\u30BC\u30CD\u30B3\u30F3",
+      cost: 1.055,
+      weeks: 0.94,
+      quality: 0.93,
+      risk: 0.62,
+      cap: 5,
+      fitGfa: 2e5,
+      sizeMul: 0.05,
+      desc: "\u696D\u754C\u6700\u5927\u624B\u3002\u8D85\u9AD8\u5C64\u3068\u5927\u898F\u6A21\u518D\u958B\u767A\u306E\u5B9F\u7E3E\u304C\u539A\u304F\u3001\u5DE5\u7A0B\u3082\u54C1\u8CEA\u3082\u63FA\u308C\u306A\u3044\u3002\u8ACB\u8CA0\u91D1\u984D\u306F\u6700\u3082\u9AD8\u3044\u3002"
+    },
+    {
+      id: "kajiyama",
+      name: "\u68B6\u5C71\u5EFA\u8A2D",
+      short: "\u68B6\u5C71",
+      empId: "kajiyama",
+      tier: "\u30B9\u30FC\u30D1\u30FC\u30BC\u30CD\u30B3\u30F3",
+      cost: 1.025,
+      weeks: 0.97,
+      quality: 0.85,
+      risk: 0.72,
+      cap: 5,
+      fitGfa: 12e4,
+      sizeMul: 0.08,
+      desc: "\u5927\u6A4B\u7D44\u3068\u4E26\u3076\u5927\u624B\u3002\u8A2D\u8A08\u65BD\u5DE5\u4E00\u8CAB\u306E\u63D0\u6848\u529B\u306B\u5B9A\u8A55\u304C\u3042\u308A\u3001\u8907\u96D1\u306A\u7528\u9014\u69CB\u6210\u306B\u5F37\u3044\u3002"
+    },
+    {
+      id: "takanawa",
+      name: "\u9AD8\u7E04\u7D44",
+      short: "\u9AD8\u7E04",
+      tier: "\u6E96\u5927\u624B",
+      cost: 1,
+      weeks: 1,
+      quality: 0.72,
+      risk: 0.92,
+      cap: 4,
+      fitGfa: 6e4,
+      sizeMul: 0.16,
+      desc: "\u6E96\u5927\u624B\u306E\u4E2D\u6838\u3002\u53EF\u3082\u306A\u304F\u4E0D\u53EF\u3082\u306A\u304F\u3001\u3069\u306E\u7528\u9014\u3067\u3082\u6A19\u6E96\u7684\u306B\u307E\u3068\u3081\u308B\u3002\u4E2D\u898F\u6A21\u307E\u3067\u304C\u672C\u9818\u3067\u3042\u308B\u3002"
+    },
+    {
+      id: "shinwa",
+      name: "\u65B0\u548C\u5EFA\u8A2D",
+      short: "\u65B0\u548C",
+      tier: "\u6E96\u5927\u624B",
+      cost: 0.975,
+      weeks: 1.05,
+      quality: 0.64,
+      risk: 1.06,
+      cap: 3,
+      fitGfa: 3e4,
+      sizeMul: 0.24,
+      desc: "\u4FA1\u683C\u3067\u52DD\u8CA0\u3059\u308B\u6E96\u5927\u624B\u3002\u5DE5\u7A0B\u306F\u5F8C\u308D\u5012\u3057\u306B\u306A\u308A\u304C\u3061\u3060\u304C\u3001\u4E8B\u696D\u8CBB\u306F\u78BA\u5B9F\u306B\u6291\u3048\u3089\u308C\u308B\u3002"
+    },
+    {
+      id: "kitami",
+      name: "\u5317\u898B\u5DE5\u52D9\u5E97",
+      short: "\u5317\u898B",
+      tier: "\u4E2D\u5805",
+      cost: 0.94,
+      weeks: 1.13,
+      quality: 0.52,
+      risk: 1.3,
+      cap: 2,
+      fitGfa: 12e3,
+      sizeMul: 0.34,
+      desc: "\u4E2D\u5805\u3002\u8ACB\u8CA0\u91D1\u984D\u306F\u6700\u3082\u5B89\u3044\u304C\u3001\u624B\u6301\u3061\u5DE5\u4E8B\u304C\u91CD\u306A\u308B\u3068\u5DE5\u7A0B\u304C\u4E71\u308C\u308B\u3002\u5927\u898F\u6A21\u306B\u306F\u5411\u304B\u306A\u3044\u3002"
+    }
+  ];
+  var builderById = (id) => BUILDERS.find((b) => b.id === id) || null;
+  var DEFAULT_BUILDER = "takanawa";
+  var CERTS = [
+    {
+      id: "none",
+      name: "\u8A8D\u8A3C\u3092\u53D6\u5F97\u3057\u306A\u3044",
+      short: "\u2014",
+      cost: 0,
+      weeks: 0,
+      rent: 0,
+      occ: 0,
+      brand: 0,
+      merit: 0,
+      grade: 0,
+      desc: "\u74B0\u5883\u8A8D\u8A3C\u3092\u53D6\u3089\u306A\u3044\u3002\u5EFA\u8A2D\u8CBB\u3082\u5DE5\u671F\u3082\u5897\u3048\u306A\u3044\u304C\u3001\u74B0\u5883\u6027\u80FD\u3092\u91CD\u304F\u898B\u308B\u30C6\u30CA\u30F3\u30C8\u306E\u5019\u88DC\u304B\u3089\u306F\u5916\u308C\u308B\u3002"
+    },
+    {
+      id: "bronze",
+      name: "\u30B0\u30EA\u30FC\u30F3\u30D3\u30EB\u8A8D\u8A3C \u30D6\u30ED\u30F3\u30BA",
+      short: "\u30D6\u30ED\u30F3\u30BA",
+      cost: 0.014,
+      weeks: 2,
+      rent: 7e-3,
+      occ: 6e-3,
+      brand: 0.5,
+      merit: 3,
+      grade: 0.03,
+      desc: "\u65AD\u71B1\u3068\u8A2D\u5099\u306E\u57FA\u672C\u6027\u80FD\u3092\u6E80\u305F\u3059\u3002\u53D6\u308A\u3084\u3059\u304F\u3001\u8CBB\u7528\u3082\u307B\u3068\u3093\u3069\u304B\u304B\u3089\u306A\u3044\u3002"
+    },
+    {
+      id: "silver",
+      name: "\u30B0\u30EA\u30FC\u30F3\u30D3\u30EB\u8A8D\u8A3C \u30B7\u30EB\u30D0\u30FC",
+      short: "\u30B7\u30EB\u30D0\u30FC",
+      cost: 0.03,
+      weeks: 5,
+      rent: 0.016,
+      occ: 0.014,
+      brand: 1.2,
+      merit: 7,
+      grade: 0.07,
+      desc: "\u9AD8\u52B9\u7387\u306E\u7A7A\u8ABF\u3068\u7167\u660E\u5236\u5FA1\u3092\u5165\u308C\u308B\u3002\u5927\u624B\u30C6\u30CA\u30F3\u30C8\u306E\u9078\u5B9A\u57FA\u6E96\u306B\u4E26\u3076\u6C34\u6E96\u3067\u3042\u308B\u3002"
+    },
+    {
+      id: "gold",
+      name: "\u30B0\u30EA\u30FC\u30F3\u30D3\u30EB\u8A8D\u8A3C \u30B4\u30FC\u30EB\u30C9",
+      short: "\u30B4\u30FC\u30EB\u30C9",
+      cost: 0.05,
+      weeks: 9,
+      rent: 0.027,
+      occ: 0.024,
+      brand: 2.4,
+      merit: 12,
+      grade: 0.12,
+      min: "high",
+      desc: "\u518D\u751F\u53EF\u80FD\u30A8\u30CD\u30EB\u30AE\u30FC\u306E\u5C0E\u5165\u3068\u5FB9\u5E95\u3057\u305F\u7701\u30A8\u30CD\u8A2D\u8A08\u3002\u4E0A\u5834\u4F01\u696D\u306E\u30AA\u30D5\u30A3\u30B9\u9078\u5B9A\u3067\u512A\u4F4D\u306B\u7ACB\u3064\u3002"
+    },
+    {
+      id: "platinum",
+      name: "\u30B0\u30EA\u30FC\u30F3\u30D3\u30EB\u8A8D\u8A3C \u30D7\u30E9\u30C1\u30CA",
+      short: "\u30D7\u30E9\u30C1\u30CA",
+      cost: 0.078,
+      weeks: 14,
+      rent: 0.044,
+      occ: 0.036,
+      brand: 4,
+      merit: 18,
+      grade: 0.18,
+      min: "high",
+      desc: "\u5B9F\u8CEA\u30BC\u30ED\u30A8\u30CD\u30EB\u30AE\u30FC\u3002\u53D6\u5F97\u306B\u6642\u9593\u3082\u91D1\u3082\u304B\u304B\u308B\u304C\u3001\u8857\u306E\u770B\u677F\u306B\u306A\u308B\u3002"
+    }
+  ];
+  var certById = (id) => CERTS.find((c) => c.id === id) || CERTS[0];
+  var SALE_RATE = 0.55;
+  var GRADE_ORDER = ["standard", "high", "luxury"];
+  function certAvailable(cert, gradeId) {
+    if (!cert.min) return true;
+    return GRADE_ORDER.indexOf(gradeId) >= GRADE_ORDER.indexOf(cert.min);
+  }
+  function builderLoad(g, id) {
+    return (g.projects || []).filter((pj) => pj.status === "construction" && pj.builderId === id).length;
+  }
+  function builderBusy(g, id) {
+    const b = builderById(id);
+    if (!b) return null;
+    const n = builderLoad(g, id);
+    return n >= b.cap ? `${b.name}\u306F\u5F53\u793E\u306E\u5DE5\u4E8B\u3092${n}\u4EF6\u62B1\u3048\u3066\u304A\u308A\u3001\u3053\u308C\u4EE5\u4E0A\u306F\u53D7\u3051\u3089\u308C\u306A\u3044` : null;
+  }
+  function relOf(g, id) {
+    return clamp01((g.builderRel || {})[id] || 0);
+  }
+  function recordOrder(g, id) {
+    if (!id) return;
+    g.builderRel = g.builderRel || {};
+    g.builderRel[id] = clamp01((g.builderRel[id] || 0) + 0.12);
+  }
+  function sizePenalty(b, gfa) {
+    if (!b || !(gfa > 0)) return 1;
+    const over = Math.log10(Math.max(1, gfa) / b.fitGfa);
+    return over <= 0 ? 1 : 1 + over * (b.sizeMul || 0.15);
+  }
+  function qualityMul(b, g) {
+    if (!b) return 1;
+    return 0.94 + b.quality * 0.09;
+  }
+  function applyBuild(g, plan, opt = {}) {
+    const b = builderById(opt.builderId || DEFAULT_BUILDER);
+    const cert = certById(opt.certId || "none");
+    if (!b) return;
+    const pen = sizePenalty(b, plan.gfa);
+    const rel = relOf(g, b.id);
+    const costMul = b.cost * pen * (1 - rel * 0.035) * (1 + cert.cost);
+    const weekMul = b.weeks * (1 + (pen - 1) * 0.6);
+    const before = plan.buildCost;
+    plan.buildCost = Math.round(plan.buildCost * costMul);
+    plan.builderCost = plan.buildCost - before;
+    plan.certCost = Math.round(before * b.cost * pen * (1 - rel * 0.035) * cert.cost);
+    plan.weeks = Math.max(8, Math.round(plan.weeks * weekMul) + cert.weeks);
+    const qm = qualityMul(b, g);
+    const rentMul = qm * (1 + cert.rent);
+    const saleMul = qm * (1 + cert.rent * SALE_RATE);
+    if (plan.rent) plan.rent = Math.round(plan.rent * rentMul);
+    if (plan.noi) plan.noi = Math.round(plan.noi * rentMul);
+    if (plan.assetValue) plan.assetValue = Math.round(plan.assetValue * rentMul);
+    if (plan.salePrice) plan.salePrice = plan.salePrice * saleMul;
+    if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * saleMul);
+    plan.builder = b;
+    plan.cert = cert;
+    plan.builderId = b.id;
+    plan.certId = cert.id;
+    plan.sizePenalty = pen;
+  }
+  function certOccBonus(a) {
+    return certById(a && a.certId).occ;
+  }
+  function certMerit(a) {
+    const c = certById(a && a.certId);
+    const b = builderById(a && a.builderId);
+    return c.merit + (b ? Math.round((b.quality - 0.72) * 18) : 0);
+  }
+  function certGradeBonus(a) {
+    const c = certById(a && a.certId);
+    const b = builderById(a && a.builderId);
+    return c.grade + (b ? (b.quality - 0.72) * 0.1 : 0);
+  }
+  function greenShare(g) {
+    let all = 0, green = 0;
+    for (const a of (g.assets || []).concat(g.inventory || [])) {
+      const gfa = a.gfa || a.nra || a.area || 0;
+      if (!(gfa > 0)) continue;
+      all += gfa;
+      const c = certById(a.certId);
+      if (c.id !== "none") green += gfa * (c.id === "bronze" ? 0.5 : c.id === "silver" ? 0.8 : 1);
+    }
+    return all > 0 ? clamp01(green / all) : 0;
+  }
+
   // src/sim/project.js
-  function feasibilityStack(g, cell, stack, gradeId, brandId) {
+  function feasibilityStack(g, cell, stack, gradeId, brandId, opt = {}) {
     const eff = riskImpact(g, cell, cell.risks || []);
     const plan = devPlanStack(g, cell, stack, gradeId, {
       farPenalty: eff.farMul,
@@ -6209,6 +6442,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     plan.riskExtra = Math.round(eff.extraCost);
     applyProgram(cell, plan);
     applyRebuild(cell, plan);
+    applyBuild(g, plan, opt);
     applyJV(g, cell, plan, plan.leaseUse || stack[0].use);
     plan.totalCost = plan.landCost + plan.buildCost;
     plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
@@ -6233,7 +6467,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
     plan.jv = { ...cell.jv, effect: e };
   }
-  function feasibility(g, cell, useId, gradeId, brandId) {
+  function feasibility(g, cell, useId, gradeId, brandId, opt = {}) {
     const eff = riskImpact(g, cell, (cell.risks || []).filter((r) => true));
     const plan = devPlan(g, cell, useId, gradeId, {
       farPenalty: eff.farMul,
@@ -6248,6 +6482,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     plan.riskExtra = Math.round(eff.extraCost);
     applyProgram(cell, plan);
     applyRebuild(cell, plan);
+    applyBuild(g, plan, opt);
     applyJV(g, cell, plan, useId);
     plan.totalCost = plan.landCost + plan.buildCost;
     if (plan.saleRevenue) plan.saleRevenue = Math.round(plan.saleRevenue * eff.priceMul);
@@ -6284,8 +6519,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     if (use === "house") return `${d.short}${rng.pick(["\u30AC\u30FC\u30C7\u30F3\u30BF\u30A6\u30F3", "\u30D2\u30EB\u30B5\u30A4\u30C9", "\u30C6\u30E9\u30B9\u30BF\u30A6\u30F3"])}`;
     return `${rng.pick(BRAND_PREFIX)}${d.short}${rng.pick(BRAND_CORE)}`;
   }
-  function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null) {
-    const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId) : feasibility(g, cell, useId, gradeId, brandId);
+  function startProject(g, cell, useId, gradeId, rng, news, brandId = null, stack = null, opt = {}) {
+    const plan = stack ? feasibilityStack(g, cell, stack, gradeId, brandId, opt) : feasibility(g, cell, useId, gradeId, brandId, opt);
     if (!plan) return null;
     const bd = getBrand(g, brandId);
     const pj = {
@@ -6297,6 +6532,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       grade: gradeId,
       brandId,
       stack: plan.stack || null,
+      // 発注先と環境認証。竣工時に資産・在庫へ引き継ぐ
+      builderId: plan.builderId || DEFAULT_BUILDER,
+      certId: plan.certId || "none",
       gfa: plan.gfa,
       floors: plan.floors,
       heightM: plan.heightM,
@@ -6331,10 +6569,12 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     cell.projectId = pj.id;
     cell.vacant = false;
     g.projects.push(pj);
+    recordOrder(g, pj.builderId);
+    const bd2 = builderById(pj.builderId), ct2 = certById(pj.certId);
     news && news.push({
       icon: "\u{1F3D7}",
       type: "dev",
-      text: `${DISTRICTS[cell.d].name}\u3067\u300C${pj.name}\u300D\uFF08${USES[useId].name}\u30FB\u5730\u4E0A${pj.floors}\u968E\uFF09\u304C\u7740\u5DE5\u3002\u7DCF\u4E8B\u696D\u8CBB${Math.round(plan.totalCost / 100).toLocaleString()}\u5104\u5186\u3002`
+      text: `${DISTRICTS[cell.d].name}\u3067\u300C${pj.name}\u300D\uFF08${USES[useId].name}\u30FB\u5730\u4E0A${pj.floors}\u968E\uFF09\u304C\u7740\u5DE5\u3002\u7DCF\u4E8B\u696D\u8CBB${Math.round(plan.totalCost / 100).toLocaleString()}\u5104\u5186` + (bd2 ? `\uFF0F\u65BD\u5DE5 ${bd2.name}` : "") + (ct2 && ct2.id !== "none" ? `\uFF0F${ct2.short}\u8A8D\u8A3C\u3092\u53D6\u5F97\u3059\u308B` : "") + "\u3002"
     });
     return pj;
   }
@@ -6381,10 +6621,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       pj.spent += pay2;
       g.cash -= myPay;
       g.finance.quarterAcc.buildSpend += myPay;
+      const bd = builderById(pj.builderId) || builderById(DEFAULT_BUILDER);
+      const bRisk = bd ? bd.risk * sizePenalty(bd, pj.gfa) : 1;
+      const bGood = bd ? 0.72 + bd.quality * 0.5 : 1;
       for (const ev of BUILD_EVENTS) {
         let pr = ev.p * ce.eventSwing;
-        if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk;
-        else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6);
+        if (ev.bad) pr *= clamp(1.35 - p.cons.quality / 110, 0.45, 1.6) * ce.costRisk * bRisk;
+        else pr *= clamp(0.55 + p.cons.quality / 110, 0.5, 1.6) * bGood;
         if (g.subsidiaries.some((s) => s.type === "construction")) pr *= ev.bad ? 0.78 : 1.18;
         if (rng.chance(pr / Math.max(1, total * 0.55 / WEEKS_PER_QUARTER))) {
           ev.apply(pj, g, rng);
@@ -6485,7 +6728,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       m.vacant = false;
     }
     g.kpi.builtCount++;
-    g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12e3 ? 1.6 : 1), 0, 100);
+    g.company.brand = clamp(g.company.brand + GRADES[pj.grade].brandGain * (pj.gfa > 12e3 ? 1.6 : 1) + certById(pj.certId).brand, 0, 100);
     const ceq = cultureEffects(g);
     if (pj.brandId) growBrand(g, pj.brandId, {
       area: pj.gfa,
@@ -6525,8 +6768,10 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         impaired: 0,
         discount: 0,
         gfa: pj.gfa,
-        floors: pj.floors
+        floors: pj.floors,
         // 表彰の審査に使う
+        builderId: pj.builderId || null,
+        certId: pj.certId || "none"
       };
       const pre = clamp01(pj.preContract);
       if (pre > 0) {
@@ -6575,6 +6820,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         gfa: pj.gfa,
         floors: pj.floors,
         // 表彰の審査に使う
+        builderId: pj.builderId || null,
+        certId: pj.certId || "none",
         seismic: 1,
         // 耐震性能（1.0 = 現行基準）
         damage: 0
@@ -6954,7 +7201,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     slot3: "\u30B9\u30ED\u30C3\u30C8 3",
     autoPrev: "\u3072\u3068\u3064\u524D\u306E\u81EA\u52D5\u30BB\u30FC\u30D6"
   };
-  var SAVE_VERSION = 8;
+  var SAVE_VERSION = 9;
   var shrink = (k, v) => {
     if (typeof v !== "number" || !Number.isFinite(v) || Number.isInteger(v)) return v;
     const a = Math.abs(v);
@@ -7023,6 +7270,21 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   }
   var SKIP_TOP = /* @__PURE__ */ new Set(["cells"]);
   var STEPS = [
+    // ゼネコン選定と環境認証（build.js）を足した。
+    // 既存の案件・物件には**認証を後付けしないこと。**
+    // 取っていないものを取ったことにすると、賃料と評価が勝手に上がる。
+    // 発注先は既定（準大手）として扱い、質の補正が中立になるようにする
+    (g) => {
+      if (!g.builderRel || typeof g.builderRel !== "object") g.builderRel = {};
+      for (const pj of g.projects || []) {
+        if (!pj.builderId) pj.builderId = "takanawa";
+        if (!pj.certId) pj.certId = "none";
+      }
+      for (const a of (g.assets || []).concat(g.inventory || [])) {
+        if (!a.builderId) a.builderId = "takanawa";
+        if (!a.certId) a.certId = "none";
+      }
+    },
     // 大口テナント（tenants.js）とエリアマネジメント（area.js）を足した。
     // 入れ物が無い古いセーブでも落ちないようにする。
     // **既存の物件に契約をでっち上げないこと。** 契約していない床の賃料が
@@ -9824,6 +10086,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const losses = h.filter((x) => x.pl.net < 0).length;
     const od = overdraft(g);
     const room = Math.max(0, debtCapacity(g) - g.debt);
+    const green = greenShare(g);
+    const hasStock = (g.assets || []).length >= 4;
     return [
       {
         id: "equity",
@@ -9864,6 +10128,14 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         good: od === 0 && room > rev * 0.3,
         bad: od > 0,
         text: od > 0 ? "\u501F\u5165\u67A0\u3092\u8D85\u904E\u3057\u3066\u304A\u308A\u3001\u8CC7\u91D1\u7E70\u308A\u306B\u5F37\u3044\u8B66\u6212\u3092\u8981\u3059\u308B\u3002" : room > rev * 0.3 ? "\u8ABF\u9054\u4F59\u529B\u306F\u539A\u304F\u3001\u624B\u5143\u6D41\u52D5\u6027\u306B\u61F8\u5FF5\u306F\u306A\u3044\u3002" : "\u8ABF\u9054\u4F59\u529B\u306F\u3084\u3084\u9650\u3089\u308C\u3066\u3044\u308B\u3002"
+      },
+      {
+        id: "green",
+        name: "\u74B0\u5883\u6027\u80FD",
+        v: green,
+        good: green >= 0.45,
+        bad: green < 0.1 && hasStock,
+        text: green >= 0.45 ? "\u4FDD\u6709\u7269\u4EF6\u306E\u74B0\u5883\u8A8D\u8A3C\u53D6\u5F97\u304C\u9032\u3093\u3067\u304A\u308A\u3001\u898F\u5236\u5F37\u5316\u3068\u30C6\u30CA\u30F3\u30C8\u9700\u8981\u306E\u5909\u5316\u306B\u8010\u6027\u304C\u3042\u308B\u3002" : green < 0.1 && hasStock ? "\u74B0\u5883\u8A8D\u8A3C\u306E\u53D6\u5F97\u304C\u307B\u3068\u3093\u3069\u9032\u3093\u3067\u304A\u3089\u305A\u3001\u5C06\u6765\u306E\u9673\u8150\u5316\u30EA\u30B9\u30AF\u3092\u7E54\u308A\u8FBC\u3080\u5FC5\u8981\u304C\u3042\u308B\u3002" : "\u74B0\u5883\u8A8D\u8A3C\u306E\u53D6\u5F97\u306F\u9014\u4E0A\u306B\u3042\u308B\u3002"
       },
       {
         id: "lease",
@@ -11166,6 +11438,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       if (a.use === "logi") target = clamp01(target * 1.06 + 0.04);
       if (a.use === "hotel") target = clamp01(target * (0.74 + dem * 0.34));
       if (a.age > 25) target *= 0.94;
+      target = clamp01(target + certOccBonus(a));
       const anchor = clamp01(a.anchorShare || 0);
       if (anchor > 0) target = clamp01(anchor + (1 - anchor) * target);
       if (a.repairUntil && g.week < a.repairUntil) target *= 0.55;
@@ -11762,7 +12035,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     const place = d ? clamp(d.station * 14, 0, 14) : 6;
     const brand = clamp(g.company.brand / 9, 0, 11);
     const mix = a.use === "mixed" ? 8 : a.use === "office" || a.use === "retail" ? 4 : 0;
-    return Math.round(gradeScore + size + height + place + brand + mix);
+    return Math.round(gradeScore + size + height + place + brand + mix + certMerit(a));
   }
   function stepAwards(g, rng, news) {
     g.awards = g.awards || [];
@@ -13382,7 +13655,7 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
   function qualityOf(g, a) {
     const d = DISTRICTS[a.district];
     const aged = Math.max(0, 1 - (a.age || 0) * 0.012);
-    return clamp01((GRADE_Q[a.grade] ?? 0.35) * (0.72 + aged * 0.28) + (d ? d.station * 0.12 : 0));
+    return clamp01((GRADE_Q[a.grade] ?? 0.35) * (0.72 + aged * 0.28) + (d ? d.station * 0.12 : 0) + certGradeBonus(a));
   }
   function tenanciesOf(g, assetId) {
     return (g.tenancies || []).filter((t) => t.assetId === assetId);
@@ -15286,7 +15559,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         <span class="card-n">${pj.name}</span>
         ${chip(USES[pj.use].name, "cyan")}
       </div>
-      <div class="card-s">${DISTRICTS[pj.district].name}\uFF0F\u5730\u4E0A${pj.floors}\u968E\u30FB\u5EF6\u5E8A${num(pj.gfa)}\u576A\uFF0F${GRADES[pj.grade].name}</div>
+      <div class="card-s">${DISTRICTS[pj.district].name}\uFF0F\u5730\u4E0A${pj.floors}\u968E\u30FB\u5EF6\u5E8A${num(pj.gfa)}\u576A\uFF0F${GRADES[pj.grade].name}
+        ${builderById(pj.builderId) ? `\uFF0F\u65BD\u5DE5 ${builderById(pj.builderId).name}` : ""}
+        ${certById(pj.certId).id !== "none" ? `\uFF0F${certById(pj.certId).short}\u8A8D\u8A3C` : ""}</div>
       ${bar(pj.progress, "gold")}
       <div class="kv"><span class="k">\u9032\u6357</span><span class="v">${(pj.progress * 100).toFixed(0)}%\uFF08\u6B8B\u308A${weeksLabel(remain)}\uFF09</span></div>
       <div class="kv"><span class="k">\u5DE5\u4E8B\u4E88\u7B97 / \u652F\u51FA</span><span class="v">${money(pj.budget)} / ${money(pj.spent)}</span></div>
@@ -15301,6 +15576,19 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       </div>
     </div>`;
     }).join("") : empty("\u9032\u884C\u4E2D\u306E\u958B\u767A\u6848\u4EF6\u306F\u306A\u3044");
+    const builderRow = BUILDERS.map((b) => {
+      const load = builderLoad(g, b.id), rel = relOf(g, b.id);
+      return `<tr>
+      <td>${b.name}<br><span class="note">${b.tier}</span></td>
+      <td style="text-align:right">\xD7${b.cost.toFixed(3)}</td>
+      <td style="text-align:right">\xD7${b.weeks.toFixed(2)}</td>
+      <td style="text-align:right">${(b.quality * 100).toFixed(0)}</td>
+      <td style="text-align:right">\xD7${b.risk.toFixed(2)}</td>
+      <td style="text-align:right">${num(b.fitGfa)}\u576A</td>
+      <td style="text-align:right;${load >= b.cap ? "color:var(--red)" : ""}">${load} / ${b.cap}</td>
+      <td style="text-align:right">${rel > 0 ? pct(rel * 0.035, 1) : "\u2014"}</td>
+    </tr>`;
+    }).join("");
     const idleCards = idle.length ? idle.map((c) => {
       const d = DISTRICTS[c.d];
       const best = bestPlan(g, c);
@@ -15330,6 +15618,17 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     <div class="hint">\u5EFA\u8A2D\u7BA1\u7406\u90E8\u306E\u80FD\u529B\u304C\u9AD8\u3044\u307B\u3069\u5DE5\u671F\u304C\u77ED\u304F\u3001\u539F\u4FA1\u306E\u8D85\u904E\u3082\u6291\u3048\u3089\u308C\u308B\u3002\u540C\u6642\u9032\u884C\u3067\u304D\u308B\u4EF6\u6570\u306F\u5EFA\u8A2D\u7BA1\u7406\u90E8\u3068\u5546\u54C1\u4F01\u753B\u90E8\u306E\u9663\u5BB9\u3067\u6C7A\u307E\u308B\u3002</div>
   `)}
   ${section("\u9032\u884C\u4E2D\u306E\u6848\u4EF6", `${g.projects.length}\u4EF6`, running)}
+  ${section("\u65BD\u5DE5\u8005", "\u53D7\u6CE8\u67A0\u306F\u7740\u5DE5\u306E\u305F\u3073\u306B\u57CB\u307E\u308B", `
+    <table class="tbl">
+      <tr><th>\u30BC\u30CD\u30B3\u30F3</th><th style="text-align:right">\u8ACB\u8CA0</th><th style="text-align:right">\u5DE5\u671F</th>
+        <th style="text-align:right">\u8CEA</th><th style="text-align:right">\u8352\u308C</th>
+        <th style="text-align:right">\u5F97\u610F\u306A\u898F\u6A21</th><th style="text-align:right">\u53D7\u6CE8\u67A0</th><th style="text-align:right">\u5024\u5F15\u304D</th></tr>
+      ${builderRow}
+    </table>
+    <div class="hint">\u5B89\u3044\u4F1A\u793E\u307B\u3069\u5DE5\u671F\u304C\u5EF6\u3073\u3001\u5DE5\u4E8B\u4E2D\u306E\u5897\u984D\u3068\u4E8B\u6545\u304C\u5897\u3048\u3001\u51FA\u6765\u4E0A\u304C\u308A\u306E\u8CEA\u3082\u843D\u3061\u308B\u3002
+      \u5F97\u610F\u306A\u898F\u6A21\u3092\u8D85\u3048\u308B\u4ED5\u4E8B\u3092\u51FA\u3059\u3068\u3001\u8ACB\u8CA0\u91D1\u984D\u3082\u5DE5\u4E8B\u306E\u8352\u308C\u65B9\u3082\u8DF3\u306D\u4E0A\u304C\u308B\u3002
+      \u540C\u3058\u4F1A\u793E\u306B\u51FA\u3057\u7D9A\u3051\u308B\u3068\u5024\u5F15\u304D\u304C\u52B9\u304F\u304C\u3001\u53D7\u6CE8\u67A0\u306F\u5148\u306B\u57CB\u307E\u308B\u3002</div>
+  `)}
   ${section("\u4F01\u753B\u5F85\u3061\u306E\u7528\u5730", `${idle.length}\u4EF6`, idleCards)}
   `;
   }
@@ -15380,13 +15679,16 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     }
     let brandId = null;
     let stack = recommendStack(g, cell);
+    let builderId = lastBuilder(g);
+    let certId = "none";
     openModal(`\u4E8B\u696D\u8A08\u753B \u2014 ${cityOf(cell.d) === "minato" ? "" : CITIES[cityOf(cell.d)].short + "\u30FB"}${d.name} ${num(cell.area)}\u576A`, build(), []);
     bind();
     function build() {
       const avail = brandsFor(g, use);
       if (brandId && !avail.some((b) => b.id === brandId)) brandId = null;
       const isMixed = use === "mixed";
-      const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId) : feasibility(g, cell, use, grade, brandId);
+      const opt = { builderId, certId };
+      const plan = isMixed ? feasibilityStack(g, cell, stack, grade, brandId, opt) : feasibility(g, cell, use, grade, brandId, opt);
       const bf = brandEffect(g, brandId);
       if (!plan) return '<div class="empty">\u69CB\u6210\u30921\u3064\u4EE5\u4E0A\u6307\u5B9A\u3059\u308B\u3053\u3068</div>';
       const err = canStart(g, cell, use, grade);
@@ -15418,6 +15720,8 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       </div>
       <div class="hint">${avail.length ? brandId ? `\u5358\u4FA1 +${pct(bf.price - 1, 1)}\uFF0F\u5951\u7D04\u901F\u5EA6 +${pct(bf.speed - 1, 1)}\uFF0F\u8CC3\u6599 +${pct(bf.rent - 1, 1)}\u3002\u4F9B\u7D66\u3059\u308B\u3068\u3053\u306E\u30D6\u30E9\u30F3\u30C9\u306E\u8A8D\u77E5\u5EA6\u304C\u4E0A\u304C\u308B\u3002` : "\u30D6\u30E9\u30F3\u30C9\u3092\u51A0\u3059\u308B\u3068\u5358\u4FA1\u3068\u5951\u7D04\u901F\u5EA6\u304C\u4E0A\u304C\u308A\u3001\u4F9B\u7D66\u5B9F\u7E3E\u304C\u30D6\u30E9\u30F3\u30C9\u3092\u80B2\u3066\u308B\u3002" : `\u3053\u306E\u7528\u9014\uFF08${USES[use].name}\uFF09\u306B\u4F7F\u3048\u308B\u30D6\u30E9\u30F3\u30C9\u304C\u306A\u3044\u3002\u30D6\u30E9\u30F3\u30C9\u30BF\u30D6\u304B\u3089\u7ACB\u3061\u4E0A\u3052\u3089\u308C\u308B\u3002`}</div>
     </div>
+
+    ${builderSection(plan)}
 
     ${isMixed ? stackEditor(plan) : ""}
 
@@ -15478,6 +15782,52 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
     ${isMixed && plan.over ? `<div class="card" style="border-color:rgba(255,107,122,.5)"><div class="card-s" style="color:var(--red)">\u5BB9\u7A4D\u7387\u3092\u8D85\u904E\u3057\u3066\u3044\u308B\u3002\u5EF6\u5E8A${num(plan.gfa)}\u576A\u306B\u5BFE\u3057\u3001\u3053\u306E\u6577\u5730\u3067\u5EFA\u3066\u3089\u308C\u308B\u306E\u306F${num(plan.maxGfa)}\u576A\u307E\u3067\u3067\u3042\u308B\u3002\u968E\u6570\u3092\u6E1B\u3089\u3059\u3053\u3068\u3002</div></div>` : ""}
     <div class="btnrow">
       <button class="btn primary wide" data-start="1" ${err || isMixed && plan.over ? "disabled" : ""}>\u3053\u306E\u8A08\u753B\u3067\u7740\u5DE5\u3059\u308B</button>
+    </div>`;
+    }
+    function builderSection(plan) {
+      const b = builderById(builderId) || builderById(DEFAULT_BUILDER);
+      const cert = certById(certId);
+      const busy2 = builderBusy(g, b.id);
+      const pen = sizePenalty(b, plan.gfa);
+      const rel = relOf(g, b.id);
+      const certs = CERTS.filter((c) => certAvailable(c, grade));
+      if (!certs.some((c) => c.id === certId)) certId = "none";
+      return `<div class="sec">
+      <div class="sec-t"><span>\u767A\u6CE8\u5148\u3068\u74B0\u5883\u6027\u80FD</span></div>
+
+      <div class="field"><label>\u65BD\u5DE5\u8005</label>
+        <select id="selBuilder">
+          ${BUILDERS.map((x) => {
+        const p2 = sizePenalty(x, plan.gfa);
+        const bz = builderBusy(g, x.id);
+        return `<option value="${x.id}" ${x.id === b.id ? "selected" : ""} ${bz && x.id !== b.id ? "disabled" : ""}>${x.name}\uFF08${x.tier}\uFF09\u3000\u8ACB\u8CA0 \xD7${(x.cost * p2).toFixed(2)} \uFF0F \u5DE5\u671F \xD7${x.weeks.toFixed(2)}${bz ? "\u3000\u203B\u624B\u4E00\u676F" : ""}</option>`;
+      }).join("")}
+        </select>
+      </div>
+      <div class="hint">${b.desc}</div>
+      <div class="grid3" style="margin-top:8px">
+        ${mini("\u51FA\u6765\u4E0A\u304C\u308A\u306E\u8CEA", (b.quality * 100).toFixed(0), "\u8CC3\u6599\u3068\u8868\u5F70\u306B\u52B9\u304F")}
+        ${mini("\u5DE5\u4E8B\u306E\u8352\u308C\u65B9", "\xD7" + (b.risk * pen).toFixed(2), "1.00\u304C\u6A19\u6E96")}
+        ${mini("\u53D7\u6CE8\u67A0", `${builderLoad(g, b.id)} / ${b.cap}`, rel > 0 ? `\u767A\u6CE8\u5B9F\u7E3E\u3067 ${pct(rel * 0.035, 1)} \u5024\u5F15\u304D` : "\u7E70\u308A\u8FD4\u3059\u3068\u5024\u5F15\u304D\u304C\u52B9\u304F")}
+      </div>
+      ${pen > 1.005 ? `<div class="card warn" style="margin-top:8px"><div class="card-s">
+        \u5EF6\u5E8A ${num(plan.gfa)}\u576A\u306F${b.name}\u306E\u5F97\u610F\u306A\u898F\u6A21\uFF08${num(b.fitGfa)}\u576A\u307E\u3067\uFF09\u3092\u8D85\u3048\u3066\u3044\u308B\u3002
+        \u8ACB\u8CA0\u91D1\u984D\u3068\u5DE5\u4E8B\u306E\u8352\u308C\u65B9\u304C <b>${pct(pen - 1, 0)}</b> \u4E0A\u632F\u308C\u3057\u3066\u3044\u308B\u3002</div></div>` : ""}
+      ${busy2 ? `<div class="card" style="border-color:rgba(255,107,122,.4);margin-top:8px"><div class="card-s" style="color:var(--red)">${busy2}</div></div>` : ""}
+
+      <div class="field" style="margin-top:12px"><label>\u74B0\u5883\u8A8D\u8A3C</label>
+        <select id="selCert">
+          ${certs.map((c) => `<option value="${c.id}" ${c.id === certId ? "selected" : ""}>${c.name}${c.id === "none" ? "" : `\u3000\u5EFA\u8A2D\u8CBB +${pct(c.cost, 1)} \uFF0F \u5DE5\u671F +${c.weeks}\u9031 \uFF0F \u8CC3\u6599 +${pct(c.rent, 1)}`}</option>`).join("")}
+        </select>
+      </div>
+      <div class="hint">${cert.desc}${certs.length < CERTS.length ? "<br>\u30B4\u30FC\u30EB\u30C9\u4EE5\u4E0A\u306F\u30CF\u30A4\u30B0\u30EC\u30FC\u30C9\u4EE5\u4E0A\u306E\u4ED5\u69D8\u3067\u306A\u3051\u308C\u3070\u53D6\u5F97\u3067\u304D\u306A\u3044\u3002" : ""}</div>
+      ${cert.id !== "none" ? `<div class="grid3" style="margin-top:8px">
+        ${mini("\u53D6\u5F97\u306E\u8CBB\u7528", money(plan.certCost || 0), "\u5EFA\u8A2D\u8CBB\u3078\u306E\u4E0A\u4E57\u305B")}
+        ${mini("\u7A3C\u50CD\u7387", "+" + pct(cert.occ, 1), "\u7A7A\u5BA4\u304C\u57CB\u307E\u308A\u3084\u3059\u304F\u306A\u308B")}
+        ${mini("\u30C6\u30CA\u30F3\u30C8\u306E\u76EE\u7DDA", "+" + (cert.grade * 100).toFixed(0), "\u5EFA\u7269\u306E\u683C\u306B\u52A0\u7B97")}
+      </div>
+      <div class="hint">\u8CC3\u6599\u306E\u30D7\u30EC\u30DF\u30A2\u30E0\u3068\u5EFA\u8A2D\u8CBB\u306E\u4E0A\u4E57\u305B\u306F\u3001\u307B\u307C\u91E3\u308A\u5408\u3046\u3088\u3046\u306B\u7F6E\u3044\u3066\u3042\u308B\u3002
+        \u52B9\u3044\u3066\u304F\u308B\u306E\u306F<b>\u5927\u53E3\u30C6\u30CA\u30F3\u30C8\u306E\u76EE\u7DDA\u30FB\u8868\u5F70\u30FB\u683C\u4ED8\u3051\u306E\u898B\u901A\u3057</b>\u3067\u3042\u308B\u3002</div>` : ""}
     </div>`;
     }
     function stackEditor(plan) {
@@ -15555,8 +15905,18 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       };
       const st = body.querySelector("[data-start]");
       if (st) st.onclick = () => {
-        ctx2.startProject(cell, use, grade, brandId, use === "mixed" ? stack : null);
+        ctx2.startProject(cell, use, grade, brandId, use === "mixed" ? stack : null, { builderId, certId });
         closeModal();
+      };
+      const sbd = body.querySelector("#selBuilder");
+      if (sbd) sbd.onchange = (e) => {
+        builderId = e.target.value;
+        refresh2();
+      };
+      const sct = body.querySelector("#selCert");
+      if (sct) sct.onchange = (e) => {
+        certId = e.target.value;
+        refresh2();
       };
     }
   }
@@ -15610,6 +15970,18 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
         closeModal();
       };
     }
+  }
+  function lastBuilder(g) {
+    const rel = g.builderRel || {};
+    let best = DEFAULT_BUILDER, bv = -1;
+    for (const b of BUILDERS) {
+      const v = rel[b.id] || 0;
+      if (v > bv) {
+        bv = v;
+        best = b.id;
+      }
+    }
+    return bv > 0 ? best : DEFAULT_BUILDER;
   }
 
   // src/ui/panelSales.js
@@ -15740,7 +16112,9 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       const gap = a.rent / Math.max(1, a.marketRent) - 1;
       return `<div class="card">
       <div class="card-t"><span class="card-n">${a.name}</span>${chip(USES[a.use].name, "cyan")}</div>
-      <div class="card-s">${d.name}\uFF0F\u8CB8\u5BA4${num(a.nra)}\u576A\uFF0F\u7BC9${a.age.toFixed(1)}\u5E74\uFF0F${GRADES[a.grade].name}</div>
+      <div class="card-s">${d.name}\uFF0F\u8CB8\u5BA4${num(a.nra)}\u576A\uFF0F\u7BC9${a.age.toFixed(1)}\u5E74\uFF0F${GRADES[a.grade].name}
+        ${certById(a.certId).id !== "none" ? `\u3000${chip(certById(a.certId).short + "\u8A8D\u8A3C", "green")}` : ""}
+        ${builderById(a.builderId) ? `<br>\u65BD\u5DE5 ${builderById(a.builderId).name}` : ""}</div>
       <div class="kv"><span class="k">\u7A3C\u50CD\u7387</span><span class="v ${a.occupancy < 0.75 ? "down" : a.occupancy > 0.93 ? "up" : ""}">${pct(a.occupancy, 0)}</span></div>
       ${bar(a.occupancy, a.occupancy < 0.75 ? "red" : "")}
       <div class="kv"><span class="k">\u8CC3\u6599</span><span class="v">${num(a.rent)}\u5186/\u576A\xB7\u6708\u3000<span style="color:${Math.abs(gap) < 0.03 ? "var(--ink-mute)" : gap > 0 ? "var(--amber)" : "var(--green)"}">\u5E02\u5834\u6BD4${(gap * 100).toFixed(0)}%</span></span></div>
@@ -19188,11 +19562,13 @@ input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
       }
     }
   }
-  function startProject2(cell, use, grade, brandId, stack) {
+  function startProject2(cell, use, grade, brandId, stack, opt = {}) {
     const err = canStart(G, cell);
     if (err) return toast(err, "bad");
+    const busy2 = builderBusy(G, opt.builderId || DEFAULT_BUILDER);
+    if (busy2) return toast(busy2, "bad");
     const rng = new RNG(G.rngState ^ G.week * 31337);
-    const pj = startProject(G, cell, use, grade, rng, G.news, brandId, stack);
+    const pj = startProject(G, cell, use, grade, rng, G.news, brandId, stack, opt);
     if (!pj) return toast("\u3053\u306E\u69CB\u6210\u3067\u306F\u8A08\u753B\u3092\u4F5C\u308C\u306A\u3044", "bad");
     G.rngState = rng.s;
     R.invalidate();
