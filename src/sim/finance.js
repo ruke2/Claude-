@@ -2,7 +2,8 @@
 //  財務 — 四半期決算・BS・資金調達・株価
 // ============================================================
 import { clamp, clamp01 } from '../core/format.js';
-import { blankPL } from '../core/state.js';
+import { blankPL, isOwnedCell } from '../core/state.js';
+import { totalFundEquity } from './fund.js';
 import { orgPower, personnelCost } from './hr.js';
 import { holdingCost } from './land.js';
 import { landAppraisal, assetValue } from './valuation.js';
@@ -72,17 +73,20 @@ export function buildBS(g) {
   for (const inv of g.inventory) inventory += inv.cost * (1 - inv.soldRatio);
   let land = 0;
   for (const c of g.cells) {
-    if (c.owner === 'player' && !c.projectId && !c.assetId && !c.invId && !c.isHQ) land += (c.bookValue ?? c.lastPaid ?? 0);
+    // ファンドに拠出した区画（fundId）は売却済みなので資産に載せない
+    if (isOwnedCell(c) && !c.projectId && !c.assetId && !c.invId && !c.isHQ) land += (c.bookValue ?? c.lastPaid ?? 0);
   }
   let cip = 0;
   for (const p of g.projects) cip += p.spent + p.landCost;
   let rental = 0;
   for (const a of g.assets) rental += a.bookLand + a.bookBuild;
   const subs = g.subsidiaries.reduce((s, x) => s + (x.bookValue || 0), 0);
-  const total = g.cash + inventory + land + cip + rental + g.hqBook + g.goodwill + subs;
+  // ファンドへの出資持分（物件そのものは資産から外れている）
+  const fund = totalFundEquity(g);
+  const total = g.cash + inventory + land + cip + rental + g.hqBook + g.goodwill + subs + fund;
   return {
     cash: g.cash, inventory: Math.round(inventory), land: Math.round(land), cip: Math.round(cip),
-    rental: Math.round(rental), hq: g.hqBook, goodwill: g.goodwill, subs,
+    rental: Math.round(rental), hq: g.hqBook, goodwill: g.goodwill, subs, fund,
     total: Math.round(total), debt: g.debt, equity: Math.round(total - g.debt),
   };
 }
@@ -208,7 +212,7 @@ export function weeklyCosts(g, news) {
   // --- 用地の保有コスト ---
   let hold = 0;
   for (const c of g.cells) {
-    if (c.owner === 'player' && !c.assetId && !c.invId && !c.isHQ) hold += holdingCost(g, c);
+    if (isOwnedCell(c) && !c.assetId && !c.invId && !c.isHQ) hold += holdingCost(g, c);
   }
   acc.cogsOther += hold;
   g.cash -= hold;

@@ -412,6 +412,9 @@ export function canStart(g, cell, useId, gradeId) {
   if (!cell || cell.owner !== 'player') return '自社が所有していない区画である';
   if (cell.projectId) return 'すでに開発中である';
   if (cell.assetId || cell.invId) return 'すでに建物が建っている';
+  // ファンドに拠出した区画は建物ごと売っている。
+  // **`assetId` が外れているからといって更地扱いにしないこと**
+  if (cell.fundId) return 'ファンドに拠出した区画である';
   // 集約した敷地の一部（種地）は、単独では建てられない
   if (cell.mergedInto) return 'この区画は隣の敷地に合筆されている';
   if (cell.pendingMerge) return '用地集約の途中で取得した区画である。まとまるまで単独では着工できない';

@@ -31,6 +31,7 @@ import { stepStanding } from './trading.js';
 import { stepAssembly } from './assembly.js';
 import { stepTenants } from './tenants.js';
 import { stepArea } from './area.js';
+import { stepFunds } from './fund.js';
 
 /** 1週進める */
 export function nextWeek(g) {
@@ -107,6 +108,8 @@ export function nextWeek(g) {
   stepAssets(g, rng, news);
   // 街区の共同運営（費用の計上とサイネージ収入）
   stepArea(g, rng, news);
+  // REIT・私募ファンド（運用報酬と配当、期限が来たら解散）
+  stepFunds(g, rng, news);
   stepMA(g, rng, news);
   if (g.maTargets.length < 3) g.maTargets.push(...generateTargets(g, rng, 3 - g.maTargets.length));
 

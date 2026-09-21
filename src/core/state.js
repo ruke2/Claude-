@@ -332,6 +332,7 @@ export function createGame({ companyName = '常盤地所', difficulty = 'normal'
     leads: [],             // テナントからの引き合い（リーシング）
     areas: [],             // エリアマネジメント団体
     builderRel: {},        // ゼネコンごとの発注実績（繰り返すと値引きが効く）
+    funds: [],             // 組成した REIT・私募ファンド
     relations: {},         // 競合との関係値（共同事業の通りやすさ）
     union: { formed: false, disputes: 0, history: [] },   // 労働組合
     pop: null,             // 地区ごとの人口（createGame の最後で seed する）
@@ -424,8 +425,12 @@ export function cellById(g, id) { return g.cells.find(c => c.id === id); }
  * これを弾かずに数えると、用地パネルに
  * 「0坪／取得 0億円／時価 0億円／保有コスト 0億円」のカードが並び、
  * 保有区画数も実際より多く出る。
+ *
+ * **ファンドに拠出した区画（`fundId`）も自社のものとして数えないこと。**
+ * 建物ごと売っているので、貸借対照表にも保有区画数にも載ってはいけない
+ * （地図では自社が運用している器として、そのまま自社の色で描いている）。
  */
-export const isOwnedCell = c => c.owner === 'player' && !c.mergedInto;
+export const isOwnedCell = c => c.owner === 'player' && !c.mergedInto && !c.fundId;
 
 /** 自社が持っていて、まだ何も建っていない用地 */
 export const isIdleLot = c => isOwnedCell(c)

@@ -29,7 +29,7 @@ export const SLOT_LABEL = {
   auto: 'オートセーブ', slot1: 'スロット 1', slot2: 'スロット 2', slot3: 'スロット 3',
   autoPrev: 'ひとつ前の自動セーブ',
 };
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 /**
  * 小数の桁を落とす。
@@ -126,6 +126,10 @@ const SKIP_TOP = new Set(['cells']);
  * 新しい版を出すたびにここへ足していく。古い順に並べること。
  */
 const STEPS = [
+  // REIT・私募ファンド（fund.js）を足した。入れ物だけ用意する。
+  // **既存の物件を勝手にファンドへ移さないこと。** 拠出はプレイヤーの判断である
+  g => { if (!Array.isArray(g.funds)) g.funds = []; },
+
   // ゼネコン選定と環境認証（build.js）を足した。
   // 既存の案件・物件には**認証を後付けしないこと。**
   // 取っていないものを取ったことにすると、賃料と評価が勝手に上がる。

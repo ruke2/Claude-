@@ -4,8 +4,82 @@
 import { money, num, pct, dcls, moneyUnit } from '../core/format.js';
 import { section, kv, mini, chip, bar, spark, empty, openModal, closeModal, toast } from './dom.js';
 import { kpis, ttm, buildBS, borrow, repay, ipoStatus, doIPO, issueShares, debtCapacity, effectiveRate, RATINGS, sharePrice, marketCap, unrealizedGain, overdraft } from '../sim/finance.js';
+import { DISTRICTS, USES } from '../data/city.js';
+import { currentNOI } from '../sim/valuation.js';
+import { FUND_TYPES, typeOf, canForm, formFund, contribute, contributable, fundPrice,
+  fundAUM, fundNOI, fundFee, fundDividend, fundEquityOf, fundSummary, shareNow,
+  externalAUM, EXTERNAL_CAP } from '../sim/fund.js';
 
 export const title = '財務';
+
+/**
+ * REIT・私募ファンド。
+ * 数字はすべて `sim/fund.js` から引く。**ここで計算し直さないこと。**
+ */
+function fundSection(g) {
+  const fs = fundSummary(g);
+  const active = (g.funds || []).filter(f => f.status === 'active');
+  const closed = (g.funds || []).filter(f => f.status === 'closed');
+  const pool = contributable(g);
+  const poolNoi = pool.reduce((a, x) => a + currentNOI(g, x), 0);
+
+  const cards = active.map(f => {
+    const t = typeOf(f.type);
+    const aum = fundAUM(f), ext = externalAUM(f);
+    const room = Math.max(0, (f.contributed || 0) * EXTERNAL_CAP - ext);
+    const years = f.endWeek ? Math.max(0, (f.endWeek - g.week) / 52) : 0;
+    return `<div class="card click" data-act="fund.open" data-id="${f.id}">
+      <div class="card-t"><span class="card-n">${t.icon} ${f.name}</span>
+        ${chip(t.name, f.type === 'reit' ? 'gold' : 'cyan')}
+        ${f.endWeek ? chip(`残り ${years.toFixed(1)}年`, years < 1.5 ? 'amber' : 'grey') : chip('無期限', 'grey')}</div>
+      <div class="card-s">自社が拠出 ${f.assets.filter(x => !x.external).length}物件／第三者取得 ${money(ext)}</div>
+      ${kv('運用資産（AUM）', money(aum))}
+      ${kv('年間の運用報酬', money(fundFee(g, f)))}
+      ${kv('年間の配当（持分 ' + pct(shareNow(g, f), 1) + '）', money(fundDividend(g, f)))}
+      ${kv('出資持分（簿価）', money(fundEquityOf(f)))}
+      ${kv('これまでの報酬＋配当', money((f.cumFee || 0) + (f.cumDiv || 0)))}
+      <div class="hint">${room > 2000
+      ? `第三者からあと ${money(room)} まで取得できる。自社が拠出するほど、投資家の資金も付いてくる。`
+      : '第三者からの取得枠は埋まっている。自社の物件を追加拠出すると枠が広がる。'}</div>
+    </div>`;
+  }).join('');
+
+  const forms = Object.values(FUND_TYPES).map(t => {
+    const err = canForm(g, t.id, pool);
+    return `<div class="card ${err ? '' : 'click'}" ${err ? '' : `data-act="fund.form" data-id="${t.id}"`}>
+      <div class="card-t"><span class="card-n">${t.icon} ${t.name}を組成する</span>
+        ${chip(`自社出資 ${pct(t.myShare, 0)}`, 'grey')}</div>
+      <div class="card-s">${t.desc}</div>
+      ${kv('運用報酬', `年 ${pct(t.fee, 2)}（運用資産に対して）`)}
+      ${kv('取得報酬', `${pct(t.acqFee, 1)}（取得価格に対して・1回きり）`)}
+      ${kv('借入比率', pct(t.ltv, 0))}
+      ${kv('運用期間', t.years ? `${t.years}年` : '無期限')}
+      <div class="hint" ${err ? 'style="color:var(--red)"' : ''}>${err
+      || `いまの保有物件（${pool.length}棟）から選んで拠出できる。`}</div>
+    </div>`;
+  }).join('');
+
+  return section('REIT・私募ファンド', active.length ? `運用資産 ${money(fs.aum)}` : '', `
+    <div class="hint" style="margin-bottom:10px">
+      保有物件を自社が組成したファンドに売ると、物件は貸借対照表から外れ、
+      かわりに<b>運用報酬と出資持分の配当</b>が入り続ける。
+      売った時点で含み益が実現益になり、現金も戻る。<br>
+      <b>賃貸NOIそのものは失う。</b>持ち続けるより儲かる仕組みではなく、
+      資金を回して次を建てるための道具である。
+    </div>
+    ${active.length ? `<div class="grid4">
+      ${mini('運用資産', money(fs.aum, { unit: false }), moneyUnit(fs.aum))}
+      ${mini('うち第三者取得', money(fs.external, { unit: false }), moneyUnit(fs.external))}
+      ${mini('年間の報酬＋配当', money(fs.fee + fs.div, { unit: false }), moneyUnit(fs.fee + fs.div))}
+      ${mini('累計の報酬＋配当', money(fs.cum, { unit: false }), moneyUnit(fs.cum))}
+    </div>` : ''}
+    ${cards}
+    ${forms}
+    ${pool.length ? `<div class="hint">拠出できる物件は ${pool.length}棟（年間NOI ${money(poolNoi)}）。
+      出せばこのNOIを手放すことになる。</div>` : ''}
+    ${closed.length ? `<div class="hint">解散したファンド：${closed.map(f => `${f.name}（累計 ${money((f.cumFee || 0) + (f.cumDiv || 0))}）`).join('／')}</div>` : ''}
+  `);
+}
 
 export function render(g, ctx) {
   const k = kpis(g);
@@ -55,6 +129,7 @@ export function render(g, ctx) {
       <tr><td>本社不動産</td><td>${money(bs.hq)}</td><td>${pct(bs.hq / bs.total, 0)}</td></tr>
       ${bs.goodwill ? `<tr><td>のれん</td><td>${money(bs.goodwill)}</td><td>${pct(bs.goodwill / bs.total, 0)}</td></tr>` : ''}
       ${bs.subs ? `<tr><td>子会社出資金</td><td>${money(bs.subs)}</td><td>${pct(bs.subs / bs.total, 0)}</td></tr>` : ''}
+      ${bs.fund ? `<tr><td>ファンド出資金</td><td>${money(bs.fund)}</td><td>${pct(bs.fund / bs.total, 0)}</td></tr>` : ''}
       <tr class="sum"><td>資産合計</td><td>${money(bs.total)}</td><td>100%</td></tr>
       <tr><th>負債・純資産の部</th><th></th><th></th></tr>
       <tr><td>有利子負債</td><td>${money(bs.debt)}</td><td>${pct(bs.debt / bs.total, 0)}</td></tr>
@@ -116,6 +191,7 @@ export function render(g, ctx) {
     </div>`}
   `)}
 
+  ${fundSection(g)}
   ${section('損益計算書', pl ? `${g.year}年 第${g.quarter}四半期` : '', plTable)}
   ${section('貸借対照表', '', bsTable)}
   ${section('業績推移', '', histTable)}
@@ -202,4 +278,221 @@ export function openIssue(g, ctx) {
       }
     },
   ]);
+}
+
+// ------------------------------------------------------------
+//  ファンドの組成と追加拠出
+//    どちらも「どの物件を出すか」を選ぶ画面である。
+//    **失うもの（年間NOI）を必ず一緒に出すこと。**
+//    入ってくる現金だけを見せると、出すのが常に得に見える。
+// ------------------------------------------------------------
+
+/** 物件を選んでファンドを組成する */
+export function openFundForm(g, typeId, ctx) {
+  const t = typeOf(typeId);
+  const pool = contributable(g).slice().sort((a, b) => b.age - a.age);
+  const sel = new Set();
+
+  draw();
+
+  function draw() {
+    // 物件を選ぶたびに描き直すので、**スクロール位置を戻さないこと。**
+    // 一覧の下のほうを選んでいる最中に先頭へ飛ぶと、選び進められない
+    const el0 = document.getElementById('modalBody');
+    const sc = el0 ? el0.scrollTop : 0;
+    openModal(`${t.icon} ${t.name}の組成`, build(), buttons());
+    const el = document.getElementById('modalBody');
+    if (el) el.scrollTop = sc;
+    bind();
+  }
+
+  function picked() { return pool.filter(a => sel.has(a.id)); }
+
+  function buttons() {
+    const list = picked();
+    const err = canForm(g, typeId, list);
+    return [
+      {
+        label: '組成する', cls: 'primary', disabled: !!err, close: false,
+        onClick: () => {
+          const r = formFund(g, typeId, picked(), ctx.rng, null);
+          if (!r.ok) return toast(r.message, 'bad');
+          closeModal();
+          toast(`${r.fund.name}を組成した（${money(r.cash)}を回収）`, 'good');
+          ctx.refresh();
+        },
+      },
+      { label: '閉じる', cls: 'ghost' },
+    ];
+  }
+
+  function build() {
+    const list = picked();
+    const price = list.reduce((s, a) => s + fundPrice(g, a, typeId), 0);
+    const book = list.reduce((s, a) => s + (a.bookLand || 0) + (a.bookBuild || 0), 0);
+    const noi = list.reduce((s, a) => s + currentNOI(g, a), 0);
+    const myEq = Math.round(price * (1 - t.ltv) * t.myShare);
+    const err = canForm(g, typeId, list);
+
+    return `
+    <div class="grid2">
+      ${mini('拠出額', money(price, { unit: false }), moneyUnit(price))}
+      ${mini('戻る現金', money(price - myEq, { unit: false }), '拠出額 − 自社の出資')}
+      ${mini('売却損益', money(price - book, { sign: true, unit: false }), `簿価 ${money(book)}`)}
+      ${mini('手放す年間NOI', money(noi, { unit: false }), moneyUnit(noi), 'var(--red)')}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>組成後に入ってくるもの</span></div>
+      ${kv('取得報酬（1回きり）', money(Math.round(price * t.acqFee)))}
+      ${kv('年間の運用報酬', money(Math.round(price * t.fee)))}
+      ${kv('自社の出資持分', `${money(myEq)}（出資部分の ${pct(t.myShare, 0)}）`)}
+      ${kv('運用期間', t.years ? `${t.years}年（満了で解散し、持分ぶんが戻る）` : '無期限')}
+      <div class="hint">手放す年間NOI ${money(noi)} に対し、報酬と配当で戻るのは年 ${money(Math.round(price * t.fee))} 前後である。
+        <b>ファンドは儲けを増やす道具ではなく、資金を回して次を建てるための道具である。</b>
+        第三者からの取得が進めば運用資産が増え、報酬はそのぶん伸びる。</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>拠出する物件を選ぶ</span>
+        <span class="note">${list.length} / ${pool.length}棟（最低 ${t.minAssets}棟・${money(t.minValue)}）</span></div>
+      <div class="card" style="margin-bottom:8px">
+        ${kv('拠出額', money(price))}
+        ${kv('戻る現金', `<b class="up">${money(price - myEq)}</b>`)}
+        ${kv('手放す年間NOI', `<b class="down">${money(noi)}</b>`)}
+      </div>
+      ${pool.length ? pool.map(a => {
+      const p = fundPrice(g, a, typeId);
+      const n = currentNOI(g, a);
+      const on = sel.has(a.id);
+      return `<div class="card ${on ? 'sel' : ''} click" data-pick="${a.id}">
+          <div class="card-t"><span class="card-n">${on ? '☑' : '☐'} ${a.name}</span>
+            ${chip(USES[a.use].name, 'cyan')}${chip(`築${a.age.toFixed(0)}年`, 'grey')}</div>
+          <div class="card-s">${DISTRICTS[a.district].name}／貸室${num(a.nra)}坪／稼働${pct(a.occupancy, 0)}</div>
+          <div class="kv"><span class="k">ファンドの買値</span><span class="v">${money(p)}</span></div>
+          <div class="kv"><span class="k">簿価 / 年間NOI</span><span class="v">${money((a.bookLand || 0) + (a.bookBuild || 0))} / ${money(n)}</span></div>
+        </div>`;
+    }).join('') : empty('拠出できる物件がない')}
+    </div>
+    ${err ? `<div class="card" style="border-color:rgba(255,107,122,.4)"><div class="card-s" style="color:var(--red)">${err}</div></div>` : ''}`;
+  }
+
+  function bind() {
+    for (const el of Array.from(document.querySelectorAll('[data-pick]'))) {
+      el.onclick = () => {
+        const id = el.dataset.pick;
+        if (sel.has(id)) sel.delete(id); else sel.add(id);
+        draw();
+      };
+    }
+  }
+}
+
+/** 既存のファンドを開く（追加拠出と中身の確認） */
+export function openFund(g, fundId, ctx) {
+  const f = (g.funds || []).find(x => x.id === fundId);
+  if (!f) return;
+  const t = typeOf(f.type);
+  const pool = contributable(g).slice().sort((a, b) => b.age - a.age);
+  const sel = new Set();
+
+  draw();
+
+  function draw() {
+    const el0 = document.getElementById('modalBody');
+    const sc = el0 ? el0.scrollTop : 0;
+    openModal(`${t.icon} ${f.name}`, build(), buttons());
+    const el = document.getElementById('modalBody');
+    if (el) el.scrollTop = sc;
+    bind();
+  }
+  function picked() { return pool.filter(a => sel.has(a.id)); }
+
+  function buttons() {
+    return [
+      {
+        label: '追加で拠出する', cls: 'primary', disabled: picked().length === 0, close: false,
+        onClick: () => {
+          const r = contribute(g, f, picked(), null);
+          closeModal();
+          toast(`${f.name}に${money(r.price)}を拠出した（${money(r.cash)}を回収）`, 'good');
+          ctx.refresh();
+        },
+      },
+      { label: '閉じる', cls: 'ghost' },
+    ];
+  }
+
+  function build() {
+    const list = picked();
+    const price = list.reduce((s, a) => s + fundPrice(g, a, f.type), 0);
+    const noi = list.reduce((s, a) => s + currentNOI(g, a), 0);
+    const myEq = Math.round(price * (1 - t.ltv) * f.myShare);
+    const aum = fundAUM(f), ext = externalAUM(f);
+    const room = Math.max(0, (f.contributed || 0) * EXTERNAL_CAP - ext);
+    const mine = f.assets.filter(x => !x.external);
+
+    return `
+    <div class="grid4">
+      ${mini('運用資産', money(aum, { unit: false }), moneyUnit(aum))}
+      ${mini('うち第三者', money(ext, { unit: false }), `あと ${money(room)} まで`)}
+      ${mini('年間の報酬', money(fundFee(g, f), { unit: false }), moneyUnit(fundFee(g, f)))}
+      ${mini('年間の配当', money(fundDividend(g, f), { unit: false }), `持分 ${pct(shareNow(g, f), 1)}`)}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>ファンドの概要</span></div>
+      ${kv('種類', t.name)}
+      ${kv('自社が拠出した額', money(f.contributed || 0))}
+      ${kv('出資持分（簿価）', money(fundEquityOf(f)))}
+      ${kv('年間NOI（ファンド全体）', money(fundNOI(g, f)))}
+      ${kv('借入比率', pct(t.ltv, 0))}
+      ${kv('運用期間', f.endWeek ? `${((f.endWeek - g.week) / 52).toFixed(1)}年 残り（満了で解散）` : '無期限')}
+      ${kv('これまでの報酬＋配当', money((f.cumFee || 0) + (f.cumDiv || 0)))}
+      <div class="hint">第三者から取得するたびに運用資産が増え、運用報酬も増える。
+        そのかわり投資家の出資が入るので、<b>自社の持分比率は薄まる</b>（配当の取り分は増えない）。</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>組み入れている物件</span><span class="note">${mine.length}物件</span></div>
+      ${mine.length ? `<table class="tbl">
+        <tr><th>物件</th><th>所在</th><th style="text-align:right">取得価格</th><th style="text-align:right">NOI</th></tr>
+        ${mine.map(x => `<tr><td>${x.name}</td><td>${x.district ? DISTRICTS[x.district].name : '—'}</td>
+          <td style="text-align:right">${money(x.price)}</td><td style="text-align:right">${money(x.noi)}</td></tr>`).join('')}
+      </table>` : empty('まだ物件が無い')}
+      ${ext > 0 ? `<div class="hint">ほかに第三者から取得した ${money(ext)} を組み入れている。</div>` : ''}
+    </div>
+
+    <div class="sec">
+      <div class="sec-t"><span>追加で拠出する</span>
+        <span class="note">${list.length}棟</span></div>
+      ${list.length ? `<div class="card" style="margin-bottom:8px">
+        ${kv('拠出額', money(price))}
+        ${kv('戻る現金', `<b class="up">${money(price - myEq)}</b>`)}
+        ${kv('手放す年間NOI', `<b class="down">${money(noi)}</b>`)}
+      </div>` : ''}
+      ${pool.length ? pool.map(a => {
+      const p = fundPrice(g, a, f.type);
+      const on = sel.has(a.id);
+      return `<div class="card ${on ? 'sel' : ''} click" data-pick="${a.id}">
+          <div class="card-t"><span class="card-n">${on ? '☑' : '☐'} ${a.name}</span>
+            ${chip(USES[a.use].name, 'cyan')}${chip(`築${a.age.toFixed(0)}年`, 'grey')}</div>
+          <div class="card-s">${DISTRICTS[a.district].name}／貸室${num(a.nra)}坪／稼働${pct(a.occupancy, 0)}</div>
+          <div class="kv"><span class="k">ファンドの買値 / 年間NOI</span><span class="v">${money(p)} / ${money(currentNOI(g, a))}</span></div>
+        </div>`;
+    }).join('') : empty('拠出できる物件がない')}
+      ${list.length ? `<div class="hint">戻る現金 <b>${money(price - myEq)}</b>／取得報酬 ${money(Math.round(price * t.acqFee))}。
+        第三者からの取得枠も ${money(Math.round(price * EXTERNAL_CAP))} 広がる。</div>` : ''}
+    </div>`;
+  }
+
+  function bind() {
+    for (const el of Array.from(document.querySelectorAll('[data-pick]'))) {
+      el.onclick = () => {
+        const id = el.dataset.pick;
+        if (sel.has(id)) sel.delete(id); else sel.add(id);
+        draw();
+      };
+    }
+  }
 }

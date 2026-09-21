@@ -544,6 +544,14 @@ function handleAction(act, id) {
       Tenant.openArea(G, id, ctx);
       break;
     }
+    case 'fund.form': {
+      Fin.openFundForm(G, id, ctx);
+      break;
+    }
+    case 'fund.open': {
+      Fin.openFund(G, id, ctx);
+      break;
+    }
     case 'card': {
       // id があればその社員の名刺、無ければ社長（プレイヤー本人）の名刺
       const s = id ? G.staff.find(x => x.id === id) : null;
