@@ -108,6 +108,47 @@
     return m;
   }
 
+  // 背中の断面（楕円）に沿って曲げた布。L=前後の長さ、rz=横半径、ry=縦半径、th=上(0)からの角度範囲
+  // side: +1 / -1 で片側だけ（テクスチャがどちらから見ても正しい向きになる）、0 なら全周
+  function drape(L, rz, ry, th0, th1, side, flare) {
+    const nu = 14, nv = 22, pos = [], uv = [], idx = [];
+    const a0 = side ? th0 : th0, a1 = side ? th1 : th1;
+    for (let j = 0; j <= nv; j++) {
+      const t = j / nv, th = a0 + (a1 - a0) * t;
+      const k = side ? Math.max(0, th) / th1 : 0;
+      const z = (side || 1) * (rz * Math.sin(th) + (flare || 0) * k * k) * (side ? 1 : 1);
+      const y = -ry + ry * Math.cos(th);
+      for (let i = 0; i <= nu; i++) {
+        const u = i / nu, x = (u - 0.5) * L;
+        // 布の前後の縁はわずかに丸める
+        pos.push(x, y - 0.012 * Math.pow(Math.abs(u - 0.5) * 2, 4) * k, side ? z : rz * Math.sin(th));
+        uv.push(side > 0 ? u : 1 - u, 1 - t);
+      }
+    }
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * (nu + 1) + i, b = a + nu + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    return g;
+  }
+  // ゼッケンの布：角の丸い白い布に番号とレース名
+  function clothTexture(num, label) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+    const x = c.getContext('2d');
+    const rr = (X, Y, w, h, r) => { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); };
+    x.clearRect(0, 0, 512, 512);
+    // 上（背中側）は四角、下の角だけ丸い
+    x.fillStyle = '#f6f5f0'; x.beginPath(); x.moveTo(0, 0); x.lineTo(512, 0); x.lineTo(512, 430); x.arcTo(512, 512, 430, 512, 80); x.lineTo(80, 512); x.arcTo(0, 512, 0, 430, 80); x.closePath(); x.fill();
+    // 布の質感（細かいムラ）
+    for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(0,0,0,${Math.random() * 0.012})`; x.fillRect(Math.random() * 512, Math.random() * 512, 3, 3); }
+    // 縁取り
+    x.strokeStyle = '#c8c2b4'; x.lineWidth = 10; x.beginPath(); x.moveTo(14, 120); x.lineTo(14, 425); x.arcTo(14, 498, 85, 498, 66); x.lineTo(427, 498); x.arcTo(498, 498, 498, 425, 66); x.lineTo(498, 120); x.stroke();
+    x.fillStyle = '#151515'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = 'bold 190px Arial, Helvetica, sans-serif'; x.fillText(String(num), 256, 300);
+    if (label) { x.font = 'bold 40px sans-serif'; x.fillText(label.slice(0, 9), 256, 445); }
+    const t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; t.anisotropy = 8;
+    return t;
+  }
   function create(opt) {
     const coat = opt.coat;
     const o = T.SkeletonUtils.clone(G.scene);
@@ -149,11 +190,19 @@
     const g = Horse3D._geoms();
     const saddleG = new T.Group(); root.add(saddleG);
     const mTack = new T.MeshStandardMaterial({ color: '#141414', roughness: 0.5 });
-    const sad = new T.Mesh(new T.BoxGeometry(0.44, 0.05, 0.34), mTack); sad.position.set(0, 0.02, 0); sad.castShadow = true; saddleG.add(sad);
-    const clothT = Horse3D._clothTexture(opt.number || 1, opt.raceLabel);
-    const mCloth = new T.MeshStandardMaterial({ map: clothT, roughness: 0.85, side: T.DoubleSide });
-    const cw = Math.max(0.27, (G.bodyHalfWidth || 0.27) + 0.02);
-    for (const sd of [1, -1]) { const c = new T.Mesh(new T.PlaneGeometry(0.66, 0.42), mCloth); c.position.set(-0.03, -0.2, sd * cw); c.rotation.set(sd * 0.1, sd > 0 ? 0 : Math.PI, 0); saddleG.add(c); }
+    // ゼッケン：鞍の下に敷いた布が、背中から両脇へ体に沿って垂れる形
+    const hw = G.bodyHalfWidth || 0.26;
+    const clothT = clothTexture(opt.number || 1, opt.raceLabel);
+    const mCloth = new T.MeshStandardMaterial({ map: clothT, roughness: 0.9, side: T.DoubleSide, alphaTest: 0.5 });
+    for (const sd of [1, -1]) {
+      const c = new T.Mesh(drape(0.72, hw * 1.05 + 0.02, 0.33, -0.08, 2.05, sd, 0.035), mCloth);
+      c.position.set(-0.04, 0.005, 0); c.receiveShadow = true; c.castShadow = true; saddleG.add(c);
+    }
+    // 鞍：小さなレース用の鞍（背に沿った革）と、腹帯
+    const sad = new T.Mesh(drape(0.38, hw * 1.05 + 0.03, 0.335, -0.95, 0.95, 0, 0), new T.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.35, side: T.DoubleSide }));
+    sad.position.set(0.0, 0.02, 0); sad.castShadow = true; saddleG.add(sad);
+    const girth = new T.Mesh(drape(0.07, hw * 1.05 + 0.025, 0.335, -Math.PI, Math.PI, 0, 0), new T.MeshStandardMaterial({ color: '#d9d4c8', roughness: 0.7, side: T.DoubleSide }));
+    girth.position.set(0.12, 0.006, 0); saddleG.add(girth);
     const J = Horse3D._buildJockey({ ...opt, bodyHalfWidth: G.bodyHalfWidth || 0.26 }, g);
     J.root.position.set(0.02, 0, 0);
     const jockeyG = new T.Group(); root.add(jockeyG); jockeyG.add(J.root);
