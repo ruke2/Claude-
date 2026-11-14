@@ -20,7 +20,7 @@
     if (loading) return loading;
     loading = new Promise((resolve) => {
       if (!T.GLTFLoader || !T.SkeletonUtils) { resolve(null); return; }
-      new T.GLTFLoader().load(ASSET + 'horse.glb', (g) => {
+      const onLoad = (g) => {
         const clips = {}; g.animations.forEach(a => clips[a.name] = a);
         G = { scene: g.scene, clips, tex: {
           coat: tex('horse_coat.jpg'), coatN: tex('horse_n.jpg', false),
@@ -28,7 +28,13 @@
         } };
         measure(G);
         resolve(G);
-      }, undefined, () => resolve(null));
+      };
+      const fail = (e) => { console.warn('horse.glb load failed', e); resolve(null); };
+      if (window.HORSE_GLB_B64) { // glb を配信できない環境向けに、JS に埋め込んだデータから読む
+        const bin = atob(window.HORSE_GLB_B64); const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        new T.GLTFLoader().parse(buf.buffer, '', onLoad, fail);
+      } else new T.GLTFLoader().load(ASSET + 'horse.glb', onLoad, undefined, fail);
     });
     return loading;
   }
