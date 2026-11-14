@@ -57,9 +57,9 @@
     World.news(W, `${name}騎手が${region}所属でデビュー`, 'me');
     World.save(W);
     tab = 'week';
-    showWeek();
     let seen = false; try { seen = localStorage.getItem('jl-tut') === '1'; } catch (e) {}
-    if (!seen) modal(`<h2>操作に慣れておこう</h2><p>レースの操作と画面の見方を、練習レースで1つずつ説明するチュートリアルがある（3分ほど）。</p><div class="choices"><button class="btn primary" id="m-tut">チュートリアルをやる（キャリアは保存済み）</button><button class="btn" id="m-no">あとで</button></div>`, () => { $('m-tut').onclick = () => { closeModal(); World.save(W); startTutorial(); }; $('m-no').onclick = closeModal; });
+    if (seen) showWeek();
+    else setTimeout(() => modal(`<h2>操作に慣れておこう</h2><p>レースの操作と画面の見方を、練習レースで1つずつ説明するチュートリアルがある（3分ほど）。</p><div class="choices"><button class="btn primary" id="m-tut">チュートリアルをやる（キャリアは保存済み。終わったら「つづきから」）</button><button class="btn" id="m-no">あとで</button></div>`, () => { $('m-tut').onclick = () => { closeModal(); World.save(W); startTutorial(); }; $('m-no').onclick = () => { closeModal(); showWeek(); }; }), 50);
   };
 
   // ---------- 週の画面 ----------
@@ -67,7 +67,8 @@
     const p = P(); const ys = p.years[W.year] || { wins: 0, rides: 0 };
     const allow = World.apprenticeAllowance(p);
     const minKin = (p.weight + World.GEAR).toFixed(1);
-    return `<div class="grow"><h2>${esc(W.date)}　${esc(VENUES[W.venue].name)}${W.isOverseas ? '（海外遠征）' : ''}</h2>
+    const sg = window.Story && W.story ? Story.goal(W) : null;
+    return `<div class="grow"><h2>${esc(W.date)}　${esc(VENUES[W.venue].name)}${W.isOverseas ? '（海外遠征）' : ''}${sg ? `<span class="pill gold" style="margin-left:8px;font-size:11.5px">${esc(sg.title)}：${esc(sg.goal)}</span>` : ''}</h2>
       <div class="chips" style="margin-top:3px">
         <span class="chip">${esc(p.name)} ${p.age}歳${allow ? ` ▲${allow}kg` : ''}</span>
         <span class="chip">今年 <b>${ys.wins}</b>勝/${ys.rides}</span>
@@ -92,8 +93,29 @@
     else if (tab === 'people') renderPeople(pane);
     else if (tab === 'me') renderMe(pane);
     else if (tab === 'career') renderCareer(pane);
-    // 今週の出来事
-    if (W.events && W.events.length) showEvent();
+    // ストーリー → 今週の出来事
+    if (W.story && W.story.pending.length) playScenes(() => showWeek());
+    else if (W.events && W.events.length) showEvent();
+  }
+  // ストーリーの会話シーン
+  function playScenes(done) {
+    const S = W && W.story;
+    if (!S || !S.pending.length) { if (done) done(); return; }
+    const sc = S.pending[0]; let i = 0;
+    const render = () => {
+      const [who, text] = sc.lines[i];
+      const last = i >= sc.lines.length - 1;
+      let extra = '';
+      if (last && sc.input) extra = `<div style="margin-top:10px"><label class="small muted" for="sc-in">名前（カタカナ9文字まで）</label><br><input type="text" id="sc-in" maxlength="9" value="ツギノカゼ" style="margin-top:4px"></div>`;
+      const btns = last && sc.choice ? sc.choice.opts.map((o, k) => `<button class="btn ${k ? '' : 'primary'}" data-k="${k}">${esc(o)}</button>`).join('') : `<button class="btn primary" id="sc-next">${last ? (sc.input ? '名付ける' : '閉じる') : '次へ'}</button>`;
+      modal(`<div class="small muted">ストーリー</div>${who ? `<div class="pill gold" style="margin:4px 0">${esc(who)}</div>` : ''}<p style="margin:6px 0;font-size:15px;line-height:1.7">${esc(text)}</p>${extra}<div class="choices">${btns}</div>`, (el) => {
+        const finish = (val) => { S.pending.shift(); Story.answer(W, sc, val); closeModal(); World.save(W); playScenes(done); };
+        el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => finish(+b.dataset.k));
+        const nx = $('sc-next');
+        if (nx) nx.onclick = () => { if (!last) { i++; render(); } else finish(sc.input ? $('sc-in').value : null); };
+      });
+    };
+    render();
   }
   function showEvent() {
     const e = W.events[0];
@@ -123,7 +145,7 @@
       if (!W.requests.length) L += `<p class="muted">今週の依頼はない。</p>`;
       W.requests.forEach((q, i) => {
         const race = W.card[q.raceNo - 1], h = W.horses[q.hid], t = W.trainers[h.trainer], o = W.owners[h.owner];
-        const tags = [q.bondHorse ? '<span class="pill gold">お手馬</span>' : '', p.contract === h.owner ? '<span class="pill gold">主戦</span>' : '', q.viaAgent ? '<span class="pill">エージェント経由</span>' : '', !q.okWeight ? '<span class="pill warn">斤量オーバー</span>' : ''].join(' ');
+        const tags = [q.story ? '<span class="pill gold">相棒</span>' : q.bondHorse ? '<span class="pill gold">お手馬</span>' : '', p.contract === h.owner ? '<span class="pill gold">主戦</span>' : '', q.viaAgent ? '<span class="pill">エージェント経由</span>' : '', !q.okWeight ? '<span class="pill warn">斤量オーバー</span>' : ''].join(' ');
         L += `<div class="req ${q.accepted ? 'on' : ''} ${q.okWeight ? '' : 'ng'}" data-i="${i}"><div class="no">${q.raceNo}R</div>
           <div class="grow"><div><b>${esc(h.name)}</b>${realTag(h)} <span class="muted small">${sexAge(h)} ${STYLE[h.style]}</span> ${tags}</div>
           <div class="small muted">${gradeTag(race)} ${esc(race.name)} ${raceCond(race)}・斤量${q.kin}kg・${esc(t.name)}・${silkChip(o)} ${esc(o.name)}</div></div>
@@ -226,6 +248,7 @@
   // ---------- 開催日 ----------
   function showDay() {
     show('s-day');
+    if (W.story && W.story.pending.length) setTimeout(() => playScenes(), 0);
     const nRide = Object.keys(W.booked).length;
     $('day-top').innerHTML = topBar(`<span class="pill">騎乗 ${nRide}鞍</span>`);
     let t = `<table><tr><th>R</th><th>レース</th><th>条件</th><th>騎乗馬</th><th>結果</th></tr>`;
@@ -343,10 +366,10 @@
     if (!R3) { R3 = new Render3D($('r3d')); R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
     R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' });
     R3.setCamMode(camMode); updateCamBtn();
-    $('b-snd').textContent = Sound.isMuted() ? '音: OFF' : '音: ON';
+    $('b-snd').textContent = Sound.isMuted() ? '音OFF' : '音ON';
     const L = engine.course.dir === 'L';
-    $('pad-l').textContent = L ? '内' : '外'; $('pad-r').textContent = L ? '外' : '内';
-    engine.input.rein = 0.5; engine.input.steer = 0; drawPad();
+    $('lbl-l').textContent = L ? '内へ' : '外へ'; $('lbl-r').textContent = L ? '外へ' : '内へ';
+    engine.input.steer = 0; setRein(0.5);
     $('startBtn').style.display = '';
     $('loading').style.display = 'flex';
     paused = false; endAt = 0; acc = 0;
@@ -408,6 +431,16 @@
       $('side-l').textContent = l ? '◀ 馬' : ''; $('side-r').textContent = rr ? '馬 ▶' : '';
       $('whip-n').textContent = String(10 - Pl.whips);
     }
+    // コーチ：全力で持つ距離と、いまやるべきこと
+    if (hudT === 0.1) {
+      const sustain = estimateSustain(e, Pl);
+      const ratio = clamp(sustain / Math.max(1, rem), 0, 1);
+      $('coach-b').style.width = (ratio * 100) + '%';
+      $('coach-b').style.background = ratio >= 1 ? '#66bb6a' : ratio > 0.75 ? '#ffca28' : '#90a4ae';
+      $('coach-m').textContent = `全力で持つ距離 約${Math.round(sustain / 10) * 10}m ／ 残り${Math.ceil(rem)}m`;
+      const tip = coachTip(e, Pl, rem, sustain);
+      $('coach-t').textContent = tip.t; $('coach').classList.toggle('go', !!tip.go);
+    }
     // ゲージ（毎フレーム）
     const st = clamp(Pl.st / 1.06, 0, 1);
     const g = $('g-st'); g.style.height = (st * 100) + '%'; g.style.background = st > 0.5 ? '#66bb6a' : st > 0.25 ? '#ffca28' : '#ef5350';
@@ -416,6 +449,27 @@
     const m = e.message && e.t < e.message.until ? e.message : null;
     const msgEl = $('hud-msg');
     if (m) { if (msgEl.textContent !== m.text) msgEl.textContent = m.text; msgEl.style.color = m.color; } else if (msgEl.textContent) msgEl.textContent = '';
+  }
+  function estimateSustain(e, P) {
+    // 今から全力（追う＋ムチ）で走ったときに、脚が残る距離の目安
+    const vFull = P.vMax * (1.02 + (P.kick - 70) * 0.0006);
+    const rate = P.drainBase * Math.pow(vFull / (e.vBase * 0.975), 6) * 1.04 * (1 + 0.9 * P.kakari);
+    return Math.max(0, (P.st - 0.12) / rate * vFull);
+  }
+  const ORDER_RANGE = [[0, 0.12], [0.1, 0.4], [0.35, 0.7], [0.6, 1.01]];
+  function coachTip(e, P, rem, sustain) {
+    if (!e.open) return { t: 'ゲートが開いたらスタート' };
+    if (!P.started) return { t: 'スタートを押す!' };
+    if (P.finished) return { t: 'ゴール!' };
+    if (P.drive > 0.5 && P.st < 0.12) return { t: '脚が上がった…最後まで押し切れ' };
+    if (P.blocked && rem < 800) return { t: '前が壁！ ◀▶ で空いている所へ' };
+    if (P.kakari > 0.55) return { t: 'かかっている：前の馬の後ろに入れる' };
+    if (rem < sustain + 30 && P.drive < 0.5) return { t: '仕掛けどき！「追う」を長押し', go: true };
+    if (P.drive > 0.5) return { t: rem < 300 ? '追って！ ムチでもうひと伸び' : '追っている：このまま', go: rem < 300 };
+    const n = e.runners.length, fr = (P.rank - 1) / Math.max(1, n - 1), ord = ORDER_RANGE[P.horse.style];
+    if (fr < ord[0] - 0.05 && e.input.rein > 0.4) return { t: '指示より前すぎる：手綱を「抑える」' };
+    if (fr > ord[1] + 0.1 && e.input.rein < 0.6) return { t: '指示より後ろ：手綱を「行かせる」' };
+    return { t: 'いい位置。仕掛けどきまで我慢' };
   }
   function drawMap() {
     const cv = $('hud-map'), x = cv.getContext('2d'), c = engine.course;
@@ -440,53 +494,59 @@
   }
 
   // ---- 操作 ----
-  // 左：手綱パッド（上下＝手綱・位置を保つ／左右＝進路・離すと戻る）
-  function setSteer(v) { if (engine) engine.input.steer = v; drawPad(); }
-  function setRein(v) { if (engine) engine.input.rein = v; drawPad(); }
-  function drawPad() {
-    if (!engine) return;
-    const k = $('pad-knob');
-    k.style.left = (50 + engine.input.steer * 40) + '%';
-    k.style.top = (50 - (engine.input.rein - 0.5) * 80) + '%';
+  // 左：◀▶（押している間だけ進路を変える）
+  function setSteer(v) { if (engine) engine.input.steer = v; }
+  function setRein(v) {
+    if (engine) engine.input.rein = v;
+    document.querySelectorAll('#rein .rb').forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.r - v) < 0.01));
   }
-  (function bindPad() {
-    const pad = $('pad'); let id = null;
-    const at = (e) => { const r = pad.getBoundingClientRect(); return [clamp(((e.clientX - r.left) / r.width - 0.5) / 0.4, -1, 1), clamp(0.5 - ((e.clientY - r.top) / r.height - 0.5) / 0.8, 0, 1)]; };
-    const apply = (e) => { const [x, y] = at(e); if (engine) { engine.input.steer = Math.abs(x) < 0.12 ? 0 : x; engine.input.rein = y; } drawPad(); };
-    pad.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { pad.setPointerCapture(id); } catch (_) {} apply(e); });
-    pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) apply(e); });
-    const end = (e) => { if (e.pointerId === id) { id = null; setSteer(0); } };
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => pad.addEventListener(t, end));
-  })();
-  // 右：追う（長押し）。押したまま左右にはじくとムチ
+  function drawPad() { if (engine) setRein(engine.input.rein); }
+  function holdBtn(el, on, off) {
+    let id = null;
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { el.setPointerCapture(id); } catch (_) {} el.classList.add('act'); on(e); });
+    const end = (e) => { if (e.pointerId === id) { id = null; el.classList.remove('act'); off(e); } };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => el.addEventListener(t, end));
+    return () => id;
+  }
+  holdBtn($('c-left'), () => setSteer(-1), () => setSteer(0));
+  holdBtn($('c-right'), () => setSteer(1), () => setSteer(0));
+  // 右：手綱3段階
+  document.querySelectorAll('#rein .rb').forEach(b => b.addEventListener('pointerdown', (e) => { e.preventDefault(); setRein(+b.dataset.r); }));
+  // 追う（長押し）。押したまま左右にはじいてもムチ
   (function bindPush() {
-    const b = $('c-push'); let id = null, x0 = 0, lastWhip = 0;
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; x0 = e.clientX; try { b.setPointerCapture(id); } catch (_) {} if (engine) engine.input.push = true; b.classList.add('act'); });
+    const b = $('c-push'); let x0 = 0, lastWhip = 0;
+    const isDown = holdBtn(b, (e) => { x0 = e.clientX; if (engine) engine.input.push = true; }, () => { if (engine) engine.input.push = false; });
     b.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== id || !engine) return;
+      if (isDown() == null || !engine) return;
       const dx = e.clientX - x0;
-      if (Math.abs(dx) > 26 && performance.now() - lastWhip > 350) { lastWhip = performance.now(); x0 = e.clientX; engine.whip(dx < 0 ? 'L' : 'R'); flash($(dx < 0 ? 'c-whipL' : 'c-whipR')); }
+      if (Math.abs(dx) > 28 && performance.now() - lastWhip > 350) { lastWhip = performance.now(); x0 = e.clientX; engine.whip(dx < 0 ? 'L' : 'R'); flash($('c-whip')); }
     });
-    const end = (e) => { if (e.pointerId === id) { id = null; if (engine) engine.input.push = false; b.classList.remove('act'); } };
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, end));
   })();
+  // ムチ：打つ側は自動（馬がヨレている向きを戻す側。ヨレがなければ外側）
+  function autoWhip() {
+    if (!engine) return;
+    const P = engine.player, L = engine.course.dir === 'L';
+    const outer = L ? 'R' : 'L', inner = L ? 'L' : 'R';
+    const drift = P.latV || 0; // +なら外へ流れている
+    engine.whip(drift < -0.15 ? inner : outer);
+  }
+  $('c-whip').addEventListener('pointerdown', (e) => { e.preventDefault(); autoWhip(); flash($('c-whip')); });
   const flash = (el) => { el.classList.add('act'); setTimeout(() => el.classList.remove('act'), 150); };
-  $('c-whipL').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) { engine.whip('L'); flash($('c-whipL')); } });
-  $('c-whipR').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) { engine.whip('R'); flash($('c-whipR')); } });
   $('startBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) engine.playerStart(); });
   document.querySelectorAll('.ctl, #startBtn').forEach(el => el.addEventListener('contextmenu', e => e.preventDefault()));
-  function updateCamBtn() { $('b-cam').textContent = '視点: ' + CAMS.find(c => c[0] === camMode)[1]; }
+  function updateCamBtn() { $('b-cam').textContent = '視点:' + CAMS.find(c => c[0] === camMode)[1]; }
   $('b-cam').onclick = () => { const i = CAMS.findIndex(c => c[0] === camMode); camMode = CAMS[(i + 1) % CAMS.length][0]; try { localStorage.setItem('jl-cam', camMode); } catch (e) {} R3.setCamMode(camMode); updateCamBtn(); };
-  $('b-snd').onclick = () => { const m = Sound.toggleMute(); $('b-snd').textContent = m ? '音: OFF' : '音: ON'; };
+  $('b-snd').onclick = () => { const m = Sound.toggleMute(); $('b-snd').textContent = m ? '音OFF' : '音ON'; };
   $('pauseBtn').onclick = () => {
     paused = true;
     modal(`<h2 style="margin-bottom:8px">一時停止</h2>
       <div class="small" style="line-height:1.75">
-      <b>手綱パッド（左下）</b> 上下で手綱：上げると行かせる、下げると抑える。指を離しても上下の位置は保つ。前半は抑えて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
-      <b>手綱パッドの左右</b> 進路。指を離すとまっすぐに戻る。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
-      <b>追う（右下・長押し）</b> 押している間、騎手が完歩に合わせて追い、追いゲージがたまるほど全力に近づく。脚色（スタミナ）を大きく使うので、仕掛けどころが勝負<br>
-      <b>ムチ</b> 追うボタンを押したまま左右にはじくと、その側でムチ（10回まで）。左右のムチボタンでも打てる。馬はムチと反対側へ寄るので、ヨレの修正にも使う。打ちすぎると反抗する馬もいる<br>
-      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱 / Space 長押しで追う・スタート / Q・E ムチ / C 視点</div>
+      <b>◀ ▶（左下）</b> 押している間、内・外へ進路を変える。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
+      <b>手綱（右）</b> 行かせる／ふつう／抑える の3段階。前半は抑えて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
+      <b>追う（長押し）</b> 押している間、騎手が追い続けて加速する。脚色（スタミナ）を大きく使う<br>
+      <b>ムチ</b> 追っている間の伸びを上乗せ（10回まで）。打つ側は、馬のヨレを戻す向きに自動で選ばれる。追うボタンを押したまま左右にはじいても打てる<br>
+      <b>コーチ（画面上）</b> 緑のバーは「今から全力で追って持つ距離」。バーが残り距離に届いたら仕掛けどき<br>
+      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱 / Space 長押しで追う・スタート / W ムチ / C 視点</div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn primary" id="p-resume">再開</button><button class="btn" id="p-auto">ここからオート騎乗</button></div>`, () => {
       $('p-resume').onclick = () => { paused = false; closeModal(); lastT = performance.now(); };
       $('p-auto').onclick = () => { const Pl = engine.player; Pl.auto = true; if (Pl.reaction == null) Pl.reaction = Math.max(0, engine.t - engine.gateOpenAt) + 0.2; paused = false; closeModal(); lastT = performance.now(); };
@@ -495,8 +555,9 @@
   window.addEventListener('keydown', (e) => {
     if (!engine || !$('race').classList.contains('on') || paused) return;
     if (e.key === 'ArrowLeft') setSteer(-1); else if (e.key === 'ArrowRight') setSteer(1);
-    else if (e.key === 'ArrowUp') setRein(clamp(engine.input.rein + 0.1, 0, 1));
-    else if (e.key === 'ArrowDown') setRein(clamp(engine.input.rein - 0.1, 0, 1));
+    else if (e.key === 'ArrowUp') setRein(Math.min(1, engine.input.rein + 0.5));
+    else if (e.key === 'ArrowDown') setRein(Math.max(0, engine.input.rein - 0.5));
+    else if (e.key === 'w' || e.key === 'W') autoWhip();
     else if (e.key === ' ') { if (!engine.player.started) engine.playerStart(); else engine.input.push = true; }
     else if (e.key === 'q' || e.key === 'Q') engine.whip('L');
     else if (e.key === 'e' || e.key === 'E') engine.whip('R');
@@ -531,7 +592,8 @@
       if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「一時停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }); } return; }
       W.dayIdx++; World.save(W); showDay();
     };
-    if (ev.interview && !quick) showInterview(ev.interview, hid);
+    if (ev.interview && !quick) showInterview(ev.interview, hid, () => playScenes());
+    else if (!quick) playScenes();
   }
   function showInterview(iv, hid, after) {
     const def = World.INTERVIEW[iv.kind];
@@ -589,6 +651,7 @@
       ${p.g1Wins.map(g => `<div class="small">・${esc(g)}</div>`).join('')}
       <ul class="log" style="padding-left:16px">${W.log.map(l => `<li>${esc(l.text)}</li>`).join('')}</ul></div>`;
     $('b-end').onclick = () => { World.deleteSave(); refreshTitle(); show('s-title'); };
+    if (W.story && !W.story.flags.ended) { W.story.flags.ended = true; W.story.pending.push({ lines: Story.epilogue(W) }); playScenes(); }
   }
 
   // ---------- チュートリアル ----------
@@ -600,12 +663,12 @@
     { text: '<b>脚色</b>＝残りのスタミナ。<b>折合</b>＝馬の落ち着き（下がると「かかって」スタミナを浪費）。<b>追い</b>＝いまどれだけ追っているか。', tap: true, hl: ['hud-gauges'] },
     { text: '<b>視点</b>は騎手・後方・中継を切り替えられる。迷ったら「後方」が見やすい。', tap: true, hl: ['b-cam'] },
     { text: 'ではスタート。ゲートが開いた瞬間に<b>「スタート」</b>を押す。早すぎても遅すぎても出負けする。', hl: ['startBtn'], start: true, until: () => engine.player.started },
-    { text: '左下の<b>手綱パッド</b>を<b>下に</b>動かして「抑える」。前半は脚をためるのが基本。指を離しても上下の位置は保たれる。', hl: ['pad'], speed: 0.6, until: () => engine.input.rein < 0.35, hold: 1.2 },
-    { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。パッドを<b>左右</b>に動かして、前の馬の<b>真後ろ</b>に入れよう。', hl: ['pad', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
-    { text: 'いい位置。直線の手前まではこのまま我慢。<br>（早送り中）', speed: 3, until: () => engine.D - engine.player.s < 650 },
-    { text: '残り600m。右下の<b>「追う」を長押し</b>。押している間、騎手が追い続けて加速する。', hl: ['c-push'], speed: 0.6, until: () => engine.player.drive > 0.8 },
-    { text: 'そのまま押しながら、指を<b>左か右にはじく</b>と<b>ムチ</b>。馬はムチと反対側へ寄るので、ヨレたときの修正にも使う。', hl: ['c-push', 'c-whipL', 'c-whipR'], speed: 0.6, until: () => engine.player.whips >= 1 },
-    { text: 'ゴールまで追い続けよう！ 前が壁になったら、パッドの左右で進路を探す。', speed: 1, until: () => engine.player.finished },
+    { text: '右の<b>手綱</b>で<b>「抑える」</b>を押す。前半は脚（スタミナ）をためるのが基本。選んだ手綱はそのまま続く。', hl: ['rein'], speed: 0.6, until: () => engine.input.rein < 0.35, hold: 1.2 },
+    { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。左下の<b>◀ ▶</b>を押して、前の馬の<b>真後ろ</b>に入れよう。', hl: ['c-left', 'c-right', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
+    { text: 'いい位置。画面上の<b>コーチ</b>が仕掛けどきを教えてくれる。緑のバーは「全力で走りきれる距離」。それまで我慢。<br>（早送り中）', hl: ['coach'], speed: 3, until: () => engine.D - engine.player.s < 650 },
+    { text: '仕掛けどき。右下の<b>「追う」を長押し</b>。押している間、騎手が追い続けて加速する。', hl: ['c-push', 'coach'], speed: 0.6, until: () => engine.player.drive > 0.8 },
+    { text: '追いながら<b>「ムチ」</b>をタップ（別の指で）。もうひと伸びする。打つ側は、馬がヨレた向きを戻すように自動で選ばれる。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
+    { text: 'ゴールまで追い続けよう！ 前が壁になったら ◀ ▶ で進路を探す。', speed: 1, until: () => engine.player.finished },
   ];
   function startTutorial() {
     try { localStorage.setItem('jl-tut', '1'); } catch (e) {}

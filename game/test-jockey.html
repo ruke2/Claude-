@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>jockey test</title>
+<style>html,body{margin:0;height:100%;background:#888}</style></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/horse3d.js"></script><script src="js/horseglb.js"></script>
+<script>
+THREE.ColorManagement.legacyMode = false;
+const q = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(W, H); document.body.appendChild(r.domElement);
+r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true;
+const sc = new THREE.Scene(); sc.background = new THREE.Color('#9fc2e0');
+sc.add(new THREE.HemisphereLight('#d6e8ff', '#5d6b3a', 0.7));
+const sun = new THREE.DirectionalLight('#fff1dc', 2.6); sun.position.set(4, 8, 5); sun.castShadow = true; sc.add(sun);
+const gr = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: '#4f8a3a' })); gr.rotation.x = -Math.PI / 2; gr.receiveShadow = true; sc.add(gr);
+HorseGLB.load().then(() => {
+  const m = Horse3D.create({ coat: Horse3D.COATS.bay, number: 5, raceLabel: '日本ダービー', silks: { base: '#1d3f8f', accent: '#f6c445', pattern: q.get('pat') || 'hoops', cap: '#f6c445' } });
+  sc.add(m.root);
+  const st = { phase: +(q.get('ph') || 0.3), speed: +(q.get('spd') || 16), effort: +(q.get('eff') || 0.5), whipT: 0, whipSide: 1, kakari: 0 };
+  for (let i = 0; i < 30; i++) m.update(st, 0.05, i * 0.05);
+  const views = { side: [[0.2, 1.7, 5.2], [0.0, 1.5, 0]], rear: [[-4.5, 2.6, 1.2], [0.2, 1.8, 0]], q34: [[2.6, 2.6, 2.6], [0.0, 1.8, 0]], top: [[0.0, 4.5, 1.2], [0.0, 1.8, 0]], front: [[4.5, 2.2, 0.3], [0, 1.8, 0]] };
+  const v = views[q.get('view') || 'side'];
+  const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 100);
+  cam.position.set(...v[0]); cam.lookAt(...v[1]);
+  r.render(sc, cam); window.done = true;
+});
+</script></body></html>

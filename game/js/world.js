@@ -27,15 +27,19 @@
   }
   function fmtDate(d) { return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(日)`; }
 
-  // 2026年の日付を「その月の第n日曜」に変換して、他の年に当てはめる
+  // 2026年と同じ月日に一番近い日曜に開催する（土曜開催は翌日の日曜の週）
+  function nearestSunday(year, month, day) {
+    const d = new Date(year, month - 1, day);
+    const back = d.getDay(); // 0=日曜
+    d.setDate(d.getDate() + (back <= 3 ? -back : 7 - back));
+    return d;
+  }
   function gradedForWeek(year, sunday) {
-    const m = sunday.getMonth() + 1, nth = nthSundayOfMonth(sunday);
     return GRADED.filter(g => {
       const d = new Date(g.date + 'T00:00:00');
-      let dm = d.getMonth() + 1, dn;
-      if (g.sat || d.getDay() === 6) { const s = new Date(d); s.setDate(s.getDate() + 1); dm = s.getMonth() + 1; dn = nthSundayOfMonth(s); if (dm !== m) return false; return dn === nth; }
-      dn = nthSundayOfMonth(d);
-      return dm === m && dn === nth;
+      if (g.sat || d.getDay() === 6) d.setDate(d.getDate() + 1);
+      const t = nearestSunday(year, d.getMonth() + 1, d.getDate());
+      return t.getFullYear() === sunday.getFullYear() && t.getMonth() === sunday.getMonth() && t.getDate() === sunday.getDate();
     });
   }
   function overseasForWeek(sunday) {
@@ -45,9 +49,10 @@
 
   // ---- 名前 ----
   function horseName(used) {
-    for (let i = 0; i < 50; i++) {
-      const n = pick(NAME_A) + pick(NAME_B);
-      if (n.length <= 9 && !used.has(n)) { used.add(n); return n; }
+    for (let i = 0; i < 400; i++) {
+      // 2語の組み合わせが基本。足りなくなったら冠名風の3語も使う
+      const n = i < 200 ? pick(NAME_A) + pick(NAME_B) : pick(NAME_A) + pick(NAME_C) + pick(NAME_B);
+      if (n.length >= 2 && n.length <= 9 && !used.has(n)) { used.add(n); return n; }
     }
     return 'ナナシ' + ri(100, 999);
   }
@@ -167,6 +172,7 @@
     const weeks = weekSundays(W.year);
     W.wk = weeks.findIndex(d => d.getMonth() === 2);
     prepareWeek(W);
+    if (window.Story) Story.init(W);
     return W;
   }
 
@@ -405,6 +411,11 @@
         if (race.overseas && W.horses[f.hid].foreign) { f.jname = pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
         const j = js[ji++ % js.length]; f.jid = j.id;
       });
+      if (W.story && W.story.rivalHorse != null) {
+        const rf = race.field.find(f => f.hid === W.story.rivalHorse);
+        const rj = W.rivals[0].jid;
+        if (rf && rf.jid !== -1) { const other = race.field.find(f => f.jid === rj); if (other) other.jid = rf.jid; rf.jid = rj; }
+      }
     }
     const runners = race.field.map(f => {
       const h = W.horses[f.hid];
@@ -453,6 +464,7 @@
         if (!race.graded && !race.overseas && h.cls < 5) h.cls = Math.max(h.cls + 1, 2);
         if (h.cls === 0) h.cls = 2;
         if (race.graded === 1) h.g1.push(`${W.year} ${race.name}`);
+        if (h.story) h.cls = 5; // 物語の馬は勝ち上がったら重賞路線へ
         if (f.jid >= 0) { const j = W.jockeys[f.jid]; j.wins++; j.years[W.year] = (j.years[W.year] || 0) + 1; j.pop = Math.min(100, j.pop + (race.graded === 1 ? 4 : race.graded ? 1 : 0.15)); }
         if (race.graded && playerHid !== h.id) news(W, `${race.name}は${h.name}${h.real ? '' : ''}が制した（${f.jid >= 0 ? W.jockeys[f.jid].name : f.jname || ''}騎手）`, 'race');
       } else if (h.cls === 0) h.cls = 1;
@@ -534,6 +546,7 @@
       }
       // 落馬（低確率）
       if (Math.random() < 0.002) { W.injury = ri(2, 6); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
+      if (window.Story) Story.onResult(W, race, me, f);
       ev = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, dPop: Math.round(dPop * 10) / 10, income, pos: me.pos, pop: f.pop, interview, inquiry, demoted: !!me.demoted };
     }
     return ev;
@@ -631,7 +644,8 @@
     const P = W.player;
     doActivities(W);
     // 体重・体調・疲労の自然な変化
-    P.weight += 0.12 + (P.age > 30 ? 0.05 : 0);
+    // 何もしなければ少しずつ増える（年齢とともに増えやすい）。適正体重より重いほど戻りにくい
+    P.weight += 0.03 + (P.age > 30 ? 0.02 : 0) + (P.age > 40 ? 0.02 : 0);
     P.weight = clamp(P.weight, 44, 62);
     P.cond = clamp(P.cond + (P.fatigue < 25 ? 3 : P.fatigue < 50 ? 0 : -4), 20, 100);
     P.fatigue = Math.max(0, P.fatigue - 6);
@@ -654,11 +668,12 @@
         if (h.retired) return;
         if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) { h.retired = true; if (P.bond[h.id] >= 20) news(W, `お手馬の${h.name}が引退`, 'me'); }
       });
-      Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) delete W.horses[h.id]; });
+      Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) { W.usedNames.delete(h.name); delete W.horses[h.id]; } });
       W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); if (j.age >= 58) { j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; j.pop = 3; } });
     }
     prepareWeek(W);
     W.events = genEvents(W);
+    if (window.Story) Story.onWeekStart(W);
     return yearEnd;
   }
   function yearSummary(W) {
@@ -704,5 +719,6 @@
     newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
+    buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible,
   };
 })();

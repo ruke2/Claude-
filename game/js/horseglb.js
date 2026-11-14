@@ -154,7 +154,7 @@
     const mCloth = new T.MeshStandardMaterial({ map: clothT, roughness: 0.85, side: T.DoubleSide });
     const cw = Math.max(0.27, (G.bodyHalfWidth || 0.27) + 0.02);
     for (const sd of [1, -1]) { const c = new T.Mesh(new T.PlaneGeometry(0.66, 0.42), mCloth); c.position.set(-0.03, -0.2, sd * cw); c.rotation.set(sd * 0.1, sd > 0 ? 0 : Math.PI, 0); saddleG.add(c); }
-    const J = Horse3D._buildJockey(opt, g);
+    const J = Horse3D._buildJockey({ ...opt, bodyHalfWidth: G.bodyHalfWidth || 0.26 }, g);
     J.root.position.set(0.02, 0, 0);
     const jockeyG = new T.Group(); root.add(jockeyG); jockeyG.add(J.root);
     const reins = [new T.Mesh(g.strap, mTack), new T.Mesh(g.strap, mTack)];
@@ -181,7 +181,7 @@
         meanY += (tv.y - meanY) * Math.min(1, dt * 3);
         jockeyG.position.set(tv.x, 0, tv.z);
         model.pov = this.pov;
-        Horse3D._animateJockey(model, st, st.phase % 1, tv.y - meanY, pitch, meanY + 0.03);
+        Horse3D._animateJockey(model, st, st.phase % 1, tv.y - meanY, pitch, meanY + 0.04);
         // ハミの位置
         if (jaw) {
           jaw.getWorldPosition(tv); root.worldToLocal(tv);
@@ -189,7 +189,7 @@
         }
       },
       lod(d) { const near = d < 55; if (near !== this._near) { this._near = near; detail.forEach(n => { n.visible = near || /Hair/.test(n.name) && d < 90; }); } },
-      setPlayerView(on) { this.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = !on; J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.fo.visible = !on; a.hand.scale.setScalar(on ? 0.75 : 1); }); },
+      setPlayerView(on) { this.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = !on; J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.sh.visible = !on; a.fo.visible = !on; a.hand.scale.setScalar(on ? 0.75 : 1); }); J.hipBall.visible = !on; J.neckM.visible = !on; },
       dispose() { clothT.dispose(); Object.values(mats).forEach(m => m.dispose()); },
     };
     if (G.restPitch == null) {
