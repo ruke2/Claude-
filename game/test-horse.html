@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>horse test</title>
+<style>html,body{margin:0;height:100%;background:#888}canvas{display:block}</style></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="js/horse3d.js"></script>
+<script>
+THREE.ColorManagement.legacyMode = false;
+const q = new URLSearchParams(location.search);
+const W = innerWidth, H = innerHeight;
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(W, H); document.body.appendChild(r.domElement);
+r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true;
+const sc = new THREE.Scene(); sc.background = new THREE.Color('#9fc2e0');
+sc.add(new THREE.HemisphereLight('#cfe6ff', '#4a5a30', 0.9));
+const sun = new THREE.DirectionalLight('#fff3dd', 3.0); sun.position.set(3, 6, 4); sun.castShadow = true; sc.add(sun);
+const gr = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: '#4f8a3a' })); gr.rotation.x = -Math.PI / 2; gr.receiveShadow = true; sc.add(gr);
+const m = Horse3D.create({ coat: Horse3D.COATS[q.get('coat') || 'bay'], number: 7, raceLabel: '天皇賞', silks: { base: '#1565c0', accent: '#ffeb3b', pattern: q.get('pat') || 'hoops', cap: '#ffeb3b' }, socks: ['LH'], blaze: true, isPlayer: q.get('pv') === '1' });
+sc.add(m.root);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 35), W / H, 0.05, 200);
+const view = q.get('view') || 'side';
+if (view === 'side') { cam.position.set(0.1, 1.3, 6.5); cam.lookAt(0.1, 1.1, 0); }
+else if (view === 'front') { cam.position.set(4, 1.8, 3); cam.lookAt(0, 1.2, 0); }
+else if (view === 'rear') { cam.position.set(-6, 2.2, 1.5); cam.lookAt(0, 1.3, 0); }
+const ph = +(q.get('ph') || 0), spd = +(q.get('spd') || 16);
+m.update({ phase: ph, speed: spd, effort: +(q.get('eff') || 0.9), whipT: +(q.get('whip') || 0), whipSide: 1, kakari: 0 }, 0.016, 1);
+if (view === 'pov') {
+  m.root.updateMatrixWorld(true);
+  const p = new THREE.Vector3(); m.jockey.head.getWorldPosition(p);
+  cam.position.copy(p).add(new THREE.Vector3(0.02, 0.05, 0)); cam.lookAt(p.x + 10, p.y - 1.2, 0);
+}
+r.render(sc, cam);
+window.done = true;
+</script></body></html>

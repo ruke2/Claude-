@@ -8,7 +8,7 @@
   const CLASS_BASE = [60, 54, 60, 65, 70, 76];
   const CLASS_NAMES = ['新馬', '未勝利', '1勝クラス', '2勝クラス', '3勝クラス', 'オープン'];
   const COATS = ['#6b3e22', '#5a3420', '#3d2416', '#7a4a2a', '#2a1a12', '#8d5a34', '#9e9e9e', '#4a2c1a'];
-  const SAVE_KEY = 'jockey-life-save-v1';
+  const SAVE_KEY = 'jockey-life-save-v2';
 
   // ---- 日付 ----
   function nthSundayOfMonth(date) { return Math.floor((date.getDate() - 1) / 7) + 1; }
@@ -74,8 +74,9 @@
       kick: clamp(base + rnd(-8, 8), 30, 99), tmp: ri(10, 85), style,
       dist: pick([1200, 1400, 1600, 1600, 1800, 1800, 2000, 2000, 2200, 2400, 2500, 3000]), surf,
       grow: pick(['早', '普', '普', '晩']), cls: opts.cls ?? 0, starts: 0, wins: 0, g1: [],
-      last: -10, trainer: ri(0, W.trainers.length - 1), coat: pick(COATS), retired: false, earn: 0,
+      last: -10, trainer: ri(0, W.trainers.length - 1), owner: ownerFor(W), coatKey: pickCoat(), socks: pickSocks(), retired: false, earn: 0,
     };
+    if (Math.random() < 0.12) h.hood = pick(['#1e3a8a', '#b91c1c', '#e5e7eb', '#065f46']);
     if (surf === 'D' && h.dist > 2100) h.dist = 1800;
     W.horses[h.id] = h;
     return h;
@@ -85,11 +86,20 @@
       id: W.nextId++, name: r.n, sex: r.s, born: r.b, real: true, src: r.src, runs2026: r.runs,
       base: r.r - 2, spd: r.r, sta: clamp(r.r - 4 + (r.d - 2000) / 100, 60, 99), kick: clamp(r.r - 2 + (r.st >= 2 ? 3 : -2), 60, 99),
       tmp: ri(20, 60), style: r.st, dist: r.d, surf: 'T', grow: '普', cls: 5, starts: 0, wins: 0, g1: [],
-      last: -10, trainer: ri(0, W.trainers.length - 1), coat: pick(COATS), retired: false, earn: 0,
+      last: -10, trainer: ri(0, W.trainers.length - 1), owner: ownerFor(W), coatKey: pickCoat(), socks: pickSocks(), retired: false, earn: 0,
     };
     W.usedNames.add(r.n);
     W.horses[h.id] = h;
     return h;
+  }
+  function pickCoat() { return pick(['bay', 'bay', 'bay', 'darkbay', 'darkbay', 'brown', 'chestnut', 'chestnut', 'grey']); }
+  function pickSocks() { const s = []; ['LF', 'RF', 'LH', 'RH'].forEach(k => { if (Math.random() < 0.13) s.push(k); }); return s; }
+  function ownerFor(W) {
+    // 大馬主ほど多くの馬を持つ
+    const tot = W.owners.reduce((a, o) => a + o.size, 0);
+    let r = Math.random() * tot;
+    for (const o of W.owners) { if ((r -= o.size) <= 0) return o.id; }
+    return 0;
   }
   function ability(h, year) {
     const g = growthFactor(h, year);
@@ -107,15 +117,29 @@
         tech: 42, judge: 38, phys: 55, exp: 0, rep: 5,
         rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, gWins: [], g1Wins: [],
         years: {}, bond: {}, trust: {}, fatigue: 0, retired: false,
+        pop: 3, fans: 300, money: 150, weight: 48.5, cond: 80, agent: null, contract: null,
+        suspended: 0, otrust: {}, schedule: ['train', 'study', 'rest'], hh: {}, interviews: 0,
       },
+      news: [], events: [],
     };
     W.player.color = opts.color || '#e53935';
     // 調教師（架空）
+    // 馬主（架空）
+    W.owners = OWNERS.map((o, i) => ({ id: i, ...o }));
     for (let i = 0; i < 24; i++) W.trainers.push({ id: i, name: pick(SURNAMES) + '厩舎', region: i < 12 ? '美浦' : '栗東' });
     W.player.stable = W.player.region === '美浦' ? ri(0, 11) : ri(12, 23);
     W.trainers.forEach(t => W.player.trust[t.id] = t.id === W.player.stable ? 55 : t.region === W.player.region ? ri(8, 20) : ri(0, 8));
+    W.owners.forEach(o => W.player.otrust[o.id] = ri(0, 10));
+    W.agents = AGENTS.map((a, i) => ({ id: i, ...a }));
     // ライバル騎手（架空）
-    for (let i = 0; i < 34; i++) W.jockeys.push({ id: i, name: personName(), skill: clamp(Math.round(rnd(40, 92) - (i > 20 ? 10 : 0)), 35, 95), age: ri(19, 52), wins: 0, years: {} });
+    for (let i = 0; i < 34; i++) W.jockeys.push({ id: i, name: personName(), skill: clamp(Math.round(rnd(40, 92) - (i > 20 ? 10 : 0)), 35, 95), age: ri(19, 52), wins: 0, years: {}, pop: ri(5, 60) });
+    // ライバル：同期・少し上の先輩・トップ騎手
+    const byAge = W.jockeys.slice().sort((a, b) => a.age - b.age);
+    const rookie = byAge[0]; rookie.age = 18; rookie.skill = 58; rookie.pop = 8;
+    const senior = byAge.find(j => j.age >= 24 && j.age <= 28) || byAge[3];
+    const top = W.jockeys.slice().sort((a, b) => b.skill - a.skill)[0];
+    W.rivals = [{ jid: rookie.id, kind: '同期' }, { jid: senior.id, kind: '兄弟子' }, { jid: top.id, kind: 'トップ騎手' }];
+    W.rivals.forEach(r => W.player.hh[r.jid] = { w: 0, l: 0 });
     // 実在馬
     for (const r of REAL_HORSES) {
       const age = START_YEAR - r.b;
@@ -249,7 +273,7 @@
     let pool = Object.values(W.horses).filter(h => eligible(W, h, cond));
     if (race.graded) {
       // 能力・距離適性・(実在馬優先) でソート
-      pool.forEach(h => h._k = rating(h, W.year) - Math.abs((h.dist || 1800) - race.dist) / 120 + (h.real ? 4 : 0) + rnd(-6, 6));
+      pool.forEach(h => h._k = rating(h, W.year) - Math.abs((h.dist || 1800) - race.dist) / 120 - (h.surf !== 'B' && h.surf !== race.surf ? 18 : 0) + (h.real ? 4 : 0) + rnd(-6, 6));
       pool.sort((a, b) => b._k - a._k);
       pool = pool.slice(0, size);
     } else {
@@ -282,10 +306,24 @@
   }
 
   // ---- 騎乗依頼 ----
+  const GEAR = 2.0; // 鞍などの装備重量（ゲーム上の概算）
+  function kinryo(W, race, h, forPlayer) {
+    const age = W.year - h.born;
+    let w = race.graded || race.overseas ? (h.sex === '牝' ? 56 : 58) : (h.sex === '牝' ? 55 : 57);
+    if (age <= 2) w = h.sex === '牝' ? 54 : 55;
+    else if (age === 3 && W.month < 9) w -= 1;
+    if (forPlayer && !race.graded && !race.overseas) w -= apprenticeAllowance(W.player);
+    return w;
+  }
+  function canMakeWeight(P, kin) { return P.weight + GEAR <= kin + 0.05; }
+
   function buildRequests(W) {
     const P = W.player;
     W.card.forEach(r => estimateOdds(W, r));
-    const n = clamp(Math.round(1.5 + P.rep * 0.12 + rnd(-1, 1.5)), 1, 12);
+    const ag = P.agent != null ? W.agents[P.agent] : null;
+    const net = ag ? ag.net : 0;
+    const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5)), 1, 12);
+    const target = P.rep * 0.65 + 40 + net * 4 + P.pop * 0.08;
     const reqs = [];
     const races = W.card.slice().sort(() => Math.random() - 0.5);
     for (const race of races) {
@@ -293,10 +331,12 @@
       const cands = race.field.map(f => {
         const h = W.horses[f.hid];
         const trust = P.trust[h.trainer] || 0;
+        const ot = P.otrust[h.owner] || 0;
         const bond = P.bond[h.id] || 0;
         const quality = 1 - (f.pop - 1) / race.field.length;
         // 評価が低いと人気薄、高いと人気馬に乗れる
-        let sc = trust * 0.6 + bond * 1.5 + rnd(0, 30) - Math.abs(quality * 100 - (P.rep * 0.65 + 40)) * 0.6;
+        let sc = trust * 0.55 + ot * 0.45 + bond * 1.5 + rnd(0, 30) - Math.abs(quality * 100 - target) * 0.6;
+        if (P.contract === h.owner) sc += 35;
         if (race.graded === 1 && P.rep < 30 && bond < 10) sc -= 40;
         if (h.real && P.rep < 55 && bond < 10) sc -= 30;
         return { f, h, sc };
@@ -304,10 +344,10 @@
       const c = cands[0];
       if (!c) continue;
       if (c.sc < -15 && reqs.length >= n) continue;
-      reqs.push({ raceNo: race.no, hid: c.h.id, trainer: c.h.trainer, pop: c.f.pop, odds: c.f.odds, accepted: false, bondHorse: (P.bond[c.h.id] || 0) > 0 });
+      const kin = kinryo(W, race, c.h, true);
+      reqs.push({ raceNo: race.no, hid: c.h.id, trainer: c.h.trainer, owner: c.h.owner, pop: c.f.pop, odds: c.f.odds, kin, okWeight: canMakeWeight(P, kin), accepted: false, bondHorse: (P.bond[c.h.id] || 0) > 0, viaAgent: net > 0 && Math.random() < 0.35 });
     }
     reqs.sort((a, b) => a.raceNo - b.raceNo);
-    // 少し多めに来るが、受けられるのは1レース1頭
     return reqs.slice(0, Math.max(n, 1) + 2);
   }
 
@@ -357,7 +397,6 @@
       const n = race.field.length;
       race.field.forEach((f, i) => { f.waku = Math.min(8, Math.ceil((i + 1) / Math.max(1, n / 8))); });
       if (race.field[0].pop == null) estimateOdds(W, race);
-      // 騎手の割り当て（上手い騎手ほど人気馬）
       const js = W.jockeys.slice().sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
       const order = race.field.slice().sort((a, b) => a.pop - b.pop);
       let ji = 0;
@@ -366,24 +405,21 @@
         if (race.overseas && W.horses[f.hid].foreign) { f.jname = pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
         const j = js[ji++ % js.length]; f.jid = j.id;
       });
-      race.field.forEach(f => { if (!f.color) f.color = SILKS[(f.hid * 7) % SILKS.length]; });
     }
     const runners = race.field.map(f => {
       const h = W.horses[f.hid];
       const isP = f.hid === playerHid;
       const j = f.jid >= 0 ? W.jockeys[f.jid] : null;
-      const age = W.year - h.born;
-      let weight = race.graded ? (h.sex === '牝' ? 56 : 58) : (h.sex === '牝' ? 55 : 57);
-      if (age <= 2) weight = h.sex === '牝' ? 54 : 55;
-      else if (age === 3 && W.month < 9) weight -= 1;
-      if (isP && !race.graded && !race.overseas) weight -= apprenticeAllowance(P);
+      const own = W.owners[h.owner] || W.owners[0];
+      const silks = h.foreign ? { base: SILKS[(h.id * 5) % SILKS.length], accent: SILKS[(h.id * 3 + 4) % SILKS.length], pattern: ['plain', 'hoops', 'stripes', 'sash', 'halves'][h.id % 5], cap: SILKS[(h.id * 3 + 4) % SILKS.length] } : own.silks;
       return {
         horse: h, ability: ability(h, W.year), isPlayer: isP, auto: isP && playerMode === 'auto',
         jockeySkill: isP ? (P.tech + P.judge) / 2 : (j ? j.skill : f.jskill || 70),
-        color: isP ? P.color : f.color, waku: f.waku, weight, jname: isP ? P.name : j ? j.name : f.jname,
+        color: silks.base, silks, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
+        condBonus: isP ? (P.cond - 70) * 0.08 : 0,
       };
     });
-    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.no}R ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground, playerTech: P.tech });
+    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground, playerTech: P.tech });
   }
   function apprenticeAllowance(P) {
     // ゲーム独自の簡易ルール（実際のJRAの見習騎手規定とは異なる場合がある）
@@ -396,26 +432,32 @@
 
   const PRIZE = { 0: 720, 1: 560, 2: 850, 3: 1100, 4: 1550, 5: 2400 };
   const GPRIZE = { 1: 20000, 2: 6000, 3: 4000 };
+  const RIDE_FEE = 3; // 1騎乗あたりの手当（万円・ゲーム上の概算）
+  const PRIZE_SHARE = 0.05; // 賞金のうち騎手の取り分（ゲーム上の概算）
+
+  function news(W, text, kind = '') { W.news.unshift({ abs: W.abs, date: W.date, text, kind }); if (W.news.length > 60) W.news.length = 60; }
+  function updateFans(P) { P.fans = Math.round(300 + P.pop * P.pop * 55 + P.wins * 18); }
 
   // ---- 結果の反映 ----
-  function applyResult(W, race, results, playerHid, mode) {
+  function applyResult(W, race, results, playerHid, mode, inquiry) {
     const P = W.player;
-    race.result = results.map(r => ({ hid: r.horse.id, pos: r.pos, time: r.time, margin: r.margin, jname: r.cfg.jname, pop: race.field.find(f => f.hid === r.horse.id).pop, isP: r.horse.id === playerHid }));
+    race.result = results.map(r => ({ hid: r.horse.id, pos: r.pos, time: r.time, margin: r.margin, jname: r.cfg.jname, pop: race.field.find(f => f.hid === r.horse.id).pop, isP: r.horse.id === playerHid, demoted: !!r.demoted }));
     const prize1 = race.overseas ? 50000 : race.graded ? GPRIZE[race.graded] * (race.graded === 1 && /ジャパンC|有馬/.test(race.name) ? 2.5 : 1) : PRIZE[race.cls ?? 5];
     const share = [1, 0.4, 0.25, 0.15, 0.1];
     results.forEach(r => {
       const h = r.horse; h.starts++; h.last = W.abs;
       if (r.pos <= 5) h.earn += Math.round(prize1 * share[r.pos - 1]);
+      const f = race.field.find(f => f.hid === h.id);
       if (r.pos === 1) {
         h.wins++;
         if (!race.graded && !race.overseas && h.cls < 5) h.cls = Math.max(h.cls + 1, 2);
         if (h.cls === 0) h.cls = 2;
         if (race.graded === 1) h.g1.push(`${W.year} ${race.name}`);
-        const f = race.field.find(f => f.hid === h.id);
-        if (f.jid >= 0) { const j = W.jockeys[f.jid]; j.wins++; j.years[W.year] = (j.years[W.year] || 0) + 1; }
+        if (f.jid >= 0) { const j = W.jockeys[f.jid]; j.wins++; j.years[W.year] = (j.years[W.year] || 0) + 1; j.pop = Math.min(100, j.pop + (race.graded === 1 ? 4 : race.graded ? 1 : 0.15)); }
+        if (race.graded && playerHid !== h.id) news(W, `${race.name}は${h.name}${h.real ? '' : ''}が制した（${f.jid >= 0 ? W.jockeys[f.jid].name : f.jname || ''}騎手）`, 'race');
       } else if (h.cls === 0) h.cls = 1;
     });
-    let eval_ = null;
+    let ev = null;
     if (playerHid != null) {
       const me = results.find(r => r.horse.id === playerHid);
       const f = race.field.find(f => f.hid === playerHid);
@@ -423,67 +465,183 @@
       const n = results.length;
       P.rides++;
       P.rep = Math.min(100, P.rep + 0.04);
-      const ys = P.years[W.year] || (P.years[W.year] = { rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, g: [] });
+      const ys = P.years[W.year] || (P.years[W.year] = { rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, g: [], income: 0 });
       ys.rides++;
       if (me.pos === 1) { P.wins++; ys.wins++; }
       if (me.pos === 2) { P.seconds++; ys.seconds++; }
       if (me.pos === 3) { P.thirds++; ys.thirds++; }
       if (me.pos <= 5) { const e = Math.round(prize1 * share[me.pos - 1]); P.earn += e; ys.earn += e; }
+      // 収入
+      let income = RIDE_FEE + (me.pos <= 5 ? prize1 * share[me.pos - 1] * PRIZE_SHARE : 0);
+      const ag = P.agent != null ? W.agents[P.agent] : null;
+      const fee = ag ? income * ag.fee / 100 : 0;
+      income = Math.round((income - fee) * 10) / 10;
+      P.money = Math.round((P.money + income) * 10) / 10; ys.income = (ys.income || 0) + income;
       // 騎乗評価：人気と着順の比較
       const diff = (f.pop - me.pos) / n;
-      let score = 50 + diff * 120 + (me.pos === 1 ? 20 : me.pos <= 3 ? 8 : 0) - (me.lateStart ? 10 : 0);
+      let score = 50 + diff * 120 + (me.pos === 1 ? 20 : me.pos <= 3 ? 8 : 0) - (me.lateStart ? 10 : 0) - (inquiry && inquiry.weeks ? 15 : 0);
       score = clamp(score, 0, 100);
       const grade = score >= 85 ? 'S' : score >= 70 ? 'A' : score >= 50 ? 'B' : score >= 30 ? 'C' : 'D';
-      // 評判・信頼
       const gMul = race.overseas ? 3 : race.graded === 1 ? 2.2 : race.graded ? 1.5 : 1;
       let dRep = ((score - 50) / 50) * 0.6 * gMul + (me.pos === 1 ? 0.6 * gMul : 0);
       dRep *= P.rep > 70 ? 0.6 : 1;
       P.rep = clamp(P.rep + dRep, 0, 100);
+      // 人気（ファン）
+      let dPop = me.pos === 1 ? 0.25 * gMul * gMul : 0;
+      if (me.pos === 1 && f.pop >= 8) dPop += 0.6; // 大穴
+      if (f.pop === 1 && me.pos > 5 && P.pop > 30) dPop -= 0.6; // 1番人気で大敗
+      P.pop = clamp(P.pop + dPop, 0, 100); updateFans(P);
       P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + (score - 45) / 10, 0, 100);
+      P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) + (score - 45) / 12, 0, 100);
       P.bond[h.id] = clamp((P.bond[h.id] || 0) + (me.pos <= 3 ? 6 : 2) + (score > 60 ? 3 : 0), 0, 100);
+      // ライバルとの対戦成績
+      (W.rivals || []).forEach(rv => {
+        const rf = race.field.find(x => x.jid === rv.jid);
+        if (!rf) return;
+        const rr = results.find(x => x.horse.id === rf.hid);
+        const hh = P.hh[rv.jid] || (P.hh[rv.jid] = { w: 0, l: 0 });
+        if (me.pos < rr.pos) hh.w++; else hh.l++;
+      });
       // 成長（実際に操作した騎乗の方が伸びる）
       const gain = (mode === 'manual' ? 1.0 : 0.45) * (P.age < 35 ? 1 : P.age < 45 ? 0.6 : 0.3);
       P.exp += gain;
       P.tech = clamp(P.tech + gain * (0.05 + score / 2000) * (1 - P.tech / 110), 0, 99);
       P.judge = clamp(P.judge + gain * (0.06 + (race.graded ? 0.05 : 0)) * (1 - P.judge / 110), 0, 99);
+      P.fatigue += 1.2;
+      let interview = null;
       if (me.pos === 1) {
         if (race.graded || race.overseas) {
           const t = `${W.year} ${race.name}（${h.name}）`;
           P.gWins.push(t); ys.g.push(t);
-          if (race.graded === 1) P.g1Wins.push(t);
+          if (race.graded === 1 || race.overseas) P.g1Wins.push(t);
           W.log.push({ abs: W.abs, text: `${W.date} ${race.name} を ${h.name} で制覇!` });
+          news(W, `${P.name}騎手が${h.name}で${race.name}を制覇!`, 'me');
+          interview = { kind: race.graded === 1 || race.overseas ? 'big' : 'graded', race: race.name, horse: h.name };
         }
-        if (P.wins === 1) W.log.push({ abs: W.abs, text: `${W.date} ${h.name} で初勝利` });
-        if (P.wins % 100 === 0) W.log.push({ abs: W.abs, text: `${W.date} 通算${P.wins}勝達成` });
+        if (P.wins === 1) { W.log.push({ abs: W.abs, text: `${W.date} ${h.name} で初勝利` }); news(W, `${P.name}騎手がデビュー${P.rides}戦目で初勝利`, 'me'); interview = interview || { kind: 'first', horse: h.name }; }
+        else if (f.pop >= 10 && !interview) interview = { kind: 'upset', horse: h.name, pop: f.pop };
+        if (P.wins % 100 === 0) { W.log.push({ abs: W.abs, text: `${W.date} 通算${P.wins}勝達成` }); news(W, `${P.name}騎手が通算${P.wins}勝を達成`, 'me'); }
+      }
+      // 審議
+      if (inquiry) {
+        if (inquiry.weeks) {
+          P.suspended = Math.max(P.suspended, inquiry.weeks);
+          P.money -= 10 * inquiry.weeks; P.rep = clamp(P.rep - 1.5 * inquiry.weeks, 0, 100); P.pop = clamp(P.pop - 0.8, 0, 100);
+          W.log.push({ abs: W.abs, text: `${W.date} 斜行で${inquiry.weeks}週間の騎乗停止` });
+          news(W, `${P.name}騎手に${inquiry.weeks}週間の騎乗停止処分（${race.name}での斜行）`, 'bad');
+        } else { P.money -= inquiry.fine || 5; news(W, `${P.name}騎手に過怠金（${race.name}）`, 'bad'); }
+        if (inquiry.demoteTo) news(W, `${race.name}で${h.name}が${inquiry.demoteTo}着に降着`, 'bad');
       }
       // 落馬（低確率）
-      if (Math.random() < 0.002) { W.injury = ri(2, 6); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); }
-      eval_ = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, pos: me.pos, pop: f.pop };
+      if (Math.random() < 0.002) { W.injury = ri(2, 6); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
+      ev = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, dPop: Math.round(dPop * 10) / 10, income, pos: me.pos, pop: f.pop, interview, inquiry, demoted: !!me.demoted };
     }
-    return eval_;
+    return ev;
   }
 
   // 自分が乗らないレース・オート騎乗
   function simulate(W, race, playerHid, mode) {
     const r = setupRace(W, race, playerHid, mode || 'auto');
     const res = r.runToEnd();
-    return applyResult(W, race, res, playerHid, mode || 'auto');
+    return applyResult(W, race, res, playerHid, mode || 'auto', null);
+  }
+
+  // ---- 取材 ----
+  const INTERVIEW = {
+    big: { q: '大一番を制した今の気持ちは?', a: [['馬のおかげです。厩舎スタッフに感謝しています', { rep: 1.2, pop: 1.5, trust: 3 }], ['自分の騎乗プランどおり。狙っていました', { rep: 0.4, pop: 3, trust: 0 }], ['ファンの声援が力になりました!', { rep: 0.3, pop: 4, trust: 0 }]] },
+    graded: { q: '重賞勝利、おめでとうございます', a: [['馬が頑張ってくれました', { rep: 0.6, pop: 0.6, trust: 2 }], ['もっと上を狙える馬です', { rep: 0.2, pop: 1.2, otrust: 3 }], ['次はGⅠを勝ちたい', { rep: 0, pop: 1.6 }]] },
+    first: { q: '待望の初勝利です。今の気持ちを', a: [['お世話になった方々に感謝したいです', { rep: 0.8, pop: 0.5, trust: 3 }], ['ここからが本当のスタートです', { rep: 0.4, pop: 1 }], ['リーディングを目指します!', { rep: -0.2, pop: 2 }]] },
+    upset: { q: '人気薄での勝利でした', a: [['馬の力を信じていました', { rep: 0.6, pop: 1, trust: 2 }], ['展開が向きました', { rep: 0.3, pop: 0.4 }], ['もっと評価されていい馬です', { rep: 0.1, pop: 1.4, otrust: 2 }]] },
+  };
+  function answerInterview(W, iv, idx, horseTrainer, horseOwner) {
+    const P = W.player; const eff = INTERVIEW[iv.kind].a[idx][1];
+    P.rep = clamp(P.rep + (eff.rep || 0), 0, 100); P.pop = clamp(P.pop + (eff.pop || 0), 0, 100); updateFans(P);
+    if (eff.trust && horseTrainer != null) P.trust[horseTrainer] = clamp((P.trust[horseTrainer] || 0) + eff.trust, 0, 100);
+    if (eff.otrust && horseOwner != null) P.otrust[horseOwner] = clamp((P.otrust[horseOwner] || 0) + eff.otrust, 0, 100);
+    P.interviews++;
+    return eff;
+  }
+
+  // ---- 平日の予定 ----
+  const ACTIVITIES = {
+    train: { name: '調教騎乗', desc: '所属地の厩舎の信頼↑ 疲労↑', fat: 6 },
+    owner: { name: '馬主へのあいさつ回り', desc: '馬主の信頼↑', fat: 3 },
+    study: { name: 'レース研究', desc: '判断力↑', fat: 2 },
+    gym: { name: 'トレーニング', desc: '体力↑ 体重↓', fat: 5 },
+    diet: { name: '減量（サウナ）', desc: '体重↓↓ 体調↓', fat: 4 },
+    fan: { name: 'ファンサービス', desc: '人気↑', fat: 4 },
+    media: { name: 'メディア出演', desc: '人気↑ 収入↑', fat: 5, needPop: 25 },
+    rest: { name: '休養', desc: '疲労↓↓ 体調↑', fat: -18 },
+  };
+  function doActivities(W) {
+    const P = W.player;
+    (P.schedule || []).forEach(a => {
+      const A = ACTIVITIES[a]; if (!A) return;
+      P.fatigue = Math.max(0, P.fatigue + A.fat);
+      if (a === 'train') { const t = pick(W.trainers.filter(t => t.region === P.region)); P.trust[t.id] = clamp((P.trust[t.id] || 0) + 3, 0, 100); P.weight -= 0.05; }
+      if (a === 'owner') { const o = W.owners.slice().sort((x, y) => (P.otrust[x.id] || 0) - (P.otrust[y.id] || 0))[ri(0, 4)]; P.otrust[o.id] = clamp((P.otrust[o.id] || 0) + 3.5, 0, 100); }
+      if (a === 'study') P.judge = clamp(P.judge + 0.3 * (P.judge < 80 ? 1 : 0.4), 0, 99);
+      if (a === 'gym') { P.phys = clamp(P.phys + 0.35, 0, 99); P.weight -= 0.15; }
+      if (a === 'diet') { P.weight -= 0.6; P.cond -= 7; }
+      if (a === 'fan') { P.pop = clamp(P.pop + 0.5, 0, 100); }
+      if (a === 'media') { P.pop = clamp(P.pop + 0.8, 0, 100); P.money += Math.round(P.pop * 0.6); }
+      if (a === 'rest') { P.cond = Math.min(100, P.cond + 6); }
+    });
+    updateFans(P);
+  }
+
+  // ---- 週ごとの出来事 ----
+  function genEvents(W) {
+    const P = W.player; const out = [];
+    const r = Math.random;
+    const trainerName = (id) => W.trainers[id].name;
+    if (r() < 0.12 && P.pop >= 5) out.push({ title: '取材の依頼', text: '競馬専門誌から密着取材の依頼が来た。', choices: [['受ける', { pop: 1.5, fatigue: 6 }], ['断る', {}]] });
+    if (r() < 0.08) { const t = pick(W.trainers.filter(t => t.region === P.region)); out.push({ title: '食事の誘い', text: `${t.name}の調教師から食事に誘われた。`, choices: [['行く', { trust: [t.id, 5], weight: 0.4 }], ['体重管理を理由に断る', { trust: [t.id, -1] }]] }); }
+    if (P.weight + GEAR > 54.5 && r() < 0.3) out.push({ title: '体重が増えてきた', text: `体重が${P.weight.toFixed(1)}kg。軽い斤量の依頼を受けられなくなる。`, choices: [['食事制限を徹底する', { weight: -0.8, cond: -8 }], ['無理はしない', {}]] });
+    if (P.agent == null && P.rep >= 12 && r() < 0.15) { const a = W.agents.filter(a => P.rep >= a.needRep).pop(); if (a) out.push({ title: 'エージェントからの売り込み', text: `${a.name}（手数料${a.fee}%）が騎乗依頼の仲介を申し出てきた。依頼の数と質が上がる。`, choices: [['契約する', { agent: a.id }], ['断る', {}]] }); }
+    const topOwner = W.owners.filter(o => (P.otrust[o.id] || 0) >= 45 && P.contract !== o.id).sort((a, b) => P.otrust[b.id] - P.otrust[a.id])[0];
+    if (topOwner && r() < 0.15) out.push({ title: '主戦騎手の打診', text: `${topOwner.name}から、所有馬の主戦を任せたいという話が来た。受けるとこの馬主の馬の依頼が優先して来るが、他の馬主の印象は少し下がる。`, choices: [['引き受ける', { contract: topOwner.id }], ['今はフリーでいたい', { otrust: [topOwner.id, -3] }]] });
+    if (P.pop >= 35 && r() < 0.08) out.push({ title: 'CM出演のオファー', text: '飲料メーカーからCM出演の依頼。', choices: [['出演する', { money: 120, pop: 3, fatigue: 10 }], ['騎乗に専念する', { rep: 0.5 }]] });
+    if (P.pop >= 10 && r() < 0.06) out.push({ title: 'ファン感謝イベント', text: '競馬場のファン感謝イベントへの参加依頼。', choices: [['参加する', { pop: 2, fatigue: 5 }], ['欠席する', {}]] });
+    const riv = (W.rivals || [])[0];
+    if (riv && r() < 0.06) { const j = W.jockeys[riv.jid]; out.push({ title: 'ライバルの挑発', text: `同期の${j.name}騎手が「今年は負けない」と雑誌で発言した。`, choices: [['受けて立つと言い返す', { pop: 1.5, rep: -0.3 }], ['自分の騎乗をするだけ', { rep: 0.3 }]] }); }
+    if (P.fatigue > 45 && r() < 0.35) out.push({ title: '疲れがたまっている', text: '体が重い。このままだと体調を崩しそうだ。', choices: [['今週は休養に専念する', { fatigue: -25, cond: 8, sched: 'rest' }], ['気合で乗り切る', { cond: -10 }]] });
+    return out.slice(0, 2);
+  }
+  function applyEvent(W, e, idx) {
+    const P = W.player; const eff = e.choices[idx][1];
+    if (eff.pop) P.pop = clamp(P.pop + eff.pop, 0, 100);
+    if (eff.rep) P.rep = clamp(P.rep + eff.rep, 0, 100);
+    if (eff.money) P.money += eff.money;
+    if (eff.fatigue) P.fatigue = Math.max(0, P.fatigue + eff.fatigue);
+    if (eff.cond) P.cond = clamp(P.cond + eff.cond, 0, 100);
+    if (eff.weight) P.weight += eff.weight;
+    if (eff.trust) P.trust[eff.trust[0]] = clamp((P.trust[eff.trust[0]] || 0) + eff.trust[1], 0, 100);
+    if (eff.otrust) P.otrust[eff.otrust[0]] = clamp((P.otrust[eff.otrust[0]] || 0) + eff.otrust[1], 0, 100);
+    if (eff.agent != null) { P.agent = eff.agent; news(W, `${P.name}騎手が${W.agents[eff.agent].name}と契約`, 'me'); }
+    if (eff.contract != null) { P.contract = eff.contract; W.owners.forEach(o => { if (o.id !== eff.contract) P.otrust[o.id] = clamp((P.otrust[o.id] || 0) - 3, 0, 100); }); news(W, `${P.name}騎手が${W.owners[eff.contract].name}の主戦騎手に`, 'me'); W.log.push({ abs: W.abs, text: `${W.date} ${W.owners[eff.contract].name}の主戦騎手に` }); }
+    if (eff.sched) P.schedule = [eff.sched, eff.sched, eff.sched];
+    updateFans(P);
+    // 体重が変わったら依頼の斤量判定をやり直す
+    (W.requests || []).forEach(q => { q.okWeight = canMakeWeight(P, q.kin); if (!q.okWeight) q.accepted = false; });
   }
 
   // ---- 週の終了 ----
-  function endWeek(W, action) {
+  function endWeek(W) {
     const P = W.player;
-    // 平日の過ごし方
-    if (action === 'train') { const t = W.trainers.filter(t => t.region === P.region); const tt = pick(t); P.trust[tt.id] = clamp((P.trust[tt.id] || 0) + 4, 0, 100); P.fatigue += 8; }
-    if (action === 'study') { P.judge = clamp(P.judge + 0.4, 0, 99); P.fatigue += 4; }
-    if (action === 'gym') { P.phys = clamp(P.phys + 0.4, 0, 99); P.fatigue += 6; }
-    if (action === 'rest') { P.fatigue = Math.max(0, P.fatigue - 25); }
+    doActivities(W);
+    // 体重・体調・疲労の自然な変化
+    P.weight += 0.12 + (P.age > 30 ? 0.05 : 0);
+    P.weight = clamp(P.weight, 44, 62);
+    P.cond = clamp(P.cond + (P.fatigue < 25 ? 3 : P.fatigue < 50 ? 0 : -4), 20, 100);
     P.fatigue = Math.max(0, P.fatigue - 6);
-    // 加齢による衰え
-    if (P.age >= 42) { P.phys = Math.max(10, P.phys - 0.03 * (P.age - 41)); }
-    // 信頼の自然減
+    P.money = Math.round((P.money - 5) * 10) / 10; // 生活費
+    if (P.age >= 42) P.phys = Math.max(10, P.phys - 0.03 * (P.age - 41));
     for (const k in P.trust) if (P.trust[k] > 15 && +k !== P.stable) P.trust[k] -= 0.08;
+    for (const k in P.otrust) if (P.otrust[k] > 15 && +k !== P.contract) P.otrust[k] -= 0.06;
+    P.pop = Math.max(0, P.pop - 0.04); updateFans(P);
     if (W.injury > 0) W.injury--;
+    if (P.suspended > 0) P.suspended--;
     W.abs++; W.wk++;
     const weeks = weekSundays(W.year);
     let yearEnd = null;
@@ -491,32 +649,35 @@
       yearEnd = yearSummary(W);
       W.year++; W.wk = 0; P.age++;
       P.yearsActive = (P.yearsActive || 0) + 1;
-      // 引退（ゲーム上のルール）
       Object.values(W.horses).forEach(h => {
         const age = W.year - h.born;
         if (h.retired) return;
-        if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) h.retired = true;
+        if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) { h.retired = true; if (P.bond[h.id] >= 20) news(W, `お手馬の${h.name}が引退`, 'me'); }
       });
-      // 古い引退馬は削除（セーブ容量対策。お手馬とGⅠ馬は残す）
       Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) delete W.horses[h.id]; });
-      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); if (j.age >= 58) { j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; } });
+      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); if (j.age >= 58) { j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; j.pop = 3; } });
     }
     prepareWeek(W);
+    W.events = genEvents(W);
     return yearEnd;
   }
   function yearSummary(W) {
     const P = W.player;
     const ys = P.years[W.year] || { rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, g: [] };
-    const table = W.jockeys.map(j => ({ name: j.name, wins: j.years[W.year] || 0 }));
+    const table = W.jockeys.map(j => ({ name: j.name, wins: j.years[W.year] || 0, jid: j.id }));
     table.push({ name: P.name + '（あなた）', wins: ys.wins, me: true });
     table.sort((a, b) => b.wins - a.wins);
     const rank = table.findIndex(t => t.me) + 1;
+    const popRank = W.jockeys.filter(j => j.pop > P.pop).length + 1;
     const awards = [];
     if (rank === 1) awards.push('最多勝利騎手');
+    if (ys.rides >= 100 && ys.wins / ys.rides >= 0.2) awards.push('高勝率騎手（ゲーム独自）');
     if (ys.g.length >= 3) awards.push('重賞ハンター賞（ゲーム独自）');
+    if (popRank === 1) awards.push('ファン投票1位（ゲーム独自）');
     if (P.yearsActive === 0 && ys.wins >= 10) awards.push('最多勝利新人騎手');
     W.log.push({ abs: W.abs, text: `${W.year}年 ${ys.wins}勝（リーディング${rank}位）` });
-    return { year: W.year, ys, rank, table: table.slice(0, 10), awards };
+    news(W, `${W.year}年の成績：${ys.wins}勝、リーディング${rank}位`, 'me');
+    return { year: W.year, ys, rank, popRank, table: table.slice(0, 10), awards };
   }
 
   // ---- セーブ ----
@@ -542,5 +703,6 @@
   window.World = {
     newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
+    answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
   };
 })();

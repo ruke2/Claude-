@@ -105,3 +105,23 @@ window.FOREIGN_JOCKEYS = ['R.ムーアズ','W.ブラウン','L.デュポン','M.
 window.SILKS = ['#d32f2f','#1976d2','#388e3c','#fbc02d','#7b1fa2','#f57c00','#0097a7','#c2185b','#5d4037','#455a64','#e64a19','#303f9f','#689f38','#ffffff','#212121','#00796b'];
 // 枠色（1〜8枠）
 window.WAKU_COLORS = ['#ffffff','#222222','#e53935','#1e88e5','#fdd835','#43a047','#fb8c00','#ec407a'];
+
+// 馬主（架空）。勝負服は JRA の勝負服の柄の考え方（輪・縦縞・山形・襷・菱など）を参考にした架空のデザイン
+window.OWNERS = [
+  { name: '鳳翔ホースクラブ', size: 14, silks: { base: '#1d3f8f', accent: '#f6c445', pattern: 'hoops', cap: '#f6c445' } },
+  { name: '白嶺ファーム', size: 12, silks: { base: '#f2f2f2', accent: '#16794a', pattern: 'sash', cap: '#16794a' } },
+  { name: '朱鷺レーシング', size: 10, silks: { base: '#d1495b', accent: '#ffffff', pattern: 'chevron', cap: '#ffffff' } },
+  { name: '蒼穹サラブレッド', size: 9, silks: { base: '#55b4e8', accent: '#1b2a4a', pattern: 'stripes', cap: '#1b2a4a' } },
+  { name: '翠星商事', size: 7, silks: { base: '#2f6b3a', accent: '#f2f2f2', pattern: 'diamonds', cap: '#2f6b3a' } },
+  { name: '暁月牧場', size: 7, silks: { base: '#f08a24', accent: '#3a2a6b', pattern: 'halves', cap: '#3a2a6b' } },
+  { name: '紫雲ステーブル', size: 6, silks: { base: '#6b3fa0', accent: '#f2f2f2', pattern: 'spots', cap: '#f2f2f2' } },
+  { name: '黒鉄ホールディングス', size: 6, silks: { base: '#202020', accent: '#d8a520', pattern: 'cross', cap: '#d8a520' } },
+  { name: '桜川 個人馬主', size: 9, silks: { base: '#f1a7c0', accent: '#7a1c3c', pattern: 'hoops', cap: '#7a1c3c' } },
+  { name: '小口の個人馬主', size: 20, silks: { base: '#8b6b3e', accent: '#f2e6c8', pattern: 'plain', cap: '#8b6b3e' } },
+];
+// エージェント（騎乗依頼の仲介者）。net: 依頼の数と質、fee: 手数料（収入に対する%）
+window.AGENTS = [
+  { name: '新米エージェント 早瀬', net: 1, fee: 5, needRep: 0 },
+  { name: '中堅エージェント 真壁', net: 2, fee: 10, needRep: 25 },
+  { name: '敏腕エージェント 久遠', net: 3, fee: 15, needRep: 55 },
+];
