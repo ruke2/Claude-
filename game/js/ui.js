@@ -327,6 +327,8 @@
   }
 
   // ---------- レース ----------
+  let glbDone = false;
+  HorseGLB.load().then(() => { glbDone = true; });
   let engine = null, R3 = null, rafId = 0, lastT = 0, acc = 0, paused = false, endAt = 0, curRace = null, curHid = null, camMode = 'jockey', hudT = 0;
   const CAMS = [['jockey', '騎手'], ['chase', '後方'], ['tv', '中継']];
   try { camMode = localStorage.getItem('jl-cam') || 'jockey'; } catch (e) {}
@@ -337,6 +339,7 @@
     engine = World.setupRace(W, race, hid, 'manual');
     engine.onEvent = (t) => { if (t === 'gate') Sound.gate(); else if (t === 'whip') Sound.whip(); else if (t === 'bump' || t === 'foul') Sound.bump(); };
     show('race');
+    if (!glbDone) { HorseGLB.load().then(() => { glbDone = true; R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode); }); }
     if (!R3) { R3 = new Render3D($('r3d')); R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
     R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' });
     R3.setCamMode(camMode); updateCamBtn();
@@ -349,7 +352,7 @@
     paused = false; endAt = 0; acc = 0;
     cancelAnimationFrame(rafId);
     const wait = () => {
-      if (Render3D.loaded < Render3D.toLoad) { rafId = requestAnimationFrame(wait); return; }
+      if (Render3D.loaded < Render3D.toLoad || !glbDone) { rafId = requestAnimationFrame(wait); return; }
       $('loading').style.display = 'none';
       R3.resize();
       lastT = performance.now();

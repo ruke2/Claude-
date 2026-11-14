@@ -23,8 +23,10 @@
 
 ## 技術とデータ
 
-- 描画: Three.js r147（jsDelivr）。馬と騎手のモデルは手続き生成（`js/horse3d.js`）
+- 描画: Three.js r147（jsDelivr）
 - 芝・砂・空のテクスチャ: [Poly Haven](https://polyhaven.com/)（CC0）の leafy_grass, grass_ground, park_sand, damp_sand, kloofendal_48d_partly_cloudy_puresky を縮小・色調補正して `assets/` に収録
+- 馬のモデル: [“Horse” by Henry S](https://sketchfab.com/3d-models/horse-a6f860e43e364619bccb174a1ac7d0c9)（Sketchfab, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)）。FBX を glb に変換し、ギャロップ・待機・常歩のアニメーションだけを残した。白斑を除いて毛色を塗り替えられるテクスチャに加工し、ウエスタン鞍は外してレース用の鞍とゼッケンに差し替えている（`assets/horse.glb` ほか）
+- 騎手のモデル: 手続き生成（`js/horse3d.js`）
 - 効果音: WebAudio で合成（音源ファイルなし）
 - 実在馬: `js/realhorses.js`。JRA公式の2026年GⅠ成績ページ（13レース）に出走した馬の、馬名・性別・生年・着順。各馬の `src` に出典URL
   - 能力値・脚質・得意距離は着順と通過順から算出した本ゲーム用の推定値

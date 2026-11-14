@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>glb test</title>
+<style>html,body{margin:0;height:100%;background:#888}</style></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
+<script>
+THREE.ColorManagement.legacyMode = false;
+const q = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping;
+const sc = new THREE.Scene(); sc.background = new THREE.Color('#9fc2e0');
+sc.add(new THREE.HemisphereLight('#cfe6ff', '#4a5a30', 0.9));
+const sun = new THREE.DirectionalLight('#fff3dd', 2.5); sun.position.set(3, 6, 4); sc.add(sun);
+new THREE.GLTFLoader().load('assets/horse.glb', (g) => {
+  const o = g.scene; sc.add(o);
+  const info = { anims: g.animations.map(a => a.name), nodes: [] };
+  o.traverse(n => { if (n.isMesh) info.nodes.push([n.name, n.isSkinnedMesh, n.geometry.attributes.position.count, Object.keys(n.geometry.attributes)]); });
+  const mixer = new THREE.AnimationMixer(o);
+  const clip = g.animations.find(a => a.name === (q.get('a') || 'Gallop'));
+  mixer.clipAction(clip).play(); mixer.update(+(q.get('t') || 0.3));
+  o.updateMatrixWorld(true);
+  // スキニング後の頂点からバウンディングボックス
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  o.traverse(n => { if (n.isSkinnedMesh) { const P = n.geometry.attributes.position; for (let i = 0; i < P.count; i += 7) { v.fromBufferAttribute(P, i); n.boneTransform(i, v); v.applyMatrix4(n.matrixWorld); box.expandByPoint(v); } } });
+  info.box = [box.min.toArray().map(x => +x.toFixed(2)), box.max.toArray().map(x => +x.toFixed(2))];
+  const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const R = Math.max(size.x, size.y, size.z);
+  const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, R * 0.01, R * 20);
+  const view = q.get('view') || 'z';
+  if (view === 'z') cam.position.set(c.x, c.y, c.z + R * 2.2); else cam.position.set(c.x + R * 2.2, c.y, c.z);
+  cam.lookAt(c);
+  r.render(sc, cam);
+  window.info = info; window.done = true;
+});
+</script></body></html>

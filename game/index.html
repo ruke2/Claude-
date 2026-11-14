@@ -143,7 +143,7 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
         <button class="btn" id="b-tut">チュートリアル</button>
         <button class="btn ghost" id="b-quick">お試し騎乗</button>
       </div>
-      <p class="muted small" style="margin-top:18px">非公式ファンメイドのドラフト版。実在の騎手は登場しない。実在馬のデータは JRA 公式の2026年GⅠ成績をもとにしている。<br>芝・砂・空の素材は Poly Haven（CC0）。</p>
+      <p class="muted small" style="margin-top:18px">非公式ファンメイドのドラフト版。実在の騎手は登場しない。実在馬のデータは JRA 公式の2026年GⅠ成績をもとにしている。<br>芝・砂・空の素材は Poly Haven（CC0）。馬のモデルは “Horse” by Henry S（Sketchfab, CC BY 4.0）を改変して使用。</p>
     </div>
   </section>
 
@@ -241,11 +241,14 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
 <div id="rotate"><div class="rot-icon"></div><div>端末を横向きにしてください</div><div class="muted small">このゲームは横画面専用</div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="js/data.js"></script>
 <script src="js/realhorses.js"></script>
 <script src="js/race.js"></script>
 <script src="js/world.js"></script>
 <script src="js/horse3d.js"></script>
+<script src="js/horseglb.js"></script>
 <script src="js/render3d.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>

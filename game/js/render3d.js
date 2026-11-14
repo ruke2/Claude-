@@ -30,7 +30,7 @@
     constructor(container) {
       this.container = container;
       const r = this.renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       r.outputEncoding = T.sRGBEncoding;
       r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
       r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap;
@@ -454,7 +454,7 @@
       this.camera.fov = Math.min(80, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / asp) * 180 / Math.PI);
       this.camera.updateProjectionMatrix();
     }
-    setCamMode(m) { this.camMode = m; this.updateFov(); if (this.playerModel) this.playerModel.setPlayerView(m === 'jockey'); }
+    setCamMode(m) { this.camMode = m; this.camSnap = false; this.updateFov(); if (this.playerModel) this.playerModel.setPlayerView(m === 'jockey'); }
 
     // ---------- 毎フレーム ----------
     render(race, dt) {
@@ -479,7 +479,9 @@
         if (near || Math.floor(this.clock * 10) % 4 === i % 4) {
           m.update({ phase: r.phase, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
         }
-        m.root.traverse(o => { if (o.isMesh) o.castShadow = d2 < 60 * 60; });
+        const sh = d2 < 45 * 45 || r.isPlayer;
+        if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
+        if (m.lod) m.lod(r.isPlayer ? 0 : Math.sqrt(d2));
         // 蹄が地面を蹴るたびに土・芝を飛ばす
         if (r.v > 6 && d2 < 70 * 70) {
           const prev = this.lastPhase[i] % 1, now = r.phase % 1;
@@ -535,13 +537,13 @@
       } else if (this.camMode === 'chase') {
         const fwd = new T.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
         const want = new T.Vector3(a.x, 3.4, a.z).addScaledVector(fwd, -8.5);
-        cam.position.lerp(want, Math.min(1, dt * 5));
+        if (!this.camSnap) { cam.position.copy(want); this.camSnap = true; } else cam.position.lerp(want, Math.min(1, dt * 5));
         cam.lookAt(a.x + fwd.x * 6, 1.6, a.z + fwd.z * 6);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
       } else { // tv: 外側からの横移動カメラ
         const out = CXY(c, race.pAt(P.s) - 6, c.width + 38);
         const want = new T.Vector3(out.x, 9, out.z);
-        cam.position.lerp(want, Math.min(1, dt * 3));
+        if (!this.camSnap) { cam.position.copy(want); this.camSnap = true; } else cam.position.lerp(want, Math.min(1, dt * 3));
         cam.lookAt(a.x, 1.4, a.z);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
       }

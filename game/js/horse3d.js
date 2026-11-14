@@ -271,7 +271,7 @@
       root, body, neckP, headP, legs, mane, tail, jockey: J, reins, bitL, bitR, clothT,
       lastPhase: 0,
       update(st, dt, time) { animate(model, st, dt, time); },
-      setPlayerView(on) { model.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.fo.scale.setScalar(on ? 0.85 : 1); }); },
+      setPlayerView(on) { model.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.fo.visible = !on; a.hand.scale.setScalar(on ? 0.75 : 1); }); },
       dispose() { clothT.dispose(); },
     };
     if (opt.isPlayer) model.setPlayerView(true);
@@ -404,9 +404,12 @@
     const wind = Math.min(1, st.speed / 15);
     m.mane.forEach((p, i) => { p.rotation.x = 1.1 - 0.5 * wind + 0.3 * Math.sin(time * 14 + i * 0.7) * wind; p.rotation.z = -0.3 - 0.9 * wind + 0.1 * Math.sin(time * 11 + i); });
     m.tail.forEach((p, i) => { if (i === 0) p.rotation.z = -0.9 - 0.45 * wind + 0.08 * Math.sin(TAU * ph); else p.rotation.z = 0.12 * Math.sin(time * 8 + i) * wind - 0.05 * i * wind; p.rotation.x = 0.1 * Math.sin(time * 6 + i * 0.8) * wind; });
-    // 騎手：馬の上下動を膝で吸収して頭の位置を保つ
+    animateJockey(m, st, ph, bounce, pitch, 1.66);
+  }
+  // 騎手のアニメーション（手続き馬・glb馬の共通）。baseY は鞍上の高さ
+  function animateJockey(m, st, ph, bounce, pitch, baseY) {
     const J = m.jockey;
-    J.root.position.y = 1.66 - bounce * 0.8;
+    J.root.position.y = baseY - bounce * 0.8;
     J.root.rotation.z = -pitch * 0.85;
     const push = st.effort > 0.85 ? 1 : st.effort > 0.6 ? 0.5 : 0.15;
     const pumpPh = TAU * ph + 1.4;
@@ -441,5 +444,10 @@
     else { L.a.rotation.z = 0.45; L.b.rotation.z = -0.95; L.c.rotation.z = 0.55; L.d.rotation.z = 0.55; L.e.rotation.z = -0.55; }
   }
 
-  window.Horse3D = { create, coatFor, COATS, silksTexture };
+  // 実物の馬モデル（glb）が読み込めていればそちらを使う
+  function createAny(opt) {
+    if (window.HorseGLB && HorseGLB.ready) { try { return HorseGLB.create(opt); } catch (e) { console.warn('glb horse failed', e); } }
+    return create(opt);
+  }
+  window.Horse3D = { create: createAny, createProcedural: create, coatFor, COATS, silksTexture, _geoms: geoms, _clothTexture: clothTexture, _buildJockey: buildJockey, _animateJockey: animateJockey };
 })();

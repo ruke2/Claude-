@@ -3,9 +3,11 @@
 <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#c{position:fixed;inset:0}</style></head>
 <body><div id="c"></div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="js/data.js"></script><script src="js/realhorses.js"></script>
 <script src="js/race.js"></script><script src="js/world.js"></script>
-<script src="js/horse3d.js"></script><script src="js/render3d.js"></script>
+<script src="js/horse3d.js"></script><script src="js/horseglb.js"></script><script src="js/render3d.js"></script>
 <script>
 const q = new URLSearchParams(location.search);
 const W = World.newGame({ name: 'test' });
@@ -14,8 +16,7 @@ const race = W.card[10]; race.venue = venue; race.surf = q.get('surf') || 'T'; r
 const hid = race.field[2].hid;
 const eng = World.setupRace(W, race, hid, 'auto');
 const R3 = new Render3D(document.getElementById('c'));
-R3.setupRace(eng, { label: race.name });
-R3.setCamMode(q.get('cam') || 'jockey');
+HorseGLB.load().then(() => { window.glbInfo = HorseGLB.info; R3.setupRace(eng, { label: race.name }); R3.setCamMode(q.get('cam') || 'jockey'); go(); });
 const tEnd = +(q.get('t') || 0);
 function go() {
   if (Render3D.loaded < Render3D.toLoad) return setTimeout(go, 100);
@@ -23,5 +24,4 @@ function go() {
   for (let i = 0; i < 4; i++) { eng.step(1 / 60); R3.render(eng, 1 / 60); }
   setTimeout(() => { R3.render(eng, 1 / 60); window.done = true; }, 600);
 }
-go();
 </script></body></html>
