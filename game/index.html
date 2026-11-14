@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0f1720">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ジョッキー・ライフ</title>
+<style>
+:root{
+  --bg:#0f1720; --panel:#17222e; --panel2:#1f2d3b; --line:#2c3e50; --text:#e8eef4; --muted:#93a4b5;
+  --accent:#f2b134; --good:#5cb85c; --bad:#e05a4f; --blue:#4a9fe0;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit}
+#app{position:fixed;inset:0;display:flex}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;padding:max(10px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.screen.on{display:flex}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:.06em}
+h2{font-size:17px;margin:0}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.row{display:flex;gap:10px;align-items:center}
+.grow{flex:1}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:15px;cursor:pointer;touch-action:manipulation}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);color:#1b1300;border-color:var(--accent);font-weight:700}
+.btn.ghost{background:transparent}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn:disabled{opacity:.4}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.topbar{display:flex;align-items:center;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:8px;flex-wrap:wrap}
+.pill{display:inline-block;white-space:nowrap;padding:2px 8px;border-radius:999px;background:var(--panel2);font-size:12px;border:1px solid var(--line)}
+.pill.g1{background:#7a1f1f;border-color:#a33}
+.pill.g2{background:#1f3f7a;border-color:#36c}
+.pill.g3{background:#1f6b3a;border-color:#3a6}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--panel)}
+tr.me td{background:rgba(242,177,52,.15)}
+tr.cur td{background:rgba(74,159,224,.15)}
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:10px;min-height:0;flex:1}
+.cols>*{min-height:0}
+.req{display:flex;align-items:center;gap:8px;padding:8px;border-radius:10px;border:1px solid var(--line);margin-bottom:6px;background:var(--panel2)}
+.req.on{border-color:var(--accent);background:rgba(242,177,52,.12)}
+.req .no{width:36px;text-align:center;font-weight:700}
+.stat{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed var(--line)}
+.bar{height:6px;background:#2a3846;border-radius:3px;overflow:hidden;margin-top:2px}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.opt{display:flex;gap:6px;flex-wrap:wrap}
+.opt label{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;cursor:pointer}
+.opt input{display:none}
+.opt input:checked+span{color:var(--accent);font-weight:700}
+input[type=text]{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px;border-radius:8px;font-size:16px;width:220px}
+.swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.swatch.on{border-color:#fff}
+/* レース画面 */
+#race{padding:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.ctl{position:absolute;bottom:max(12px,env(safe-area-inset-bottom));display:flex;gap:12px;touch-action:none;user-select:none;-webkit-user-select:none}
+.ctl.left{left:max(16px,env(safe-area-inset-left))}
+.ctl.right{right:max(16px,env(safe-area-inset-right))}
+.cbtn{width:78px;height:78px;border-radius:50%;background:rgba(0,0,0,.42);border:2px solid rgba(255,255,255,.45);color:#fff;font-weight:700;font-size:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;touch-action:none;user-select:none;-webkit-user-select:none}
+.cbtn small{font-size:10px;font-weight:400;opacity:.8}
+.cbtn.act{background:rgba(242,177,52,.7);border-color:#fff}
+.cbtn.whip{width:64px;height:64px;align-self:flex-end}
+#startBtn{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);width:150px;height:64px;border-radius:32px;font-size:20px}
+#pauseBtn{position:absolute;top:calc(max(8px,env(safe-area-inset-top)) + 17vh);right:max(16px,env(safe-area-inset-right));padding:4px 12px;font-size:12px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.3);border-radius:8px;color:#fff}
+.overlay{position:absolute;inset:0;background:rgba(5,10,15,.78);display:none;align-items:center;justify-content:center;z-index:20}
+.overlay.on{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;max-width:92vw;max-height:92vh;overflow:auto}
+#rotate{position:fixed;inset:0;background:var(--bg);z-index:99;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;padding:24px}
+@media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
+.rot-icon{width:60px;height:96px;border:3px solid var(--text);border-radius:10px;animation:rot 2s infinite}
+@keyframes rot{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+.title-bg{background:radial-gradient(ellipse at 30% 120%,#2f6b35 0,#173a22 40%,#0f1720 75%)}
+.eval{font-size:44px;font-weight:800;color:var(--accent);line-height:1}
+.log li{font-size:13px;padding:2px 0}
+@media (max-height:500px){
+  h2{font-size:15px} .topbar{gap:8px;padding-bottom:4px;margin-bottom:6px;flex-wrap:nowrap}
+  .topbar .small{font-size:11px} .btn{padding:8px 12px;font-size:14px} .btn.small{padding:5px 8px;font-size:12px}
+  .req{padding:5px 8px;margin-bottom:4px} .card{padding:8px 10px} th,td{padding:4px 5px;font-size:12px}
+  .stat{font-size:12px;padding:2px 0} .cbtn{width:70px;height:70px} .cbtn.whip{width:58px;height:58px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- タイトル -->
+  <section class="screen title-bg on" id="s-title">
+    <div style="margin:auto;text-align:center">
+      <div class="muted small" style="letter-spacing:.3em">JOCKEY LIFE</div>
+      <h1 style="font-size:40px">ジョッキー・ライフ</h1>
+      <p class="muted" style="margin:6px 0 22px">デビューから引退まで。ひとりの騎手の人生を、1鞍ずつ。</p>
+      <div class="row" style="justify-content:center;flex-wrap:wrap">
+        <button class="btn primary" id="b-new">新しく始める</button>
+        <button class="btn" id="b-continue">つづきから</button>
+        <button class="btn ghost" id="b-quick">お試し騎乗</button>
+      </div>
+      <p class="muted small" style="margin-top:20px">非公式ファンメイドのドラフト版。実在の騎手は登場しない。実在馬のデータは JRA 公式の2026年GⅠ成績をもとにしている。</p>
+    </div>
+  </section>
+
+  <!-- 新規作成 -->
+  <section class="screen" id="s-new">
+    <div class="topbar"><h2>騎手免許取得</h2><span class="muted small">2027年3月、見習騎手としてデビュー</span></div>
+    <div class="scroll">
+      <div class="card" style="max-width:640px">
+        <div class="row" style="margin-bottom:12px"><span style="width:90px">名前</span><input type="text" id="in-name" maxlength="10" value="新人 騎手"></div>
+        <div class="row" style="margin-bottom:12px"><span style="width:90px">所属</span>
+          <div class="opt">
+            <label><input type="radio" name="region" value="美浦" checked><span>美浦（関東）</span></label>
+            <label><input type="radio" name="region" value="栗東"><span>栗東（関西）</span></label>
+          </div></div>
+        <div class="row" style="margin-bottom:14px"><span style="width:90px">ヘルメット</span><div class="row" id="swatches"></div></div>
+        <button class="btn primary" id="b-start">デビューする</button>
+        <button class="btn ghost" data-go="s-title">戻る</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 週の画面 -->
+  <section class="screen" id="s-week">
+    <div class="topbar" id="week-top"></div>
+    <div class="cols">
+      <div class="scroll" id="week-left"></div>
+      <div class="scroll" id="week-right"></div>
+    </div>
+  </section>
+
+  <!-- 開催日 -->
+  <section class="screen" id="s-day">
+    <div class="topbar" id="day-top"></div>
+    <div class="cols" style="grid-template-columns:1.6fr 1fr">
+      <div class="scroll card" style="padding:0" id="day-table"></div>
+      <div class="scroll" id="day-side"></div>
+    </div>
+  </section>
+
+  <!-- パドック -->
+  <section class="screen" id="s-paddock">
+    <div class="topbar" id="pad-top"></div>
+    <div class="cols" style="grid-template-columns:1fr 1.4fr">
+      <div class="scroll" id="pad-left"></div>
+      <div class="scroll card" style="padding:0" id="pad-right"></div>
+    </div>
+  </section>
+
+  <!-- レース -->
+  <section class="screen" id="race">
+    <canvas id="cv"></canvas>
+    <div class="ctl left">
+      <div class="cbtn" id="c-left">◀<small id="c-left-l">内</small></div>
+      <div class="cbtn" id="c-right">▶<small id="c-right-l">外</small></div>
+    </div>
+    <div class="ctl right">
+      <div class="cbtn whip" id="c-whip">ムチ<small id="c-whip-n">12</small></div>
+      <div class="cbtn" id="c-hold">控える<small>手綱を引く</small></div>
+      <div class="cbtn" id="c-push">追う<small>押す</small></div>
+    </div>
+    <button class="btn primary" id="startBtn">スタート</button>
+    <button id="pauseBtn">Ⅱ 一時停止</button>
+    <div class="overlay" id="pause"><div class="modal" style="text-align:center">
+      <h2 style="margin-bottom:12px">一時停止</h2>
+      <p class="muted small" style="text-align:left;line-height:1.7">
+        ◀▶: 進路（内・外）を変える。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする<br>
+        控える: 脚をためる。ただし前に馬がいないと、気性の悪い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
+        追う: 加速する。脚（スタミナ）を大きく使う。残り600m前後からが目安<br>
+        ムチ: 追っている間の伸びを上乗せする（12回まで）<br>
+        キーボード: ←→ / Z(控える) / X(追う) / Space(ムチ・スタート)</p>
+      <div class="row" style="justify-content:center;margin-top:12px">
+        <button class="btn primary" id="p-resume">再開</button>
+        <button class="btn" id="p-auto">ここからオート</button>
+      </div></div></div>
+  </section>
+
+  <!-- レース結果 -->
+  <section class="screen" id="s-result">
+    <div class="topbar" id="res-top"></div>
+    <div class="cols" style="grid-template-columns:1.5fr 1fr">
+      <div class="scroll card" style="padding:0" id="res-table"></div>
+      <div class="scroll" id="res-side"></div>
+    </div>
+  </section>
+
+  <!-- 汎用モーダル画面 -->
+  <section class="screen" id="s-info">
+    <div class="topbar" id="info-top"></div>
+    <div class="scroll" id="info-body"></div>
+  </section>
+</div>
+
+<div id="rotate"><div class="rot-icon"></div><div>端末を横向きにしてください</div><div class="muted small">このゲームは横画面専用</div></div>
+
+<script src="js/data.js"></script>
+<script src="js/realhorses.js"></script>
+<script src="js/race.js"></script>
+<script src="js/world.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
