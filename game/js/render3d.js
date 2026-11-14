@@ -527,8 +527,8 @@
         m.root.updateMatrixWorld(true);
         const hp = new T.Vector3(); m.jockey.head.getWorldPosition(hp);
         const fwd = new T.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
-        cam.position.copy(hp).addScaledVector(fwd, -0.1); cam.position.y -= 0.04;
-        const pitch = -0.4 + (P.effort > 0.9 ? -0.04 : 0);
+        cam.position.copy(hp).addScaledVector(fwd, -0.12); cam.position.y += 0.06;
+        const pitch = -0.2 + (P.effort > 0.9 ? -0.03 : 0);
         const look = cam.position.clone().addScaledVector(fwd, Math.cos(pitch) * 10); look.y += Math.sin(pitch) * 10;
         cam.up.set(0, 1, 0);
         cam.lookAt(look);

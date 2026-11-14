@@ -1,0 +1,277 @@
+// ===== 騎手の成長・人気・お金・目標・私生活 =====
+(function () {
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const ri = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+
+  // ---- スキル ----
+  const SKILLS = [
+    { id: 'start', name: 'スタート名人', cat: '騎乗', cost: 1, desc: 'ゲートの反応がよくなり、出遅れにくい' },
+    { id: 'calm', name: '折り合い名人', cat: '騎乗', cost: 1, desc: '馬がかかりにくくなる（折合ゲージが減りにくい）' },
+    { id: 'whip', name: 'ムチさばき', cat: '騎乗', cost: 1, desc: 'ムチの効果が1.5倍。打っても馬が反抗しない' },
+    { id: 'inside', name: 'イン突き', cat: '騎乗', cost: 2, desc: '馬群の狭いところでも減速が小さい' },
+    { id: 'closer', name: '追い込みの鬼', cat: '戦法', cost: 2, desc: '差し・追込の馬で、直線の伸びが上がる' },
+    { id: 'front', name: '逃げの名手', cat: '戦法', cost: 2, desc: '先頭を走るときのスタミナ消費が減る' },
+    { id: 'stayer', name: '長距離の達人', cat: '戦法', cost: 2, desc: '2400m以上でスタミナ消費が減る' },
+    { id: 'sprint', name: '短距離の鬼', cat: '戦法', cost: 2, desc: '1400m以下で加速がよくなる' },
+    { id: 'bigstage', name: '大舞台に強い', cat: '戦法', cost: 3, desc: 'GⅠと海外で馬の力を引き出す' },
+    { id: 'weight', name: '体重管理', cat: '生活', cost: 1, desc: '体重が増えにくくなる' },
+    { id: 'charm', name: '人たらし', cat: '生活', cost: 1, desc: '調教師・馬主の信頼が上がりやすい' },
+    { id: 'fanservice', name: 'ファンサービス', cat: '生活', cost: 1, desc: '人気・ファンが増えやすい' },
+  ];
+  const has = (W, id) => !!(W.player.skills && W.player.skills[id]);
+  const xpNeed = (lv) => 60 + lv * 30;
+
+  // ---- 装備・スタッフ・住まい ----
+  const GEAR = {
+    saddle: [{ name: '支給の鞍', price: 0 }, { name: '軽量鞍', price: 180, gear: -0.4, desc: '装備重量 -0.4kg' }, { name: '特注カーボン鞍', price: 650, gear: -0.8, desc: '装備重量 -0.8kg' }],
+    whip: [{ name: '支給のムチ', price: 0 }, { name: '競技用ムチ', price: 60, whip: 1.15, desc: 'ムチの効果 +15%' }, { name: '特注ムチ', price: 240, whip: 1.3, desc: 'ムチの効果 +30%' }],
+    boots: [{ name: '支給のブーツ', price: 0 }, { name: '革ブーツ', price: 90, start: 0.04, desc: 'スタートの反応 +0.04秒' }, { name: '特注ブーツ', price: 300, start: 0.08, desc: 'スタートの反応 +0.08秒' }],
+    goggles: [{ name: '支給のゴーグル', price: 0 }, { name: '曇り止めゴーグル', price: 50, calm: 0.9, desc: '折り合いが少しつきやすい' }, { name: '特注ゴーグル', price: 160, calm: 0.8, desc: '折り合いがつきやすい' }],
+  };
+  const GEAR_LABEL = { saddle: '鞍', whip: 'ムチ', boots: 'ブーツ', goggles: 'ゴーグル' };
+  const STAFF = [
+    { id: 'trainer', name: 'パーソナルトレーナー', weekly: 6, desc: '体力が伸び、疲労が抜けやすい' },
+    { id: 'nutrition', name: '栄養士', weekly: 4, desc: '体重が増えにくく、体調が安定する' },
+    { id: 'manager', name: 'マネージャー', weekly: 8, desc: 'メディアの依頼が増え、人気が上がりやすい' },
+  ];
+  const HOMES = [
+    { name: '騎手寮', price: 0, weekly: 0, cond: 0 },
+    { name: 'トレセン近くのマンション', price: 300, weekly: 3, cond: 2 },
+    { name: '一戸建て', price: 1500, weekly: 6, cond: 4 },
+  ];
+
+  // ---- 称号 ----
+  const TITLES = [
+    { name: '見習い', need: (P) => true },
+    { name: '新人', need: (P) => P.wins >= 10 },
+    { name: '若手', need: (P) => P.wins >= 50 },
+    { name: '中堅', need: (P) => P.wins >= 150 },
+    { name: '一流', need: (P) => P.wins >= 300 && P.g1Wins.length >= 1 },
+    { name: '名手', need: (P) => P.wins >= 600 && P.g1Wins.length >= 5 },
+    { name: 'トップジョッキー', need: (P) => P.wins >= 1000 && P.g1Wins.length >= 15 },
+    { name: 'レジェンド', need: (P) => P.wins >= 1800 && P.g1Wins.length >= 30 },
+  ];
+  function title(W) { const P = W.player; let t = TITLES[0].name; TITLES.forEach(x => { if (x.need(P)) t = x.name; }); return t; }
+
+  // ---- 実績 ----
+  const ACH = [
+    { id: 'win1', cat: '勝利', name: '初勝利', test: (W) => W.player.wins >= 1 },
+    { id: 'win10', cat: '勝利', name: '10勝', test: (W) => W.player.wins >= 10 },
+    { id: 'win100', cat: '勝利', name: '100勝', test: (W) => W.player.wins >= 100 },
+    { id: 'win500', cat: '勝利', name: '500勝', test: (W) => W.player.wins >= 500 },
+    { id: 'win1000', cat: '勝利', name: '1000勝', test: (W) => W.player.wins >= 1000 },
+    { id: 'graded1', cat: '重賞', name: '重賞初制覇', test: (W) => W.player.gWins.length >= 1 },
+    { id: 'g1', cat: '重賞', name: 'GⅠ初制覇', test: (W) => W.player.g1Wins.length >= 1 },
+    { id: 'g1x10', cat: '重賞', name: 'GⅠ 10勝', test: (W) => W.player.g1Wins.length >= 10 },
+    { id: 'derby', cat: '重賞', name: 'ダービージョッキー', test: (W) => W.player.g1Wins.some(t => /日本ダービー/.test(t)) },
+    { id: 'arima', cat: '重賞', name: '有馬記念を制覇', test: (W) => W.player.g1Wins.some(t => /有馬記念/.test(t)) },
+    { id: 'triple', cat: '重賞', name: '三冠ジョッキー', test: (W) => ['皐月賞', '日本ダービー', '菊花賞'].every(n => W.player.g1Wins.some(t => t.includes(n))) },
+    { id: 'world', cat: '海外', name: '海外GⅠ制覇', test: (W) => W.player.g1Wins.some(t => /凱旋門|ドバイ|香港|サウジ|キングジョージ|ブリーダーズ|メルボルン/.test(t)) },
+    { id: 'arc', cat: '海外', name: '凱旋門賞制覇', test: (W) => W.player.g1Wins.some(t => /凱旋門/.test(t)) },
+    { id: 'upset', cat: '騎乗', name: '10番人気以下で勝利', test: (W, c) => c && c.pos === 1 && c.pop >= 10 },
+    { id: 'grandS', cat: '騎乗', name: '騎乗評価S', test: (W, c) => c && c.grade === 'S' },
+    { id: 'leading', cat: '年間', name: 'リーディングジョッキー', test: (W) => W.player.leadingYears > 0 },
+    { id: 'pop1', cat: '人気', name: '人気投票1位', test: (W) => W.player.voteWins > 0 },
+    { id: 'fans10k', cat: '人気', name: 'ファン1万人', test: (W) => W.player.fans >= 10000 },
+    { id: 'fans100k', cat: '人気', name: 'ファン10万人', test: (W) => W.player.fans >= 100000 },
+    { id: 'lv10', cat: '成長', name: 'レベル10', test: (W) => W.player.lv >= 10 },
+    { id: 'lv30', cat: '成長', name: 'レベル30', test: (W) => W.player.lv >= 30 },
+    { id: 'rich', cat: '生活', name: '貯金3億円', test: (W) => W.player.money >= 30000 },
+    { id: 'house', cat: '生活', name: 'マイホーム', test: (W) => W.player.home >= 2 },
+    { id: 'married', cat: '生活', name: '結婚', test: (W) => W.life && W.life.stage === 'married' },
+  ];
+
+  // ---- ファン層 ----
+  const SEGS = [['core', '競馬ファン'], ['young', '若い世代'], ['women', '女性ファン'], ['local', '地元ファン']];
+  function fansTotal(P) { return Math.round(Object.values(P.fanSeg).reduce((a, b) => a + b, 0)); }
+  function addFans(W, seg, n) {
+    const P = W.player;
+    const mul = has(W, 'fanservice') ? 1.3 : 1;
+    P.fanSeg[seg] = Math.max(0, P.fanSeg[seg] + n * mul);
+    P.fans = fansTotal(P);
+    P.sns = Math.round(P.fanSeg.young * 2.2 + P.fanSeg.women * 1.6 + P.fanSeg.core * 0.4);
+  }
+
+  function init(W) {
+    const P = W.player;
+    Object.assign(P, { lv: 1, xp: 0, sp: 1, skills: {}, gear: { saddle: 0, whip: 0, boots: 0, goggles: 0 }, staff: {}, home: 0,
+      fanSeg: { core: 200, young: 40, women: 30, local: 80 }, sns: 0, ach: {}, trophies: [], voteWins: 0, leadingYears: 0, cheers: [] });
+    P.fans = fansTotal(P);
+    W.life = { stage: 'none', partner: null, love: 0, family: 60, friends: 50 };
+    W.seasonGoal = null;
+    W.pendingGoal = true;
+  }
+  function ensure(W) { if (W.player.lv == null) init(W); }
+
+  // ---- レースに渡す補正 ----
+  function raceMods(W, race) {
+    ensure(W);
+    const P = W.player, gq = (k) => GEAR[k][P.gear[k] || 0];
+    return {
+      start: (has(W, 'start') ? 0.1 : 0) + (gq('boots').start || 0),
+      calm: (has(W, 'calm') ? 0.6 : 1) * (gq('goggles').calm || 1),
+      whip: (has(W, 'whip') ? 1.5 : 1) * (gq('whip').whip || 1), noSulk: has(W, 'whip'),
+      inside: has(W, 'inside'), closer: has(W, 'closer'), front: has(W, 'front'),
+      stayer: has(W, 'stayer') && race.dist >= 2400, sprint: has(W, 'sprint') && race.dist <= 1400,
+      big: has(W, 'bigstage') && (race.graded === 1 || race.overseas) ? 2.5 : 0,
+    };
+  }
+  function gearWeight(W) { ensure(W); return 2.0 + (GEAR.saddle[W.player.gear.saddle || 0].gear || 0); }
+
+  // ---- 結果のあと ----
+  function onResult(W, race, me, f, ev) {
+    ensure(W);
+    const P = W.player, gMul = race.overseas ? 3 : race.graded === 1 ? 2.2 : race.graded ? 1.5 : 1;
+    // 経験値
+    const xp = (ev.mode === 'manual' ? 6 : 3) + (me.pos === 1 ? 6 * gMul : me.pos <= 3 ? 2 : 0) + (ev.grade === 'S' ? 4 : ev.grade === 'A' ? 2 : 0);
+    gainXp(W, xp);
+    // ファン層
+    if (me.pos === 1) {
+      addFans(W, 'core', 25 * gMul * gMul); addFans(W, 'young', 6 * gMul * gMul); addFans(W, 'local', race.venue && VENUES[race.venue].jp ? 8 : 0);
+      if (race.graded === 1 || race.overseas) addFans(W, 'women', 40 * gMul);
+      if (f.pop >= 10) addFans(W, 'core', 120);
+    }
+    // 応援メッセージ
+    if (me.pos === 1 && Math.random() < 0.6) cheer(W, race, me);
+    // 実績
+    checkAch(W, { pos: me.pos, pop: f.pop, grade: ev.grade });
+    if (me.pos === 1 && (race.graded === 1 || race.overseas)) P.trophies.push({ year: W.year, name: race.name, horse: me.horse.name });
+  }
+  function gainXp(W, xp) {
+    const P = W.player; P.xp += xp;
+    while (P.xp >= xpNeed(P.lv)) {
+      P.xp -= xpNeed(P.lv); P.lv++; P.sp++;
+      P.tech = clamp(P.tech + 0.4, 0, 99); P.judge = clamp(P.judge + 0.3, 0, 99);
+      W.toasts = (W.toasts || []).concat([`レベル${P.lv}に上がった（スキルポイント+1）`]);
+      checkAch(W);
+    }
+  }
+  function learn(W, id) {
+    const P = W.player, sk = SKILLS.find(s => s.id === id);
+    if (!sk || P.skills[id] || P.sp < sk.cost) return false;
+    P.sp -= sk.cost; P.skills[id] = W.year; return true;
+  }
+  function checkAch(W, ctx) {
+    const P = W.player;
+    ACH.forEach(a => { if (!P.ach[a.id] && a.test(W, ctx)) { P.ach[a.id] = W.date; W.toasts = (W.toasts || []).concat([`実績解除：${a.name}`]); } });
+  }
+  const CHEERS = {
+    core: ['あの仕掛けのタイミング、完璧でした', '人気薄でも諦めない騎乗、ずっと応援してます', '馬券当たりました！ありがとう'],
+    young: ['推しジョッキーが勝った！', 'レース映像、何回も見返してます', 'SNSで切り抜き回ってきて知りました。かっこいい'],
+    women: ['勝利騎手インタビュー、感動しました', '馬への声かけが優しくて好きです', 'パドックで手を振ってくれた！'],
+    local: ['地元の星！これからも応援してます', '競馬場で応援してました！', '子どもが騎手になりたいって言い出しました'],
+  };
+  function cheer(W, race, me) {
+    const P = W.player;
+    const segs = Object.entries(P.fanSeg).sort((a, b) => b[1] * Math.random() - a[1] * Math.random());
+    const seg = segs[0][0];
+    P.cheers.unshift({ date: W.date, seg, text: pick(CHEERS[seg]), race: race.name, horse: me.horse.name });
+    if (P.cheers.length > 20) P.cheers.length = 20;
+  }
+
+  // ---- 週の終わり：お金・スタッフ・住まい・私生活 ----
+  function onWeekEnd(W) {
+    ensure(W);
+    const P = W.player;
+    let cost = 0;
+    STAFF.forEach(s => { if (P.staff[s.id]) { cost += s.weekly; } });
+    cost += HOMES[P.home].weekly;
+    P.money = Math.round((P.money - cost) * 10) / 10;
+    if (P.staff.trainer) { P.phys = clamp(P.phys + 0.06, 0, 99); P.fatigue = Math.max(0, P.fatigue - 3); }
+    if (P.staff.nutrition) { P.weight -= 0.03; P.cond = clamp(P.cond + 1, 0, 100); }
+    if (P.staff.manager) { P.pop = clamp(P.pop + 0.08, 0, 100); addFans(W, 'young', 5); addFans(W, 'women', 4); }
+    if (has(W, 'weight')) P.weight -= 0.02;
+    P.cond = clamp(P.cond + HOMES[P.home].cond * 0.5, 0, 100);
+    // 人気が上がるとファンも自然に増える
+    addFans(W, 'core', P.pop * 0.6); addFans(W, 'local', P.pop * 0.2);
+    lifeEvents(W);
+    checkAch(W);
+  }
+
+  // ---- 私生活 ----
+  const PARTNER_NAMES = ['美月', '遥', '彩花', '翔太', '湊', '結衣', '蒼', '千尋', '真央', '悠'];
+  function lifeEvents(W) {
+    const L = W.life, P = W.player, ev = W.events || (W.events = []);
+    if (ev.length >= 2) return;
+    const r = Math.random();
+    if (r < 0.04) ev.push({ title: '家族からの電話', text: '実家の家族から電話が来た。「ちゃんと食べてる？ 無理しないでね」', choices: [['ゆっくり話す', { cond: 5, life: { family: 6 } }], ['忙しいので手短に', { life: { family: -2 } }]] });
+    else if (r < 0.07) ev.push({ title: '友人からの誘い', text: '学生時代の友人に飲みに誘われた。', choices: [['行く（体重に注意）', { cond: 6, weight: 0.4, life: { friends: 6 } }], ['断る', { life: { friends: -3 } }]] });
+    else if (L.stage === 'none' && P.age >= 20 && r < 0.11) {
+      const name = pick(PARTNER_NAMES);
+      ev.push({ title: '出会い', text: `ファン感謝イベントで、${name}さんと話が弾んだ。連絡先を交換しようか。`, choices: [['連絡先を交換する', { lifeStage: 'met', partner: name, life: { love: 15 } }], ['今は騎乗に集中する', {}]] });
+    } else if (L.stage === 'met' && r < 0.14) ev.push({ title: `${L.partner}さんとの食事`, text: `${L.partner}さんから食事の誘いが来た。`, choices: [['会いに行く', { cond: 6, life: { love: 15 } }], ['レース前なので断る', { life: { love: -5 } }]] });
+    else if (L.stage === 'met' && L.love >= 50 && r < 0.2) ev.push({ title: '気持ちを伝える', text: `${L.partner}さんと過ごす時間が増えてきた。気持ちを伝えようか。`, choices: [['伝える', { lifeStage: 'dating', life: { love: 15 } }], ['まだ早い', {}]] });
+    else if (L.stage === 'dating' && r < 0.12) ev.push({ title: `${L.partner}さんと休日`, text: '久しぶりの休日。どう過ごそう？', choices: [['一緒に出かける', { cond: 8, fatigue: -8, life: { love: 8 } }], ['ジムで体を絞る', { weight: -0.3, life: { love: -4 } }]] });
+    else if (L.stage === 'dating' && L.love >= 85 && P.age >= 24 && r < 0.16) ev.push({ title: 'プロポーズ', text: `${L.partner}さんと付き合って長くなった。プロポーズしようか。`, choices: [['プロポーズする', { lifeStage: 'married', money: -150, pop: 2, life: { love: 10 } }], ['もう少し先にする', {}]] });
+    else if (L.stage === 'married' && !L.child && r < 0.03) ev.push({ title: '家族が増える', text: `${L.partner}さんから、子どもが生まれるという知らせ。`, choices: [['喜ぶ', { cond: 10, life: { child: 1 } }]] });
+    else if (P.money > 400 && r < 0.03) ev.push({ title: '寄付の依頼', text: '引退馬の支援団体から寄付の相談を受けた。', choices: [['100万円寄付する', { money: -100, pop: 2, fans: ['core', 300] }], ['今回は見送る', {}]] });
+  }
+  function applyLife(W, eff) {
+    const L = W.life;
+    if (eff.life) Object.entries(eff.life).forEach(([k, v]) => { L[k] = clamp((L[k] || 0) + v, 0, 100); });
+    if (eff.lifeStage) {
+      L.stage = eff.lifeStage;
+      if (eff.partner) L.partner = eff.partner;
+      if (eff.lifeStage === 'married') { World.news(W, `${W.player.name}騎手が結婚を発表`, 'me'); W.log.push({ abs: W.abs, text: `${W.date} ${L.partner}さんと結婚` }); addFans(W, 'women', 300); }
+    }
+    if (eff.fans) addFans(W, eff.fans[0], eff.fans[1]);
+  }
+
+  // ---- シーズン目標 ----
+  function goalOptions(W) {
+    const P = W.player, ys = P.years[W.year - 1];
+    const base = ys ? ys.wins : 12;
+    const w1 = Math.max(10, Math.round(base * 1.1 / 5) * 5), w2 = Math.max(15, Math.round(base * 1.4 / 5) * 5);
+    const g = Math.max(1, Math.round(P.gWins.length / Math.max(1, P.yearsActive || 1)) + 1);
+    return [
+      { kind: 'wins', target: w1, name: `年間${w1}勝`, reward: '評価+3・賞金100万円', diff: '堅実' },
+      { kind: 'wins', target: w2, name: `年間${w2}勝`, reward: '評価+6・賞金300万円・スキルポイント+2', diff: '挑戦' },
+      { kind: 'graded', target: g, name: `重賞${g}勝`, reward: '評価+5・人気+4・スキルポイント+1', diff: '大物狙い' },
+    ];
+  }
+  function setGoal(W, i) { W.seasonGoal = { ...goalOptions(W)[i], year: W.year }; W.pendingGoal = false; }
+  function goalProgress(W) {
+    const G = W.seasonGoal; if (!G || G.year !== W.year) return null;
+    const ys = W.player.years[W.year] || { wins: 0, g: [] };
+    const cur = G.kind === 'wins' ? ys.wins : ys.g.length;
+    return { ...G, cur, rate: Math.min(1, cur / G.target) };
+  }
+  function evalGoal(W) {
+    const G = goalProgress(W); if (!G) return null;
+    const P = W.player, ok = G.cur >= G.target;
+    if (ok) {
+      if (G.kind === 'wins' && G.target === goalOptions(W)[0].target) { P.rep = clamp(P.rep + 3, 0, 100); P.money += 100; }
+      else if (G.kind === 'wins') { P.rep = clamp(P.rep + 6, 0, 100); P.money += 300; P.sp += 2; }
+      else { P.rep = clamp(P.rep + 5, 0, 100); P.pop = clamp(P.pop + 4, 0, 100); P.sp += 1; }
+    } else P.rep = clamp(P.rep - 1, 0, 100);
+    return { ...G, ok };
+  }
+
+  // ---- 年末：人気投票 ----
+  function yearEnd(W, ye) {
+    ensure(W);
+    const P = W.player;
+    if (ye.rank === 1) P.leadingYears++;
+    const table = W.jockeys.map(j => ({ name: j.name, score: j.pop * (0.8 + Math.random() * 0.4) }));
+    table.push({ name: P.name + '（あなた）', score: P.pop * (0.9 + Math.random() * 0.3) + fansTotal(P) / 2000, me: true });
+    table.sort((a, b) => b.score - a.score);
+    const vote = table.findIndex(t => t.me) + 1;
+    if (vote === 1) { P.voteWins++; addFans(W, 'women', 500); addFans(W, 'young', 400); }
+    ye.vote = { rank: vote, top: table.slice(0, 5) };
+    ye.goal = evalGoal(W);
+    W.pendingGoal = true;
+    checkAch(W);
+  }
+
+  // ---- ショップ ----
+  function buyGear(W, slot, lv) {
+    const P = W.player, it = GEAR[slot][lv];
+    if (!it || P.gear[slot] >= lv || P.money < it.price) return false;
+    P.money -= it.price; P.gear[slot] = lv; return true;
+  }
+  function toggleStaff(W, id) { const P = W.player; P.staff[id] = !P.staff[id]; return P.staff[id]; }
+  function moveHome(W, i) { const P = W.player, h = HOMES[i]; if (i <= P.home || P.money < h.price) return false; P.money -= h.price; P.home = i; checkAch(W); return true; }
+
+  window.Progress = { SKILLS, GEAR, GEAR_LABEL, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
+})();

@@ -171,6 +171,7 @@
     // デビューは3月第1週
     const weeks = weekSundays(W.year);
     W.wk = weeks.findIndex(d => d.getMonth() === 2);
+    if (window.Progress) Progress.init(W);
     prepareWeek(W);
     if (window.Story) Story.init(W);
     return W;
@@ -321,7 +322,8 @@
     if (forPlayer && !race.graded && !race.overseas) w -= apprenticeAllowance(W.player);
     return w;
   }
-  function canMakeWeight(P, kin) { return P.weight + GEAR <= kin + 0.05; }
+  function gearOf(P) { return 2.0 + (P.gear && window.Progress ? (Progress.GEAR.saddle[P.gear.saddle || 0].gear || 0) : 0); }
+  function canMakeWeight(P, kin) { return P.weight + gearOf(P) <= kin + 0.05; }
 
   function buildRequests(W) {
     const P = W.player;
@@ -417,6 +419,7 @@
         if (rf && rf.jid !== -1) { const other = race.field.find(f => f.jid === rj); if (other) other.jid = rf.jid; rf.jid = rj; }
       }
     }
+    const mods = window.Progress && playerHid != null ? Progress.raceMods(W, race) : null;
     const runners = race.field.map(f => {
       const h = W.horses[f.hid];
       const isP = f.hid === playerHid;
@@ -427,10 +430,10 @@
         horse: h, ability: ability(h, W.year), isPlayer: isP, auto: isP && playerMode === 'auto',
         jockeySkill: isP ? (P.tech + P.judge) / 2 : (j ? j.skill : f.jskill || 70),
         color: silks.base, silks, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
-        condBonus: isP ? (P.cond - 70) * 0.08 : 0,
+        condBonus: isP ? (P.cond - 70) * 0.08 + (mods ? mods.big : 0) : 0,
       };
     });
-    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground, playerTech: P.tech });
+    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground, playerTech: P.tech, mods });
   }
   function apprenticeAllowance(P) {
     // ゲーム独自の簡易ルール（実際のJRAの見習騎手規定とは異なる場合がある）
@@ -447,7 +450,7 @@
   const PRIZE_SHARE = 0.05; // 賞金のうち騎手の取り分（ゲーム上の概算）
 
   function news(W, text, kind = '') { W.news.unshift({ abs: W.abs, date: W.date, text, kind }); if (W.news.length > 60) W.news.length = 60; }
-  function updateFans(P) { P.fans = Math.round(300 + P.pop * P.pop * 55 + P.wins * 18); }
+  function updateFans(P) { if (P.fanSeg) P.fans = Math.round(Object.values(P.fanSeg).reduce((a, b) => a + b, 0)); else P.fans = Math.round(300 + P.pop * P.pop * 55 + P.wins * 18); }
 
   // ---- 結果の反映 ----
   function applyResult(W, race, results, playerHid, mode, inquiry) {
@@ -503,8 +506,9 @@
       if (me.pos === 1 && f.pop >= 8) dPop += 0.6; // 大穴
       if (f.pop === 1 && me.pos > 5 && P.pop > 30) dPop -= 0.6; // 1番人気で大敗
       P.pop = clamp(P.pop + dPop, 0, 100); updateFans(P);
-      P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + (score - 45) / 10, 0, 100);
-      P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) + (score - 45) / 12, 0, 100);
+      const charm = window.Progress && Progress.has(W, 'charm') && score > 45 ? 1.3 : 1;
+      P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + (score - 45) / 10 * charm, 0, 100);
+      P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) + (score - 45) / 12 * charm, 0, 100);
       P.bond[h.id] = clamp((P.bond[h.id] || 0) + (me.pos <= 3 ? 6 : 2) + (score > 60 ? 3 : 0), 0, 100);
       // ライバルとの対戦成績
       (W.rivals || []).forEach(rv => {
@@ -547,6 +551,7 @@
       // 落馬（低確率）
       if (Math.random() < 0.002) { W.injury = ri(2, 6); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
       if (window.Story) Story.onResult(W, race, me, f);
+      if (window.Progress) Progress.onResult(W, race, me, f, { grade, mode });
       ev = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, dPop: Math.round(dPop * 10) / 10, income, pos: me.pos, pop: f.pop, interview, inquiry, demoted: !!me.demoted };
     }
     return ev;
@@ -634,6 +639,7 @@
     if (eff.agent != null) { P.agent = eff.agent; news(W, `${P.name}騎手が${W.agents[eff.agent].name}と契約`, 'me'); }
     if (eff.contract != null) { P.contract = eff.contract; W.owners.forEach(o => { if (o.id !== eff.contract) P.otrust[o.id] = clamp((P.otrust[o.id] || 0) - 3, 0, 100); }); news(W, `${P.name}騎手が${W.owners[eff.contract].name}の主戦騎手に`, 'me'); W.log.push({ abs: W.abs, text: `${W.date} ${W.owners[eff.contract].name}の主戦騎手に` }); }
     if (eff.sched) P.schedule = [eff.sched, eff.sched, eff.sched];
+    if (window.Progress) Progress.applyLife(W, eff);
     updateFans(P);
     // 体重が変わったら依頼の斤量判定をやり直す
     (W.requests || []).forEach(q => { q.okWeight = canMakeWeight(P, q.kin); if (!q.okWeight) q.accepted = false; });
@@ -673,6 +679,7 @@
     }
     prepareWeek(W);
     W.events = genEvents(W);
+    if (window.Progress) Progress.onWeekEnd(W);
     if (window.Story) Story.onWeekStart(W);
     return yearEnd;
   }
@@ -692,7 +699,9 @@
     if (P.yearsActive === 0 && ys.wins >= 10) awards.push('最多勝利新人騎手');
     W.log.push({ abs: W.abs, text: `${W.year}年 ${ys.wins}勝（リーディング${rank}位）` });
     news(W, `${W.year}年の成績：${ys.wins}勝、リーディング${rank}位`, 'me');
-    return { year: W.year, ys, rank, popRank, table: table.slice(0, 10), awards };
+    const ye = { year: W.year, ys, rank, popRank, table: table.slice(0, 10), awards };
+    if (window.Progress) Progress.yearEnd(W, ye);
+    return ye;
   }
 
   // ---- セーブ ----
@@ -719,6 +728,6 @@
     newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
-    buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible,
+    buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible, gearOf,
   };
 })();

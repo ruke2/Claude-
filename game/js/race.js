@@ -110,6 +110,7 @@
       this.message = null;
       this.leaderSplits = [];
       this.onEvent = null;
+      this.mods = cfg.mods || {};
     }
     pAt(s) { return this.startP + s; }
     emit(type, data) { if (this.onEvent) this.onEvent(type, data || {}); }
@@ -121,7 +122,7 @@
       if (!p || p.started || p.reaction != null) return;
       if (!this.open) { p.reaction = 0.55; this.msg('ゲートに突進…出負け', 1.4, '#ffb74d'); }
       else {
-        const d = this.t - this.gateOpenAt;
+        const d = Math.max(0, this.t - this.gateOpenAt - (this.mods.start || 0));
         p.reaction = d;
         if (d < 0.2) this.msg('好スタート!', 1.4, '#9be27a');
         else if (d > 0.6) this.msg('出遅れ!', 1.6, '#ff8a80');
@@ -150,7 +151,7 @@
       p.whipPushT = 0.5;
       p.whipSide = side === 'R' ? 1 : -1;
       if (p.s < this.D - 800) p.kakari = clamp(p.kakari + 0.15, 0, 1);
-      if (p.whips > 6 && p.tmp > 60 && Math.random() < 0.35) { p.sulkT = 2.5; this.msg('ムチに反抗した', 1.2, '#ff8a80'); }
+      if (!this.mods.noSulk && p.whips > 6 && p.tmp > 60 && Math.random() < 0.35) { p.sulkT = 2.5; this.msg('ムチに反抗した', 1.2, '#ff8a80'); }
       this.emit('whip', { side });
     }
 
@@ -202,31 +203,34 @@
           let gain = 0;
           if (early && r.effort < 0.45 && !r.covered) gain = r.tmp / 100 * 0.16 * (r.effort < 0.2 ? 1.6 : 1);
           else if (early && !r.covered && r.effort <= 0.55) gain = r.tmp / 100 * 0.05;
-          gain *= (1.2 - skill * 0.7);
+          gain *= (1.2 - skill * 0.7) * (r.isPlayer ? (this.mods.calm || 1) : 1);
           const loss = (r.covered ? 0.12 : 0.04) + (r.effort >= 0.7 ? 0.08 : 0);
           r.kakari = clamp(r.kakari + (gain - loss) * dt, 0, 1);
           if (r.kakari > 0.8) r.effort = Math.max(r.effort, 0.8);
         }
         let f = 0.93 + 0.09 * Math.min(1, r.effort);
         if (r.effort >= 0.95) f += (r.kick - 70) * 0.0006 + (rem < 500 ? 0.006 : 0) + (r.style >= 2 && rem < 600 ? 0.007 : 0);
-        if (r.whipT > 0) { r.whipT -= dt; if (r.effort > 0.9 && r.st > 0.05) f += 0.012; }
+        const M = r.isPlayer ? this.mods : {};
+        if (r.whipT > 0) { r.whipT -= dt; if (r.effort > 0.9 && r.st > 0.05) f += 0.012 * (M.whip || 1); }
+        if (M.closer && r.style >= 2 && rem < 600 && r.effort >= 0.95) f += 0.004;
         if (r.rhythmT > 0) f -= 0.015;
         if (r.sulkT > 0) { r.sulkT -= dt; f -= 0.02; }
         let vT = r.vMax * f;
         vT *= r.st < 0.25 ? 0.935 + 0.26 * Math.max(0, r.st) : 1;
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
-        const acc = r.v < this.vBase * 0.85 ? 3.4 : 0.45 + r.kick * 0.004;
+        const acc = (r.v < this.vBase * 0.85 ? 3.4 : 0.45 + r.kick * 0.004) * (M.sprint ? 1.1 : 1);
         if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - 0.8 * dt);
         r.blocked = false;
         if (ahead && aheadGap < 3.0) {
           r.blocked = aheadGap < 2.4 && r.effort >= 0.5;
-          const cap = ahead.v - (aheadGap < 1.7 ? 0.35 : 0.05);
+          const cap = ahead.v - (aheadGap < 1.7 ? (M.inside ? 0.15 : 0.35) : 0.05);
           if (r.v > cap) r.v = Math.max(0, cap);
         }
         if (!r.finished) {
           let drain = r.drainBase * Math.pow(r.v / (this.vBase * 0.975), 6);
           if (r.covered) drain *= 0.86;
-          if (r.rank === 1) drain *= 1.06;
+          if (r.rank === 1) drain *= M.front ? 1.0 : 1.06;
+          if (M.stayer) drain *= 0.96;
           drain *= 1 + 0.9 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
           r.st = Math.max(0, r.st - drain * dt);
