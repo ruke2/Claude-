@@ -1,0 +1,9 @@
+{
+  "name": "ジョッキー・ライフ",
+  "short_name": "ジョッキー",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0e151d",
+  "theme_color": "#0e151d"
+}

@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0f1720">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
 <title>ジョッキー・ライフ</title>
 <style>
 /* 横画面のゲームUI。暗い配色を固定で使う */
@@ -83,7 +86,7 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
 #hud-bar .lead{position:absolute;right:6px;top:-15px;font-size:10px}
 #hud-map{top:calc(var(--st) + 8px);right:calc(var(--sr) + 10px);width:140px;height:78px;border-radius:10px}
 #hud-gauges{top:calc(var(--st) + 100px);left:calc(var(--sl) + 10px);display:flex;gap:8px;padding:6px 8px}
-.gauge{width:12px;height:70px;background:#0006;border-radius:6px;position:relative;overflow:hidden}
+.gauge{width:12px;height:58px;background:#0006;border-radius:6px;position:relative;overflow:hidden}
 .gauge i{position:absolute;left:0;right:0;bottom:0;border-radius:6px}
 .glabel{font-size:10px;text-align:center;margin-top:2px}
 #hud-msg{top:20%;left:0;right:0;text-align:center;font-size:clamp(20px,5.5vh,34px);font-weight:800;-webkit-text-stroke:1px #0008}
@@ -91,20 +94,20 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
 #hud-btns{top:calc(var(--st) + 38px);left:50%;transform:translateX(-50%);display:flex;gap:6px;pointer-events:auto}
 .hbtn{background:rgba(8,12,18,.55);border:1px solid #ffffff40;color:#fff;border-radius:8px;padding:5px 8px;font-size:11.5px}
 .ctl{position:absolute;touch-action:none;user-select:none;-webkit-user-select:none}
-#ctl-steer{left:calc(var(--sl) + 14px);bottom:calc(var(--sb) + 12px);width:min(32vw,240px)}
-.track{position:relative;height:58px;border-radius:29px;background:rgba(0,0,0,.42);border:2px solid #ffffff59}
-.knob{position:absolute;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 2px 8px #0008;left:50%;top:50%}
-.tlabels{display:flex;justify-content:space-between;font-size:11px;color:#fff;text-shadow:0 1px 2px #000;margin-top:3px;padding:0 6px}
+#ctl-pad{left:calc(var(--sl) + 14px);bottom:calc(var(--sb) + 10px);width:min(31vw,220px)}
+.pad{position:relative;height:min(36vh,136px);border-radius:22px;background:linear-gradient(#2e7d3277,#0007 45%,#0007 55%,#c6282877);border:2px solid #ffffff66}
+.padx,.pady{position:absolute;background:#ffffff33}.padx{left:8%;right:8%;top:50%;height:1px}.pady{top:8%;bottom:8%;left:50%;width:1px}
+.pl{position:absolute;font-size:10.5px;color:#fff;text-shadow:0 1px 2px #000;pointer-events:none}
+.pl.t{top:4px;left:50%;transform:translateX(-50%)}.pl.b{bottom:4px;left:50%;transform:translateX(-50%)}
+.pl.l{left:6px;top:50%;transform:translateY(-50%)}.pl.r{right:6px;top:50%;transform:translateY(-50%)}
+.knob{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.9);box-shadow:0 2px 8px #0008;left:50%;top:50%;pointer-events:none}
+.tlabels{display:flex;justify-content:space-between;font-size:10.5px;color:#fff;text-shadow:0 1px 2px #000;margin-top:3px;padding:0 4px}
 #ctl-right{right:calc(var(--sr) + 14px);bottom:calc(var(--sb) + 12px);display:flex;gap:12px;align-items:flex-end}
-#ctl-rein{width:58px}
-.vtrack{position:relative;width:58px;height:min(40vh,150px);border-radius:29px;background:linear-gradient(#2e7d3299,#0006 50%,#c6282899);border:2px solid #ffffff59}
-.vlab{font-size:10.5px;text-align:center;color:#fff;text-shadow:0 1px 2px #000;margin:2px 0}
 .cbtn{width:62px;height:62px;border-radius:50%;background:rgba(0,0,0,.45);border:2px solid #ffffff73;color:#fff;font-weight:700;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;position:relative;touch-action:none}
 .cbtn small{font-size:9.5px;font-weight:400;opacity:.85}
 .cbtn.act{background:rgba(242,177,52,.75);border-color:#fff}
-#c-push{width:96px;height:96px;font-size:18px}
-#c-push .ring{position:absolute;inset:-3px;border-radius:50%;border:3px solid #ffd54f;pointer-events:none}
-#c-push.good{box-shadow:0 0 0 6px #66bb6a99} #c-push.bad{box-shadow:0 0 0 6px #ef535099}
+#c-push{width:118px;height:118px;font-size:20px}
+#c-push small{font-size:9.5px;text-align:center;margin-top:2px}
 .whips{display:flex;flex-direction:column;gap:10px}
 #startBtn{position:absolute;left:50%;bottom:calc(var(--sb) + 26%);transform:translateX(-50%);width:170px;height:62px;border-radius:31px;font-size:20px}
 #loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000c;color:#fff;font-size:15px;z-index:5}
@@ -198,21 +201,17 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
       <button class="hbtn" id="b-snd">音: ON</button>
       <button class="hbtn" id="pauseBtn">一時停止</button>
     </div>
-    <div class="ctl" id="ctl-steer">
-      <div class="track" id="steer-track"><div class="knob" id="steer-knob"></div></div>
-      <div class="tlabels"><span id="st-l">◀ 内</span><span>進路</span><span id="st-r">外 ▶</span></div>
+    <div class="ctl" id="ctl-pad">
+      <div class="pad" id="pad"><div class="padx"></div><div class="pady"></div><div class="knob" id="pad-knob"></div>
+        <span class="pl t">行かせる</span><span class="pl b">抑える</span><span class="pl l" id="pad-l">内</span><span class="pl r" id="pad-r">外</span></div>
+      <div class="tlabels"><span>上下：手綱（位置を保つ）</span><span>左右：進路</span></div>
     </div>
     <div class="ctl" id="ctl-right">
       <div class="whips">
         <div class="cbtn" id="c-whipL">ムチ<small>左</small></div>
         <div class="cbtn" id="c-whipR">ムチ<small>右 <span id="whip-n">10</span></small></div>
       </div>
-      <div class="cbtn" id="c-push"><div class="ring" id="push-ring"></div>押す<small>完歩に合わせて</small></div>
-      <div id="ctl-rein">
-        <div class="vlab">行かせる</div>
-        <div class="vtrack" id="rein-track"><div class="knob" id="rein-knob"></div></div>
-        <div class="vlab">抑える</div>
-      </div>
+      <div class="cbtn" id="c-push">追う<small>長押し<br>左右にはじく＝ムチ</small></div>
     </div>
     <button class="btn primary" id="startBtn">スタート</button>
     <div id="loading">コースを準備中…</div>

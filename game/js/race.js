@@ -106,7 +106,7 @@
       this.player = this.runners.find(r => r.isPlayer) || null;
       this.done = false; this.events = [];
       // 操作入力: rein 0(抑える)〜1(行かせる), steer -1〜1(画面左右)
-      this.input = { rein: 0.5, steer: 0 };
+      this.input = { rein: 0.5, steer: 0, push: false };
       this.message = null;
       this.leaderSplits = [];
       this.onEvent = null;
@@ -187,7 +187,9 @@
         else {
           const inp = this.input;
           const eRein = 0.08 + inp.rein * 0.74; // 0.08〜0.82
-          r.drive = Math.max(0, r.drive - dt * 0.85);
+          // 追う：押している間、騎手が完歩に合わせて自動で押し、追いが段々強まる
+          if (inp.push) r.drive = Math.min(1.1, r.drive + dt * (1.1 + (this.cfg.playerTech || 50) / 120));
+          else r.drive = Math.max(0, r.drive - dt * 0.85);
           const eDrive = r.drive > 0.05 ? 0.6 + 0.4 * Math.min(1, r.drive) : 0;
           r.effort = Math.max(eRein, eDrive);
           if (r.rhythmT > 0) r.rhythmT -= dt;

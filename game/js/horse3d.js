@@ -271,7 +271,7 @@
       root, body, neckP, headP, legs, mane, tail, jockey: J, reins, bitL, bitR, clothT,
       lastPhase: 0,
       update(st, dt, time) { animate(model, st, dt, time); },
-      setPlayerView(on) { J.torso.visible = J.head.visible = J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.fo.scale.set(on ? 0.035 : 0.045, 0.09, on ? 0.035 : 0.045); }); },
+      setPlayerView(on) { model.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.fo.scale.set(on ? 0.035 : 0.045, 0.09, on ? 0.035 : 0.045); }); },
       dispose() { clothT.dispose(); },
     };
     if (opt.isPlayer) model.setPlayerView(true);
@@ -374,14 +374,13 @@
       const reach = 0.25 * push * Math.sin(pumpPh);
       let sh = 2.05 + reach - (st.effort < 0.3 ? 0.35 : 0);
       let el = -0.55 + 0.3 * push * Math.sin(pumpPh + 0.4);
-      if (a.sd === st.whipSide && st.whipT > 0) { // ムチを振る腕
+      if (a.sd === st.whipSide && st.whipT > 0 && !m.pov) { // ムチを振る腕（騎手視点では画面を覆うので振り上げない）
         const t = 1.3 - st.whipT; const sw = Math.sin(Math.min(1, t / 0.45) * Math.PI);
         sh = 2.4 + 1.3 * sw; el = -0.2 - 0.8 * sw;
       }
       a.sh.rotation.z = sh; a.el.rotation.z = el;
       a.sh.rotation.x = a.sd * 0.15;
     });
-    J.whip.visible = true;
     // 手綱
     m.root.updateMatrixWorld(true);
     for (let i = 0; i < 2; i++) {

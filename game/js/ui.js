@@ -338,8 +338,8 @@
     R3.setCamMode(camMode); updateCamBtn();
     $('b-snd').textContent = Sound.isMuted() ? '音: OFF' : '音: ON';
     const L = engine.course.dir === 'L';
-    $('st-l').textContent = L ? '◀ 内' : '◀ 外'; $('st-r').textContent = L ? '外 ▶' : '内 ▶';
-    setRein(0.5); setSteer(0);
+    $('pad-l').textContent = L ? '内' : '外'; $('pad-r').textContent = L ? '外' : '内';
+    engine.input.rein = 0.5; engine.input.steer = 0; drawPad();
     $('startBtn').style.display = '';
     $('loading').style.display = 'flex';
     paused = false; endAt = 0; acc = 0;
@@ -408,10 +408,6 @@
     const m = e.message && e.t < e.message.until ? e.message : null;
     const msgEl = $('hud-msg');
     if (m) { if (msgEl.textContent !== m.text) msgEl.textContent = m.text; msgEl.style.color = m.color; } else if (msgEl.textContent) msgEl.textContent = '';
-    // 押すリズムの輪：完歩の頭（首が伸びる瞬間）に輪がボタンの縁に重なる
-    const ph = Pl.phase % 1;
-    $('push-ring').style.transform = `scale(${1 + 0.38 * (1 - ph)})`;
-    $('push-ring').style.opacity = Pl.started && !Pl.finished ? String(0.35 + 0.65 * ph) : '0';
   }
   function drawMap() {
     const cv = $('hud-map'), x = cv.getContext('2d'), c = engine.course;
@@ -436,32 +432,36 @@
   }
 
   // ---- 操作 ----
-  function setSteer(v) { if (engine) engine.input.steer = v; $('steer-knob').style.left = (50 + v * 38) + '%'; }
-  function setRein(v) { if (engine) engine.input.rein = v; $('rein-knob').style.top = (50 - (v - 0.5) * 76) + '%'; }
-  (function bindSteer() {
-    const tr = $('steer-track'); let id = null;
-    const at = (e) => { const r = tr.getBoundingClientRect(); return clamp(((e.clientX - r.left) / r.width - 0.5) / 0.38, -1, 1); };
-    tr.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { tr.setPointerCapture(id); } catch (_) {} setSteer(at(e)); });
-    tr.addEventListener('pointermove', (e) => { if (e.pointerId === id) setSteer(at(e)); });
-    const end = (e) => { if (e.pointerId === id) { id = null; setSteer(0); } };
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => tr.addEventListener(t, end));
-  })();
-  (function bindRein() {
-    const tr = $('rein-track'); let id = null;
-    const at = (e) => { const r = tr.getBoundingClientRect(); return clamp(0.5 - ((e.clientY - r.top) / r.height - 0.5) / 0.76, 0, 1); };
-    tr.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { tr.setPointerCapture(id); } catch (_) {} setRein(at(e)); });
-    tr.addEventListener('pointermove', (e) => { if (e.pointerId === id) setRein(at(e)); });
-    const end = (e) => { if (e.pointerId === id) id = null; };
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => tr.addEventListener(t, end));
-  })();
-  function doPush() {
+  // 左：手綱パッド（上下＝手綱・位置を保つ／左右＝進路・離すと戻る）
+  function setSteer(v) { if (engine) engine.input.steer = v; drawPad(); }
+  function setRein(v) { if (engine) engine.input.rein = v; drawPad(); }
+  function drawPad() {
     if (!engine) return;
-    const q = engine.push();
-    const b = $('c-push'); b.classList.remove('good', 'bad'); void b.offsetWidth; b.classList.add(q > 0.55 ? 'good' : q < 0.2 ? 'bad' : 'x');
-    setTimeout(() => b.classList.remove('good', 'bad'), 180);
-    Sound.push();
+    const k = $('pad-knob');
+    k.style.left = (50 + engine.input.steer * 40) + '%';
+    k.style.top = (50 - (engine.input.rein - 0.5) * 80) + '%';
   }
-  $('c-push').addEventListener('pointerdown', (e) => { e.preventDefault(); doPush(); });
+  (function bindPad() {
+    const pad = $('pad'); let id = null;
+    const at = (e) => { const r = pad.getBoundingClientRect(); return [clamp(((e.clientX - r.left) / r.width - 0.5) / 0.4, -1, 1), clamp(0.5 - ((e.clientY - r.top) / r.height - 0.5) / 0.8, 0, 1)]; };
+    const apply = (e) => { const [x, y] = at(e); if (engine) { engine.input.steer = Math.abs(x) < 0.12 ? 0 : x; engine.input.rein = y; } drawPad(); };
+    pad.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { pad.setPointerCapture(id); } catch (_) {} apply(e); });
+    pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) apply(e); });
+    const end = (e) => { if (e.pointerId === id) { id = null; setSteer(0); } };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => pad.addEventListener(t, end));
+  })();
+  // 右：追う（長押し）。押したまま左右にはじくとムチ
+  (function bindPush() {
+    const b = $('c-push'); let id = null, x0 = 0, lastWhip = 0;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; x0 = e.clientX; try { b.setPointerCapture(id); } catch (_) {} if (engine) engine.input.push = true; b.classList.add('act'); });
+    b.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id || !engine) return;
+      const dx = e.clientX - x0;
+      if (Math.abs(dx) > 26 && performance.now() - lastWhip > 350) { lastWhip = performance.now(); x0 = e.clientX; engine.whip(dx < 0 ? 'L' : 'R'); flash($(dx < 0 ? 'c-whipL' : 'c-whipR')); }
+    });
+    const end = (e) => { if (e.pointerId === id) { id = null; if (engine) engine.input.push = false; b.classList.remove('act'); } };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, end));
+  })();
   const flash = (el) => { el.classList.add('act'); setTimeout(() => el.classList.remove('act'), 150); };
   $('c-whipL').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) { engine.whip('L'); flash($('c-whipL')); } });
   $('c-whipR').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) { engine.whip('R'); flash($('c-whipR')); } });
@@ -474,11 +474,11 @@
     paused = true;
     modal(`<h2 style="margin-bottom:8px">一時停止</h2>
       <div class="small" style="line-height:1.75">
-      <b>進路（左下）</b> 左右にスライドして内・外へ。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
-      <b>手綱（右端）</b> 上げると行かせる、下げると抑える。指を離してもその位置を保つ。前半は抑えて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
-      <b>押す</b> 黄色い輪がボタンの縁に重なる瞬間（完歩の頭）に押すと強く伸びる。ずれるとリズムが崩れて失速する。追いゲージがたまるほど全力に近づく。スタミナ（脚色）も大きく使う<br>
-      <b>ムチ（左・右）</b> 追っている間の伸びを上乗せする（10回まで）。馬はムチと反対側へ寄るので、ヨレの修正にも使う。打ちすぎると反抗する馬もいる<br>
-      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱 / Space 押す・スタート / Q・E ムチ / C 視点</div>
+      <b>手綱パッド（左下）</b> 上下で手綱：上げると行かせる、下げると抑える。指を離しても上下の位置は保つ。前半は抑えて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
+      <b>手綱パッドの左右</b> 進路。指を離すとまっすぐに戻る。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
+      <b>追う（右下・長押し）</b> 押している間、騎手が完歩に合わせて追い、追いゲージがたまるほど全力に近づく。脚色（スタミナ）を大きく使うので、仕掛けどころが勝負<br>
+      <b>ムチ</b> 追うボタンを押したまま左右にはじくと、その側でムチ（10回まで）。左右のムチボタンでも打てる。馬はムチと反対側へ寄るので、ヨレの修正にも使う。打ちすぎると反抗する馬もいる<br>
+      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱 / Space 長押しで追う・スタート / Q・E ムチ / C 視点</div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn primary" id="p-resume">再開</button><button class="btn" id="p-auto">ここからオート騎乗</button></div>`, () => {
       $('p-resume').onclick = () => { paused = false; closeModal(); lastT = performance.now(); };
       $('p-auto').onclick = () => { const Pl = engine.player; Pl.auto = true; if (Pl.reaction == null) Pl.reaction = Math.max(0, engine.t - engine.gateOpenAt) + 0.2; paused = false; closeModal(); lastT = performance.now(); };
@@ -489,7 +489,7 @@
     if (e.key === 'ArrowLeft') setSteer(-1); else if (e.key === 'ArrowRight') setSteer(1);
     else if (e.key === 'ArrowUp') setRein(clamp(engine.input.rein + 0.1, 0, 1));
     else if (e.key === 'ArrowDown') setRein(clamp(engine.input.rein - 0.1, 0, 1));
-    else if (e.key === ' ') { if (!engine.player.started) engine.playerStart(); else doPush(); }
+    else if (e.key === ' ') { if (!engine.player.started) engine.playerStart(); else engine.input.push = true; }
     else if (e.key === 'q' || e.key === 'Q') engine.whip('L');
     else if (e.key === 'e' || e.key === 'E') engine.whip('R');
     else if (e.key === 'c' || e.key === 'C') $('b-cam').click();
@@ -497,7 +497,7 @@
     else return;
     e.preventDefault();
   });
-  window.addEventListener('keyup', (e) => { if (engine && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) setSteer(0); });
+  window.addEventListener('keyup', (e) => { if (!engine) return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setSteer(0); if (e.key === ' ') engine.input.push = false; });
 
   // ---------- 結果 ----------
   function showResult(race, hid, ev) {
