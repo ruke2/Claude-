@@ -38,6 +38,7 @@
   $('b-new').onclick = () => { renderSwatches(); show('s-new'); };
   $('b-continue').onclick = () => { const w = World.load(); if (w) { W = w; quick = false; showWeek(); } };
   $('b-quick').onclick = quickRace;
+  $('b-tut').onclick = () => startTutorial();
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
   function renderSwatches() {
     const box = $('swatches'); box.innerHTML = '';
@@ -57,6 +58,8 @@
     World.save(W);
     tab = 'week';
     showWeek();
+    let seen = false; try { seen = localStorage.getItem('jl-tut') === '1'; } catch (e) {}
+    if (!seen) modal(`<h2>操作に慣れておこう</h2><p>レースの操作と画面の見方を、練習レースで1つずつ説明するチュートリアルがある（3分ほど）。</p><div class="choices"><button class="btn primary" id="m-tut">チュートリアルをやる（キャリアは保存済み）</button><button class="btn" id="m-no">あとで</button></div>`, () => { $('m-tut').onclick = () => { closeModal(); World.save(W); startTutorial(); }; $('m-no').onclick = closeModal; });
   };
 
   // ---------- 週の画面 ----------
@@ -330,6 +333,7 @@
   function startRace(race, hid) {
     curRace = race; curHid = hid;
     Sound.init();
+    $('tut').style.display = 'none';
     engine = World.setupRace(W, race, hid, 'manual');
     engine.onEvent = (t) => { if (t === 'gate') Sound.gate(); else if (t === 'whip') Sound.whip(); else if (t === 'bump' || t === 'foul') Sound.bump(); };
     show('race');
@@ -357,14 +361,15 @@
     const rdt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
     const Pl = engine.player;
     let sdt = 0;
-    if (!paused) {
-      const speed = Pl.finished ? 4 : !Pl.started ? 1 : 1.15;
+    if (tut) tutTick(rdt);
+    if (!paused && !(tut && tut.hold)) {
+      const speed = (Pl.finished ? 4 : !Pl.started ? 1 : 1.15) * (tut ? tut.speed : 1);
       acc += rdt * speed; sdt = rdt * speed;
       let n = 0;
       while (acc >= 1 / 60 && n++ < 300) { engine.step(1 / 60); acc -= 1 / 60; }
       if (Pl.started || Pl.auto) $('startBtn').style.display = 'none';
     }
-    R3.render(engine, paused ? 0 : sdt);
+    R3.render(engine, paused || (tut && tut.hold) ? 0 : sdt);
     updateHud(rdt);
     const nearby = engine.runners.filter(r => r !== Pl && Math.abs(r.s - Pl.s) < 15).length;
     const inStraight = engine.pAt(Pl.s) % engine.course.lap;
@@ -520,7 +525,7 @@
       <div class="small" style="margin-top:6px">評価 ${ev.dRep >= 0 ? '+' : ''}${ev.dRep}　人気 ${ev.dPop >= 0 ? '+' : ''}${ev.dPop}　収入 ${ev.income}万円</div></div>
       <button class="btn primary" style="width:100%" id="b-resnext">${quick ? 'タイトルへ' : '次へ'}</button>`;
     $('b-resnext').onclick = () => {
-      if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); return; }
+      if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「一時停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }); } return; }
       W.dayIdx++; World.save(W); showDay();
     };
     if (ev.interview && !quick) showInterview(ev.interview, hid);
@@ -582,6 +587,58 @@
       <ul class="log" style="padding-left:16px">${W.log.map(l => `<li>${esc(l.text)}</li>`).join('')}</ul></div>`;
     $('b-end').onclick = () => { World.deleteSave(); refreshTitle(); show('s-title'); };
   }
+
+  // ---------- チュートリアル ----------
+  let tut = null, tutDone = false;
+  const TUT = [
+    { text: 'ようこそ。まずは画面の見方から。<br>（このあいだレースは止まっている）', tap: true },
+    { text: '<b>左上</b>：レース名、残り距離、今の位置（何番手か）、タイム、ペース、内ラチからの距離。', tap: true, hl: ['hud-info'] },
+    { text: '<b>上の帯</b>：隊列。右端が先頭で、大きい丸が自分。<br><b>右上</b>：コース全体の地図。黄色が自分。', tap: true, hl: ['hud-bar', 'hud-map'] },
+    { text: '<b>脚色</b>＝残りのスタミナ。<b>折合</b>＝馬の落ち着き（下がると「かかって」スタミナを浪費）。<b>追い</b>＝いまどれだけ追っているか。', tap: true, hl: ['hud-gauges'] },
+    { text: '<b>視点</b>は騎手・後方・中継を切り替えられる。迷ったら「後方」が見やすい。', tap: true, hl: ['b-cam'] },
+    { text: 'ではスタート。ゲートが開いた瞬間に<b>「スタート」</b>を押す。早すぎても遅すぎても出負けする。', hl: ['startBtn'], start: true, until: () => engine.player.started },
+    { text: '左下の<b>手綱パッド</b>を<b>下に</b>動かして「抑える」。前半は脚をためるのが基本。指を離しても上下の位置は保たれる。', hl: ['pad'], speed: 0.6, until: () => engine.input.rein < 0.35, hold: 1.2 },
+    { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。パッドを<b>左右</b>に動かして、前の馬の<b>真後ろ</b>に入れよう。', hl: ['pad', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
+    { text: 'いい位置。直線の手前まではこのまま我慢。<br>（早送り中）', speed: 3, until: () => engine.D - engine.player.s < 650 },
+    { text: '残り600m。右下の<b>「追う」を長押し</b>。押している間、騎手が追い続けて加速する。', hl: ['c-push'], speed: 0.6, until: () => engine.player.drive > 0.8 },
+    { text: 'そのまま押しながら、指を<b>左か右にはじく</b>と<b>ムチ</b>。馬はムチと反対側へ寄るので、ヨレたときの修正にも使う。', hl: ['c-push', 'c-whipL', 'c-whipR'], speed: 0.6, until: () => engine.player.whips >= 1 },
+    { text: 'ゴールまで追い続けよう！ 前が壁になったら、パッドの左右で進路を探す。', speed: 1, until: () => engine.player.finished },
+  ];
+  function startTutorial() {
+    try { localStorage.setItem('jl-tut', '1'); } catch (e) {}
+    W = World.newGame({ name: 'あなた', region: '美浦', color: '#fbc02d' });
+    quick = true;
+    const race = W.card[10];
+    race.dist = 1600; race.surf = 'T'; race.ground = '良';
+    World.estimateOdds(W, race);
+    const pickF = race.field.slice().sort((a, b) => a.pop - b.pop)[1];
+    W.booked = { [race.no]: pickF.hid };
+    startRace(race, pickF.hid);
+    engine.gateOpenAt = 1e9;
+    tut = { i: -1, speed: 1, hold: false, t: 0, ok: 0 };
+    tutStep(0);
+  }
+  function tutStep(i) {
+    document.querySelectorAll('.hl').forEach(el => el.classList.remove('hl'));
+    if (i >= TUT.length) { tut = null; tutDone = true; $('tut').style.display = 'none'; return; }
+    const st = TUT[i];
+    tut.i = i; tut.t = 0; tut.ok = 0; tut.speed = st.speed || 1; tut.hold = !!st.tap;
+    $('tut').style.display = 'block';
+    $('tut-text').innerHTML = st.text;
+    $('tut-step').textContent = `${i + 1} / ${TUT.length}`;
+    $('tut-next').style.display = st.tap ? '' : 'none';
+    (st.hl || []).forEach(id => $(id) && $(id).classList.add('hl'));
+    if (st.start) engine.gateOpenAt = engine.t + 2 + Math.random() * 1.5;
+  }
+  function tutTick(dt) {
+    const st = TUT[tut.i];
+    if (!st || st.tap) return;
+    tut.t += dt;
+    if (st.until()) tut.ok += dt; else tut.ok = 0;
+    if (tut.ok >= (st.hold || 0.01) || (st.timeout && tut.t > st.timeout)) tutStep(tut.i + 1);
+  }
+  $('tut-next').onclick = () => { if (tut) tutStep(tut.i + 1); };
+  $('tut-skip').onclick = () => { if (!tut) return; document.querySelectorAll('.hl').forEach(el => el.classList.remove('hl')); tut = null; $('tut').style.display = 'none'; if (engine.gateOpenAt > 1e8) engine.gateOpenAt = engine.t + 2; };
 
   // ---------- お試し騎乗 ----------
   function quickRace() {

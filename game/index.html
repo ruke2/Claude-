@@ -110,6 +110,10 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
 #c-push small{font-size:9.5px;text-align:center;margin-top:2px}
 .whips{display:flex;flex-direction:column;gap:10px}
 #startBtn{position:absolute;left:50%;bottom:calc(var(--sb) + 26%);transform:translateX(-50%);width:170px;height:62px;border-radius:31px;font-size:20px}
+#tut{display:none;position:absolute;top:calc(var(--st) + 70px);left:50%;transform:translateX(-50%);width:min(48vw,440px);background:rgba(14,21,29,.92);border:2px solid var(--accent);border-radius:14px;padding:8px 12px;font-size:13.5px;line-height:1.55;z-index:4}
+#tut-text{margin:4px 0 6px}
+.hl{outline:3px solid #ffd54f !important;outline-offset:3px;border-radius:12px;animation:hlp 1s infinite}
+@keyframes hlp{50%{outline-color:#fff0}}
 #loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000c;color:#fff;font-size:15px;z-index:5}
 #rotate{position:fixed;inset:0;background:var(--bg);z-index:99;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;padding:24px}
 @media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
@@ -136,6 +140,7 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
       <div class="row" style="justify-content:center;flex-wrap:wrap">
         <button class="btn primary" id="b-new">新しく始める</button>
         <button class="btn" id="b-continue">つづきから</button>
+        <button class="btn" id="b-tut">チュートリアル</button>
         <button class="btn ghost" id="b-quick">お試し騎乗</button>
       </div>
       <p class="muted small" style="margin-top:18px">非公式ファンメイドのドラフト版。実在の騎手は登場しない。実在馬のデータは JRA 公式の2026年GⅠ成績をもとにしている。<br>芝・砂・空の素材は Poly Haven（CC0）。</p>
@@ -214,6 +219,7 @@ select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;p
       <div class="cbtn" id="c-push">追う<small>長押し<br>左右にはじく＝ムチ</small></div>
     </div>
     <button class="btn primary" id="startBtn">スタート</button>
+    <div id="tut"><div class="row"><span class="small muted" id="tut-step"></span><div class="grow"></div><button class="hbtn" id="tut-skip">説明を閉じる</button></div><div id="tut-text"></div><button class="btn primary small" id="tut-next">次へ</button></div>
     <div id="loading">コースを準備中…</div>
   </section>
 

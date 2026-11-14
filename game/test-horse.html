@@ -21,6 +21,8 @@ const view = q.get('view') || 'side';
 if (view === 'side') { cam.position.set(0.1, 1.3, 6.5); cam.lookAt(0.1, 1.1, 0); }
 else if (view === 'front') { cam.position.set(4, 1.8, 3); cam.lookAt(0, 1.2, 0); }
 else if (view === 'rear') { cam.position.set(-6, 2.2, 1.5); cam.lookAt(0, 1.3, 0); }
+else if (view === 'jock') { cam.position.set(1.6, 2.4, 2.6); cam.lookAt(0.35, 1.95, 0); }
+else if (view === 'jockr') { cam.position.set(-2.8, 2.6, 1.6); cam.lookAt(0.3, 1.9, 0); }
 const ph = +(q.get('ph') || 0), spd = +(q.get('spd') || 16);
 m.update({ phase: ph, speed: spd, effort: +(q.get('eff') || 0.9), whipT: +(q.get('whip') || 0), whipSide: 1, kakari: 0 }, 0.016, 1);
 if (view === 'pov') {
