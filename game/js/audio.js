@@ -8,7 +8,10 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9;
+    // 大きな歓声でも音が割れないよう、最後に圧縮をかける
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.25;
+    master.connect(comp); comp.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     let b0 = 0, b1 = 0, b2 = 0;
@@ -22,8 +25,9 @@
     loops.pack = loop('lowpass', 220, 1);
     loops.crowd = loop('bandpass', 1100, 0.6);
     loops.crowd2 = loop('bandpass', 2600, 0.9);
+    loops.crowd3 = loop('bandpass', 620, 1.6);
     // ざわめきのゆらぎ
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.35; const lg = ctx.createGain(); lg.gain.value = 0.08;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.35; const lg = ctx.createGain(); lg.gain.value = 0.25;
     lfo.connect(lg); lg.connect(loops.crowd.g.gain); lfo.start();
   }
   function loop(type, freq, q) {
@@ -68,9 +72,28 @@
         const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
         const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fq * (0.9 + Math.random() * 0.2); f.Q.value = 1.4;
         const g = ctx.createGain();
-        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.45 * level / (i + 1) ** 0.5, t + 0.5); g.gain.setTargetAtTime(0, t + 2.2, 0.8);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.5 * level / (i + 1) ** 0.5, t + 0.45); g.gain.setTargetAtTime(0, t + 2.6, 0.9);
         src.connect(f); f.connect(g); g.connect(master); src.start(t, Math.random()); src.stop(t + 6);
       });
+    },
+    // 出走前のファンファーレ（このゲーム用に作った旋律。実在の曲ではない）
+    fanfare() {
+      if (!ctx) return 0;
+      const t0 = ctx.currentTime + 0.05, bt = 0.19;
+      // [音の高さ(半音, 0=ド), 始まり(拍), 長さ(拍)]
+      const mel = [[0, 0, 1], [0, 1, 0.5], [0, 1.5, 0.5], [4, 2, 1], [7, 3, 1], [12, 4, 2], [7, 6, 0.5], [9, 6.5, 0.5], [11, 7, 1], [12, 8, 1], [16, 9, 1], [14, 10, 1], [12, 11, 1], [14, 12, 1], [11, 13, 1], [12, 14, 4]];
+      const note = (semi, st, len, vol, type) => {
+        const f = 261.63 * Math.pow(2, semi / 12), a = t0 + st * bt, d = len * bt;
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, a); lp.frequency.linearRampToValueAtTime(2600, a + 0.05); lp.Q.value = 0.7;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(vol, a + 0.025); g.gain.setValueAtTime(vol * 0.8, a + d * 0.7); g.gain.linearRampToValueAtTime(0.0001, a + d + 0.06);
+        o.connect(lp); lp.connect(g); g.connect(master); o.start(a); o.stop(a + d + 0.1);
+      };
+      mel.forEach(([s, st, len]) => { note(s, st, len * 0.92, 0.16, 'sawtooth'); note(s - 12, st, len * 0.92, 0.1, 'sawtooth'); note(s - (s % 12 === 0 ? 5 : 3), st, len * 0.92, 0.07, 'square'); });
+      // 小太鼓
+      for (let b = 0; b < 14; b += 0.5) burst('highpass', 1800, 0.7, b % 1 ? 0.07 : 0.14, 0.06, t0 + b * bt);
+      burst('lowpass', 140, 1, 0.9, 0.5, t0 + 14 * bt);
+      return 18 * bt + 0.3;
     },
     push() { burst('lowpass', 600, 0.5, 0.06, 0.12); },
     gate() {
@@ -90,8 +113,9 @@
       const t = ctx.currentTime;
       loops.wind.g.gain.setTargetAtTime(Math.min(0.35, (speed / 17) ** 2 * 0.28), t, 0.1);
       loops.pack.g.gain.setTargetAtTime(Math.min(0.9, nearby * 0.09), t, 0.15);
-      loops.crowd.g.gain.setTargetAtTime(crowdLevel * 0.7, t, 0.4);
-      loops.crowd2.g.gain.setTargetAtTime(crowdLevel * 0.3, t, 0.4);
+      loops.crowd.g.gain.setTargetAtTime(crowdLevel * 2.4, t, 0.4);
+      loops.crowd2.g.gain.setTargetAtTime(crowdLevel * 1.0, t, 0.4);
+      loops.crowd3.g.gain.setTargetAtTime(crowdLevel * 1.8, t, 0.4);
     },
     stopAll() { if (!ctx) return; const t = ctx.currentTime; Object.values(loops).forEach(l => l.g.gain.setTargetAtTime(0, t, 0.2)); },
   };

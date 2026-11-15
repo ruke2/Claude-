@@ -13,15 +13,20 @@
   try { rotDir = localStorage.getItem('jl-rot') || 'cw'; } catch (e) {}
   function applyRotation() {
     // Safari はアドレスバーの分だけ 100vh が実際より大きいので、見えている大きさ（px）で合わせる
+    // 実際に描ける範囲は、画面に固定した body の大きさで測る（visualViewport は下の帯の分だけ小さいことがある）
+    const br = document.body.getBoundingClientRect();
     const vv = window.visualViewport;
-    const w = Math.round(vv ? vv.width : window.innerWidth), h = Math.round(vv ? vv.height : window.innerHeight);
+    const w = Math.round(br.width || (vv ? vv.width : window.innerWidth)), h = Math.round(br.height || (vv ? vv.height : window.innerHeight));
     const portrait = h > w;
     const root = document.documentElement, app = $('app');
     root.classList.toggle('rot', portrait);
     root.classList.toggle('ccw', portrait && rotDir === 'ccw');
     if (portrait) {
-      app.style.width = h + 'px'; app.style.height = w + 'px';
-      app.style.transform = rotDir === 'ccw' ? `translate(0px, ${h}px) rotate(-90deg)` : `translate(${w}px, 0px) rotate(90deg)`;
+      // 時計やノッチのある帯（上）には何も描かない。そこにアプリ側のぼかしが重なって白っぽく見えるため。下は端まで使う
+      const top = parseFloat(getComputedStyle($('safe-probe')).paddingTop) || 0;
+      const len = h - top;
+      app.style.width = len + 'px'; app.style.height = w + 'px';
+      app.style.transform = rotDir === 'ccw' ? `translate(0px, ${h}px) rotate(-90deg)` : `translate(${w}px, ${top}px) rotate(90deg)`;
     } else { app.style.width = ''; app.style.height = ''; app.style.transform = ''; }
     window.scrollTo(0, 0);
     if (window.__R3) setTimeout(() => window.__R3.resize(), 50);
@@ -545,8 +550,8 @@
   let engine = null, R3 = null, rafId = 0, lastT = 0, acc = 0, paused = false, endAt = 0, curRace = null, curHid = null, camMode = 'jockey', hudT = 0;
   const CAMS = [['jockey', '騎手'], ['chase', '後方'], ['tv', '中継']];
   try { camMode = localStorage.getItem('jl-cam') || 'jockey'; } catch (e) {}
-  function startRace(race, hid) {
-    curRace = race; curHid = hid;
+  function startRace(race, hid, opt = {}) {
+    curRace = race; curHid = hid; introStage = '';
     Sound.init();
     $('tut').style.display = 'none';
     engine = World.setupRace(W, race, hid, 'manual');
@@ -560,7 +565,7 @@
     $('b-snd').textContent = Sound.isMuted() ? '音OFF' : '音ON';
     const L = engine.course.dir === 'L';
     $('lbl-l').textContent = L ? '内へ' : '外へ'; $('lbl-r').textContent = L ? '外へ' : '内へ';
-    engine.input.steer = 0; setRein(0.5);
+    engine.input.steer = 0; setPower(0.42);
     $('startBtn').style.display = '';
     $('loading').style.display = 'flex';
     paused = false; endAt = 0; acc = 0;
@@ -572,6 +577,7 @@
       if (!ready) { $('loading').textContent = `コースを準備中…（${Render3D.loaded}/${Render3D.toLoad}）`; rafId = requestAnimationFrame(wait); return; }
       $('loading').style.display = 'none';
       R3.resize();
+      if (!opt.noIntro) { R3.startIntro(); $('race').classList.add('intro'); } else $('race').classList.remove('intro');
       lastT = performance.now();
       rafId = requestAnimationFrame(loop);
     };
@@ -582,6 +588,16 @@
     const Pl = engine.player;
     let sdt = 0;
     if (tut) tutTick(rdt);
+    // 出走前の演出（コース紹介 → 枠入り → ゲートの中）。この間レースの時計は進めない
+    if (R3.intro) {
+      const I = R3.intro;
+      if (I.stage !== introStage) { introStage = I.stage; introCard(I.stage); if (I.stage === 'load') Sound.fanfare(); }
+      R3.render(engine, rdt);
+      Sound.update(0, 0, 0.16);
+      if (I.done) endIntro();
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
     if (!paused && !(tut && tut.hold)) {
       const speed = (Pl.finished ? 4 : !Pl.started ? 1 : 1.15) * (tut ? tut.speed : 1);
       acc += rdt * speed; sdt = rdt * speed;
@@ -602,6 +618,20 @@
     }
     rafId = requestAnimationFrame(loop);
   }
+  let introStage = '';
+  function introCard(stage) {
+    const e = engine, race = curRace, Pl = e.player, card = $('intro-card');
+    const f = race.field.find(x => x.hid === curHid) || {};
+    const g = race.graded ? `G${'ⅠⅡⅢ'[race.graded - 1]}　` : race.overseas ? '海外GⅠ　' : '';
+    let html;
+    if (stage === 'fly') html = `<div class="k">${esc(VENUES[race.venue].name)}競馬場${race.overseas ? '' : `　第${race.no}競走`}</div><h2>${g}${esc(race.name)}</h2><div class="d">${raceCond(race)}・${e.course.dir === 'L' ? '左' : '右'}回り・${e.runners.length}頭</div>`;
+    else if (stage === 'load') html = `<div class="k">枠入り</div><h2>${waku(f.waku || 1)} ${Pl.num}番 ${esc(Pl.horse.name)}</h2><div class="d">${f.pop || '-'}番人気・単勝${f.odds || '-'}倍・騎手 ${esc(P().name)}</div>`;
+    else html = `<div class="k">まもなく発走</div><h2>ゲートが開いたら「スタート」</h2>`;
+    card.style.animation = 'none'; void card.offsetWidth; card.style.animation = '';
+    card.innerHTML = html;
+  }
+  function endIntro() { if (R3) R3.endIntro(); $('race').classList.remove('intro'); introStage = ''; lastT = performance.now(); }
+  $('intro-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); endIntro(); });
   function updateHud(dt) {
     const e = engine, Pl = e.player;
     const rem = Math.max(0, e.D - Pl.s);
@@ -663,11 +693,11 @@
     if (P.drive > 0.5 && P.st < 0.12) return { t: '脚が上がった…最後まで押し切れ' };
     if (P.blocked && rem < 800) return { t: '前が壁！ ◀▶ で空いている所へ' };
     if (P.kakari > 0.55) return { t: 'かかっている：前の馬の後ろに入れる' };
-    if (rem < sustain + 30 && P.drive < 0.5) return { t: '仕掛けどき！「追う」を長押し', go: true };
+    if (rem < sustain + 30 && P.drive < 0.5) return { t: '仕掛けどき！ 手綱を上まで上げて追う', go: true };
     if (P.drive > 0.5) return { t: rem < 300 ? '追って！ ムチでもうひと伸び' : '追っている：このまま', go: rem < 300 };
     const n = e.runners.length, fr = (P.rank - 1) / Math.max(1, n - 1), ord = ORDER_RANGE[P.horse.style];
-    if (fr < ord[0] - 0.05 && e.input.rein > 0.4) return { t: '指示より前すぎる：手綱を「抑える」' };
-    if (fr > ord[1] + 0.1 && e.input.rein < 0.6) return { t: '指示より後ろ：手綱を「行かせる」' };
+    if (fr < ord[0] - 0.05 && e.input.power > 0.3) return { t: '指示より前すぎる：手綱を下げて抑える' };
+    if (fr > ord[1] + 0.1 && e.input.power < 0.55) return { t: '指示より後ろ：手綱を少し上げる' };
     return { t: 'いい位置。仕掛けどきまで我慢' };
   }
   function drawMap() {
@@ -698,11 +728,14 @@
   // ---- 操作 ----
   // 左：◀▶（押している間だけ進路を変える）
   function setSteer(v) { if (engine) engine.input.steer = v; }
-  function setRein(v) {
-    if (engine) engine.input.rein = v;
-    document.querySelectorAll('#rein .rb').forEach(b => b.classList.toggle('on', Math.abs(+b.dataset.r - v) < 0.01));
+  // 右：手綱の加減（縦のスライダー。離してもその位置のまま）
+  function setPower(v) {
+    v = clamp(v, 0, 1);
+    if (engine) engine.input.power = v;
+    const pc = (v * 100).toFixed(1) + '%';
+    $('thr-fill').style.clipPath = `inset(${(100 - v * 100).toFixed(1)}% 0 0 0)`; $('thr-knob').style.bottom = pc; $('thr-v').textContent = String(Math.round(v * 100));
+    $('thr-knob').style.background = v >= 0.65 ? 'var(--red)' : v >= 0.38 ? 'var(--green)' : 'var(--blue)';
   }
-  function drawPad() { if (engine) setRein(engine.input.rein); }
   function holdBtn(el, on, off) {
     let id = null;
     el.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { el.setPointerCapture(id); } catch (_) {} el.classList.add('act'); on(e); });
@@ -712,17 +745,19 @@
   }
   holdBtn($('c-left'), () => setSteer(-1), () => setSteer(0));
   holdBtn($('c-right'), () => setSteer(1), () => setSteer(0));
-  // 右：手綱3段階
-  document.querySelectorAll('#rein .rb').forEach(b => b.addEventListener('pointerdown', (e) => { e.preventDefault(); setRein(+b.dataset.r); }));
-  // 追う（長押し）。押したまま左右にはじいてもムチ
-  (function bindPush() {
-    const b = $('c-push'); let x0 = 0, y0 = 0, lastWhip = 0;
-    const isDown = holdBtn(b, (e) => { x0 = e.clientX; y0 = e.clientY; if (engine) engine.input.push = true; }, () => { if (engine) engine.input.push = false; });
-    b.addEventListener('pointermove', (e) => {
-      if (isDown() == null || !engine) return;
-      const dx = uiDX(e, x0, y0);
-      if (Math.abs(dx) > 28 && performance.now() - lastWhip > 350) { lastWhip = performance.now(); x0 = e.clientX; y0 = e.clientY; engine.whip(dx < 0 ? 'L' : 'R'); flash($('c-whip')); }
-    });
+  (function bindThrottle() {
+    const tr = $('thr-track'); let id = null;
+    const at = (e) => {
+      const r = tr.getBoundingClientRect();
+      let v;
+      if (!document.documentElement.classList.contains('rot')) v = 1 - (e.clientY - r.top) / r.height;
+      else { v = (e.clientX - r.left) / r.width; if (rotDir === 'ccw') v = 1 - v; }
+      // 端まで指を運ばなくても 0 と 100 に届くよう、少し余裕を持たせる
+      setPower((v - 0.06) / 0.88);
+    };
+    tr.addEventListener('pointerdown', (e) => { e.preventDefault(); id = e.pointerId; try { tr.setPointerCapture(id); } catch (_) {} at(e); });
+    tr.addEventListener('pointermove', (e) => { if (e.pointerId === id) at(e); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => tr.addEventListener(t, (e) => { if (e.pointerId === id) id = null; }));
   })();
   // ムチ：打つ側は自動（馬がヨレている向きを戻す側。ヨレがなければ外側）
   function autoWhip() {
@@ -744,11 +779,10 @@
     modal(`<h2 style="margin-bottom:8px">一時停止</h2>
       <div class="small" style="line-height:1.75">
       <b>◀ ▶（左下）</b> 押している間、内・外へ進路を変える。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
-      <b>手綱（右）</b> 行かせる／ふつう／抑える の3段階。前半は抑えて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く<br>
-      <b>追う（長押し）</b> 押している間、騎手が追い続けて加速する。脚色（スタミナ）を大きく使う<br>
-      <b>ムチ</b> 追っている間の伸びを上乗せ（10回まで）。打つ側は、馬のヨレを戻す向きに自動で選ばれる。追うボタンを押したまま左右にはじいても打てる<br>
+      <b>手綱の加減（右の縦スライダー）</b> 指で上下に動かして、馬を走らせる強さを自分で決める。下ほど強く抑え、真ん中が馬なり、上ほど強く追う。離してもその位置のまま続く。前半は下げて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く。上げるほど脚色（スタミナ）を多く使う<br>
+      <b>ムチ（右端）</b> 強く追っている間の伸びを上乗せ（10回まで）。打つ側は自動で選ばれる<br>
       <b>コーチ（画面上）</b> 緑のバーは「今から全力で追って持つ距離」。バーが残り距離に届いたら仕掛けどき<br>
-      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱 / Space 長押しで追う・スタート / W ムチ / C 視点</div>
+      <b>キーボード</b> ←→ 進路 / ↑↓ 手綱の加減 / Space スタート・全力 / W ムチ / C 視点</div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn primary" id="p-resume">再開</button><button class="btn" id="p-auto">ここからオート騎乗</button></div>`, () => {
       $('p-resume').onclick = () => { paused = false; closeModal(); lastT = performance.now(); };
       $('p-auto').onclick = () => { const Pl = engine.player; Pl.auto = true; if (Pl.reaction == null) Pl.reaction = Math.max(0, engine.t - engine.gateOpenAt) + 0.2; paused = false; closeModal(); lastT = performance.now(); };
@@ -757,10 +791,10 @@
   window.addEventListener('keydown', (e) => {
     if (!engine || !$('race').classList.contains('on') || paused) return;
     if (e.key === 'ArrowLeft') setSteer(-1); else if (e.key === 'ArrowRight') setSteer(1);
-    else if (e.key === 'ArrowUp') setRein(Math.min(1, engine.input.rein + 0.5));
-    else if (e.key === 'ArrowDown') setRein(Math.max(0, engine.input.rein - 0.5));
+    else if (e.key === 'ArrowUp') setPower(engine.input.power + 0.1);
+    else if (e.key === 'ArrowDown') setPower(engine.input.power - 0.1);
     else if (e.key === 'w' || e.key === 'W') autoWhip();
-    else if (e.key === ' ') { if (!engine.player.started) engine.playerStart(); else engine.input.push = true; }
+    else if (e.key === ' ') { if (!engine.player.started) engine.playerStart(); else setPower(1); }
     else if (e.key === 'q' || e.key === 'Q') engine.whip('L');
     else if (e.key === 'e' || e.key === 'E') engine.whip('R');
     else if (e.key === 'c' || e.key === 'C') $('b-cam').click();
@@ -768,7 +802,7 @@
     else return;
     e.preventDefault();
   });
-  window.addEventListener('keyup', (e) => { if (!engine) return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setSteer(0); if (e.key === ' ') engine.input.push = false; });
+  window.addEventListener('keyup', (e) => { if (!engine) return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setSteer(0); });
 
   // ---------- 結果 ----------
   function showResult(race, hid, ev) {
@@ -874,11 +908,11 @@
     { text: '<b>脚色</b>＝残りのスタミナ。<b>折合</b>＝馬の落ち着き（下がると「かかって」スタミナを浪費）。<b>追い</b>＝いまどれだけ追っているか。', tap: true, hl: ['hud-gauges'] },
     { text: '<b>視点</b>は騎手・後方・中継を切り替えられる。迷ったら「後方」が見やすい。', tap: true, hl: ['b-cam'] },
     { text: 'ではスタート。ゲートが開いた瞬間に<b>「スタート」</b>を押す。早すぎても遅すぎても出負けする。', hl: ['startBtn'], start: true, until: () => engine.player.started },
-    { text: '右の<b>手綱</b>で<b>「抑える」</b>を押す。前半は脚（スタミナ）をためるのが基本。選んだ手綱はそのまま続く。', hl: ['rein'], speed: 0.6, until: () => engine.input.rein < 0.35, hold: 1.2 },
+    { text: '右の<b>手綱スライダー</b>を指で<b>下</b>へ動かし、「抑える」まで下げる。前半は脚（スタミナ）をためるのが基本。指を離してもその位置のまま続く。', hl: ['thr'], speed: 0.6, until: () => engine.input.power < 0.3, hold: 1.2 },
     { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。左下の<b>◀ ▶</b>を押して、前の馬の<b>真後ろ</b>に入れよう。', hl: ['c-left', 'c-right', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
     { text: 'いい位置。画面上の<b>コーチ</b>が仕掛けどきを教えてくれる。緑のバーは「全力で走りきれる距離」。それまで我慢。<br>（早送り中）', hl: ['coach'], speed: 3, until: () => engine.D - engine.player.s < 650 },
-    { text: '仕掛けどき。右下の<b>「追う」を長押し</b>。押している間、騎手が追い続けて加速する。', hl: ['c-push', 'coach'], speed: 0.6, until: () => engine.player.drive > 0.8 },
-    { text: '追いながら<b>「ムチ」</b>をタップ（別の指で）。もうひと伸びする。打つ側は、馬がヨレた向きを戻すように自動で選ばれる。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
+    { text: '仕掛けどき。<b>手綱スライダーを一番上</b>まで上げる。上げるほど強く追って加速する。途中で止めれば、その強さで走る。', hl: ['thr', 'coach'], speed: 0.6, until: () => engine.player.drive > 0.8 },
+    { text: '追いながら右端の<b>「ムチ」</b>をタップ。もうひと伸びする（10回まで）。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
     { text: 'ゴールまで追い続けよう！ 前が壁になったら ◀ ▶ で進路を探す。', speed: 1, until: () => engine.player.finished },
   ];
   function startTutorial() {
@@ -890,7 +924,7 @@
     World.estimateOdds(W, race);
     const pickF = race.field.slice().sort((a, b) => a.pop - b.pop)[1];
     W.booked = { [race.no]: pickF.hid };
-    startRace(race, pickF.hid);
+    startRace(race, pickF.hid, { noIntro: true });
     engine.gateOpenAt = 1e9;
     tut = { i: -1, speed: 1, hold: false, t: 0, ok: 0 };
     tutStep(0);

@@ -24,8 +24,9 @@
 }
 /* 縦向き（画面の向きロック中）は、画面ごと90度回して横向きで表示する */
 html.rot #app{transform-origin:0 0;inset:auto;top:0;left:0} /* 大きさと回転は実際の表示サイズから JS で設定する */
-html.rot{--sl:env(safe-area-inset-top,0px);--sr:env(safe-area-inset-bottom,0px);--st:0px;--sb:0px}
-html.rot.ccw{--sl:env(safe-area-inset-bottom,0px);--sr:env(safe-area-inset-top,0px)}
+html.rot{--sl:0px;--sr:env(safe-area-inset-bottom,0px);--st:0px;--sb:0px}
+html.rot.ccw{--sl:env(safe-area-inset-bottom,0px);--sr:0px}
+#safe-probe{position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;position:fixed;inset:0;width:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);overflow:hidden;overscroll-behavior:none;font-size:14px}
 button,select,input{font:inherit;color:inherit}
@@ -204,17 +205,27 @@ details.acc>.in{padding:0 12px 10px}
 .cbtn.lr{width:78px;height:78px;font-size:24px}
 .cbtn.lr small{font-size:11px}
 #ctl-right{right:calc(var(--sr) + 14px);bottom:calc(var(--sb) + 12px);display:flex;gap:10px;align-items:flex-end}
-.rein{display:flex;flex-direction:column;gap:5px;align-items:stretch}
-.rb{background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.18);color:var(--ink);border-radius:6px;padding:7px 10px;font-size:12.5px;font-weight:700;min-width:82px;touch-action:manipulation;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-.rb.on{background:var(--gold);color:#fff;border-color:var(--gold)}
-.rb[data-r="1"].on{background:var(--green);border-color:var(--green)} .rb[data-r="0"].on{background:var(--blue);border-color:var(--blue)}
+.thr{display:flex;flex-direction:column;align-items:center;gap:3px}
+.thr-track{position:relative;width:84px;height:min(190px,46vh);border-radius:12px;background:rgba(255,255,255,.9);border:2px solid var(--green);overflow:hidden;touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+html.rot .thr-track{height:min(190px,46vw)}
+#thr-fill{position:absolute;inset:0;background:linear-gradient(0deg,#5b8fd6 0%,#5b8fd6 38%,#58a56a 38%,#58a56a 65%,#d9a21b 65%,#c8102e 100%);opacity:.78;clip-path:inset(58% 0 0 0)}
+.tz{position:absolute;left:0;right:0;text-align:center;font-size:12px;font-weight:700;color:var(--ink);pointer-events:none;text-shadow:0 0 3px #fff,0 0 3px #fff}
+.tl{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(0,0,0,.35);pointer-events:none}
+#thr-knob{position:absolute;left:-2px;right:-2px;bottom:42%;height:22px;margin-bottom:-11px;border-radius:6px;background:var(--green);border:2px solid #fff;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px;pointer-events:none;box-shadow:0 2px 5px rgba(0,0,0,.4);font-variant-numeric:tabular-nums}
 .rlab{font-size:10px;text-align:center;color:#fff;text-shadow:0 1px 2px #000}
 .col{display:flex;flex-direction:column;gap:10px;align-items:center}
-#c-push{width:102px;height:102px;font-size:20px;background:var(--green);color:#fff;border-color:#fff}
-#c-push.act{background:var(--gold)}
-#c-whip{width:76px;height:76px;border-color:var(--red);color:var(--red);align-self:center}
+#c-whip{width:80px;height:80px;border-color:var(--red);color:var(--red);align-self:flex-end;font-size:15px}
 #c-whip.act{background:var(--red);color:#fff}
 #startBtn{position:absolute;left:50%;bottom:calc(var(--sb) + 26%);transform:translateX(-50%);width:170px;height:58px;border-radius:29px;font-size:19px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+#intro{display:none;position:absolute;inset:0;z-index:3;pointer-events:none}
+#race.intro #intro{display:block}
+#race.intro .hud,#race.intro .ctl,#race.intro #startBtn{visibility:hidden}
+#intro-card{position:absolute;left:calc(var(--sl) + 18px);bottom:calc(var(--sb) + 18px);max-width:62%;background:rgba(255,255,255,.93);border-left:6px solid var(--green);border-radius:4px;padding:8px 16px 9px;box-shadow:0 4px 14px rgba(0,0,0,.3);animation:introin .5s ease}
+#intro-card .k{font-size:11px;letter-spacing:.25em;color:var(--gold);font-weight:700}
+#intro-card h2{font-family:var(--serif);font-size:clamp(20px,6vh,30px);font-weight:900;margin:0;line-height:1.2}
+#intro-card .d{font-size:13px;color:var(--muted);margin-top:2px}
+#intro-skip{position:absolute;right:calc(var(--sr) + 14px);bottom:calc(var(--sb) + 14px);pointer-events:auto;padding:8px 14px;font-size:13px}
+@keyframes introin{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
 #loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);font-family:var(--serif);font-size:15px;z-index:5}
 #tut{display:none;position:absolute;top:calc(var(--st) + 74px);left:50%;transform:translateX(-50%);width:min(48vw,440px);background:var(--surface);border:2px solid var(--gold);border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.55;z-index:4;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 #tut-text{margin:4px 0 6px}
@@ -236,6 +247,7 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
 </style>
 </head>
 <body>
+<div id="safe-probe"></div>
 <div id="app">
 
   <section class="screen title-page on" id="s-title">
@@ -323,18 +335,21 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
       <div class="cbtn lr" id="c-right">▶<small id="lbl-r">外へ</small></div>
     </div>
     <div class="ctl" id="ctl-right">
-      <div class="rein" id="rein">
-        <button class="rb" data-r="1">行かせる</button>
-        <button class="rb on" data-r="0.5">ふつう</button>
-        <button class="rb" data-r="0">抑える</button>
-        <div class="rlab">手綱</div>
+      <div class="thr" id="thr">
+        <div class="thr-track" id="thr-track">
+          <i id="thr-fill"></i>
+          <span class="tz" style="top:6px">追う</span><span class="tz" style="top:48%">馬なり</span><span class="tz" style="bottom:6px">抑える</span>
+          <b class="tl" style="bottom:65%"></b><b class="tl" style="bottom:38%"></b>
+          <div id="thr-knob"><span id="thr-v">42</span></div>
+        </div>
+        <div class="rlab">手綱の加減（上下に動かす）</div>
       </div>
-      <div class="cbtn" id="c-push">追う<small>長押し</small></div>
       <div class="cbtn" id="c-whip">ムチ<small><span id="whip-n">10</span>回</small></div>
     </div>
     <div class="hud hudbox" id="coach"><div id="coach-t"></div><div class="sbar"><i id="coach-b"></i><span id="coach-m"></span></div></div>
     <button class="btn primary" id="startBtn">スタート</button>
     <div id="tut"><div class="row"><span class="small muted" id="tut-step"></span><div class="grow"></div><button class="hbtn" id="tut-skip">説明を閉じる</button></div><div id="tut-text"></div><button class="btn primary small" id="tut-next">次へ</button></div>
+    <div id="intro"><div id="intro-card"></div><button class="hbtn" id="intro-skip">スキップ ▶</button></div>
     <div id="loading">コースを準備中…</div>
   </section>
 

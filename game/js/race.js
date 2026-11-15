@@ -128,7 +128,7 @@
       this.player = this.runners.find(r => r.isPlayer) || null;
       this.done = false; this.events = [];
       // 操作入力: rein 0(抑える)〜1(行かせる), steer -1〜1(画面左右)
-      this.input = { rein: 0.5, steer: 0, push: false };
+      this.input = { power: 0.4, steer: 0 }; // power: 手綱の加減 0(強く抑える)〜1(全力で追う)
       this.message = null;
       this.leaderSplits = []; this.playerSplits = []; this.player3F = null;
       this.onEvent = null;
@@ -170,7 +170,7 @@
       const rightIsOut = this.course.dir === 'L';
       const towardOut = (side === 'R') === rightIsOut; // ムチ側が外か
       p.whipPushDir = towardOut ? -1 : 1; // 外からムチ→内へ
-      p.whipPushT = 0.5;
+      p.whipPushT = 0.35;
       p.whipSide = side === 'R' ? 1 : -1;
       if (p.s < this.D - 800) p.kakari = clamp(p.kakari + 0.15, 0, 1);
       if (!this.mods.noSulk && p.whips > 6 && p.tmp > 60 && Math.random() < 0.35) { p.sulkT = 2.5; this.msg('ムチに反抗した', 1.2, '#ff8a80'); }
@@ -211,12 +211,12 @@
         else if (r.auto) { this.ai(r, rem, dt); latWant = clamp((r.tx - r.X) * 1.6, -1.1, 1.1); }
         else {
           const inp = this.input;
-          const eRein = 0.08 + inp.rein * 0.74; // 0.08〜0.82
-          // 追う：押している間、騎手が完歩に合わせて自動で押し、追いが段々強まる
-          if (inp.push) r.drive = Math.min(1.1, r.drive + dt * (1.1 + (this.cfg.playerTech || 50) / 120));
-          else r.drive = Math.max(0, r.drive - dt * 0.85);
-          const eDrive = r.drive > 0.05 ? 0.6 + 0.4 * Math.min(1, r.drive) : 0;
-          r.effort = Math.max(eRein, eDrive);
+          // 手綱の加減（0〜1）をそのまま馬への指示にする。急には変わらず、少しずつ伝わる
+          const tech = (this.cfg.playerTech || 50) / 120;
+          const want = 0.08 + 0.92 * clamp(inp.power, 0, 1);
+          if (r.effort < want) r.effort = Math.min(want, r.effort + dt * (0.9 + tech));
+          else r.effort = Math.max(want, r.effort - dt * 1.6);
+          r.drive = clamp((r.effort - 0.6) / 0.4, 0, 1); // 追っている度合い（表示と騎手の動き用）
           if (r.rhythmT > 0) r.rhythmT -= dt;
           const sgn = this.course.dir === 'L' ? 1 : -1; // 画面右 = X増加（左回り）
           latWant = inp.steer * 1.5 * sgn;
@@ -243,7 +243,10 @@
         f *= 1 - 0.55 * gr;
         r.grade = gr;
         let vT = r.vMax * f;
-        vT *= r.st < 0.25 ? 0.935 + 0.26 * Math.max(0, r.st) : 1;
+        vT *= r.st < 0.25 ? 0.9 + 0.4 * Math.max(0, r.st) : 1;
+        // バテ：脚が上がった状態が長く続くほど、どんどん止まる（早仕掛けの代償）
+        if (r.st < 0.25 && !r.finished) r.bate = (r.bate || 0) + dt;
+        if (r.bate) vT *= 1 - Math.min(0.22, Math.pow(r.bate / 20, 2) * 0.22);
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
         // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
         const acc = (r.v < this.vBase * 0.55 ? 7.0 : r.v < this.vBase * 0.85 ? 4.6 : 0.45 + r.kick * 0.004) * (M.sprint ? 1.1 : 1);
@@ -262,12 +265,13 @@
           drain *= 1 + 0.9 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
           drain *= 1 + 7 * Math.max(0, r.grade || 0) - 3 * Math.max(0, -(r.grade || 0));
+          if (r.effort > 0.7) drain = Math.max(drain, r.drainBase * 1.05); // 追っている間は、失速していても脚を使う
           r.st = Math.max(0, r.st - drain * dt);
         }
         // 横の動き：意図 + 疲れによるヨレ + ムチによる修正
         let lat = latWant;
-        if (r.started && !r.finished && r.st < 0.4 && r.effort > 0.7) lat += r.lean * (0.4 - r.st) * 5 * (r.auto ? 0.3 : 1);
-        if (r.whipPushT > 0) { r.whipPushT -= dt; lat += r.whipPushDir * 1.2; }
+        if (r.started && !r.finished && r.st < 0.3 && r.effort > 0.7) lat += r.lean * (0.3 - r.st) * 2 * (r.auto ? 0.3 : 1);
+        if (r.whipPushT > 0) { r.whipPushT -= dt; lat += r.whipPushDir * (r.auto ? 0 : 0.1); }
         r.latV += (lat - r.latV) * Math.min(1, dt * 4);
         let dX = r.latV * dt;
         if (Math.abs(dX) > 1e-4) {

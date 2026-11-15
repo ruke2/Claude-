@@ -216,7 +216,8 @@
       root, jockey: J, reins, bitL, bitR, glb: true,
       update(st, dt, time) {
         const run = Math.min(1, st.speed / 9);
-        gallop.setEffectiveWeight(run); idle.setEffectiveWeight(1 - run); if (walk) walk.setEffectiveWeight(0);
+        const wk = walk && st.walk ? 1 : 0; // 出走前に歩いてゲートへ入るとき
+        gallop.setEffectiveWeight(wk ? (walk ? 0 : 0.25) : run); idle.setEffectiveWeight(wk ? 0 : 1 - run); if (walk) { walk.setEffectiveWeight(wk); walk.time = (st.phase % 1) * walk.getClip().duration; }
         gallop.time = (st.phase % 1) * gallop.getClip().duration;
         idle.time = (time % idle.getClip().duration);
         mixer.update(0);
