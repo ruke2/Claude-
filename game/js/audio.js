@@ -45,7 +45,7 @@
   function startCrowd() {
     // 同じ録音を速さと位置をずらして重ね、大人数に聞こえるようにする
     crowdG = ctx.createGain(); crowdG.gain.value = 0; crowdG.connect(master);
-    [[1, 0, 0.9], [0.86, 7, 0.8], [1.12, 13, 0.6]].forEach(([rate, off, vol]) => {
+    [[1, 0, 0.9], [0.9, 3.1, 0.8], [1.08, 6.3, 0.7]].forEach(([rate, off, vol]) => {
       const src = ctx.createBufferSource(); src.buffer = samples.crowd; src.loop = true; src.playbackRate.value = rate;
       const g = ctx.createGain(); g.gain.value = vol; src.connect(g); g.connect(crowdG); src.start(0, off % samples.crowd.duration);
     });
@@ -94,9 +94,9 @@
       const t = ctx.currentTime;
       if (samples.crowd) { // 人の声の歓声を一気に重ねる
         [1.18, 0.95].forEach((rate, i) => {
-          const src = ctx.createBufferSource(); src.buffer = samples.crowd; src.playbackRate.value = rate;
-          const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.5 * level, t + 0.35); g.gain.setTargetAtTime(0, t + 2.8, 0.9);
-          src.connect(g); g.connect(master); src.start(t, 2 + i * 6 + Math.random() * 3); src.stop(t + 7);
+          const src = ctx.createBufferSource(); src.buffer = samples.crowd; src.loop = true; src.playbackRate.value = rate;
+          const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1.3 * level, t + 0.35); g.gain.setTargetAtTime(0, t + 2.8, 0.9);
+          src.connect(g); g.connect(master); src.start(t, (1 + i * 4 + Math.random() * 3) % samples.crowd.duration); src.stop(t + 7);
         });
       }
       [500, 900, 1400, 2200].forEach((fq, i) => {
@@ -150,7 +150,7 @@
       loops.wind.g.gain.setTargetAtTime(Math.min(0.2, (speed / 17) ** 2 * 0.15), t, 0.1);
       loops.pack.g.gain.setTargetAtTime(Math.min(0.9, nearby * 0.09), t, 0.15);
       // 録音の歓声があればそれを主にし、合成の音は厚みを足す程度にする
-      const k = crowdG ? 0.25 : 1;
+      const k = crowdG ? 0.12 : 1;
       if (crowdG) crowdG.gain.setTargetAtTime(Math.min(1.6, crowdLevel * 1.7), t, 0.35);
       loops.crowd.g.gain.setTargetAtTime(crowdLevel * 2.4 * k, t, 0.4);
       loops.crowd2.g.gain.setTargetAtTime(crowdLevel * 1.0 * k, t, 0.4);

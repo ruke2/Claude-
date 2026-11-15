@@ -110,6 +110,7 @@
       <button class="item" data-a="tut">🎓 チュートリアル</button>
       <button class="item" data-a="rot">🔄 画面の回転方向を反転（縦持ち時）</button>
       <button class="item" data-a="snd">🔈 効果音：${Sound.isMuted() ? 'OFF' : 'ON'}</button>
+      <button class="item" data-a="credit">ⓘ 素材のクレジット</button>
       <button class="item" data-a="title">↩ タイトルへ${inGame ? '（自動でセーブ）' : ''}</button>
       <p class="small muted" style="margin-top:auto">縦向きのまま（向きロック中）でも、画面は横向きに回して表示する。</p>`;
     $('drawer').classList.add('on'); $('drawer-bg').classList.add('on');
@@ -117,6 +118,7 @@
       const a = b.dataset.a; closeDrawer();
       if (a === 'save') { World.save(W); toast('セーブした'); }
       if (a === 'home') showWeek();
+      if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
       if (a === 'tut') { if (W && !quick) World.save(W); startTutorial(); }
       if (a === 'rot') { rotDir = rotDir === 'cw' ? 'ccw' : 'cw'; try { localStorage.setItem('jl-rot', rotDir); } catch (e) {} applyRotation(); }
       if (a === 'snd') Sound.toggleMute();
