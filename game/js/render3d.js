@@ -12,7 +12,8 @@
   const texCache = {};
   function loadTex(name, repeat) {
     if (texCache[name]) return texCache[name];
-    const t = new T.TextureLoader().load(ASSET + name, () => { Render3D.loaded++; });
+    // 読み込みに失敗しても先へ進めるよう、失敗も「済み」として数える
+    const t = new T.TextureLoader().load(ASSET + name, () => { Render3D.loaded++; }, undefined, () => { Render3D.loaded++; console.warn('texture failed', name); });
     Render3D.toLoad++;
     t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 8;
     if (!/_n\./.test(name)) t.encoding = T.sRGBEncoding;
@@ -405,39 +406,63 @@
     }
 
     buildGate(G, race) {
+      // 発馬機：鉄骨の枠・クッション材の仕切り・格子の前扉（観音開き）と後扉・上部の通路・車輪
       const c = race.course, n = race.runners.length;
       const grp = new T.Group();
-      const p = race.pAt(0);
-      const a = CXY(c, p, 0);
+      const a = CXY(c, race.pAt(0), 0);
       grp.position.set(a.x, 0, a.z);
       grp.rotation.y = Math.atan2(-a.hz, a.hx);
-      const green = new T.MeshStandardMaterial({ color: '#2e6b4a', roughness: 0.5, metalness: 0.3 });
-      const white = new T.MeshStandardMaterial({ color: '#efefef', roughness: 0.5, metalness: 0.2 });
-      const doorMat = new T.MeshStandardMaterial({ color: '#d9dcd5', roughness: 0.5, metalness: 0.3 });
-      // ローカル: x=前方, z=外側方向（左回りは外が+z? 右手系で前+xのとき左=-z）
-      const outSign = c.dir === 'L' ? 1 : -1; // 左回り: 内が左(-z) → 外は +z
-      const width = (n + 0.5) * 1.05;
-      const box = (w, h, d, x, y, z, m) => { const b = new T.Mesh(new T.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = true; grp.add(b); return b; };
+      const outSign = c.dir === 'L' ? 1 : -1;
       const zOf = (X) => X * outSign;
-      box(3.4, 0.25, width + 0.6, -0.4, 3.0, zOf(width / 2 + 0.2), green);
-      box(3.4, 0.35, width + 0.6, -0.4, 3.45, zOf(width / 2 + 0.2), white);
-      this.gateDoors = [];
+      const W = 1.05, X0 = 0.375, FRONT = 1.45, REAR = -1.55, LEN = FRONT - REAR;
+      const steel = new T.MeshStandardMaterial({ color: '#1f5a3f', roughness: 0.45, metalness: 0.6 });
+      const steelL = new T.MeshStandardMaterial({ color: '#e9ece8', roughness: 0.35, metalness: 0.5 });
+      const pad = new T.MeshStandardMaterial({ color: '#1e3a64', roughness: 0.85 });
+      const padEdge = new T.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.6 });
+      const tire = new T.MeshStandardMaterial({ color: '#151515', roughness: 0.9 });
+      // 格子（扉）のテクスチャ
+      const grid = canvasTex(128, 256, (x, w, h) => { x.clearRect(0, 0, w, h); x.strokeStyle = '#e9ece8'; x.lineWidth = 7; x.strokeRect(4, 4, w - 8, h - 8); x.lineWidth = 4; for (let i = 1; i < 6; i++) { x.beginPath(); x.moveTo(0, i * h / 6); x.lineTo(w, i * h / 6); x.stroke(); } for (let i = 1; i < 3; i++) { x.beginPath(); x.moveTo(i * w / 3, 0); x.lineTo(i * w / 3, h); x.stroke(); } });
+      const doorMat = new T.MeshStandardMaterial({ map: grid, transparent: true, alphaTest: 0.4, side: T.DoubleSide, metalness: 0.5, roughness: 0.4 });
+      const geoBox = new T.BoxGeometry(1, 1, 1), geoCyl = new T.CylinderGeometry(1, 1, 1, 10);
+      const box = (sx, sy, sz, x, y, z, m, parent = grp) => { const o = new T.Mesh(geoBox, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; parent.add(o); return o; };
+      const post = (x, z, h, r = 0.05, m = steel) => { const o = new T.Mesh(geoCyl, m); o.scale.set(r, h, r); o.position.set(x, h / 2, z); o.castShadow = true; grp.add(o); return o; };
+      const totalW = n * W;
+      // 仕切り（クッション材）と柱
       for (let i = 0; i <= n; i++) {
-        const X = 0.35 + i * 1.05;
-        box(3.2, 2.9, 0.08, -0.4, 1.5, zOf(X), green);
+        const X = X0 + i * W, z = zOf(X);
+        const end = i === 0 || i === n;
+        box(LEN - 0.2, end ? 2.2 : 1.45, end ? 0.16 : 0.13, (FRONT + REAR) / 2, end ? 1.25 : 1.05, z, end ? steel : pad);
+        if (!end) box(LEN - 0.2, 0.08, 0.15, (FRONT + REAR) / 2, 1.8, z, padEdge);
+        post(FRONT, z, 2.75, 0.055); post(REAR, z, 2.75, 0.055); post((FRONT + REAR) / 2, z, 2.75, 0.045);
       }
+      // 上部の梁・通路・手すり
+      const midZ = zOf(X0 + totalW / 2), spanZ = totalW + 0.2;
+      box(0.18, 0.22, spanZ, FRONT, 2.7, midZ, steel);
+      box(0.18, 0.22, spanZ, REAR, 2.7, midZ, steel);
+      box(LEN, 0.06, spanZ, (FRONT + REAR) / 2, 2.85, midZ, steelL);
+      box(0.06, 0.06, spanZ, FRONT, 3.55, midZ, steelL); box(0.06, 0.06, spanZ, REAR, 3.55, midZ, steelL);
+      for (let i = 0; i <= n; i += 2) { const z = zOf(X0 + i * W); const p1 = post(FRONT, z, 0.7, 0.025, steelL); p1.position.y = 3.2; const p2 = post(REAR, z, 0.7, 0.025, steelL); p2.position.y = 3.2; }
+      // 前の梁の番号板と、前扉・後扉
+      this.gateDoors = [];
       for (let i = 0; i < n; i++) {
-        const X0 = 0.35 + i * 1.05;
+        const Xa = X0 + i * W;
+        const t = canvasTex(96, 64, (x) => { x.fillStyle = '#f7f7f2'; x.fillRect(0, 0, 96, 64); x.fillStyle = '#111'; x.font = 'bold 46px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 48, 34); });
+        const nb = new T.Mesh(new T.PlaneGeometry(0.42, 0.28), new T.MeshStandardMaterial({ map: t }));
+        nb.position.set(FRONT + 0.1, 2.7, zOf(Xa + W / 2)); nb.rotation.y = Math.PI / 2; grp.add(nb);
         for (const side of [0, 1]) {
-          const hinge = new T.Group(); hinge.position.set(1.15, 0, zOf(X0 + side * 1.05)); grp.add(hinge);
-          const d = new T.Mesh(new T.BoxGeometry(0.05, 1.7, 0.52), doorMat); d.position.set(0, 1.25, zOf(side ? -0.26 : 0.26)); d.castShadow = true; hinge.add(d);
+          const hinge = new T.Group(); hinge.position.set(FRONT, 0, zOf(Xa + side * W)); grp.add(hinge);
+          const dw = W / 2 - 0.04;
+          const d = new T.Mesh(new T.PlaneGeometry(dw, 1.5), doorMat); d.position.set(0, 1.15, zOf((side ? -1 : 1) * dw / 2)); d.rotation.y = Math.PI / 2; d.castShadow = true; hinge.add(d);
+          const bar = new T.Mesh(geoBox, steelL); bar.scale.set(0.04, 0.05, dw); bar.position.set(0, 1.9, zOf((side ? -1 : 1) * dw / 2)); hinge.add(bar);
           hinge.userData.open = (side ? -1 : 1) * outSign;
           this.gateDoors.push(hinge);
+          const r = new T.Mesh(new T.PlaneGeometry(dw, 1.5), doorMat); r.position.set(REAR, 1.15, zOf(Xa + W / 2 + (side ? 1 : -1) * dw / 2)); r.rotation.y = Math.PI / 2; grp.add(r);
         }
-        // 番号板
-        const t = canvasTex(64, 64, (x) => { x.fillStyle = '#fff'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#111'; x.font = 'bold 44px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 32, 34); });
-        const nb = new T.Mesh(new T.PlaneGeometry(0.5, 0.5), new T.MeshStandardMaterial({ map: t }));
-        nb.position.set(1.21, 3.0, zOf(X0 + 0.52)); nb.rotation.y = Math.PI / 2; grp.add(nb);
+      }
+      // 両端の車輪
+      for (const X of [X0 - 0.35, X0 + totalW + 0.35]) for (const x of [FRONT - 0.5, REAR + 0.5]) {
+        const w = new T.Mesh(new T.CylinderGeometry(0.55, 0.55, 0.32, 20), tire); w.rotation.x = Math.PI / 2; w.position.set(x, 0.55, zOf(X)); w.castShadow = true; grp.add(w);
+        const hub = new T.Mesh(new T.CylinderGeometry(0.22, 0.22, 0.34, 12), steelL); hub.rotation.x = Math.PI / 2; hub.position.copy(w.position); grp.add(hub);
       }
       G.add(grp);
     }
@@ -498,8 +523,10 @@
       });
       // ゲートの扉
       if (this.gateDoors) {
-        const t = race.open ? Math.min(1, (race.t - race.gateOpenAt) / 0.25) : 0;
-        this.gateDoors.forEach(hg => hg.rotation.y = hg.userData.open * t * 1.5);
+        // バネで勢いよく開き、少し跳ね返って止まる
+        const k = race.open ? (race.t - race.gateOpenAt) : 0;
+        const ang = race.open ? 1.75 * (1 - Math.exp(-k * 14) * Math.cos(k * 18)) : 0;
+        this.gateDoors.forEach(hg => hg.rotation.y = hg.userData.open * ang);
       }
       this.stepParticles(dt);
       // カメラ

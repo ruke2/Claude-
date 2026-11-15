@@ -21,6 +21,10 @@
     loops.wind = loop('highpass', 900, 0.7);
     loops.pack = loop('lowpass', 220, 1);
     loops.crowd = loop('bandpass', 1100, 0.6);
+    loops.crowd2 = loop('bandpass', 2600, 0.9);
+    // ざわめきのゆらぎ
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.35; const lg = ctx.createGain(); lg.gain.value = 0.08;
+    lfo.connect(lg); lg.connect(loops.crowd.g.gain); lfo.start();
   }
   function loop(type, freq, q) {
     const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
@@ -48,7 +52,26 @@
       burst('lowpass', surf === 'D' ? 520 : 330, 0.8, 0.55, 0.09);
       if (surf === 'D') burst('bandpass', 2400, 1, 0.08, 0.05);
     },
-    whip() { burst('highpass', 3000, 0.7, 0.5, 0.06); },
+    // ムチ：空気を切る音と、馬体に当たる乾いた音の2層
+    whip() {
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      burst('bandpass', 1800, 0.6, 0.35, 0.07, t);
+      burst('highpass', 2600, 0.8, 1.2, 0.035, t + 0.06);
+      burst('bandpass', 700, 1.2, 0.8, 0.09, t + 0.06);
+    },
+    // 歓声のうねり（ゴール前やゴールの瞬間）
+    cheer(level = 1) {
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      [500, 900, 1400, 2200].forEach((fq, i) => {
+        const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fq * (0.9 + Math.random() * 0.2); f.Q.value = 1.4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.45 * level / (i + 1) ** 0.5, t + 0.5); g.gain.setTargetAtTime(0, t + 2.2, 0.8);
+        src.connect(f); f.connect(g); g.connect(master); src.start(t, Math.random()); src.stop(t + 6);
+      });
+    },
     push() { burst('lowpass', 600, 0.5, 0.06, 0.12); },
     gate() {
       if (!ctx) return;
@@ -67,7 +90,8 @@
       const t = ctx.currentTime;
       loops.wind.g.gain.setTargetAtTime(Math.min(0.35, (speed / 17) ** 2 * 0.28), t, 0.1);
       loops.pack.g.gain.setTargetAtTime(Math.min(0.9, nearby * 0.09), t, 0.15);
-      loops.crowd.g.gain.setTargetAtTime(crowdLevel * 0.45, t, 0.4);
+      loops.crowd.g.gain.setTargetAtTime(crowdLevel * 0.7, t, 0.4);
+      loops.crowd2.g.gain.setTargetAtTime(crowdLevel * 0.3, t, 0.4);
     },
     stopAll() { if (!ctx) return; const t = ctx.currentTime; Object.values(loops).forEach(l => l.g.gain.setTargetAtTime(0, t, 0.2)); },
   };

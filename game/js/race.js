@@ -108,7 +108,7 @@
       // 操作入力: rein 0(抑える)〜1(行かせる), steer -1〜1(画面左右)
       this.input = { rein: 0.5, steer: 0, push: false };
       this.message = null;
-      this.leaderSplits = [];
+      this.leaderSplits = []; this.playerSplits = []; this.player3F = null;
       this.onEvent = null;
       this.mods = cfg.mods || {};
     }
@@ -165,12 +165,14 @@
       if (this.open) {
         const k = Math.floor(leader.s / 200);
         if (k > 0 && !this.leaderSplits[k]) this.leaderSplits[k] = this.t - this.gateOpenAt;
+        const pl = this.player;
+        if (pl) { const kp = Math.floor(Math.min(pl.s, this.D) / 200); if (kp > 0 && !this.playerSplits[kp]) this.playerSplits[kp] = this.t - this.gateOpenAt; if (!this.player3F && pl.s >= this.D - 600) this.player3F = this.t - this.gateOpenAt; }
       }
       for (const r of R) {
         if (!r.started) {
           if (!this.open) continue;
           if (r.isPlayer && !r.auto && r.reaction == null && this.t - this.gateOpenAt > 1.2) { r.reaction = 1.2; this.msg('大きく出遅れた!', 1.6, '#ff8a80'); }
-          if (r.reaction != null && this.t - this.gateOpenAt >= r.reaction) { r.started = true; if (r.reaction > 0.6) r.lateStart = true; }
+          if (r.reaction != null && this.t - this.gateOpenAt >= r.reaction) { r.started = true; r.v = 3.0; if (r.reaction > 0.6) r.lateStart = true; } // ゲートを蹴って一気に飛び出す
           else continue;
         }
         r.phase += dt * Math.max(0.6, r.v / STRIDE);
@@ -218,7 +220,8 @@
         let vT = r.vMax * f;
         vT *= r.st < 0.25 ? 0.935 + 0.26 * Math.max(0, r.st) : 1;
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
-        const acc = (r.v < this.vBase * 0.85 ? 3.4 : 0.45 + r.kick * 0.004) * (M.sprint ? 1.1 : 1);
+        // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
+        const acc = (r.v < this.vBase * 0.55 ? 7.0 : r.v < this.vBase * 0.85 ? 4.6 : 0.45 + r.kick * 0.004) * (M.sprint ? 1.1 : 1);
         if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - 0.8 * dt);
         r.blocked = false;
         if (ahead && aheadGap < 3.0) {
@@ -286,6 +289,13 @@
       if (this.t > 600) { R.forEach(r => { if (!r.finished) { r.finished = true; r.finishTime = this.t + (this.D - r.s) / 10; } }); this.done = true; }
     }
 
+    // 先頭の200m（1ハロン）ごとのラップタイム。距離が200で割り切れない場合は最初の区間が短い
+    laps(arr) {
+      const sp = arr || this.leaderSplits, out = [];
+      let prev = 0;
+      for (let k = 1; k < sp.length; k++) { if (sp[k] == null) break; out.push(sp[k] - prev); prev = sp[k]; }
+      return out;
+    }
     pace() {
       const k = Math.min(this.leaderSplits.length - 1, Math.floor(this.D / 400));
       if (k < 3 || !this.leaderSplits[k]) return null;

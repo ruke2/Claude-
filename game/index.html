@@ -23,12 +23,11 @@
   color-scheme:light;
 }
 /* 縦向き（画面の向きロック中）は、画面ごと90度回して横向きで表示する */
-html.rot #app{width:100vh;height:100vw;transform-origin:0 0;transform:translateX(100vw) rotate(90deg);inset:auto;top:0;left:0}
-html.rot.ccw #app{transform:translateY(100vh) rotate(-90deg)}
+html.rot #app{transform-origin:0 0;inset:auto;top:0;left:0} /* 大きさと回転は実際の表示サイズから JS で設定する */
 html.rot{--sl:env(safe-area-inset-top,0px);--sr:env(safe-area-inset-bottom,0px);--st:0px;--sb:0px}
 html.rot.ccw{--sl:env(safe-area-inset-bottom,0px);--sr:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);overflow:hidden;overscroll-behavior:none;font-size:14px}
+html,body{margin:0;height:100%;position:fixed;inset:0;width:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);overflow:hidden;overscroll-behavior:none;font-size:14px}
 button,select,input{font:inherit;color:inherit}
 #app{position:fixed;inset:0;overflow:hidden;background:var(--paper)}
 .screen{position:absolute;inset:0;display:none;flex-direction:column}
@@ -178,6 +177,11 @@ details.acc>.in{padding:0 12px 10px}
 #hud-bar .d.me{width:15px;height:15px;top:2px;margin-left:-7.5px;border:2px solid var(--ink);z-index:2}
 #hud-bar .lead{position:absolute;right:6px;top:-14px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}
 #hud-map{top:calc(var(--st) + 8px);right:calc(var(--sr) + 10px);width:140px;height:78px;border-radius:6px}
+#hud-speed{bottom:calc(var(--sb) + 100px);left:calc(var(--sl) + 14px);text-align:center;padding:3px 12px;min-width:140px}
+#hud-speed .spd b{font-family:var(--serif);font-size:26px;font-weight:900;font-variant-numeric:tabular-nums}
+#hud-speed .spd small{font-size:11px;margin-left:3px;color:var(--muted)}
+#hud-speed .laps{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+#hud-speed .laps b{color:var(--ink)}
 #hud-gauges{top:calc(var(--st) + 104px);left:calc(var(--sl) + 10px);display:flex;gap:8px;padding:6px 8px}
 .gauge{width:11px;height:56px;background:var(--rule2);border-radius:6px;position:relative;overflow:hidden}
 .gauge i{position:absolute;left:0;right:0;bottom:0;border-radius:6px}
@@ -208,7 +212,7 @@ details.acc>.in{padding:0 12px 10px}
 .col{display:flex;flex-direction:column;gap:10px;align-items:center}
 #c-push{width:102px;height:102px;font-size:20px;background:var(--green);color:#fff;border-color:#fff}
 #c-push.act{background:var(--gold)}
-#c-whip{width:68px;height:68px;border-color:var(--red);color:var(--red)}
+#c-whip{width:76px;height:76px;border-color:var(--red);color:var(--red);align-self:center}
 #c-whip.act{background:var(--red);color:#fff}
 #startBtn{position:absolute;left:50%;bottom:calc(var(--sb) + 26%);transform:translateX(-50%);width:170px;height:58px;border-radius:29px;font-size:19px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 #loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);font-family:var(--serif);font-size:15px;z-index:5}
@@ -299,6 +303,7 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
   <section class="screen" id="race">
     <div id="r3d"></div>
     <div class="hud hudbox" id="hud-info"></div>
+    <div class="hud hudbox" id="hud-speed"><div class="spd"><b id="spd-v">0</b><small>km/h</small></div><div class="laps" id="laps"></div></div>
     <div class="hud hudbox" id="hud-bar"></div>
     <canvas class="hud" id="hud-map" width="280" height="156"></canvas>
     <div class="hud hudbox" id="hud-gauges">
@@ -324,10 +329,8 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
         <button class="rb" data-r="0">抑える</button>
         <div class="rlab">手綱</div>
       </div>
-      <div class="col">
-        <div class="cbtn" id="c-whip">ムチ<small><span id="whip-n">10</span>回</small></div>
-        <div class="cbtn" id="c-push">追う<small>長押し</small></div>
-      </div>
+      <div class="cbtn" id="c-push">追う<small>長押し</small></div>
+      <div class="cbtn" id="c-whip">ムチ<small><span id="whip-n">10</span>回</small></div>
     </div>
     <div class="hud hudbox" id="coach"><div id="coach-t"></div><div class="sbar"><i id="coach-b"></i><span id="coach-m"></span></div></div>
     <button class="btn primary" id="startBtn">スタート</button>

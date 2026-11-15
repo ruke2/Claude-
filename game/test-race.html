@@ -16,12 +16,12 @@ const race = W.card[10]; race.venue = venue; race.surf = q.get('surf') || 'T'; r
 const hid = race.field[2].hid;
 const eng = World.setupRace(W, race, hid, 'auto');
 const R3 = new Render3D(document.getElementById('c'));
-HorseGLB.load().then(() => { window.glbInfo = HorseGLB.info; R3.setupRace(eng, { label: race.name }); R3.setCamMode(q.get('cam') || 'jockey'); go(); });
+HorseGLB.load().then(() => { window.glbInfo = HorseGLB.info; R3.setupRace(eng, { label: race.name }); R3.setCamMode(q.get('cam') === 'gate' ? 'chase' : (q.get('cam') || 'jockey')); go(); });
 const tEnd = +(q.get('t') || 0);
 function go() {
   if (Render3D.loaded < Render3D.toLoad) return setTimeout(go, 100);
   while (eng.t < tEnd) eng.step(1 / 30);
   for (let i = 0; i < 4; i++) { eng.step(1 / 60); R3.render(eng, 1 / 60); }
-  setTimeout(() => { R3.render(eng, 1 / 60); window.done = true; }, 600);
+  setTimeout(() => { if (q.get('cam') === 'gate') { const c = R3.camera; const pl = eng.player; const a = RaceEngine.courseXY(eng.course, eng.pAt(pl.s), pl.X); c.position.set(a.x + a.hx * 9 + a.nx * 4, 3.2, a.z + a.hz * 9 + a.nz * 4); c.lookAt(a.x, 1.4, a.z); } R3.renderer.render(R3.scene, R3.camera); window.done = true; }, 600);
 }
 </script></body></html>

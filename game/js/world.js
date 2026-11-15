@@ -561,6 +561,7 @@
   function simulate(W, race, playerHid, mode) {
     const r = setupRace(W, race, playerHid, mode || 'auto');
     const res = r.runToEnd();
+    race.laps = r.laps();
     return applyResult(W, race, res, playerHid, mode || 'auto', null);
   }
 

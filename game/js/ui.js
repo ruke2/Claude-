@@ -12,13 +12,23 @@
   let rotDir = 'cw';
   try { rotDir = localStorage.getItem('jl-rot') || 'cw'; } catch (e) {}
   function applyRotation() {
-    const portrait = window.innerHeight > window.innerWidth;
-    document.documentElement.classList.toggle('rot', portrait);
-    document.documentElement.classList.toggle('ccw', portrait && rotDir === 'ccw');
+    // Safari はアドレスバーの分だけ 100vh が実際より大きいので、見えている大きさ（px）で合わせる
+    const vv = window.visualViewport;
+    const w = Math.round(vv ? vv.width : window.innerWidth), h = Math.round(vv ? vv.height : window.innerHeight);
+    const portrait = h > w;
+    const root = document.documentElement, app = $('app');
+    root.classList.toggle('rot', portrait);
+    root.classList.toggle('ccw', portrait && rotDir === 'ccw');
+    if (portrait) {
+      app.style.width = h + 'px'; app.style.height = w + 'px';
+      app.style.transform = rotDir === 'ccw' ? `translate(0px, ${h}px) rotate(-90deg)` : `translate(${w}px, 0px) rotate(90deg)`;
+    } else { app.style.width = ''; app.style.height = ''; app.style.transform = ''; }
+    window.scrollTo(0, 0);
     if (window.__R3) setTimeout(() => window.__R3.resize(), 50);
   }
   window.addEventListener('resize', applyRotation);
-  window.addEventListener('orientationchange', () => setTimeout(applyRotation, 200));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', applyRotation);
+  window.addEventListener('orientationchange', () => setTimeout(applyRotation, 250));
   applyRotation();
   // 回転中は画面上の左右と指の動きの向きが変わる
   function uiDX(e, x0, y0) {
@@ -522,6 +532,7 @@
     $('b-auto').onclick = () => {
       const r = World.setupRace(W, race, hid, 'auto');
       const res = r.runToEnd();
+      race.laps = r.laps(); race.my3F = null;
       const ev = World.applyResult(W, race, res, hid, 'auto', null);
       if (!quick) logRide(race, hid, ev, 'auto');
       showResult(race, hid, ev);
@@ -539,7 +550,8 @@
     Sound.init();
     $('tut').style.display = 'none';
     engine = World.setupRace(W, race, hid, 'manual');
-    engine.onEvent = (t) => { if (t === 'gate') Sound.gate(); else if (t === 'whip') Sound.whip(); else if (t === 'bump' || t === 'foul') Sound.bump(); };
+    engine.onEvent = (t) => { if (t === 'gate') { Sound.gate(); Sound.cheer(0.6); } else if (t === 'whip') Sound.whip(); else if (t === 'bump' || t === 'foul') Sound.bump(); else if (t === 'finish') Sound.cheer(1.4); };
+    window.__cheered = false;
     show('race');
     if (!glbDone) { HorseGLB.load().then(() => { glbDone = true; R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode); }); }
     if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
@@ -553,8 +565,11 @@
     $('loading').style.display = 'flex';
     paused = false; endAt = 0; acc = 0;
     cancelAnimationFrame(rafId);
+    const waitStart = performance.now();
     const wait = () => {
-      if (Render3D.loaded < Render3D.toLoad || !glbDone) { rafId = requestAnimationFrame(wait); return; }
+      // 素材の読み込みが遅くても、12秒たったら始める（読み込めた分だけで描く）
+      const ready = (Render3D.loaded >= Render3D.toLoad && glbDone) || performance.now() - waitStart > 12000;
+      if (!ready) { $('loading').textContent = `コースを準備中…（${Render3D.loaded}/${Render3D.toLoad}）`; rafId = requestAnimationFrame(wait); return; }
       $('loading').style.display = 'none';
       R3.resize();
       lastT = performance.now();
@@ -578,6 +593,7 @@
     updateHud(rdt);
     const nearby = engine.runners.filter(r => r !== Pl && Math.abs(r.s - Pl.s) < 15).length;
     const inStraight = engine.pAt(Pl.s) % engine.course.lap;
+    if (!window.__cheered && engine.open && engine.D - Pl.s < 300) { window.__cheered = true; Sound.cheer(1); }
     const crowd = engine.open ? (Pl.s > engine.D - engine.course.H ? 0.4 + 0.6 * Math.min(1, (Pl.s - (engine.D - engine.course.H)) / engine.course.H) : 0.12) : 0.2;
     Sound.update(paused ? 0 : Pl.v, paused ? 0 : nearby, paused ? 0.05 : crowd);
     if (engine.done) {
@@ -595,6 +611,10 @@
       const t = e.open ? (Pl.finished ? Pl.finishTime : e.t - e.gateOpenAt) : 0;
       const pace = e.pace();
       $('hud-info').innerHTML = `<b>${esc(e.cfg.name)}</b><br>残り ${Math.ceil(rem)}m・${RaceEngine.sectionName(e.course, e.pAt(Pl.s))}<br>${Pl.rank || '-'}番手/${e.runners.length}頭　${RaceEngine.fmtTime(t)}${pace ? `<br>ペース: ${pace}` : ''}<br>内ラチから ${Pl.X.toFixed(1)}m`;
+      // 時速とラップ（先頭の1ハロンごと）
+      $('spd-v').textContent = String(Math.round(Pl.v * 3.6));
+      const lp = e.laps().slice(-4);
+      $('laps').innerHTML = lp.length ? 'ラップ ' + lp.map((x, i) => i === lp.length - 1 ? `<b>${x.toFixed(1)}</b>` : x.toFixed(1)).join(' - ') : 'ラップ —';
       // 隊列
       const ord = e.runners.slice().sort((a, b) => b.s - a.s);
       const lead = ord[0].s, last = ord[ord.length - 1].s, span = Math.max(30, lead - last);
@@ -667,6 +687,9 @@
   function finishRace() {
     const res = engine.results();
     const mode = engine.player.auto ? 'auto' : 'manual';
+    curRace.laps = engine.laps();
+    const me = res.find(x => x.runner === engine.player);
+    curRace.my3F = engine.player3F ? me.time - engine.player3F : null;
     const ev = World.applyResult(W, curRace, res, curHid, mode, engine.inquiry);
     if (!quick) logRide(curRace, curHid, ev, mode);
     showResult(curRace, curHid, ev);
@@ -757,7 +780,10 @@
       const h = W.horses[r.hid]; const f = race.field.find(x => x.hid === r.hid);
       tb += `<tr class="${r.isP ? 'me' : ''}"><td><b>${r.pos}</b>${r.demoted ? ' <span class="badge warn">降着</span>' : ''}</td><td>${waku(f.waku)}</td><td>${esc(h.name)}${realTag(h)}</td><td>${esc(r.jname || '')}</td><td>${RaceEngine.fmtTime(r.time)}</td><td>${r.margin}</td><td>${r.pop}</td></tr>`;
     });
-    $('res-table').innerHTML = tb + '</table>';
+    const laps = race.laps || [];
+    const lapHtml = laps.length ? `<div style="padding:8px 10px;border-top:1px solid var(--rule)"><div class="small muted">ラップ（先頭の馬の200mごとの通過から算出）</div><div class="tnum" style="font-size:12.5px;line-height:1.7">${laps.map(x => x.toFixed(1)).join(' - ')}</div>
+      <div class="small muted">前半${laps.length >= 3 ? laps.slice(0, 3).reduce((a, b) => a + b, 0).toFixed(1) : '-'}　後半${laps.length >= 3 ? laps.slice(-3).reduce((a, b) => a + b, 0).toFixed(1) : '-'}${race.my3F ? `　あなたの上がり3F ${race.my3F.toFixed(1)}` : ''}</div></div>` : '';
+    $('res-table').innerHTML = tb + '</table>' + lapHtml;
     const comment = ev.pos === 1 ? (race.graded === 1 || race.overseas ? '大舞台で見事な勝利!' : '勝利!') : ev.pos <= 3 ? '馬券圏内を確保。' : ev.pos <= ev.pop ? '人気以上の着順。' : '期待には届かなかった。';
     let inq = '';
     if (ev.inquiry) {
@@ -904,5 +930,8 @@
   }
 
   document.addEventListener('gesturestart', e => e.preventDefault());
+  // iOS でページ自体がずれてスクロールすると、見た目とタッチ位置がずれるので止める（スクロールする枠の中は除く）
+  document.addEventListener('touchmove', (e) => { if (!e.target.closest || !e.target.closest('.scroll, .ctrack, .tabs, .stats, .crumbs, .drawer, .modal')) e.preventDefault(); }, { passive: false });
+  window.addEventListener('scroll', () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); });
   window.__jl = { get W() { return W; }, get engine() { return engine; } };
 })();
