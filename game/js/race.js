@@ -11,8 +11,30 @@
     const H = V.straight * (surf === 'D' ? 0.93 : 1);
     let T = (lap - 2 * H) / 2;
     if (T < 260) { T = 260; lap = 2 * H + 2 * T; }
-    return { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : 27, surf };
+    const c = { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : 27, surf };
+    // 起伏：基準点を1周上の距離（ゴールからの距離）に直す
+    const at = { g: 0, c2: T, bm: T + H / 2, c3: T + H, c34: T + H + T / 2, c4: 2 * T + H };
+    let pts = (V.elev || [['g', 0, 0]]).map(([k, off, h]) => [k === 'r' ? lap - off : at[k] + off, h]);
+    if (surf === 'D' && V.elev) { // ダートは全体の高低差に合わせて縮める
+      const hs = pts.map(x => x[1]), rng = Math.max(...hs) - Math.min(...hs) || 1;
+      const k = (V.dirtElev ?? rng) / rng; pts = pts.map(([d, h]) => [d, h * k]);
+    }
+    pts = pts.map(([d, h]) => [Math.max(0, Math.min(lap - 1, d)), h]).sort((a, b) => a[0] - b[0]);
+    c.elevPts = pts;
+    return c;
   }
+  // 高さ（m）：ゴールからの距離で線形補間し、角をなめらかにする
+  function elevAt(c, p) {
+    const P = c.elevPts; if (!P || P.length < 2) return P && P[0] ? P[0][1] : 0;
+    const d = (((p - c.H) % c.lap) + c.lap) % c.lap;
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i], b = i + 1 < P.length ? P[i + 1] : [P[0][0] + c.lap, P[0][1]];
+      if (d >= a[0] && d < b[0]) { const t = (d - a[0]) / (b[0] - a[0]); const st = t * t * (3 - 2 * t); return a[1] + (b[1] - a[1]) * st; }
+    }
+    const a = P[P.length - 1], b = [P[0][0] + c.lap, P[0][1]];
+    const t = (d + c.lap - a[0]) / (b[0] - a[0]); return a[1] + (b[1] - a[1]) * t * t * (3 - 2 * t);
+  }
+  function slopeAt(c, p) { return (elevAt(c, p + 2) - elevAt(c, p - 2)) / 4; }
   const wrap = (c, p) => ((p % c.lap) + c.lap) % c.lap;
   // p: 1周上の位置。[0,H)=最後の直線（p=H がゴール）
   function curvAt(c, p) {
@@ -217,6 +239,9 @@
         if (M.closer && r.style >= 2 && rem < 600 && r.effort >= 0.95) f += 0.004;
         if (r.rhythmT > 0) f -= 0.015;
         if (r.sulkT > 0) { r.sulkT -= dt; f -= 0.02; }
+        const gr = slopeAt(this.course, this.pAt(r.s)); // 上り坂ほど遅く
+        f *= 1 - 0.55 * gr;
+        r.grade = gr;
         let vT = r.vMax * f;
         vT *= r.st < 0.25 ? 0.935 + 0.26 * Math.max(0, r.st) : 1;
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
@@ -236,6 +261,7 @@
           if (M.stayer) drain *= 0.96;
           drain *= 1 + 0.9 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
+          drain *= 1 + 7 * Math.max(0, r.grade || 0) - 3 * Math.max(0, -(r.grade || 0));
           r.st = Math.max(0, r.st - drain * dt);
         }
         // 横の動き：意図 + 疲れによるヨレ + ムチによる修正
@@ -401,5 +427,5 @@
     return (m > 0 ? m + ':' : '') + (m > 0 && s < 10 ? '0' : '') + s.toFixed(1);
   }
 
-  window.RaceEngine = { Race, fmtTime, makeCourse, courseXY, curvAt, sectionName, STRIDE };
+  window.RaceEngine = { Race, fmtTime, makeCourse, courseXY, curvAt, sectionName, STRIDE, elevAt, slopeAt };
 })();

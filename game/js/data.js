@@ -1,16 +1,32 @@
 // ===== 静的データ =====
-// コース形状（直線長・1周距離・回り）はゲーム用の概略値。
+// コース形状：JRA 公式「コース紹介」の芝Aコース（外回りがある場は外回り）の直線距離・1周距離。
+// https://www.jra.go.jp/facilities/race/{場名}/course/
+// elev：起伏（ゴールからの位置と高さm）。公式の説明（坂の位置・高低差）をもとにした概略。
+//   基準点 g=ゴール c2=2コーナー出口 bm=向正面の中間 c3=3コーナー入口 c34=3〜4コーナー中間 c4=4コーナー出口 r=ゴールまでの残り距離
+// dirtElev：ダートの全体の高低差（芝の起伏を縮尺して使う）
+// pole：ダートのハロン棒の数字部分の形（日本経済新聞「競馬場に欠かせないモノ『ハロン棒』の違いを発見」）
 window.VENUES = {
-  tokyo:     { name: '東京', dir: 'L', straight: 526, lap: 2083, jp: true },
-  nakayama:  { name: '中山', dir: 'R', straight: 310, lap: 1667, jp: true },
-  kyoto:     { name: '京都', dir: 'R', straight: 404, lap: 1894, jp: true },
-  hanshin:   { name: '阪神', dir: 'R', straight: 474, lap: 2089, jp: true },
-  chukyo:    { name: '中京', dir: 'L', straight: 412, lap: 1706, jp: true },
-  niigata:   { name: '新潟', dir: 'L', straight: 659, lap: 2223, jp: true },
-  sapporo:   { name: '札幌', dir: 'R', straight: 266, lap: 1641, jp: true },
-  hakodate:  { name: '函館', dir: 'R', straight: 262, lap: 1627, jp: true },
-  fukushima: { name: '福島', dir: 'R', straight: 292, lap: 1600, jp: true },
-  kokura:    { name: '小倉', dir: 'R', straight: 293, lap: 1615, jp: true },
+  tokyo: { name: '東京', en: 'TOKYO', dir: 'L', straight: 525.9, lap: 2083.1, jp: true, turf: 'mix', pole: 'diamond', dirtElev: 2.5,
+    elev: [['g', 0, 2.7], ['g', 120, 2.7], ['bm', 0, 0.8], ['c3', -140, 0.8], ['c3', -20, 2.3], ['c34', 0, 1.0], ['c4', -40, 0.6], ['r', 460, 0.8], ['r', 300, 2.7]],
+    scene: { fuji: true, stand: 1.5, screen: 1.6 } },
+  nakayama: { name: '中山', en: 'NAKAYAMA', dir: 'R', straight: 310, lap: 1667.1, jp: true, turf: 'mix', pole: 'square', dirtElev: 4.5,
+    elev: [['g', 0, 2.3], ['c2', -80, 5.3], ['r', 180, 0], ['r', 70, 2.2]], scene: { stand: 1.2 } },
+  kyoto: { name: '京都', en: 'KYOTO', dir: 'R', straight: 403.7, lap: 1894.3, jp: true, turf: 'mix', pole: 'triangle', dirtElev: 3.0,
+    elev: [['g', 0, 0], ['bm', 0, 0], ['c3', 0, 4.3], ['c34', 0, 3.2], ['c4', 0, 0]], scene: { pond: 'large', stand: 1.2 } },
+  hanshin: { name: '阪神', en: 'HANSHIN', dir: 'R', straight: 473.6, lap: 2089, jp: true, turf: 'mix', pole: 'square', dirtElev: 1.6,
+    elev: [['g', 0, 2.4], ['c2', 0, 2.4], ['r', 600, 2.2], ['r', 230, 0.5], ['r', 90, 2.3]], scene: { stand: 1.2 } },
+  chukyo: { name: '中京', en: 'CHUKYO', dir: 'L', straight: 412.5, lap: 1705.9, jp: true, turf: 'mix', pole: 'invtriangle', dirtElev: 3.4,
+    elev: [['g', 0, 2.0], ['bm', 0, 3.5], ['c4', 0, 0], ['r', 390, 0], ['r', 230, 2.0]], scene: { stand: 1.0 } },
+  niigata: { name: '新潟', en: 'NIIGATA', dir: 'L', straight: 658.7, lap: 2223, jp: true, turf: 'noshiba', pole: 'square', dirtElev: 0.6,
+    elev: [['g', 0, 0.4], ['bm', 0, 0.6], ['c3', 0, 2.2], ['c4', 0, 0.6], ['r', 400, 0.4]], scene: { outerPoles: true, stand: 0.9 } },
+  sapporo: { name: '札幌', en: 'SAPPORO', dir: 'R', straight: 266.1, lap: 1640.9, jp: true, turf: 'yoshiba', pole: 'diamond', dirtElev: 0,
+    elev: [['g', 0, 0]], scene: { pole15: true, stand: 0.9 } },
+  hakodate: { name: '函館', en: 'HAKODATE', dir: 'R', straight: 262.1, lap: 1626.6, jp: true, turf: 'yoshiba', pole: 'triangle', dirtElev: 3.5,
+    elev: [['g', 0, 1.6], ['c2', 0, 0], ['c4', -40, 3.5], ['r', 230, 1.6]], scene: { sea: true, stand: 0.8 } },
+  fukushima: { name: '福島', en: 'FUKUSHIMA', dir: 'R', straight: 292.0, lap: 1600, jp: true, turf: 'mix', pole: 'invtriangle', dirtElev: 2.1,
+    elev: [['g', 0, 1.7], ['c2', 0, 0], ['bm', 40, 1.3], ['c3', 0, 1.3], ['c4', 0, 1.0], ['r', 170, 0.5], ['r', 50, 1.7]], scene: { stand: 0.8 } },
+  kokura: { name: '小倉', en: 'KOKURA', dir: 'R', straight: 293, lap: 1615, jp: true, turf: 'mix', pole: 'andon', dirtElev: 2.9,
+    elev: [['g', 0, 0], ['c2', 0, 3.0], ['c3', -60, 1.6], ['c3', 0, 1.8], ['c4', 0, 0.2], ['r', 250, 0]], scene: { stand: 0.8 } },
   riyadh:    { name: 'キングアブドゥルアジーズ', dir: 'L', straight: 400, lap: 1800, country: 'サウジアラビア' },
   meydan:    { name: 'メイダン', dir: 'L', straight: 450, lap: 2400, country: 'UAE' },
   ascot:     { name: 'アスコット', dir: 'R', straight: 450, lap: 2800, country: 'イギリス' },

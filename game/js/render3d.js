@@ -87,6 +87,7 @@
     }
     emit(x, y, z, vx, vy, vz, c) {
       const P = this.particles; const i = P.i = (P.i + 1) % P.N;
+      (P.floor || (P.floor = new Float32Array(P.N)))[i] = y - 0.07;
       P.pos[i * 3] = x; P.pos[i * 3 + 1] = y; P.pos[i * 3 + 2] = z;
       P.vel[i * 3] = vx; P.vel[i * 3 + 1] = vy; P.vel[i * 3 + 2] = vz;
       P.col[i * 3] = c.r; P.col[i * 3 + 1] = c.g; P.col[i * 3 + 2] = c.b; P.life[i] = rnd(0.5, 0.9);
@@ -98,7 +99,8 @@
         P.life[i] -= dt;
         P.vel[i * 3 + 1] -= 9.8 * dt;
         P.pos[i * 3] += P.vel[i * 3] * dt; P.pos[i * 3 + 1] += P.vel[i * 3 + 1] * dt; P.pos[i * 3 + 2] += P.vel[i * 3 + 2] * dt;
-        if (P.pos[i * 3 + 1] < 0) { P.pos[i * 3 + 1] = 0.01; P.vel[i * 3] *= 0.5; P.vel[i * 3 + 2] *= 0.5; P.vel[i * 3 + 1] = 0; }
+        const fl = P.floor ? P.floor[i] : 0;
+        if (P.pos[i * 3 + 1] < fl) { P.pos[i * 3 + 1] = fl + 0.01; P.vel[i * 3] *= 0.5; P.vel[i * 3 + 2] *= 0.5; P.vel[i * 3 + 1] = 0; }
       }
       P.pts.geometry.attributes.position.needsUpdate = true;
       P.pts.geometry.attributes.color.needsUpdate = true;
@@ -151,7 +153,7 @@
       for (let i = 0; i <= n; i++) {
         const p = Math.min(c.lap, i * step);
         const a = CXY(c, p, X0), b = CXY(c, p, X1);
-        const ya = typeof y === 'function' ? y(p, X0) : y, yb = typeof y === 'function' ? y(p, X1) : y;
+        const ya = typeof y === 'function' ? y(p, X0) : y + (this.E && !opts.flat ? this.E(p) : 0), yb = typeof y === 'function' ? y(p, X1) : y + (this.E && !opts.flat ? this.E(p) : 0);
         pos.push(a.x, ya, a.z, b.x, yb, b.z);
         uv.push(p / us, X0 / us, p / us, X1 / us);
         if (opts.color) { const k = opts.color(p); col.push(k, k, k, k, k, k); }
@@ -171,8 +173,8 @@
     wall(c, X, y0, y1, mat, step = 2) {
       const n = Math.ceil(c.lap / step), pos = [], idx = [];
       for (let i = 0; i <= n; i++) {
-        const a = CXY(c, Math.min(c.lap, i * step), X);
-        pos.push(a.x, y0, a.z, a.x, y1, a.z);
+        const pp = Math.min(c.lap, i * step), a = CXY(c, pp, X), e = this.E ? this.E(pp) : 0;
+        pos.push(a.x, y0 + e, a.z, a.x, y1 + e, a.z);
         if (i < n) { const o = i * 2; idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
       }
       const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
@@ -184,90 +186,147 @@
       const n = Math.floor(c.lap / 2.5);
       const im = new T.InstancedMesh(new T.CylinderGeometry(0.035, 0.035, 1.0, 6), postMat, n);
       const M = new T.Matrix4();
-      for (let i = 0; i < n; i++) { const a = CXY(c, i * 2.5, X); M.makeTranslation(a.x, 0.5, a.z); im.setMatrixAt(i, M); }
+      for (let i = 0; i < n; i++) { const a = CXY(c, i * 2.5, X); M.makeTranslation(a.x, 0.5 + (this.E ? this.E(i * 2.5) : 0), a.z); im.setMatrixAt(i, M); }
       im.castShadow = true; G.add(im);
     }
 
     buildCourse(G, c, race) {
       const R = rng(c.key.length * 977 + Math.round(c.lap));
+      const V = VENUES[c.key] || {};
+      const E = this.E = (p) => RaceEngine.elevAt(c, p);
+      // 平均の高さ（周りの地面の高さ）
+      // 周りの地面はコースの一番低いところに合わせ、コースが高い所は土手で下ろす
+      let lo = Infinity; for (let i = 0; i < 200; i++) lo = Math.min(lo, E(i * c.lap / 200)); const mean = this.meanE = lo;
       const turfMap = loadTex('turf.jpg'), turfN = loadTex('turf_n.jpg'), dirtMap = loadTex('dirt.jpg'), dirtN = loadTex('dirt_n.jpg'), fieldMap = loadTex('field.jpg');
       const wet = race.cfg.ground === '重';
-      const turfMat = new T.MeshStandardMaterial({ map: turfMap, normalMap: turfN, normalScale: new T.Vector2(0.6, 0.6), roughness: 0.92, vertexColors: true, color: wet ? '#b9c4ad' : '#ffffff' });
+      // 芝の種類：洋芝（札幌・函館）は深い緑、野芝（新潟）は明るい緑
+      const turfTint = V.turf === 'yoshiba' ? '#cfe3c0' : V.turf === 'noshiba' ? '#f2fbe2' : '#ffffff';
+      const turfMat = new T.MeshStandardMaterial({ map: turfMap, normalMap: turfN, normalScale: new T.Vector2(0.6, 0.6), roughness: 0.92, vertexColors: true, color: wet ? '#b9c4ad' : turfTint });
       const dirtMat = new T.MeshStandardMaterial({ map: wet ? loadTex('dirt_wet.jpg') : dirtMap, normalMap: dirtN, normalScale: new T.Vector2(0.8, 0.8), roughness: wet ? 0.55 : 0.95, color: wet ? '#9b8a78' : '#ffffff' });
-      const fieldMat = new T.MeshStandardMaterial({ map: fieldMap, roughness: 1, color: '#b7c69a' });
+      const fieldMat = new T.MeshStandardMaterial({ map: fieldMap, roughness: 1, color: V.turf === 'yoshiba' ? '#a9bd90' : '#b7c69a' });
       const railMat = new T.MeshStandardMaterial({ color: '#f4f4f0', roughness: 0.35, emissive: '#222', emissiveIntensity: 0.15 });
       const hedgeMat = new T.MeshStandardMaterial({ map: fieldMap, color: '#4d7a34', roughness: 1 });
-      // 地面
-      const gsize = 6000;
+      // 地面（周りは平均の高さ。コースとの間は土手でつなぐ）
+      const gsize = 7000;
       const gg = new T.PlaneGeometry(gsize, gsize, 1, 1); gg.rotateX(-Math.PI / 2);
       const uvA = gg.attributes.uv; for (let i = 0; i < uvA.count; i++) uvA.setXY(i, uvA.getX(i) * gsize / 14, uvA.getY(i) * gsize / 14);
-      const ground = new T.Mesh(gg, fieldMat); ground.position.y = -0.03; ground.receiveShadow = true; G.add(ground);
+      const ground = new T.Mesh(gg, fieldMat); ground.position.y = mean - 0.05; ground.receiveShadow = true; G.add(ground);
       const W = c.width;
+      const atE = (o) => (p) => E(p) + o;
+      G.add(this.ribbon(c, W + 0.6, W + 36, atE(-0.02), fieldMat, { uvScale: 14 }));
+      G.add(this.ribbon(c, W + 36, W + 120, (p, X) => X < W + 40 ? E(p) - 0.02 : mean - 0.04, fieldMat, { uvScale: 14 }));
+      G.add(this.ribbon(c, -42, -0.6, atE(-0.02), fieldMat, { uvScale: 14 }));
+      G.add(this.ribbon(c, -Math.min(c.R - 8, 90), -42, (p, X) => X > -45 ? E(p) - 0.02 : mean - 0.04, fieldMat, { uvScale: 14 }));
       const stripe = (p) => (Math.floor(p / 12) % 2 ? 1.0 : 0.8) * (0.96 + 0.04 * Math.sin(p * 0.05));
-      // 本コース
       const isTurf = race.surf === 'T';
-      G.add(this.ribbon(c, -0.6, W + 0.6, 0, isTurf ? turfMat : dirtMat, { uvScale: isTurf ? 5 : 7, color: isTurf ? stripe : null }));
-      // もう一方のコース（芝なら内にダート、ダートなら外に芝）
+      G.add(this.ribbon(c, -0.6, W + 0.6, atE(0), isTurf ? turfMat : dirtMat, { uvScale: isTurf ? 5 : 7, color: isTurf ? stripe : null }));
       let other;
-      if (isTurf) { other = [-31, -8]; G.add(this.ribbon(c, other[0], other[1], -0.01, dirtMat, { uvScale: 7 })); }
-      else { other = [W + 7, W + 34]; G.add(this.ribbon(c, other[0], other[1], -0.01, turfMat, { uvScale: 5, color: stripe })); }
-      // ラチ
+      if (isTurf) { other = [-31, -8]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), dirtMat, { uvScale: 7 })); }
+      else { other = [W + 7, W + 34]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), turfMat, { uvScale: 5, color: stripe })); }
       this.rail(G, c, -0.35, railMat, railMat);
       this.rail(G, c, W + 0.35, railMat, railMat);
       this.rail(G, c, other[0] - 0.3, railMat, railMat);
       this.rail(G, c, other[1] + 0.3, railMat, railMat);
-      // 内ラチ沿いの植え込み
-      const hx = isTurf ? -2.2 : -2.2;
+      const hx = -2.2;
       const hedgeSide = new T.MeshStandardMaterial({ color: '#3f6a2c', roughness: 1, side: T.DoubleSide });
       G.add(this.wall(c, hx - 0.6, 0, 0.75, hedgeSide)); G.add(this.wall(c, hx + 0.6, 0, 0.75, hedgeSide));
-      G.add(this.ribbon(c, hx - 0.6, hx + 0.6, 0.75, hedgeMat, { step: 3 }));
-      // ハロン棒・ゴール板
+      G.add(this.ribbon(c, hx - 0.6, hx + 0.6, atE(0.75), hedgeMat, { step: 3 }));
       this.buildPoles(G, c, race);
-      // スタンド・観客
       this.buildStand(G, c, R);
-      // ターフビジョン
       this.buildScreen(G, c);
-      // 木・池・遠景
       this.buildScenery(G, c, R, other);
     }
 
+    // ハロン棒（日本経済新聞の記事による）
+    //  芝：赤と白の縞の棒の上に白い円盤、赤い数字（残り距離÷100）
+    //  ダート：水色と白の縞。数字部分の形は場によって違う（ひし形・三角・下向き三角・四角・あんどん）
+    poleTex(num, turf, shape, invert) {
+      const key = [num, turf, shape, invert].join('|');
+      this._pt = this._pt || {};
+      if (this._pt[key]) return this._pt[key];
+      return (this._pt[key] = canvasTex(160, 160, (x, w, h) => {
+        x.clearRect(0, 0, w, h);
+        const bg = turf ? (invert ? '#c8102e' : '#ffffff') : '#ffffff';
+        const fg = turf ? (invert ? '#ffffff' : '#c8102e') : '#1e88c8';
+        x.fillStyle = bg; x.strokeStyle = turf ? '#c8102e' : '#1e88c8'; x.lineWidth = 6;
+        x.beginPath();
+        if (turf || shape === 'circle') x.arc(80, 80, 74, 0, Math.PI * 2);
+        else if (shape === 'diamond') { x.moveTo(80, 4); x.lineTo(156, 80); x.lineTo(80, 156); x.lineTo(4, 80); x.closePath(); }
+        else if (shape === 'triangle') { x.moveTo(80, 8); x.lineTo(154, 150); x.lineTo(6, 150); x.closePath(); }
+        else if (shape === 'invtriangle') { x.moveTo(6, 10); x.lineTo(154, 10); x.lineTo(80, 152); x.closePath(); }
+        else if (shape === 'andon') { x.rect(22, 6, 116, 148); }
+        else x.rect(8, 8, 144, 144);
+        x.fill(); x.stroke();
+        x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+        const s = String(num); x.font = `bold ${s.length > 1 ? 74 : 96}px Arial, Helvetica, sans-serif`;
+        x.fillText(s, 80, shape === 'triangle' && !turf ? 100 : shape === 'invtriangle' && !turf ? 64 : 84);
+      }));
+    }
+    stripeTex(turf) {
+      const k = turf ? 'st_t' : 'st_d'; this._pt = this._pt || {};
+      if (this._pt[k]) return this._pt[k];
+      const t = canvasTex(16, 64, (x) => { for (let i = 0; i < 8; i++) { x.fillStyle = i % 2 ? '#ffffff' : (turf ? '#c8102e' : '#5ab4e6'); x.fillRect(0, i * 8, 16, 8); } });
+      t.wrapT = T.RepeatWrapping; t.repeat.set(1, 4);
+      return (this._pt[k] = t);
+    }
+    addPole(G, c, p, X, num, turf, shape, invert, scale = 1) {
+      const E = this.E, a = CXY(c, p, X);
+      const grp = new T.Group(); grp.position.set(a.x, E(p), a.z); grp.rotation.y = Math.atan2(-a.hz, a.hx); grp.scale.setScalar(scale);
+      const pole = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 2.4, 10), new T.MeshStandardMaterial({ map: this.stripeTex(turf), roughness: 0.5 }));
+      pole.position.y = 1.2; pole.castShadow = true; grp.add(pole);
+      const face = new T.MeshStandardMaterial({ map: this.poleTex(num, turf, shape, invert), transparent: true, alphaTest: 0.3, side: T.DoubleSide, roughness: 0.4 });
+      const board = new T.Mesh(new T.PlaneGeometry(0.75, 0.75), face); board.position.y = 2.75; board.rotation.y = Math.PI / 2; grp.add(board);
+      G.add(grp);
+    }
     buildPoles(G, c, race) {
-      const poleMat = new T.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.4 });
+      const V = VENUES[c.key] || {}, turf = race.surf === 'T', shape = V.pole || 'square';
       const nLap = Math.floor(c.lap / 200);
       for (let k = 1; k <= nLap; k++) {
-        const p = c.H - k * 200;
-        const a = CXY(c, p, -0.9);
-        const grp = new T.Group(); grp.position.set(a.x, 0, a.z); grp.rotation.y = Math.atan2(-a.hz, a.hx);
-        const pole = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 2.6, 8), poleMat); pole.position.y = 1.3; pole.castShadow = true; grp.add(pole);
-        const tex = canvasTex(128, 96, (x, w, h) => { x.fillStyle = k % 2 ? '#c62828' : '#1565c0'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = 'bold 64px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(k * 2), w / 2, h / 2 + 2); });
-        const board = new T.Mesh(new T.BoxGeometry(0.06, 0.6, 0.8), [poleMat, poleMat, poleMat, poleMat, new T.MeshStandardMaterial({ map: tex }), new T.MeshStandardMaterial({ map: tex })]);
-        board.position.set(0, 2.75, 0); board.rotation.y = Math.PI / 2; grp.add(board);
-        G.add(grp);
+        // 発走地点より手前（周回の外）のものは色を反転する（芝のみ）
+        const inv = turf && k * 200 > race.D;
+        this.addPole(G, c, c.H - k * 200, -0.9, k * 2, turf, shape, inv);
       }
-      // ゴール板
-      const a = CXY(c, c.H, -1.3);
-      const goal = new T.Group(); goal.position.set(a.x, 0, a.z); goal.rotation.y = Math.atan2(-a.hz, a.hx);
-      const gp = new T.Mesh(new T.CylinderGeometry(0.1, 0.1, 5.2, 10), poleMat); gp.position.y = 2.6; gp.castShadow = true; goal.add(gp);
-      const disk = canvasTex(256, 256, (x) => { x.fillStyle = '#fff'; x.fillRect(0, 0, 256, 256); x.fillStyle = '#d32f2f'; x.beginPath(); x.arc(128, 128, 124, 0, 7); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(128, 128, 70, 0, 7); x.fill(); x.fillStyle = '#d32f2f'; x.font = 'bold 54px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('GOAL', 128, 132); });
-      const dm = new T.Mesh(new T.CylinderGeometry(0.9, 0.9, 0.06, 32), [poleMat, new T.MeshStandardMaterial({ map: disk }), new T.MeshStandardMaterial({ map: disk })]);
-      dm.rotation.z = Math.PI / 2; dm.position.y = 5.6; goal.add(dm);
-      G.add(goal);
+      if (V.scene && V.scene.pole15) this.addPole(G, c, c.H - 1500, -0.9, 15, turf, shape, turf && 1500 > race.D);
+      // 新潟の直線は外ラチ沿いにも小さなハロン棒（赤地に白い数字）
+      if (V.scene && V.scene.outerPoles) for (let k = 1; k * 200 < c.H; k++) this.addPole(G, c, c.H - k * 200, c.width + 0.9, k * 2, true, 'circle', true, 0.7);
+      this.buildGoal(G, c);
       // 決勝線
+      const E = this.E;
       const l0 = CXY(c, c.H, 0), l1 = CXY(c, c.H, c.width);
       const line = new T.Mesh(new T.PlaneGeometry(Math.hypot(l1.x - l0.x, l1.z - l0.z), 0.12), new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.75 }));
-      line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(l1.z - l0.z, l1.x - l0.x) * -1; line.position.set((l0.x + l1.x) / 2, 0.02, (l0.z + l1.z) / 2);
+      line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(l1.z - l0.z, l1.x - l0.x) * -1; line.position.set((l0.x + l1.x) / 2, E(c.H) + 0.02, (l0.z + l1.z) / 2);
       G.add(line);
+    }
+    // ゴール板：決勝線の延長上、内ラチ側に立つ板状の鏡（JRA 競馬用語辞典）。上に競馬場名の板
+    buildGoal(G, c) {
+      const E = this.E, V = VENUES[c.key] || {};
+      const a = CXY(c, c.H, -1.6);
+      const goal = new T.Group(); goal.position.set(a.x, E(c.H), a.z); goal.rotation.y = Math.atan2(-a.hz, a.hx);
+      const white = new T.MeshStandardMaterial({ color: '#f4f4f0', roughness: 0.35, metalness: 0.2 });
+      const navy = new T.MeshStandardMaterial({ color: '#1f3a6b', roughness: 0.4, metalness: 0.3 });
+      const mirror = new T.MeshStandardMaterial({ color: '#dfe6ec', roughness: 0.04, metalness: 1.0 });
+      // 2本の柱（板はコースを横切る向き＝スタンド側を向く）
+      for (const x of [-0.7, 0.7]) { const pst = new T.Mesh(new T.BoxGeometry(0.16, 4.2, 0.16), navy); pst.position.set(x, 2.1, 0); pst.castShadow = true; goal.add(pst); }
+      const frame = new T.Mesh(new T.BoxGeometry(1.5, 1.9, 0.12), white); frame.position.set(0, 2.55, 0); frame.castShadow = true; goal.add(frame);
+      const face = c.dir === 'L' ? 0 : Math.PI; // 外側（スタンド側）へ向ける
+      const m1 = new T.Mesh(new T.PlaneGeometry(1.36, 1.76), mirror); m1.position.set(0, 2.55, 0); m1.rotation.y = face; m1.translateZ(0.065); goal.add(m1);
+      const vline = new T.Mesh(new T.PlaneGeometry(0.05, 1.76), new T.MeshBasicMaterial({ color: '#c8102e' })); vline.position.copy(m1.position); vline.rotation.y = face; vline.translateZ(0.003); goal.add(vline);
+      const nameT = canvasTex(512, 128, (x, w, h) => { x.fillStyle = '#1f3a6b'; x.fillRect(0, 0, w, h); x.strokeStyle = '#d6b15a'; x.lineWidth = 8; x.strokeRect(6, 6, w - 12, h - 12); x.fillStyle = '#ffffff'; x.font = 'bold 66px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(V.en || c.name, w / 2, h / 2 + 4); });
+      const nameM = new T.MeshStandardMaterial({ map: nameT, roughness: 0.5 });
+      const plate = new T.Mesh(new T.BoxGeometry(1.7, 0.42, 0.1), [white, white, white, white, nameM, nameM]); plate.position.set(0, 3.84, 0); plate.castShadow = true; goal.add(plate);
+      G.add(goal);
     }
 
     buildStand(G, c, R) {
       const W = c.width;
-      const p0 = Math.max(10, c.H - 480), p1 = c.H + 30;
+      const sk = ((VENUES[c.key] || {}).scene || {}).stand || 1;
+      const p0 = Math.max(10, c.H - 480 * sk), p1 = c.H + 30;
       const L = p1 - p0;
       const a0 = CXY(c, p0, 0);
       const grp = new T.Group();
       // 直線は x 軸に平行。外側方向 nz
       const nz = a0.nz;
-      grp.position.set(a0.x, 0, a0.z);
+      grp.position.set(a0.x, this.E ? this.E((p0 + p1) / 2) : 0, a0.z);
       // grp ローカル: x = 直線方向, z = 外向き(nz>0 なら +z)
       grp.scale.z = nz >= 0 ? 1 : -1;
       const concrete = new T.MeshStandardMaterial({ color: '#bdbcb6', roughness: 0.9 });
@@ -315,7 +374,8 @@
     buildScreen(G, c) {
       const p = Math.max(80, c.H - 220);
       const a = CXY(c, p, -70);
-      const grp = new T.Group(); grp.position.set(a.x, 0, a.z);
+      const grp = new T.Group(); grp.position.set(a.x, this.meanE || 0, a.z);
+      const sc = (((VENUES[c.key] || {}).scene || {}).screen) || 1; grp.scale.set(sc, sc, sc);
       grp.rotation.y = Math.atan2(-a.hz, a.hx);
       const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
       const tex = new T.CanvasTexture(cv); tex.encoding = T.sRGBEncoding;
@@ -388,21 +448,50 @@
       trunks.count = ti; leaves.count = li;
       leaves.castShadow = true; trunks.castShadow = true;
       G.add(trunks); G.add(leaves);
-      // 池（内馬場）
-      const pond = new T.Mesh(new T.CircleGeometry(Math.min(60, c.R * 0.35), 40), new T.MeshStandardMaterial({ color: '#4f7f9c', roughness: 0.08, metalness: 0.6 }));
-      pond.rotation.x = -Math.PI / 2; pond.position.set(-c.H * 0.15, 0.0, c.R * (c.dir === 'L' ? -1 : 1)); pond.scale.set(1.8, 1, 1); G.add(pond);
-      // 遠くの山並み
+      const SC = (VENUES[c.key] || {}).scene || {}, sgn = c.dir === 'L' ? -1 : 1, base = this.meanE || 0;
+      trunks.position.y = leaves.position.y = base;
+      // 池（内馬場）。京都は内馬場の大きな池が名物
+      const pr = SC.pond === 'large' ? Math.min(150, c.R * 0.62) : Math.min(60, c.R * 0.35);
+      const pond = new T.Mesh(new T.CircleGeometry(pr, 48), new T.MeshStandardMaterial({ color: '#4f7f9c', roughness: 0.06, metalness: 0.65 }));
+      pond.rotation.x = -Math.PI / 2; pond.position.set(-c.H * (SC.pond === 'large' ? 0.05 : 0.15), base + 0.03, c.R * sgn); pond.scale.set(SC.pond === 'large' ? 2.3 : 1.8, 1, 1); G.add(pond);
+      if (SC.pond === 'large') { // 中島と木
+        const isl = new T.Mesh(new T.CircleGeometry(pr * 0.18, 24), new T.MeshStandardMaterial({ color: '#6f8f4e', roughness: 1 })); isl.rotation.x = -Math.PI / 2; isl.position.set(pond.position.x + pr * 0.4, base + 0.05, c.R * sgn); G.add(isl);
+      }
+      // 遠くの山並み（函館は海側を低くする）
       const ring = new T.CylinderGeometry(2600, 2600, 1, 96, 1, true);
       const rp = ring.attributes.position;
+      const seaDir = Math.atan2(2 * sgn * c.R + sgn * 2000 - c.R * sgn, 0); // 向正面の外側
       for (let i = 0; i < rp.count; i++) {
         const y = rp.getY(i);
-        if (y > 0) { const ang = Math.atan2(rp.getZ(i), rp.getX(i)); rp.setY(i, 60 + 260 * Math.pow(Math.abs(Math.sin(ang * 2.3 + 1)), 1.5) * (0.55 + 0.45 * Math.sin(ang * 5.3)) + 50 * Math.abs(Math.sin(ang * 13))); }
-        else rp.setY(i, -5);
+        if (y > 0) {
+          const ang = Math.atan2(rp.getZ(i), rp.getX(i));
+          let hgt = 60 + 260 * Math.pow(Math.abs(Math.sin(ang * 2.3 + 1)), 1.5) * (0.55 + 0.45 * Math.sin(ang * 5.3)) + 50 * Math.abs(Math.sin(ang * 13));
+          if (SC.sea) { const da = Math.abs(Math.atan2(Math.sin(ang - seaDir), Math.cos(ang - seaDir))); if (da < 1.3) hgt = 6 + 40 * Math.max(0, (da - 1.0) / 0.3); }
+          if (SC.flat) hgt *= 0.4;
+          rp.setY(i, hgt);
+        } else rp.setY(i, -5);
       }
       ring.computeVertexNormals();
       const hills = new T.Mesh(ring, new T.MeshLambertMaterial({ color: '#4d6a55', side: T.BackSide }));
-      hills.position.set(0, 0, c.R * (c.dir === 'L' ? -1 : 1));
+      hills.position.set(0, base, c.R * sgn);
       G.add(hills);
+      // 函館：津軽海峡（向正面の向こうに海）
+      if (SC.sea) {
+        const sea = new T.Mesh(new T.PlaneGeometry(6000, 2600), new T.MeshStandardMaterial({ color: '#3d6f95', roughness: 0.15, metalness: 0.5 }));
+        sea.rotation.x = -Math.PI / 2; sea.position.set(0, base - 0.4, 2 * sgn * c.R + sgn * (c.width + 260 + 1300)); G.add(sea);
+        const far = new T.Mesh(new T.CylinderGeometry(9000, 9000, 1, 64, 1, true, 0, Math.PI * 2), new T.MeshBasicMaterial({ color: '#8fa6b8', side: T.BackSide, fog: false }));
+        const fp = far.geometry.attributes.position; for (let i = 0; i < fp.count; i++) { const ang = Math.atan2(fp.getZ(i), fp.getX(i)); fp.setY(i, fp.getY(i) > 0 ? 70 + 90 * Math.abs(Math.sin(ang * 3.1)) : -5); }
+        far.position.set(0, base, 0); G.add(far);
+      }
+      // 東京：スタンドから晴れた日に見える富士山（向正面の向こう）
+      if (SC.fuji) {
+        const fg = new T.ConeGeometry(2600, 1500, 64, 6, true);
+        const fpos = fg.attributes.position, cols = [];
+        for (let i = 0; i < fpos.count; i++) { const y = fpos.getY(i) + 750; const snow = y > 1050; cols.push(...(snow ? [0.95, 0.97, 1] : [0.42, 0.52, 0.66])); }
+        fg.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+        const fuji = new T.Mesh(fg, new T.MeshBasicMaterial({ vertexColors: true, fog: false }));
+        fuji.position.set(-c.H * 0.3, base + 750 - 120, 2 * sgn * c.R + sgn * 7800); G.add(fuji);
+      }
     }
 
     buildGate(G, race) {
@@ -410,7 +499,7 @@
       const c = race.course, n = race.runners.length;
       const grp = new T.Group();
       const a = CXY(c, race.pAt(0), 0);
-      grp.position.set(a.x, 0, a.z);
+      grp.position.set(a.x, this.E ? this.E(race.pAt(0)) : 0, a.z);
       grp.rotation.y = Math.atan2(-a.hz, a.hx);
       const outSign = c.dir === 'L' ? 1 : -1;
       const zOf = (X) => X * outSign;
@@ -464,6 +553,13 @@
         const w = new T.Mesh(new T.CylinderGeometry(0.55, 0.55, 0.32, 20), tire); w.rotation.x = Math.PI / 2; w.position.set(x, 0.55, zOf(X)); w.castShadow = true; grp.add(w);
         const hub = new T.Mesh(new T.CylinderGeometry(0.22, 0.22, 0.34, 12), steelL); hub.rotation.x = Math.PI / 2; hub.position.copy(w.position); grp.add(hub);
       }
+      // 牽引用のトラクター（外側の端に連結）
+      const red = new T.MeshStandardMaterial({ color: '#b3261e', roughness: 0.45, metalness: 0.3 });
+      const tx = (FRONT + REAR) / 2, tz = zOf(X0 + totalW + 2.6);
+      const tr = new T.Group(); tr.position.set(tx, 0, tz); tr.rotation.y = outSign > 0 ? Math.PI / 2 : -Math.PI / 2; grp.add(tr);
+      box(1.1, 0.8, 2.6, 0, 1.15, 0.2, red, tr); box(0.9, 0.6, 1.2, 0, 1.5, 0.9, red, tr);
+      box(1.0, 1.1, 0.05, 0, 2.15, -0.45, steelL, tr); box(0.05, 1.1, 1.0, 0.5, 2.15, -0.95, steelL, tr); box(0.05, 1.1, 1.0, -0.5, 2.15, -0.95, steelL, tr); box(1.1, 0.06, 1.1, 0, 2.72, -0.95, red, tr);
+      for (const [x, z, r, w] of [[0.75, -0.8, 0.75, 0.42], [-0.75, -0.8, 0.75, 0.42], [0.62, 1.1, 0.42, 0.26], [-0.62, 1.1, 0.42, 0.26]]) { const wh = new T.Mesh(new T.CylinderGeometry(r, r, w, 18), tire); wh.rotation.z = Math.PI / 2; wh.position.set(x, r, z); wh.castShadow = true; tr.add(wh); }
       G.add(grp);
     }
 
@@ -496,7 +592,7 @@
         // 横移動の向き
         const sgnOut = c.dir === 'L' ? -1 : 1; // X増加方向は進行方向に対して右(左回り)
         if (r.v > 1) yaw += Math.atan2(r.latV || 0, r.v) * sgnOut;
-        m.root.position.set(a.x, 0, a.z);
+        m.root.position.set(a.x, this.E ? this.E(race.pAt(r.s)) : 0, a.z);
         m.root.rotation.y = yaw;
         const d2 = (a.x - camPos.x) ** 2 + (a.z - camPos.z) ** 2;
         const near = d2 < 140 * 140 || r.isPlayer;
@@ -514,7 +610,8 @@
             const u0 = (prev + off) % 1, u1 = (now + off) % 1;
             if (u1 < u0 || (u0 < 0.3 && u1 >= 0.3)) {
               const k = race.surf === 'D' ? 6 : 2;
-              for (let j = 0; j < k; j++) this.emit(a.x - a.hx * 0.6 + rnd(-0.3, 0.3), 0.08, a.z - a.hz * 0.6 + rnd(-0.3, 0.3), -a.hx * rnd(2, 6) + a.hx * r.v * 0.2, rnd(1.2, 3.2), -a.hz * rnd(2, 6) + a.hz * r.v * 0.2, race.surf === 'D' ? dirtCol : (Math.random() < 0.5 ? turfCol : dirtCol));
+              const ey = this.E ? this.E(race.pAt(r.s)) : 0;
+              for (let j = 0; j < k; j++) this.emit(a.x - a.hx * 0.6 + rnd(-0.3, 0.3), ey + 0.08, a.z - a.hz * 0.6 + rnd(-0.3, 0.3), -a.hx * rnd(2, 6) + a.hx * r.v * 0.2, rnd(1.2, 3.2), -a.hz * rnd(2, 6) + a.hz * r.v * 0.2, race.surf === 'D' ? dirtCol : (Math.random() < 0.5 ? turfCol : dirtCol));
               if (r.isPlayer && this.onHoof) this.onHoof(off);
             }
           }
@@ -563,15 +660,17 @@
         this.camTarget = new T.Vector3(a.x, 0, a.z).addScaledVector(fwd, 25);
       } else if (this.camMode === 'chase') {
         const fwd = new T.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
-        const want = new T.Vector3(a.x, 3.4, a.z).addScaledVector(fwd, -8.5);
+        const ey = this.E ? this.E(race.pAt(P.s)) : 0;
+        const want = new T.Vector3(a.x, 3.4 + ey, a.z).addScaledVector(fwd, -8.5);
         if (!this.camSnap) { cam.position.copy(want); this.camSnap = true; } else cam.position.lerp(want, Math.min(1, dt * 5));
-        cam.lookAt(a.x + fwd.x * 6, 1.6, a.z + fwd.z * 6);
+        cam.lookAt(a.x + fwd.x * 6, 1.6 + ey, a.z + fwd.z * 6);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
       } else { // tv: 外側からの横移動カメラ
         const out = CXY(c, race.pAt(P.s) - 6, c.width + 38);
-        const want = new T.Vector3(out.x, 9, out.z);
+        const ey2 = this.E ? this.E(race.pAt(P.s)) : 0;
+        const want = new T.Vector3(out.x, 9 + ey2, out.z);
         if (!this.camSnap) { cam.position.copy(want); this.camSnap = true; } else cam.position.lerp(want, Math.min(1, dt * 3));
-        cam.lookAt(a.x, 1.4, a.z);
+        cam.lookAt(a.x, 1.4 + ey2, a.z);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
       }
     }

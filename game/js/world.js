@@ -429,7 +429,8 @@
       return {
         horse: h, ability: ability(h, W.year), isPlayer: isP, auto: isP && playerMode === 'auto',
         jockeySkill: isP ? (P.tech + P.judge) / 2 : (j ? j.skill : f.jskill || 70),
-        color: silks.base, silks, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
+        // 帽子の色は枠番で決まる（1枠白・2枠黒・3枠赤・4枠青・5枠黄・6枠緑・7枠橙・8枠桃）
+        color: silks.base, silks: { ...silks, cap: race.overseas ? silks.cap : WAKU_COLORS[(f.waku || 1) - 1] }, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
         condBonus: isP ? (P.cond - 70) * 0.08 + (mods ? mods.big : 0) : 0,
       };
     });
