@@ -226,6 +226,17 @@ html.rot .thr-track{height:min(190px,46vw)}
 #intro-card .d{font-size:13px;color:var(--muted);margin-top:2px}
 #intro-skip{position:absolute;right:calc(var(--sr) + 14px);bottom:calc(var(--sb) + 14px);pointer-events:auto;padding:8px 14px;font-size:13px}
 @keyframes introin{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+#caption{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 8px);width:min(40%,420px);background:rgba(255,255,255,.92);border-left:5px solid var(--red);border-radius:4px;padding:4px 9px;font-size:12.5px;line-height:1.4;font-family:var(--serif);font-weight:700;z-index:2;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#caption.on{opacity:1}
+#caption b{font-family:var(--sans);font-size:9.5px;color:var(--red);letter-spacing:.2em;display:block;line-height:1.1}
+#race.intro #caption{left:auto;right:calc(var(--sr) + 110px);transform:none;bottom:calc(var(--sb) + 14px)}
+#replay-ui{display:none;position:absolute;inset:0;z-index:3;pointer-events:none}
+#race.replay #replay-ui{display:block}
+#race.replay .hud,#race.replay .ctl,#race.replay #startBtn{visibility:hidden}
+#replay-tag{position:absolute;top:calc(var(--st) + 12px);left:calc(var(--sl) + 14px);background:var(--red);color:#fff;font-weight:700;letter-spacing:.15em;font-size:13px;padding:4px 12px;border-radius:3px}
+#replay-res{position:absolute;top:calc(var(--st) + 46px);left:calc(var(--sl) + 14px);background:rgba(255,255,255,.93);border-left:6px solid var(--gold);padding:5px 14px;font-family:var(--serif);font-weight:900;font-size:20px;border-radius:3px;display:none}
+#replay-skip{position:absolute;right:calc(var(--sr) + 14px);top:calc(var(--st) + 12px);pointer-events:auto;padding:8px 14px;font-size:13px}
+.gsave{height:32px;border-radius:6px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;font-size:12px;padding:0 10px;flex:none;font-weight:700}
 #loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);font-family:var(--serif);font-size:15px;z-index:5}
 #tut{display:none;position:absolute;top:calc(var(--st) + 74px);left:50%;transform:translateX(-50%);width:min(48vw,440px);background:var(--surface);border:2px solid var(--gold);border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.55;z-index:4;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 #tut-text{margin:4px 0 6px}
@@ -344,11 +355,13 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
         </div>
         <div class="rlab">手綱の加減（上下に動かす）</div>
       </div>
-      <div class="cbtn" id="c-whip">ムチ<small><span id="whip-n">10</span>回</small></div>
+      <div class="cbtn" id="c-whip">ムチ<small id="whip-n">連続0/5</small></div>
     </div>
     <div class="hud hudbox" id="coach"><div id="coach-t"></div><div class="sbar"><i id="coach-b"></i><span id="coach-m"></span></div></div>
     <button class="btn primary" id="startBtn">スタート</button>
     <div id="tut"><div class="row"><span class="small muted" id="tut-step"></span><div class="grow"></div><button class="hbtn" id="tut-skip">説明を閉じる</button></div><div id="tut-text"></div><button class="btn primary small" id="tut-next">次へ</button></div>
+    <div id="caption"><b>実況</b><span id="caption-t"></span></div>
+    <div id="replay-ui"><div id="replay-tag">REPLAY　ゴール前</div><div id="replay-res"></div><button class="hbtn" id="replay-skip">スキップ ▶</button></div>
     <div id="intro"><div id="intro-card"></div><button class="hbtn" id="intro-skip">スキップ ▶</button></div>
     <div id="loading">コースを準備中…</div>
   </section>
@@ -387,6 +400,7 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
 <script src="js/horse3d.js"></script>
 <script src="js/horseglb.js"></script>
 <script src="js/render3d.js"></script>
+<script src="js/audio-data.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>
 </body>

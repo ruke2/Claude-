@@ -262,13 +262,15 @@
     }
     slots.push({ cls: 3, age: 'U3', label: '2勝クラス', ...T('D', dD) });
     const specialNames = ['若葉', '春風', '夏空', '秋晴', '紅葉', '雪見', '飛燕', '鳳凰', '白鷺', '銀河', '朝日', '月光', '彗星', '天馬'];
+    const day = makeDay();
     return slots.map((sl, i) => {
       let name;
       if (sl.graded) name = sl.gname;
       else if (sl.special) name = pick(specialNames) + (sl.label === 'オープン' ? 'ステークス' : '特別');
       else name = sl.label;
       if (sl.surf === 'D' && sl.dist > 2100) sl.dist = 1800;
-      const race = { no: i + 1, name, label: sl.label, cls: sl.cls, clsMin: sl.clsMin, graded: sl.graded || 0, age: sl.age, sex: sl.sex, surf: sl.surf, dist: sl.dist, venue, field: [], result: null, ground: Math.random() < 0.15 ? '重' : '良' };
+      const race = { no: i + 1, name, label: sl.label, cls: sl.cls, clsMin: sl.clsMin, graded: sl.graded || 0, age: sl.age, sex: sl.sex, surf: sl.surf, dist: sl.dist, venue, field: [], result: null };
+      Object.assign(race, dayCond(day, i, sl.surf));
       race.field = buildField(W, race);
       return race;
     });
@@ -381,7 +383,8 @@
   }
   function buildOverseasCard(W, offer) {
     const o = offer.race;
-    const race = { no: 1, name: o.name, label: 'G1', graded: 1, surf: o.surf, dist: o.dist, venue: o.v, field: [], result: null, ground: '良', overseas: true };
+    const race = { no: 1, name: o.name, label: 'G1', graded: 1, surf: o.surf, dist: o.dist, venue: o.v, field: [], result: null, overseas: true };
+    Object.assign(race, dayCond(makeDay(), ri(0, 11), o.surf));
     const h0 = W.horses[offer.hid];
     const fieldN = ri(10, 14);
     const field = [{ hid: h0.id }];
@@ -431,10 +434,48 @@
         jockeySkill: isP ? (P.tech + P.judge) / 2 : (j ? j.skill : f.jskill || 70),
         // 帽子の色は枠番で決まる（1枠白・2枠黒・3枠赤・4枠青・5枠黄・6枠緑・7枠橙・8枠桃）
         color: silks.base, silks: { ...silks, cap: race.overseas ? silks.cap : WAKU_COLORS[(f.waku || 1) - 1] }, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
+        mud: mudOf(h),
         condBonus: isP ? (P.cond - 70) * 0.08 + (mods ? mods.big : 0) : 0,
       };
     });
-    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground, playerTech: P.tech, mods });
+    return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground || '良', weather: race.weather || '晴', bias: race.bias, playerTech: P.tech, mods });
+  }
+  // ---- 天気・馬場状態・トラックバイアス（開催日ごとに決め、1日の中でも変わっていく） ----
+  const WEATHERS = ['晴', '曇', '小雨', '雨'];
+  const GROUNDS = ['良', '稍重', '重', '不良'];
+  function makeDay() {
+    const u = Math.random();
+    let w = u < 0.6 ? 0 : u < 0.86 ? 1 : u < 0.95 ? 2 : 3;
+    // 前日までの雨の残り
+    let moist = w >= 2 ? rnd(0.3, 0.8) : Math.random() < 0.25 ? rnd(0.2, 0.6) : rnd(0, 0.12);
+    const seq = [];
+    // 芝：開催が進んで内が荒れているか（外有利）、開幕直後で内が良いか（内有利）
+    let laneT = clamp(rnd(-1, 1) + rnd(-0.3, 0.3), -1, 1), paceT = clamp(rnd(-0.9, 0.9), -1, 1);
+    let laneD = clamp(rnd(-0.6, 0.6), -1, 1), paceD = clamp(rnd(-0.5, 0.9), -1, 1);
+    for (let i = 0; i < 13; i++) {
+      if (Math.random() < 0.09) w = clamp(w + (Math.random() < 0.6 ? -1 : 1), 0, 3);
+      moist = clamp(moist + [-0.045, -0.015, 0.06, 0.13][w], 0, 1);
+      // 雨の中で使われると、芝は内から傷んで外が伸びるようになる
+      if (w >= 2) laneT = clamp(laneT - 0.07, -1, 1);
+      seq.push({ w, moist, laneT, paceT, laneD, paceD });
+    }
+    return seq;
+  }
+  function dayCond(day, i, surf) {
+    const d = day[Math.min(i, day.length - 1)];
+    const m = d.moist, turf = surf !== 'D';
+    // ダートは水はけがよく、芝より早く乾く
+    const g = turf ? (m < 0.25 ? 0 : m < 0.5 ? 1 : m < 0.75 ? 2 : 3) : (m < 0.3 ? 0 : m < 0.55 ? 1 : m < 0.8 ? 2 : 3);
+    // 湿ったダートは前が止まりにくい
+    const bias = turf ? { lane: d.laneT, pace: d.paceT } : { lane: d.laneD, pace: clamp(d.paceD + g * 0.15, -1, 1) };
+    return { weather: WEATHERS[d.w], ground: GROUNDS[g], bias: { lane: Math.round(bias.lane * 100) / 100, pace: Math.round(bias.pace * 100) / 100 } };
+  }
+  // 道悪の巧拙（馬ごとに決まった値。-1 苦手 〜 +1 得意）
+  function mudOf(h) { const x = Math.sin((h.id + 1) * 12.9898) * 43758.5453; return Math.round(((x - Math.floor(x)) * 2 - 1) * 100) / 100; }
+  function biasText(b) {
+    if (!b) return 'フラット';
+    const a = b.lane > 0.35 ? '内有利' : b.lane < -0.35 ? '外有利' : '', c = b.pace > 0.35 ? '前有利' : b.pace < -0.35 ? '差し有利' : '';
+    return [a, c].filter(Boolean).join('・') || 'フラット';
   }
   function apprenticeAllowance(P) {
     // ゲーム独自の簡易ルール（実際のJRAの見習騎手規定とは異なる場合がある）
@@ -727,7 +768,7 @@
   function deleteSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 
   window.World = {
-    newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
+    mudOf, biasText, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
     buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible, gearOf,

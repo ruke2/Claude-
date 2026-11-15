@@ -48,7 +48,9 @@
     if (race.label === race.name) return '';
     return `<span class="badge">${esc(race.label)}</span>`;
   }
-  function raceCond(race) { return `${SURF[race.surf]}${race.dist}m${race.ground === '重' ? '・重' : ''}`; }
+  function raceCond(race) { return `${SURF[race.surf]}${race.dist}m・${race.ground || '良'}`; }
+  function condLine(race) { return `天気 <b>${race.weather || '晴'}</b>　馬場 <b>${race.ground || '良'}</b>　傾向 <b>${World.biasText(race.bias)}</b>`; }
+  const BIAS_TIP = '馬場の傾向（トラックバイアス）。内有利なら内ラチ沿いが伸び、外有利なら外めが伸びる。前有利なら前の馬が止まりにくく、差し有利なら後ろから届きやすい。天気と馬場はその日のうちにも変わる。';
   const horseAge = (h) => W.year - h.born;
   const sexAge = (h) => `${h.sex}${horseAge(h)}`;
   function realTag(h) { return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ' <span class="badge">外国馬</span>' : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
@@ -90,8 +92,9 @@
         <span class="gchip ${p.weight + gw > 55 ? 'warn' : ''}">体重${p.weight.toFixed(1)}kg</span>
         <span class="gchip ${p.cond < 50 ? 'warn' : ''}">体調${Math.round(p.cond)}</span>
         <span class="gchip">${money(p.money)}</span>${allow ? `<span class="gchip">▲${allow}kg減</span>` : ''}
-      </div>${extra}<button class="burger" aria-label="メニュー" data-menu>☰</button>`;
+      </div>${extra}${W && !quick ? '<button class="gsave" data-save>セーブ</button>' : ''}<button class="burger" aria-label="メニュー" data-menu>☰</button>`;
     $(id).querySelector('[data-menu]').onclick = openDrawer;
+    const sv = $(id).querySelector('[data-save]'); if (sv) sv.onclick = () => { World.save(W); const d = new Date(); toast(`セーブした（${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}）`); };
   }
   function crumbs(id, items) {
     $(id).innerHTML = items.map((it, i) => (i ? '<span class="sep">›</span>' : '') + (it[1] ? `<a data-i="${i}">${esc(it[0])}</a>` : `<span>${esc(it[0])}</span>`)).join('');
@@ -469,7 +472,7 @@
     }
     const race = W.card[W.dayIdx];
     const hid = W.booked[race.no];
-    let html = `<div class="card" style="margin-top:8px"><div class="small muted">次のレース</div><div style="font-family:var(--serif);font-size:18px;font-weight:900">${race.overseas ? '' : race.no + 'R '}${esc(race.name)} ${gradeTag(race)}</div><div class="small">${raceCond(race)}・${race.field.length}頭・騎乗 ${nRide}鞍</div>`;
+    let html = `<div class="card" style="margin-top:8px"><div class="small muted">次のレース</div><div style="font-family:var(--serif);font-size:18px;font-weight:900">${race.overseas ? '' : race.no + 'R '}${esc(race.name)} ${gradeTag(race)}</div><div class="small">${raceCond(race)}・${race.field.length}頭・騎乗 ${nRide}鞍</div><div class="small" style="margin-top:3px">${condLine(race)} ${tip(BIAS_TIP)}</div>`;
     if (hid) {
       const h = W.horses[hid];
       html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)}</div></div><button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-pad">パドックへ</button>`;
@@ -522,7 +525,9 @@
       <div class="kv"><span>スタミナ</span><b style="color:var(--gold)">${stars(ab.sta)}</b></div>
       <div class="kv"><span>瞬発力</span><b style="color:var(--gold)">${stars(ab.kick)}</b></div>
       <div class="kv"><span>気性 ${tip('激しい馬は前に馬がいないとかかりやすい。馬の後ろに入れて落ち着かせる。')}</span><b>${h.tmp > 65 ? '激しい' : h.tmp > 40 ? 'ふつう' : '素直'}</b></div>
+      <div class="kv"><span>道悪 ${tip('雨で湿った芝の得意・不得意。芝のレースで馬場が悪いほど差が出る。')}</span><b>${(m => m > 0.4 ? '得意' : m < -0.4 ? '苦手' : 'ふつう')(World.mudOf(h))}</b></div>
       <div class="kv"><span>本作での戦績</span><b>${h.starts}戦${h.wins}勝${h.g1.length ? '・GⅠ' + h.g1.length + '勝' : ''}</b></div>${src}</div>
+      <div class="card"><div class="small">${condLine(race)} ${tip(BIAS_TIP)}</div></div>
       <div class="card"><div class="small muted">調教師の指示</div><div style="font-family:var(--serif)">「${ORDERS[h.style]}乗ってほしい」</div></div>
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-ride">ジョッキーカメラで騎乗</button>
       <button class="btn" style="width:100%;margin-top:6px" id="b-auto">オート騎乗（結果のみ）</button>`;
@@ -551,12 +556,14 @@
   const CAMS = [['jockey', '騎手'], ['chase', '後方'], ['tv', '中継']];
   try { camMode = localStorage.getItem('jl-cam') || 'jockey'; } catch (e) {}
   function startRace(race, hid, opt = {}) {
-    curRace = race; curHid = hid; introStage = '';
+    curRace = race; curHid = hid; introStage = ''; snaps = []; rp = null;
+    $('race').classList.remove('replay');
     Sound.init();
     $('tut').style.display = 'none';
     engine = World.setupRace(W, race, hid, 'manual');
     engine.onEvent = (t) => { if (t === 'gate') { Sound.gate(); Sound.cheer(0.6); } else if (t === 'whip') Sound.whip(); else if (t === 'bump' || t === 'foul') Sound.bump(); else if (t === 'finish') Sound.cheer(1.4); };
     window.__cheered = false;
+    Comm.reset(engine);
     show('race');
     if (!glbDone) { HorseGLB.load().then(() => { glbDone = true; R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode); }); }
     if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
@@ -591,9 +598,10 @@
     // 出走前の演出（コース紹介 → 枠入り → ゲートの中）。この間レースの時計は進めない
     if (R3.intro) {
       const I = R3.intro;
-      if (I.stage !== introStage) { introStage = I.stage; introCard(I.stage); if (I.stage === 'load') Sound.fanfare(); }
+      if (I.stage !== introStage) { introStage = I.stage; introCard(I.stage); if (I.stage === 'load') { Sound.fanfare(); Comm.say('各馬、ゲートに入っていきます。', 3); } if (I.stage === 'set') Comm.say('最後の馬が収まって、態勢完了。', 2); }
       R3.render(engine, rdt);
-      Sound.update(0, 0, 0.16);
+      Sound.update(0, 0, 0.16, RAIN[engine.cfg.weather] || 0);
+      Comm.fade();
       if (I.done) endIntro();
       rafId = requestAnimationFrame(loop);
       return;
@@ -604,20 +612,129 @@
       let n = 0;
       while (acc >= 1 / 60 && n++ < 300) { engine.step(1 / 60); acc -= 1 / 60; }
       if (Pl.started || Pl.auto) $('startBtn').style.display = 'none';
+      Comm.tick();
+      // ゴール前のリプレイ用に、最後の150mの動きを記録する
+      if (engine.open && snaps.length < 4000) {
+        let lead = 0; for (const r of engine.runners) if (r.s > lead) lead = r.s;
+        if (lead > engine.D - 150) snaps.push({ t: engine.t, a: engine.runners.map(r => [r.s, r.X, r.phase, r.v, r.effort, r.whipT, r.latV || 0]) });
+      }
     }
+    Comm.fade();
     R3.render(engine, paused || (tut && tut.hold) ? 0 : sdt);
     updateHud(rdt);
     const nearby = engine.runners.filter(r => r !== Pl && Math.abs(r.s - Pl.s) < 15).length;
     const inStraight = engine.pAt(Pl.s) % engine.course.lap;
     if (!window.__cheered && engine.open && engine.D - Pl.s < 300) { window.__cheered = true; Sound.cheer(1); }
-    const crowd = engine.open ? (Pl.s > engine.D - engine.course.H ? 0.4 + 0.6 * Math.min(1, (Pl.s - (engine.D - engine.course.H)) / engine.course.H) : 0.12) : 0.2;
-    Sound.update(paused ? 0 : Pl.v, paused ? 0 : nearby, paused ? 0.05 : crowd);
+    const crowd = engine.open ? (Pl.s > engine.D - engine.course.H ? 0.5 + 0.5 * Math.min(1, (Pl.s - (engine.D - engine.course.H)) / (engine.course.H * 0.6)) : 0.1) : 0.2;
+    Sound.update(paused ? 0 : Pl.v, paused ? 0 : nearby, paused ? 0.05 : crowd, RAIN[engine.cfg.weather] || 0);
     if (engine.done) {
       if (!endAt) endAt = now;
-      if (now - endAt > 1500) { Sound.stopAll(); return finishRace(); }
+      if (now - endAt > 1500) { curRace.commentary = Comm.lines.slice(); return startReplay(); }
     }
     rafId = requestAnimationFrame(loop);
   }
+  const RAIN = { '小雨': 0.45, '雨': 1 };
+  // ---- 実況（文字で出す。全文は結果画面で読める） ----
+  const Comm = {
+    e: null, lines: [], next: 0, F: {}, sec: null, rot: 0, shown: 0,
+    reset(e) { this.e = e; this.lines = []; this.next = 0; this.F = {}; this.sec = null; this.rot = 0; this.shown = 0; $('caption').classList.remove('on'); $('caption-t').textContent = ''; },
+    say(text, hold = 2.4) {
+      const e = this.e;
+      this.lines.push({ t: e.open ? e.t - e.gateOpenAt : null, text });
+      $('caption-t').textContent = text; $('caption').classList.add('on');
+      this.next = e.t + hold; this.shown = performance.now();
+    },
+    fade() { if (this.shown && performance.now() - this.shown > 5200) { $('caption').classList.remove('on'); this.shown = 0; } },
+    nm(r) { return `${r.num}番${r.horse.name}`; },
+    len(m) { const L = m / 2.4; return L < 0.15 ? 'ハナ' : L < 0.4 ? 'クビ' : L < 0.8 ? '半馬身' : L < 1.4 ? '1馬身' : `${Math.round(L)}馬身`; },
+    tick() {
+      const e = this.e, F = this.F; if (!e || !e.open) return;
+      const t = e.t - e.gateOpenAt, nm = this.nm;
+      const ord = e.runners.slice().sort((a, b) => b.s - a.s), lead = ord[0], sec2 = ord[1], Pl = e.player;
+      const rem = e.D - lead.s, c = e.course;
+      if (!F.start) { F.start = 1; return this.say('スタートしました！', 1.3); }
+      if (!F.start2 && t > 1.7) {
+        F.start2 = 1;
+        const late = e.runners.filter(r => !r.started || (r.reaction || 0) > 0.6);
+        return this.say(late.length ? `${late.slice(0, 2).map(nm).join('、')}は出遅れました。` : '各馬そろったスタートです。');
+      }
+      // ゴール
+      const fin = e.runners.filter(r => r.finished).sort((a, b) => a.finishTime - b.finishTime);
+      if (fin.length && !F.fin) { F.fin = t; return this.say(`${nm(fin[0])}、ゴールイン！`, 2.2); }
+      if (F.fin && !F.fin2 && fin.length >= 3 && t > F.fin + 2) {
+        F.fin2 = 1;
+        const mg = (fin[1].finishTime - fin[0].finishTime) * e.D / fin[0].finishTime;
+        return this.say(`勝ったのは${nm(fin[0])}。${this.len(mg)}差の2着に${nm(fin[1])}、3着は${nm(fin[2])}。勝ちタイムは${RaceEngine.fmtTime(fin[0].finishTime)}。`, 6);
+      }
+      if (F.fin) return;
+      const inStr = lead.s > e.D - c.H + 5 || rem < 420;
+      if (inStr && !F.str) { F.str = 1; return this.say(`さあ直線コースに向きました！ 先頭は${nm(lead)}、リードは${this.len(lead.s - sec2.s)}！`, 2); }
+      if (rem < 200 && !F.r200) { F.r200 = 1; return this.say(`残り200メートル！ 先頭は${nm(lead)}！`, 1.6); }
+      if (e.t < this.next) return;
+      if (F.str) { // 直線の攻防
+        const gap = lead.s - sec2.s;
+        const mover = ord.slice(1, 9).filter(r => r.v - lead.v > 0.22 && lead.s - r.s < 14).sort((a, b) => (b.v - lead.v) - (a.v - lead.v))[0];
+        if (mover && mover !== this.lastMover) {
+          this.lastMover = mover;
+          const dx = (mover.X - lead.X);
+          return this.say(`${dx > 1 ? '外から' : dx < -1 ? '内から' : '間を割って'}${nm(mover)}！ ${mover.horse.name}が伸びてくる！`, 1.7);
+        }
+        if (gap < 1.2) return this.say(`${nm(lead)}と${nm(sec2)}、並んだ並んだ！`, 1.5);
+        const v = this.rot++ % 3;
+        if (gap > 9.5) return this.say(v ? `${lead.horse.name}、これは強い！ リードは${this.len(gap)}！` : `${nm(lead)}の独走になりました！`, 2.2);
+        if (v === 0) return this.say(`先頭は${nm(lead)}、リード${this.len(gap)}！ 2番手${nm(sec2)}！`, 1.8);
+        if (v === 1) return this.say(`${lead.horse.name}が粘る！ ${sec2.horse.name}が${this.len(gap)}差まで迫る！`, 1.8);
+        return this.say(`${nm(lead)}、${nm(sec2)}、3番手に${nm(ord[2])}！`, 1.8);
+      }
+      if (lead.s > 170 && !F.early) { F.early = 1; return this.say(`先手を取ったのは${nm(ord[0])}。2番手に${nm(ord[1])}、その後ろ${nm(ord[2])}。`, 3.2); }
+      if (e.D >= 1600 && e.leaderSplits[5] && !F.k1000) {
+        F.k1000 = 1;
+        const sp = e.leaderSplits[5], ratio = (1000 / sp) / (e.vBase * 0.975 * 0.97);
+        return this.say(`1000メートルの通過は${sp.toFixed(1)}秒。${ratio > 1.012 ? '速い流れです。' : ratio < 0.985 ? 'ゆったりした流れです。' : '平均的な流れです。'}`, 3.2);
+      }
+      const sec = RaceEngine.sectionName(c, e.pAt(lead.s));
+      if (sec !== this.sec) { const first = this.sec == null; this.sec = sec; if (!first && sec !== '直線') return this.say(`${sec}に入ります。先頭は${nm(lead)}。`, 3); }
+      if (lead.s > 350 && !F.me && Pl && !Pl.auto) { F.me = 1; return this.say(`${nm(Pl)}は${Pl.rank === 1 ? '先頭' : Pl.rank + '番手'}。${Pl.X < 2.2 ? '内ラチ沿い' : Pl.X > 5 ? '外め' : '馬群の中'}を進んでいます。`, 3.2); }
+      const k = this.rot++ % 4, n = ord.length;
+      if (k === 0) return this.say(`先頭は${nm(lead)}、${this.len(lead.s - sec2.s)}差で${nm(sec2)}。`, 4.5);
+      if (k === 1) return this.say(`中団に${nm(ord[Math.floor(n / 2)])}、${nm(ord[Math.floor(n / 2) + 1] || ord[n - 1])}。`, 4.5);
+      if (k === 2) return this.say(`後方からは${nm(ord[n - 2] || ord[n - 1])}、最後方に${nm(ord[n - 1])}。`, 4.5);
+      return this.say(lead.s - ord[n - 1].s > 45 ? '馬群は縦長になりました。' : '馬群は一団で進んでいます。', 4.5);
+    },
+  };
+  // ---- ゴール前のリプレイ ----
+  let snaps = [], rp = null;
+  const SNAPF = ['s', 'X', 'phase', 'v', 'effort', 'whipT', 'latV'];
+  function startReplay() {
+    const fin = engine.runners.filter(r => r.finished).sort((a, b) => a.finishTime - b.finishTime);
+    if (tut || snaps.length < 8 || !fin.length) { Sound.stopAll(); return finishRace(); }
+    const tW = engine.gateOpenAt + fin[0].finishTime;
+    rp = { t: Math.max(snaps[0].t, tW - 2.3), end: Math.min(snaps[snaps.length - 1].t, tW + 0.6), tW, hold: 0, i: 0, win: fin[0], saved: engine.runners.map(r => SNAPF.map(k => r[k])) };
+    R3.setReplay(true); $('race').classList.add('replay'); $('replay-res').style.display = 'none';
+    Sound.update(0, 0, 0.9, RAIN[engine.cfg.weather] || 0);
+    lastT = performance.now(); rafId = requestAnimationFrame(replayLoop);
+  }
+  function replayLoop(now) {
+    if (!rp) return;
+    const rdt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+    const slow = Math.abs(rp.t - rp.tW) < 0.22 ? 0.12 : 0.3;
+    if (rp.t < rp.end) rp.t = Math.min(rp.end, rp.t + rdt * slow); else rp.hold += rdt;
+    while (rp.i < snaps.length - 2 && snaps[rp.i + 1].t < rp.t) rp.i++;
+    const A = snaps[rp.i], B = snaps[Math.min(snaps.length - 1, rp.i + 1)], k = clamp((rp.t - A.t) / Math.max(1e-6, B.t - A.t), 0, 1);
+    engine.runners.forEach((r, j) => SNAPF.forEach((f, q) => { r[f] = A.a[j][q] + (B.a[j][q] - A.a[j][q]) * k; }));
+    R3.render(engine, rp.t < rp.end ? rdt * slow : 0);
+    if (rp.t >= rp.tW && $('replay-res').style.display === 'none') { $('replay-res').textContent = `1着　${rp.win.num}番 ${rp.win.horse.name}`; $('replay-res').style.display = 'block'; Sound.cheer(1.2); }
+    if (rp.hold > 1.6) return endReplay();
+    rafId = requestAnimationFrame(replayLoop);
+  }
+  function endReplay() {
+    if (!rp) return;
+    cancelAnimationFrame(rafId);
+    engine.runners.forEach((r, j) => SNAPF.forEach((f, q) => { r[f] = rp.saved[j][q]; }));
+    rp = null; R3.setReplay(false); $('race').classList.remove('replay'); Sound.stopAll();
+    finishRace();
+  }
+  $('replay-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); endReplay(); });
   let introStage = '';
   function introCard(stage) {
     const e = engine, race = curRace, Pl = e.player, card = $('intro-card');
@@ -640,7 +757,7 @@
       hudT = 0.1;
       const t = e.open ? (Pl.finished ? Pl.finishTime : e.t - e.gateOpenAt) : 0;
       const pace = e.pace();
-      $('hud-info').innerHTML = `<b>${esc(e.cfg.name)}</b><br>残り ${Math.ceil(rem)}m・${RaceEngine.sectionName(e.course, e.pAt(Pl.s))}<br>${Pl.rank || '-'}番手/${e.runners.length}頭　${RaceEngine.fmtTime(t)}${pace ? `<br>ペース: ${pace}` : ''}<br>内ラチから ${Pl.X.toFixed(1)}m`;
+      $('hud-info').innerHTML = `<b>${esc(e.cfg.name)}</b><br>残り ${Math.ceil(rem)}m・${RaceEngine.sectionName(e.course, e.pAt(Pl.s))}<br>${Pl.rank || '-'}番手/${e.runners.length}頭　${RaceEngine.fmtTime(t)}${pace ? `<br>ペース: ${pace}` : ''}<br>内ラチから ${Pl.X.toFixed(1)}m<br>${e.cfg.weather}・${e.cfg.ground}・${World.biasText(e.bias)}`;
       // 時速とラップ（先頭の1ハロンごと）
       $('spd-v').textContent = String(Math.round(Pl.v * 3.6));
       const lp = e.laps().slice(-4);
@@ -658,7 +775,7 @@
       const sgn = e.course.dir === 'L' ? 1 : -1;
       for (const o of e.runners) { if (o === Pl) continue; const ds = o.s - Pl.s, dx = (o.X - Pl.X) * sgn; if (ds > -3.5 && ds < 2.5 && Math.abs(dx) < 2.4) { if (dx < 0) l = true; else rr = true; } }
       $('side-l').textContent = l ? '◀ 馬' : ''; $('side-r').textContent = rr ? '馬 ▶' : '';
-      $('whip-n').textContent = String(10 - Pl.whips);
+      $('whip-n').textContent = `連続${Pl.lastWhipPhase != null && Pl.phase - Pl.lastWhipPhase < 2 ? Pl.whipRun : 0}/5`;
     }
     // コーチ：全力で持つ距離と、いまやるべきこと
     if (hudT === 0.1) {
@@ -780,7 +897,7 @@
       <div class="small" style="line-height:1.75">
       <b>◀ ▶（左下）</b> 押している間、内・外へ進路を変える。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。横に馬がいるのに寄せると接触・斜行になり、審議の対象になる<br>
       <b>手綱の加減（右の縦スライダー）</b> 指で上下に動かして、馬を走らせる強さを自分で決める。下ほど強く抑え、真ん中が馬なり、上ほど強く追う。離してもその位置のまま続く。前半は下げて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く。上げるほど脚色（スタミナ）を多く使う<br>
-      <b>ムチ（右端）</b> 強く追っている間の伸びを上乗せ（10回まで）。打つ側は自動で選ばれる<br>
+      <b>ムチ（右端）</b> 強く追っている間の伸びを上乗せする。回数の上限はないが、2完歩あけずに続けて打てるのは5回まで。超えると制裁（過怠金）の対象になる。打つ側は自動で選ばれる<br>
       <b>コーチ（画面上）</b> 緑のバーは「今から全力で追って持つ距離」。バーが残り距離に届いたら仕掛けどき<br>
       <b>キーボード</b> ←→ 進路 / ↑↓ 手綱の加減 / Space スタート・全力 / W ムチ / C 視点</div>
       <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn primary" id="p-resume">再開</button><button class="btn" id="p-auto">ここからオート騎乗</button></div>`, () => {
@@ -822,12 +939,14 @@
     let inq = '';
     if (ev.inquiry) {
       const q = ev.inquiry;
-      inq = `<div class="card" style="margin-top:8px;border-color:var(--red)"><div class="small" style="color:var(--red)">審議</div><b>${q.demoteTo ? `斜行で${q.demoteTo}着に降着` : '斜行・接触あり'}</b><div class="small">${q.weeks ? `${q.weeks}週間の騎乗停止` : '過怠金'}</div></div>`;
+      inq = `<div class="card" style="margin-top:8px;border-color:var(--red)"><div class="small" style="color:var(--red)">審議</div><b>${q.demoteTo ? `斜行で${q.demoteTo}着に降着` : q.foul ? '斜行・接触あり' : 'ムチの連続使用'}</b>${q.whip && q.foul ? '<div class="small">ムチの連続使用もあり</div>' : ''}<div class="small">${q.weeks ? `${q.weeks}週間の騎乗停止` : '過怠金'}</div></div>`;
     }
     $('res-side').innerHTML = `${inq}<div class="card" style="margin-top:8px;text-align:center"><div class="small muted">騎乗評価</div><div class="eval">${ev.grade}</div>
       <div style="margin-top:2px;font-family:var(--serif)"><b style="font-size:18px">${ev.pos}着</b>（${ev.pop}番人気）</div><div class="small muted">${comment}</div></div>
       <div class="card"><div class="kv"><span>評価</span><b>${ev.dRep >= 0 ? '+' : ''}${ev.dRep}</b></div><div class="kv"><span>人気</span><b>${ev.dPop >= 0 ? '+' : ''}${ev.dPop}</b></div><div class="kv"><span>収入</span><b>${ev.income}万円</b></div></div>
+      ${race.commentary && race.commentary.length ? '<button class="btn" style="width:100%;margin-top:8px" id="b-comm">実況の文字起こしを読む</button>' : ''}
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-resnext">${quick ? 'タイトルへ' : '次へ'}</button>`;
+    if ($('b-comm')) $('b-comm').onclick = () => modal(`<div class="scroll" style="max-height:62vh">${race.commentary.map(l => `<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px dotted var(--rule)"><span class="tnum muted small" style="flex:0 0 44px">${l.t == null ? '発走前' : RaceEngine.fmtTime(l.t)}</span><span style="font-family:var(--serif)">${esc(l.text)}</span></div>`).join('')}</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '実況（文字起こし）');
     $('b-resnext').onclick = () => {
       if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }, 'チュートリアル'); } return; }
       W.dayIdx++; World.save(W); showDay();
@@ -912,7 +1031,7 @@
     { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。左下の<b>◀ ▶</b>を押して、前の馬の<b>真後ろ</b>に入れよう。', hl: ['c-left', 'c-right', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
     { text: 'いい位置。画面上の<b>コーチ</b>が仕掛けどきを教えてくれる。緑のバーは「全力で走りきれる距離」。それまで我慢。<br>（早送り中）', hl: ['coach'], speed: 3, until: () => engine.D - engine.player.s < 650 },
     { text: '仕掛けどき。<b>手綱スライダーを一番上</b>まで上げる。上げるほど強く追って加速する。途中で止めれば、その強さで走る。', hl: ['thr', 'coach'], speed: 0.6, until: () => engine.player.drive > 0.8 },
-    { text: '追いながら右端の<b>「ムチ」</b>をタップ。もうひと伸びする（10回まで）。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
+    { text: '追いながら右端の<b>「ムチ」</b>をタップ。もうひと伸びする。続けて打てるのは5回まで（2完歩あければ数え直し）。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
     { text: 'ゴールまで追い続けよう！ 前が壁になったら ◀ ▶ で進路を探す。', speed: 1, until: () => engine.player.finished },
   ];
   function startTutorial() {

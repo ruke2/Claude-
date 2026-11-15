@@ -63,7 +63,7 @@
       this.scene.fog = new T.Fog('#cdd9e3', 500, 4200);
     }
     buildLights() {
-      const hemi = new T.HemisphereLight('#d6e8ff', '#5d6b3a', 0.55);
+      const hemi = this.hemi = new T.HemisphereLight('#d6e8ff', '#5d6b3a', 0.55);
       this.scene.add(hemi);
       const sun = this.sun = new T.DirectionalLight('#fff1dc', 2.4);
       sun.castShadow = true;
@@ -115,6 +115,7 @@
       const c = race.course;
       this.buildCourse(G, c, race);
       this.buildGate(G, race);
+      this.applyWeather(G, race.cfg.weather || '晴');
       // 馬
       this.horses = race.runners.map((r, i) => {
         const h = r.horse;
@@ -127,10 +128,43 @@
         return m;
       });
       this.playerModel = this.horses[race.runners.indexOf(race.player)];
-      this.camYaw = null; this.intro = null;
+      this.camYaw = null; this.intro = null; this.replay = false;
       this.lastPhase = race.runners.map(r => r.phase);
       this.screenT = 0;
       this.resize();
+    }
+    // 天気：空の明るさ、かすみ、雨
+    applyWeather(G, w) {
+      const P = ({
+        '晴': { sun: 2.4, hemi: 0.55, exp: 0.95, fog: ['#cdd9e3', 500, 4200], veil: 0, col: '#ffffff', rain: 0 },
+        '曇': { sun: 0.9, hemi: 0.8, exp: 0.86, fog: ['#c3c8cc', 350, 3000], veil: 0.6, col: '#b4b9bf', rain: 0 },
+        '小雨': { sun: 0.5, hemi: 0.85, exp: 0.8, fog: ['#b4b9bd', 220, 2200], veil: 0.78, col: '#a2a8ae', rain: 700 },
+        '雨': { sun: 0.3, hemi: 0.85, exp: 0.74, fog: ['#a4a9ad', 140, 1500], veil: 0.9, col: '#8e949a', rain: 1900 },
+      })[w] || null;
+      if (!P) return;
+      this.sun.intensity = P.sun; this.hemi.intensity = P.hemi; this.renderer.toneMappingExposure = P.exp;
+      this.scene.fog.color.set(P.fog[0]); this.scene.fog.near = P.fog[1]; this.scene.fog.far = P.fog[2];
+      this.veil = null; this.rain = null;
+      if (P.veil > 0) { // 空を雲で覆う
+        const v = new T.Mesh(new T.SphereGeometry(5200, 24, 12), new T.MeshBasicMaterial({ color: P.col, transparent: true, opacity: P.veil, side: T.BackSide, fog: false, depthWrite: false }));
+        v.renderOrder = -1; G.add(v); this.veil = v;
+      }
+      if (P.rain) {
+        const n = P.rain, pos = new Float32Array(n * 6);
+        for (let i = 0; i < n; i++) { const x = rnd(-16, 16), y = rnd(-4, 14), z = rnd(-16, 16); pos.set([x, y, z, x + 0.05, y - 0.7, z], i * 6); }
+        const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3));
+        const r = new T.LineSegments(g, new T.LineBasicMaterial({ color: '#e6edf3', transparent: true, opacity: 0.38, fog: false, depthWrite: false }));
+        r.frustumCulled = false; G.add(r); this.rain = r;
+      }
+    }
+    stepWeather(dt) {
+      const cp = this.camera.position;
+      if (this.veil) this.veil.position.copy(cp);
+      if (this.rain) {
+        const a = this.rain.geometry.attributes.position, d = (dt || 0.016) * 24;
+        for (let i = 0; i < a.count; i += 2) { let y = a.getY(i) - d; if (y < -4) y += 18; a.setY(i, y); a.setY(i + 1, y - 0.7); }
+        a.needsUpdate = true; this.rain.position.copy(cp);
+      }
     }
     disposeGroup(g) {
       g.traverse(o => { if (o.geometry && !o.geometry._shared) o.geometry.dispose(); });
@@ -198,7 +232,7 @@
       // 周りの地面はコースの一番低いところに合わせ、コースが高い所は土手で下ろす
       let lo = Infinity; for (let i = 0; i < 200; i++) lo = Math.min(lo, E(i * c.lap / 200)); const mean = this.meanE = lo;
       const turfMap = loadTex('turf.jpg'), turfN = loadTex('turf_n.jpg'), dirtMap = loadTex('dirt.jpg'), dirtN = loadTex('dirt_n.jpg'), fieldMap = loadTex('field.jpg');
-      const wet = race.cfg.ground === '重';
+      const wet = ['重', '不良'].includes(race.cfg.ground);
       // 芝の種類：洋芝（札幌・函館）は深い緑、野芝（新潟）は明るい緑
       const turfTint = V.turf === 'yoshiba' ? '#cfe3c0' : V.turf === 'noshiba' ? '#f2fbe2' : '#ffffff';
       const turfMat = new T.MeshStandardMaterial({ map: turfMap, normalMap: turfN, normalScale: new T.Vector2(0.6, 0.6), roughness: 0.92, vertexColors: true, color: wet ? '#b9c4ad' : turfTint });
@@ -760,6 +794,7 @@
       if (this.playerModel) this.playerModel.setPlayerView(false);
       this.updateFov();
     }
+    setReplay(on) { this.replay = !!on; this.camSnap = false; if (this.playerModel) this.playerModel.setPlayerView(!on && this.camMode === 'jockey'); this.updateFov(); }
     endIntro() {
       if (!this.intro) return;
       this.intro = null; this.camSnap = false; this.camYaw = null;
@@ -812,7 +847,7 @@
     updateFov() {
       const asp = this.camera.aspect;
       const mode = this.intro && this.intro.stage !== 'set' ? 'chase' : this.camMode;
-      const hfov = mode === 'jockey' ? 100 : mode === 'tv' ? 30 : 75;
+      const hfov = this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 30 : 75;
       this.camera.fov = Math.min(80, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / asp) * 180 / Math.PI);
       this.camera.updateProjectionMatrix();
     }
@@ -889,6 +924,7 @@
         this.drawScreen(race); this.screenT = 0.5;
         if (this.tote) { const fin = race.runners.filter(r => r.finished).sort((a, b) => a.finishTime - b.finishTime).slice(0, 5); if (fin.length !== this.tote.shown) { this.tote.shown = fin.length; this.drawTote(race, fin.map(r => r.num)); } }
       }
+      this.stepWeather(dt);
       this.renderer.render(this.scene, this.camera);
     }
 
@@ -901,6 +937,16 @@
       // 角度の差を -π..π に
       let dy = yawHorse - this.camYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       this.camYaw += dy * Math.min(1, dt * 6);
+      if (this.replay) { // ゴール前のリプレイ：決勝線の外から、先頭の馬を追ってゴール板で止める
+        const lead = race.runners.reduce((b, r) => r.s > b.s ? r : b, race.runners[0]);
+        const eH = this.E ? this.E(c.H) : 0;
+        const camP = CXY(c, c.H - 6, c.width + 5.5);
+        cam.position.set(camP.x, eH + 3.3, camP.z); cam.up.set(0, 1, 0);
+        const lp = Math.min(c.H + 0.5, race.pAt(lead.s) + 1.5), L = CXY(c, lp, Math.min(lead.X, c.width * 0.5));
+        cam.lookAt(L.x, eH + 1.3, L.z);
+        this.camTarget = new T.Vector3(L.x, 0, L.z);
+        return;
+      }
       if (this.camMode === 'jockey') {
         m.root.updateMatrixWorld(true);
         const hp = new T.Vector3(); m.jockey.head.getWorldPosition(hp);

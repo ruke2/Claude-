@@ -39,6 +39,8 @@
 ## 技術とデータ
 
 - 描画: Three.js r147（jsDelivr）
+- 歓声: "Crowd Shouting/Speaking Ambience" by StarNinjas（CC0）https://opengameart.org/content/crowd-shoutingspeaking-ambience を切り出し・モノラル化して `js/audio-data.js` に収録
+- ファンファーレ: "Call to the Post (First Call)" U.S. Army Bands Online（米国政府の著作物・パブリックドメイン）https://archive.org/details/CallToThePostFirstCall を `js/audio-data.js` に収録
 - 芝・砂・空のテクスチャ: [Poly Haven](https://polyhaven.com/)（CC0）の leafy_grass, grass_ground, park_sand, damp_sand, kloofendal_48d_partly_cloudy_puresky を縮小・色調補正して `assets/` に収録
 - 馬のモデル: [“Horse” by Henry S](https://sketchfab.com/3d-models/horse-a6f860e43e364619bccb174a1ac7d0c9)（Sketchfab, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)）。FBX を glb に変換し、ギャロップ・待機・常歩のアニメーションだけを残した。白斑を除いて毛色を塗り替えられるテクスチャに加工し、ウエスタン鞍は外してレース用の鞍とゼッケンに差し替えている（`assets/horse.glb` ほか）
 - 騎手のモデル: 手続き生成（`js/horse3d.js`）

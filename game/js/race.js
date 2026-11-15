@@ -95,7 +95,9 @@
       spd += rnd(-3.5, 3.5) * (cfg.formNoise ?? 1) + (cfg.condBonus || 0);
       this.spd = spd; this.sta = sta;
       this.kick = cfg.ability.kick; this.tmp = cfg.ability.tmp; this.style = h.style;
-      this.vMax = race.vBase * (1 + (spd - 75) * 0.0011);
+      // 道悪の巧拙（芝のみ。-1 苦手 〜 +1 得意）
+      const mud = race.surf === 'T' ? (cfg.mud || 0) * race.groundIdx * 0.0022 : 0;
+      this.vMax = race.vBase * (1 + (spd - 75) * 0.0011 + mud);
       const vB = race.vBase;
       const tn = Math.max(0, D - 600) / (vB * 0.975), ts = 600 / (vB * 1.03);
       this.drainBase = 1 / (tn + 1.39 * ts) / (1 + (sta - 75) * 0.006);
@@ -122,7 +124,11 @@
       this.D = cfg.dist; this.surf = cfg.surf;
       this.course = makeCourse(cfg.venue, cfg.surf);
       this.startP = this.course.H - this.D;
-      this.vBase = baseSpeed(this.D, this.surf) * (cfg.ground === '重' ? 0.985 : 1);
+      // 馬場状態：芝は湿るほど時計がかかる。ダートは湿ると脚抜きがよくなり少し速くなる（不良まで行くと伸びは小さい）
+      const gi = this.groundIdx = Math.max(0, ['良', '稍重', '重', '不良'].indexOf(cfg.ground || '良'));
+      this.vBase = baseSpeed(this.D, this.surf) * (this.surf === 'D' ? [1, 1.005, 1.009, 1.004][gi] : [1, 0.992, 0.982, 0.97][gi]);
+      // トラックバイアス：lane > 0 は内有利、< 0 は外有利。pace > 0 は前有利、< 0 は差し有利
+      this.bias = Object.assign({ lane: 0, pace: 0 }, cfg.bias || {});
       this.runners = cfg.runners.map((r, i) => new Runner(this, r, i));
       this.t = 0; this.gateOpenAt = rnd(2.2, 3.6); this.open = false;
       this.player = this.runners.find(r => r.isPlayer) || null;
@@ -164,8 +170,13 @@
     }
     whip(side) { // side: 'L' | 'R'（騎手から見て）
       const p = this.player;
-      if (!p || !p.started || p.finished || p.whips >= 10) return;
+      if (!p || !p.started || p.finished) return;
       p.whipT = 1.3; p.whips++;
+      // 連続使用：2完歩あけずに打つと「連続」と数える。5回を超えると過度の使用として制裁の対象
+      if (p.lastWhipPhase != null && p.phase - p.lastWhipPhase < 2) p.whipRun = (p.whipRun || 1) + 1; else p.whipRun = 1;
+      p.lastWhipPhase = p.phase;
+      if (p.whipRun > 5 && !p.whipOver) { p.whipOver = true; this.msg('ムチの連続使用（制裁の対象）', 1.6, '#ff8a80'); }
+      else if (p.whipRun === 5) this.msg('ムチ連続5回。2完歩あけること', 1.2, '#ffb74d');
       // 馬はムチと反対側へ寄る。進行方向の右 = 左回りなら外、右回りなら内
       const rightIsOut = this.course.dir === 'L';
       const towardOut = (side === 'R') === rightIsOut; // ムチ側が外か
@@ -173,7 +184,7 @@
       p.whipPushT = 0.35;
       p.whipSide = side === 'R' ? 1 : -1;
       if (p.s < this.D - 800) p.kakari = clamp(p.kakari + 0.15, 0, 1);
-      if (!this.mods.noSulk && p.whips > 6 && p.tmp > 60 && Math.random() < 0.35) { p.sulkT = 2.5; this.msg('ムチに反抗した', 1.2, '#ff8a80'); }
+      if (!this.mods.noSulk && p.whips > 8 && p.tmp > 60 && Math.random() < 0.3) { p.sulkT = 2.5; this.msg('ムチに反抗した', 1.2, '#ff8a80'); }
       this.emit('whip', { side });
     }
 
@@ -206,9 +217,9 @@
           if (ds > 0 && ds < 8 && dx < 1.25) r.covered = true;
           if (ds > 0 && dx < 0.95 && ds < aheadGap) { aheadGap = ds; ahead = o; }
         }
-        let latWant = 0;
+        let latWant = 0; const k0 = curvAt(this.course, this.pAt(r.s));
         if (r.finished) { r.effort = 0.1; latWant = 0; }
-        else if (r.auto) { this.ai(r, rem, dt); latWant = clamp((r.tx - r.X) * 1.6, -1.1, 1.1); }
+        else if (r.auto) { this.ai(r, rem, dt); const lm = k0 > 0 ? 0.9 : rem < 700 ? 0.45 : 0.7; latWant = clamp((r.tx - r.X) * 1.2, -lm, lm); }
         else {
           const inp = this.input;
           // 手綱の加減（0〜1）をそのまま馬への指示にする。急には変わらず、少しずつ伝わる
@@ -241,15 +252,17 @@
         if (r.sulkT > 0) { r.sulkT -= dt; f -= 0.02; }
         const gr = slopeAt(this.course, this.pAt(r.s)); // 上り坂ほど遅く
         f *= 1 - 0.55 * gr;
+        // トラックバイアス（内外）：内ラチ沿いと外めで伸びが違う
+        if (this.bias.lane) f *= 1 + this.bias.lane * 0.012 * (0.5 - Math.min(1, r.X / 7));
         r.grade = gr;
         let vT = r.vMax * f;
         vT *= r.st < 0.25 ? 0.9 + 0.4 * Math.max(0, r.st) : 1;
         // バテ：脚が上がった状態が長く続くほど、どんどん止まる（早仕掛けの代償）
         if (r.st < 0.25 && !r.finished) r.bate = (r.bate || 0) + dt;
-        if (r.bate) vT *= 1 - Math.min(0.22, Math.pow(r.bate / 20, 2) * 0.22);
+        if (r.bate) vT *= 1 - Math.min(0.16, Math.pow(r.bate / 22, 2) * 0.16);
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
         // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
-        const acc = (r.v < this.vBase * 0.55 ? 7.0 : r.v < this.vBase * 0.85 ? 4.6 : 0.45 + r.kick * 0.004) * (M.sprint ? 1.1 : 1);
+        const acc = (r.s < 260 && r.v < this.vBase * 0.55 ? 7.0 : r.s < 260 && r.v < this.vBase * 0.85 ? 4.6 : r.v < this.vBase * 0.8 ? 1.2 : 0.2 + r.kick * 0.0028) * (M.sprint ? 1.1 : 1);
         if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - 0.8 * dt);
         r.blocked = false;
         if (ahead && aheadGap < 3.0) {
@@ -262,6 +275,8 @@
           if (r.covered) drain *= 0.86;
           if (r.rank === 1) drain *= M.front ? 1.0 : 1.06;
           if (M.stayer) drain *= 0.96;
+          // トラックバイアス（脚質）：前有利の馬場では前の馬が楽をし、差し有利では逆
+          if (this.bias.pace) drain *= 1 + this.bias.pace * 0.1 * ((r.rank - 1) / Math.max(1, R.length - 1) - 0.5) * 2;
           drain *= 1 + 0.9 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
           drain *= 1 + 7 * Math.max(0, r.grade || 0) - 3 * Math.max(0, -(r.grade || 0));
@@ -341,7 +356,7 @@
       const target = [0, 0.22, 0.58, 0.88][r.style];
       if (rem < r.spurtAt * (r.st < 0.35 ? 0.7 : 1)) {
         r.effort = 1;
-        if (rem < 380 && r.whipT <= 0 && r.whips < 10 && Math.random() < 0.6 * dt) { r.whipT = 1.3; r.whips++; r.whipSide = Math.random() < 0.7 ? 1 : -1; }
+        if (rem < 380 && r.whipT <= 0 && r.whips < 12 && Math.random() < 0.6 * dt) { r.whipT = 1.3; r.whips++; r.whipSide = Math.random() < 0.7 ? 1 : -1; }
       } else if (r.s < Math.min(420, this.D * 0.25)) r.effort = [0.95, 0.72, 0.48, 0.32][r.style];
       else {
         let e = 0.5;
@@ -359,21 +374,29 @@
           if (o === r) continue;
           const ds = o.s - r.s, dx = Math.abs(o.X - x);
           if (dx < 1.0) {
-            if (ds > -2.3 && ds < 2.3 && Math.abs(x - r.X) > 0.3) return -1;
+            if (ds > -4.5 && ds < 2.6 && Math.abs(x - r.X) > 0.3) return -1;
             if (ds > 0 && ds < best) best = ds;
           }
         }
         return best;
       };
       const k = curvAt(this.course, this.pAt(r.s));
-      const cands = [r.X - 1.2, r.X, r.X + 1.2, r.X + 2.4].filter(x => x > 0.6 && x < W - 0.6);
-      let bestX = r.X, bestScore = -1e9;
       const late = rem < 750;
+      const straight = !(k > 0);
+      // 直線では、前が詰まった時だけ進路を変える（まっすぐ走らせる）。横に馬がいる側へは寄らない
+      const here = clear(r.X);
+      const goOut = late && straight && (this.bias.lane || 0) < -0.35 && r.X < 5; // 外が伸びる馬場では外へ持ち出す
+      if (late && straight && here > 9 && !goOut) { r.tx = r.X; return; }
+      const cands = (late && straight ? [r.X, r.X - 1.1, r.X + 1.1] : [r.X - 1.2, r.X, r.X + 1.2, r.X + 2.4]).filter(x => x > 0.6 && x < W - 0.6);
+      let bestX = r.X, bestScore = -1e9;
+      const lane = this.bias.lane || 0;
       for (const x of cands) {
         const c = clear(x);
         if (c < 0) continue;
         let score = Math.min(c, late ? 30 : 12) * (late ? 1.4 : 0.6);
-        score -= (x - 0.8) * (k > 0 ? 1.6 : late ? 0.25 : 0.7);
+        score -= (x - 0.8) * (k > 0 ? 1.6 : late ? 0.1 + 0.5 * Math.max(0, lane) : 0.7);
+        if (late && straight && lane < 0) score += -lane * Math.min(x, 6) * 3; // 外が伸びる馬場なら外へ
+        if (x === r.X) score += late && straight ? 4 : 0.5; // 今の進路を優先
         if (score > bestScore) { bestScore = score; bestX = x; }
       }
       r.tx = bestX;
@@ -408,6 +431,7 @@
           me.demoted = true;
         }
       }
+      if (p && p.whipOver) { this.inquiry = this.inquiry || { foul: 0, demoteTo: null, weeks: 0, fine: 0 }; this.inquiry.whip = true; this.inquiry.fine = (this.inquiry.fine || 0) + 1; }
       this._results = res;
       return res;
     }
