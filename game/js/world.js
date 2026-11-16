@@ -78,6 +78,10 @@
   }
   function foreignName() { let n; do { n = pick(FOREIGN_A) + pick(FOREIGN_B); } while (n.length > 9); return n; }
   function personName() { return pick(SURNAMES) + ' ' + pick(GIVEN); }
+  function realJockey(id, rj) {
+    const skill = clamp(Math.round(40 + rj.rate * 180 + Math.min(10, rj.w / 15)), 45, 95);
+    return { id, name: rj.n, real: true, region: rj.r, skill, age: START_YEAR - rj.b, wins: 0, years: {}, pop: clamp(Math.round(rj.w / 2.2), 5, 80) };
+  }
   // 同じ名前の騎手が2人いないように（プレイヤーの名前とも重ならないように）
   function uniqueName(taken) { for (let i = 0; i < 200; i++) { const n = personName(); if (!taken.has(n)) { taken.add(n); return n; } } return personName(); }
   function dedupeJockeys(W) {
@@ -166,11 +170,17 @@
     W.agents = AGENTS.map((a, i) => ({ id: i, ...a }));
     // ライバル騎手（架空）
     const takenNames = new Set([opts && opts.name].filter(Boolean));
-    for (let i = 0; i < 34; i++) W.jockeys.push({ id: i, name: uniqueName(takenNames), skill: clamp(Math.round(rnd(40, 92) - (i > 20 ? 10 : 0)), 35, 95), age: ri(19, 52), wins: 0, years: {}, pop: ri(5, 60) });
-    // ライバル：同期・少し上の先輩・トップ騎手
-    const byAge = W.jockeys.slice().sort((a, b) => a.age - b.age);
-    const rookie = byAge[0]; rookie.age = 18; rookie.skill = 58; rookie.pop = 8;
-    const senior = byAge.find(j => j.age >= 24 && j.age <= 28) || byAge[3];
+    // 他の騎手は実在の騎手（2026年のJRAリーディング上位）。腕は2026年の勝率と勝利数から決める（ゲーム上の換算）
+    (window.REAL_JOCKEYS || []).forEach((rj) => {
+      if (takenNames.has(rj.n)) return; takenNames.add(rj.n);
+      W.jockeys.push(realJockey(W.jockeys.length, rj));
+    });
+    // 物語に出てくる同期と兄弟子は架空の騎手（実在の人の言葉を作らないため）
+    const rookie = { id: W.jockeys.length, name: uniqueName(takenNames), skill: 58, age: 18, wins: 0, years: {}, pop: 8, region: opts.region || '美浦', fictional: true };
+    W.jockeys.push(rookie);
+    const senior = { id: W.jockeys.length, name: uniqueName(takenNames), skill: 70, age: 26, wins: 0, years: {}, pop: 20, region: opts.region || '美浦', fictional: true };
+    W.jockeys.push(senior);
+    while (W.jockeys.length < 34) W.jockeys.push({ id: W.jockeys.length, name: uniqueName(takenNames), skill: ri(45, 70), age: ri(20, 40), wins: 0, years: {}, pop: ri(5, 30), fictional: true });
     const top = W.jockeys.slice().sort((a, b) => b.skill - a.skill)[0];
     W.rivals = [{ jid: rookie.id, kind: '同期' }, { jid: senior.id, kind: '兄弟子' }, { jid: top.id, kind: 'トップ騎手' }];
     W.rivals.forEach(r => W.player.hh[r.jid] = { w: 0, l: 0 });
@@ -815,7 +825,8 @@
         if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) { h.retired = true; if (P.bond[h.id] >= 20) news(W, `お手馬の${h.name}が引退`, 'me'); }
       });
       Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) { W.usedNames.delete(h.name); delete W.horses[h.id]; } });
-      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); if (j.age >= 58) { j.debut = W.year + 1; j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; j.pop = 3; } });
+      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); // 引退：55歳を過ぎると年ごとに引退しやすくなる（ゲーム上の決まり）。後には架空の新人が入る
+      if (j.age >= 56 && Math.random() < (j.age - 54) * 0.12 || j.age >= 63) { if (j.real) news(W, `${j.name}騎手が引退`, 'race'); j.debut = W.year + 1; j.name = uniqueName(new Set(W.jockeys.map(x => x.name).concat([W.player.name]))); j.real = false; j.fictional = true; j.age = 18; j.skill = ri(35, 55); j.years = {}; j.ys = {}; j.wins = 0; j.pop = 3; } });
     }
     prepareWeek(W);
     W.events = genEvents(W);
@@ -876,7 +887,7 @@
   // ---- セーブ ----
   // ---- セーブ ----
   // 保存先の名前（SAVE_KEY）は今後も変えない。中身の形が変わっても migrate で古いセーブを読めるようにする
-  const SAVE_VER = 4;
+  const SAVE_VER = 5;
   const BAK_KEY = SAVE_KEY + '-bak';
   const OLD_KEYS = ['jockey-life-save', 'jockey-life-save-v1'];
   let onSaved = null;
@@ -906,6 +917,18 @@
     for (const k of Object.keys(fresh)) if (o[k] === undefined) o[k] = fresh[k];
     for (const k of Object.keys(fresh.player)) if (o.player[k] === undefined) o.player[k] = fresh.player[k];
     (o.card || []).forEach((r) => { if (!r.weather) r.weather = '晴'; if (!r.ground) r.ground = '良'; if (!r.bias) r.bias = { lane: 0, pace: 0 }; });
+    // 古いセーブの架空の騎手を、実在の騎手に入れ替える（物語のライバルと、すでに引退後の新人はそのまま）
+    if ((o.saveVer || 0) < 5 && window.REAL_JOCKEYS && o.jockeys) {
+      const keep = new Set((o.rivals || []).slice(0, 2).map(r => r.jid));
+      const used = new Set(o.jockeys.filter(j => keep.has(j.id)).map(j => j.name).concat([o.player.name]));
+      const list = REAL_JOCKEYS.filter(rj => !used.has(rj.n));
+      let k = 0;
+      o.jockeys.forEach(j => { if (keep.has(j.id)) { j.fictional = true; return; } const rj = list[k++]; if (!rj) return; const nj = realJockey(j.id, rj); nj.age = (o.year || START_YEAR) - rj.b; Object.assign(j, { name: nj.name, real: true, region: nj.region, skill: nj.skill, age: nj.age, pop: nj.pop }); });
+      // 足りない分の実在の騎手を足す
+      for (; k < list.length; k++) { const nj = realJockey(o.jockeys.length, list[k]); nj.age = (o.year || START_YEAR) - list[k].b; o.jockeys.push(nj); }
+      const top = o.jockeys.slice().sort((a, b) => b.skill - a.skill)[0];
+      if (o.rivals && o.rivals[2]) { o.rivals[2].jid = top.id; o.player.hh = o.player.hh || {}; if (!o.player.hh[top.id]) o.player.hh[top.id] = { w: 0, l: 0 }; }
+    }
     dedupeJockeys(o);
     // 古い名付け方の馬名（英単語の組み合わせ）を付け直す。乗ったことのある馬・実在馬・物語の馬・GⅠ馬はそのまま
     if ((o.saveVer || 0) < 4 && window.HORSE_WORDS) {
