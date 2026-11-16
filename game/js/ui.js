@@ -781,7 +781,7 @@
     race.field.forEach((x, i) => {
       const hh = W.horses[x.hid];
       const jn = x.hid === hid ? P().name : x.jid >= 0 ? W.jockeys[x.jid].name : x.jname;
-      tb += `<tr class="${x.hid === hid ? 'me' : ''}"><td>${waku(x.waku)}</td><td>${i + 1}</td><td>${esc(hh.name)}${realTag(hh)}</td><td>${sexAge(hh)}</td><td>${esc(jn)}</td><td>${World.kinryo(W, race, hh, x.hid === hid)}</td><td class="tnum">${World.rating(hh, W.year).toFixed(1)}</td><td>${x.pop}</td><td>${x.odds}</td></tr>`;
+      tb += `<tr class="${x.hid === hid ? 'me' : ''}"><td>${waku(x.waku)}</td><td>${i + 1}</td><td>${esc(hh.name)}${realTag(hh)}</td><td>${sexAge(hh)}</td><td>${esc(jn)}${x.hid !== hid && hh.mainJ != null && hh.mainJ >= 0 && x.jid >= 0 && x.jid !== hh.mainJ && W.jockeys[hh.mainJ] ? ` <span class="badge" title="主戦は${esc(W.jockeys[hh.mainJ].name)}騎手">乗替</span>` : ''}</td><td>${World.kinryo(W, race, hh, x.hid === hid)}</td><td class="tnum">${World.rating(hh, W.year).toFixed(1)}</td><td>${x.pop}</td><td>${x.odds}</td></tr>`;
     });
     $('pad-right').innerHTML = tb + '</table>';
     $('b-ride').onclick = () => startRace(race, hid);

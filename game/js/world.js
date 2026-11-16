@@ -431,7 +431,8 @@
         // 評価が低いと人気薄、高いと人気馬に乗れる
         let sc = trust * 0.55 + ot * 0.45 + bond * 1.5 + rnd(0, 30) - Math.abs(quality * 100 - target) * 0.6;
         if (P.contract === h.owner) sc += 35;
-        if (h.mainJ != null) sc -= 18; // 別の騎手に乗り替わった馬は戻りにくい
+        if (h.mainJ === -1) sc += 15; // 自分が主戦の馬
+        else if (h.mainJ != null && (P.bond[h.id] || 0) < 10) sc -= 10; // 別の騎手が主戦の馬は依頼が来にくい
         if (race.graded === 1 && P.rep < 30 && bond < 10) sc -= 40;
         if (h.real && P.rep < 55 && bond < 10) sc -= 30;
         return { f, h, sc };
@@ -505,12 +506,24 @@
       const forced = race.forcedJ || {}, fset = new Set(Object.values(forced).map(Number));
       const js = W.jockeys.filter(j => !fset.has(j.id)).sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
       const order = race.field.slice().sort((a, b) => a.pop - b.pop);
+      // 主戦騎手：馬ごとに決まった騎手が続けて乗る。主戦が同じレースで別の馬に乗るときや、たまの乗り替わりのときだけ別の騎手
+      const taken = new Set(Object.values(forced).map(Number));
+      order.forEach(f => {
+        if (f.hid === playerHid || forced[f.hid] != null) return;
+        const h = W.horses[f.hid]; if (!h || h.foreign) return;
+        const big = (h.cls || 0) >= 5 || (h.g1 && h.g1.length);
+        if (h.mainJ != null && h.mainJ >= 0 && W.jockeys[h.mainJ] && !taken.has(h.mainJ) && Math.random() > (big ? 0.03 : 0.12)) { f.jid = h.mainJ; taken.add(h.mainJ); }
+      });
+      const pool = js.filter(j => !taken.has(j.id));
       let ji = 0;
       order.forEach(f => {
         if (f.hid === playerHid) { f.jid = -1; return; }
+        if (f.jid != null && f.jid >= 0 && taken.has(f.jid) && forced[f.hid] == null) return; // 主戦が乗る
         if (race.overseas && W.horses[f.hid].foreign) { const used = new Set(race.field.map(x => x.jname).filter(Boolean)); const fj = FOREIGN_JOCKEYS.filter(n => !used.has(n)); f.jname = fj.length ? pick(fj) : pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
         if (forced[f.hid] != null) { f.jid = +forced[f.hid]; return; }
-        const j = js[ji++ % js.length]; f.jid = j.id;
+        const j = pool[ji++ % Math.max(1, pool.length)] || js[0]; f.jid = j.id;
+        // 主戦がいない馬は、この騎手が主戦になる（主戦が別のレースや別の馬に回った一時的な乗り替わりなら、主戦は変えない）
+        const h = W.horses[f.hid]; if (h && (h.mainJ == null || (h.mainJ >= 0 && !W.jockeys[h.mainJ]))) h.mainJ = j.id;
       });
       if (W.story && W.story.rivalHorse != null) {
         const rf = race.field.find(f => f.hid === W.story.rivalHorse);
@@ -661,6 +674,8 @@
       P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + (score - 45) / 10 * charm, 0, 100);
       P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) + (score - 45) / 12 * charm, 0, 100);
       P.bond[h.id] = clamp((P.bond[h.id] || 0) + (me.pos <= 3 ? 6 : 2) + (score > 60 ? 3 : 0), 0, 100);
+      // 結果を出せば、その馬の主戦になる（負け続けると、前の主戦に戻されることもある）
+      if (me.pos <= 3 || P.bond[h.id] >= 15) h.mainJ = -1;
       // ライバルとの対戦成績
       (W.rivals || []).forEach(rv => {
         const rf = race.field.find(x => x.jid === rv.jid);
