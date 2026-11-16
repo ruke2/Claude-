@@ -489,7 +489,8 @@
   }
   function fmtTime(t) {
     if (t == null || !isFinite(t)) return '--';
-    const m = Math.floor(t / 60), s = t - m * 60;
+    // 先に0.1秒単位に丸めてから分と秒に分ける（59.97秒が「1:60.0」にならないように）
+    const d = Math.round(t * 10), m = Math.floor(d / 600), s = (d - m * 600) / 10;
     return (m > 0 ? m + ':' : '') + (m > 0 && s < 10 ? '0' : '') + s.toFixed(1);
   }
 

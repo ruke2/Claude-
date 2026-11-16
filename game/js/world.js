@@ -58,6 +58,12 @@
   }
   function foreignName() { let n; do { n = pick(FOREIGN_A) + pick(FOREIGN_B); } while (n.length > 9); return n; }
   function personName() { return pick(SURNAMES) + ' ' + pick(GIVEN); }
+  // 同じ名前の騎手が2人いないように（プレイヤーの名前とも重ならないように）
+  function uniqueName(taken) { for (let i = 0; i < 200; i++) { const n = personName(); if (!taken.has(n)) { taken.add(n); return n; } } return personName(); }
+  function dedupeJockeys(W) {
+    const taken = new Set([W.player && W.player.name].filter(Boolean));
+    (W.jockeys || []).forEach(j => { if (taken.has(j.name)) j.name = uniqueName(taken); else taken.add(j.name); });
+  }
 
   // ---- 馬 ----
   function growthFactor(h, year) {
@@ -137,7 +143,8 @@
     W.owners.forEach(o => W.player.otrust[o.id] = ri(0, 10));
     W.agents = AGENTS.map((a, i) => ({ id: i, ...a }));
     // ライバル騎手（架空）
-    for (let i = 0; i < 34; i++) W.jockeys.push({ id: i, name: personName(), skill: clamp(Math.round(rnd(40, 92) - (i > 20 ? 10 : 0)), 35, 95), age: ri(19, 52), wins: 0, years: {}, pop: ri(5, 60) });
+    const takenNames = new Set([opts && opts.name].filter(Boolean));
+    for (let i = 0; i < 34; i++) W.jockeys.push({ id: i, name: uniqueName(takenNames), skill: clamp(Math.round(rnd(40, 92) - (i > 20 ? 10 : 0)), 35, 95), age: ri(19, 52), wins: 0, years: {}, pop: ri(5, 60) });
     // ライバル：同期・少し上の先輩・トップ騎手
     const byAge = W.jockeys.slice().sort((a, b) => a.age - b.age);
     const rookie = byAge[0]; rookie.age = 18; rookie.skill = 58; rookie.pop = 8;
@@ -413,7 +420,7 @@
       let ji = 0;
       order.forEach(f => {
         if (f.hid === playerHid) { f.jid = -1; return; }
-        if (race.overseas && W.horses[f.hid].foreign) { f.jname = pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
+        if (race.overseas && W.horses[f.hid].foreign) { const used = new Set(race.field.map(x => x.jname).filter(Boolean)); const fj = FOREIGN_JOCKEYS.filter(n => !used.has(n)); f.jname = fj.length ? pick(fj) : pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
         const j = js[ji++ % js.length]; f.jid = j.id;
       });
       if (W.story && W.story.rivalHorse != null) {
@@ -780,6 +787,7 @@
     for (const k of Object.keys(fresh)) if (o[k] === undefined) o[k] = fresh[k];
     for (const k of Object.keys(fresh.player)) if (o.player[k] === undefined) o.player[k] = fresh.player[k];
     (o.card || []).forEach((r) => { if (!r.weather) r.weather = '晴'; if (!r.ground) r.ground = '良'; if (!r.bias) r.bias = { lane: 0, pace: 0 }; });
+    dedupeJockeys(o);
     o.saveVer = SAVE_VER;
     return o;
   }
