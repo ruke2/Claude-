@@ -511,7 +511,8 @@
       <div class="choices"><button class="btn primary" id="m-go">騎乗を申し出る</button><button class="btn" id="m-cancel">やめておく</button></div>`, () => {
       $('m-go').onclick = () => {
         closeModal();
-        if (Math.random() < q.contest.chance) {
+        const won = Math.random() < q.contest.chance; W.contestFails = won ? 0 : (W.contestFails || 0) + 1;
+        if (won) {
           q.contest.won = true; W.requests.forEach(o => { if (o.raceNo === q.raceNo) o.accepted = false; }); q.accepted = true;
           j.pop = Math.max(0, j.pop - 1); World.news(W, `${h.name}の鞍上は${P().name}騎手に。${j.name}騎手との争奪を制す`, 'me');
           toast(`${h.name}の騎乗を勝ち取った`);
@@ -527,7 +528,7 @@
   function pitchMenu(done) {
     const ts = World.pitchTargets(W);
     if (!ts.length) { toast('売り込める有力馬がいない'); return; }
-    modal(`<p class="small" style="margin:0 0 6px">今週の出走馬で、まだ依頼の来ていない有力馬の陣営に騎乗を申し出る（週1回）。決まれば依頼が来る。断られると、その調教師の信頼が少し下がる。</p>
+    modal(`<p class="small" style="margin:0 0 6px">今週の出走馬で、まだ依頼の来ていない有力馬の陣営に騎乗を申し出る（週1回）。決まれば依頼が来る。断られると、その調教師の信頼が少し下がる。${W.pitchFails ? `<br><b>断られた回数 ${W.pitchFails}回</b>：続けて断られるほど、次は決まりやすくなる（見込みに含めてある）` : ''}</p>
       <table><tr><th>R</th><th>馬名</th><th>人気</th><th>いまの騎手</th><th>見込み</th><th></th></tr>${ts.map(t => { const race = W.card[t.raceNo - 1], f = race.field.find(x => x.hid === t.hid), h = W.horses[t.hid]; const jn = f.jid >= 0 ? W.jockeys[f.jid].name : (f.jname || '未定'); return `<tr><td>${t.raceNo}R ${gradeTag(race)}</td><td>${esc(h.name)}${realTag(h)}</td><td>${t.pop}</td><td class="small">${esc(jn)}</td><td>${Math.round(t.chance * 100)}%</td><td><button class="btn small" data-pt="${t.hid}" data-r="${t.raceNo}">申し出る</button></td></tr>`; }).join('')}</table>
       <div class="choices"><button class="btn" id="m-cancel">やめる</button></div>`, (el) => {
       el.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { const ok = World.pitch(W, +b.dataset.r, +b.dataset.pt); closeModal(); toast(ok ? `${W.horses[+b.dataset.pt].name}の騎乗依頼が来た` : '今回は断られた'); World.save(W); done(); });

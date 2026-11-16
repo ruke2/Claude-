@@ -371,7 +371,8 @@
     const P = W.player;
     const me = P.rep * 0.9 + P.pop * 0.4 + (P.trust[h.trainer] || 0) * 0.5 + (P.otrust[h.owner] || 0) * 0.3 + (P.bond[h.id] || 0) * 0.8 + (P.agent != null ? W.agents[P.agent].net * 4 : 0);
     const them = j.skill * 0.9 + j.pop * 0.5 + 15;
-    return clamp(0.5 + (me - them) / 120, 0.08, 0.92);
+    // 続けて負けているほど少しずつ上がる（運の偏りで何度も外れ続けないように。ゲーム上の補正）
+    return clamp(0.5 + (me - them) / 120 + 0.07 * (W.contestFails || 0), 0.08, 0.92);
   }
   // 依頼を断ったとき・取り合いに負けたときの後始末。その馬には別の騎手が乗る
   function giveRide(W, race, hid, jid, why) {
@@ -395,13 +396,14 @@
     const out = [];
     W.card.forEach(race => race.field.forEach(f => { const h = W.horses[f.hid]; if (!have.has(h.id) && f.pop <= 4) out.push({ race, f, h }); }));
     return out.sort((a, b) => (b.race.graded ? 4 - b.race.graded : 0) * 3 - (a.race.graded ? 4 - a.race.graded : 0) * 3 + a.f.pop - b.f.pop).slice(0, 6)
-      .map(o => ({ raceNo: o.race.no, hid: o.h.id, pop: o.f.pop, chance: clamp(0.03 + P.rep / 220 + (P.trust[o.h.trainer] || 0) / 300 + (P.otrust[o.h.owner] || 0) / 400 - (o.race.graded === 1 ? 0.1 : 0) - o.f.pop * 0.02, 0.04, 0.6) }));
+      .map(o => ({ raceNo: o.race.no, hid: o.h.id, pop: o.f.pop, chance: clamp(0.03 + P.rep / 220 + (P.trust[o.h.trainer] || 0) / 300 + (P.otrust[o.h.owner] || 0) / 400 - (o.race.graded === 1 ? 0.1 : 0) - o.f.pop * 0.02 + 0.06 * (W.pitchFails || 0), 0.04, 0.75) }));
   }
   function pitch(W, raceNo, hid) {
     const P = W.player, race = W.card[raceNo - 1], h = W.horses[hid];
     const t = pitchTargets(W).find(x => x.hid === hid);
     W.pitchUsed = W.wk;
-    if (!t || Math.random() > t.chance) { P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) - 1, 0, 100); return false; }
+    if (!t || Math.random() > t.chance) { P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) - 1, 0, 100); W.pitchFails = (W.pitchFails || 0) + 1; return false; }
+    W.pitchFails = 0;
     const f = race.field.find(x => x.hid === hid);
     const kin = kinryo(W, race, h, true);
     W.requests.push({ raceNo, hid, trainer: h.trainer, owner: h.owner, pop: f.pop, odds: f.odds, kin, okWeight: canMakeWeight(P, kin), accepted: false, bondHorse: (P.bond[hid] || 0) > 0, pitched: true });
