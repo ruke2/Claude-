@@ -334,8 +334,118 @@
     bindSchedule(pane);
     $('b-day').onclick = () => {
       if (!W.isOverseas) { W.booked = {}; W.requests.filter(q => q.accepted).forEach(q => W.booked[q.raceNo] = q.hid); }
-      W.dayIdx = W.dayIdx || 0; World.save(W); showDay();
+      W.dayIdx = W.dayIdx || 0; World.save(W);
+      bigRaceEvents(() => showDay());
     };
+  }
+  // ---------- 大レースの前：公開枠順抽選会と共同記者会見 ----------
+  // 有馬記念の公開枠順抽選会は、馬名の入ったボールを1つずつ引き、呼ばれた馬の関係者が馬番のボールを引く方式（2023年の報道による）
+  function bigRaceEvents(done) {
+    const list = W.card.filter(r => W.booked[r.no] && (r.graded === 1 || r.overseas) && !r.pressDone);
+    if (!list.length) return done();
+    const race = list[0];
+    const next = () => { race.pressDone = true; World.save(W); bigRaceEvents(done); };
+    if (/有馬記念/.test(race.name) && !race.drawDone) drawCeremony(race, () => pressConference(race, next));
+    else pressConference(race, next);
+  }
+  function drawCeremony(race, done) {
+    const n = race.field.length, hid = W.booked[race.no];
+    const order = race.field.map((f, i) => i).sort(() => Math.random() - 0.5); // 馬名のボールを引く順
+    const balls = Array.from({ length: n }, (_, i) => i + 1);                    // 馬番のボール
+    const got = {}; let k = 0, timer = 0, fast = false, waiting = false;
+    const nameOf = (f) => W.horses[f.hid].name;
+    const wakuOfNum = (num) => wakuOf(num, n);
+    const render = (msg) => {
+      const rows = Array.from({ length: n }, (_, i) => i + 1).map(num => {
+        const f = Object.keys(got).map(Number).find(j => got[j] === num);
+        const fl = f != null ? race.field[f] : null;
+        return `<tr class="${fl && fl.hid === hid ? 'me' : ''}"><td>${waku(wakuOfNum(num))}</td><td><b>${num}</b></td><td>${fl ? esc(nameOf(fl)) : '<span class="muted">—</span>'}</td></tr>`;
+      }).join('');
+      const pick = waiting ? `<div class="small" style="margin:6px 0 4px"><b>あなたの番。</b>ポットから好きなボールを1つ引く。</div><div class="row wrap" style="gap:6px">${balls.map((b, i) => `<button class="btn" data-ball="${i}" style="width:44px;height:44px;border-radius:50%;padding:0">？</button>`).join('')}</div>` : '';
+      modal(`<div class="cols" style="grid-template-columns:1fr 1.1fr;gap:10px;padding:0"><div><p class="small muted" style="margin:0 0 6px">馬名の入ったボールを1つずつ引き、呼ばれた馬の関係者が登壇して馬番のボールを引く。</p>
+        <div class="card" style="text-align:center;min-height:64px"><div class="small muted">${k}/${n}頭</div><div style="font-family:var(--serif);font-weight:900;font-size:18px;line-height:1.4">${msg || ''}</div></div>${pick}
+        ${!waiting && k < n ? `<button class="btn ghost small" id="dc-fast">${fast ? '早送り中…' : '早送り'}</button>` : ''}${k >= n ? '<button class="btn primary" id="dc-ok" style="width:100%;margin-top:6px">枠順確定</button>' : ''}</div>
+        <div class="scroll" style="max-height:58vh"><table><tr><th>枠</th><th>番</th><th>馬名</th></tr>${rows}</table></div></div>`, (el) => {
+        el.querySelectorAll('[data-ball]').forEach(b => b.onclick = () => { const i = +b.dataset.ball; const num = balls.splice(i, 1)[0]; got[order[k]] = num; waiting = false; k++; render(`${esc(nameOf(race.field[order[k - 1]]))}<br>${num}番（${wakuOfNum(num)}枠）`); Sound.init(); setTimeout(step, 1400); });
+        const fb = $('dc-fast'); if (fb) fb.onclick = () => { fast = true; clearTimeout(timer); step(); };
+        const ok = $('dc-ok'); if (ok) ok.onclick = finish;
+      }, `${race.name}　公開枠順抽選会`);
+    };
+    const step = () => {
+      clearTimeout(timer);
+      if (k >= n) return render('すべての枠順が決まった');
+      const f = race.field[order[k]];
+      if (f.hid === hid) { waiting = true; return render(`${esc(nameOf(f))}<br><span class="small">（あなたの騎乗馬）</span>`); }
+      const num = balls.splice(Math.floor(Math.random() * balls.length), 1)[0];
+      got[order[k]] = num; k++;
+      render(`${esc(nameOf(f))}<br>${num}番（${wakuOfNum(num)}枠）`);
+      timer = setTimeout(step, fast ? 120 : 1100);
+    };
+    const finish = () => {
+      clearTimeout(timer);
+      const nf = []; race.field.forEach((f, i) => { nf[got[i] - 1] = f; });
+      race.field = nf; race.drawDone = true; nf.forEach((f, i) => { if (f.waku) f.waku = wakuOf(i + 1, n); });
+      const myNum = nf.findIndex(f => f.hid === hid) + 1;
+      World.news(W, `${race.name}の枠順が決定。${P().name}騎手の${W.horses[hid].name}は${wakuOfNum(myNum)}枠${myNum}番`, 'me');
+      race.myDraw = { num: myNum, waku: wakuOfNum(myNum), n };
+      closeModal(); World.save(W); done();
+    };
+    render('抽選を始める'); timer = setTimeout(step, 900);
+  }
+  function pressConference(race, done) {
+    const hid = W.booked[race.no], h = W.horses[hid], f = race.field.find(x => x.hid === hid) || {};
+    if (f.pop == null) World.estimateOdds(W, race);
+    const pop = f.pop, isPartner = W.story && W.story.partner === hid;
+    const rivalJ = W.rivals && W.rivals[0] ? W.jockeys[W.rivals[0].jid] : null;
+    const Q = [];
+    Q.push(pop === 1 ? { q: `${h.name}は1番人気が予想されています。プレッシャーは？`, kind: 'fav' } : pop <= 3 ? { q: `上位人気の一角です。${h.name}の状態はいかがですか？`, kind: 'cond' } : { q: `${pop}番人気前後の評価です。ここから巻き返す手応えは？`, kind: 'dark' });
+    if (race.myDraw) Q.push({ q: `${race.myDraw.waku}枠${race.myDraw.num}番を引きました。この枠をどう見ますか？`, kind: 'draw', good: race.myDraw.num <= Math.ceil(race.myDraw.n / 2) });
+    else if (race.overseas) Q.push({ q: `${VENUES[race.venue].country}での大一番です。遠征の手応えは？`, kind: 'abroad' });
+    else if (race.ground && race.ground !== '良') Q.push({ q: `馬場は${race.ground}の見込みです。影響は？`, kind: 'ground' });
+    else Q.push({ q: `${VENUES[race.venue].name}の${SURF[race.surf]}${race.dist}mはこの馬に合いますか？`, kind: 'course' });
+    if (isPartner) Q.push({ q: `デビュー前から主戦を務める${h.name}。特別な思いはありますか？`, kind: 'partner' });
+    else if (rivalJ) Q.push({ q: `同期の${rivalJ.name}騎手も出走予定です。意識しますか？`, kind: 'rival' });
+    else Q.push({ q: 'ファンにひと言お願いします。', kind: 'fans' });
+    const A = [
+      ['強気', (q) => q.kind === 'fav' ? '負けられない一戦。勝つ競馬をするだけです' : q.kind === 'draw' ? (q.good ? '最高の枠です。もう勝ったつもりでいます' : '枠は関係ない。力でねじ伏せます') : q.kind === 'rival' ? 'もちろん。今回はきっちり先着します' : '勝ちに行きます。見ていてください', { pop: 1.6, young: 60 }],
+      ['謙虚', (q) => q.kind === 'fav' ? '評価していただいて光栄です。馬の力を信じて乗ります' : q.kind === 'draw' ? '与えられた枠で、馬にとって一番いい競馬を考えます' : q.kind === 'partner' ? 'この馬に育ててもらいました。恩返しがしたいです' : '厩舎の皆さんが仕上げてくれました。あとは自分次第です', { rep: 0.6, core: 50, trust: 2 }],
+      ['冗談まじり', (q) => q.kind === 'fav' ? '昨日は緊張で3時間しか眠れませんでした（笑）' : q.kind === 'rival' ? '向こうが勝手に意識してるんでしょう（笑）' : '馬の方が落ち着いてます。僕が一番そわそわしてます（笑）', { pop: 0.8, women: 70, cond: 2 }],
+    ];
+    const ans = [];
+    const ask = (i) => {
+      if (i >= Q.length) {
+        const tone = ans.filter(a => a === 0).length >= 2 ? 'bold' : ans.filter(a => a === 1).length >= 2 ? 'humble' : 'mixed';
+        race.press = { tone };
+        const quote = A[ans[0]][1](Q[0]);
+        World.news(W, `${race.name}共同会見　${P().name}騎手「${quote}」`, 'me');
+        World.save(W);
+        return modal(`<p>会見が終わった。${tone === 'bold' ? '強気な発言が見出しになりそうだ。勝てば評判が上がるが、負ければ叩かれるかもしれない。' : tone === 'humble' ? '落ち着いた受け答えで、関係者の印象はよさそうだ。' : 'いつも通りの受け答えができた。'}</p><div class="choices"><button class="btn primary" id="m-ok">開催日へ</button></div>`, () => { $('m-ok').onclick = () => { closeModal(); done(); }; }, `${race.name}　共同記者会見`);
+      }
+      const q = Q[i];
+      modal(`<div class="small muted" style="margin-bottom:4px">${race.overseas ? '現地での会見' : '共同記者会見'}・${esc(h.name)}（${pop}番人気想定）</div><div class="speaker">記者</div><p style="font-family:var(--serif);font-size:15px;line-height:1.7;margin:2px 0 8px">${esc(q.q)}</p>
+        <div class="choices" style="flex-direction:column;align-items:stretch">${A.map((a, k) => `<button class="btn ${k ? '' : 'primary'}" data-pa="${k}" style="text-align:left"><b>${a[0]}</b>　「${esc(a[1](q))}」</button>`).join('')}</div>`, (el) => {
+        el.querySelectorAll('[data-pa]').forEach(b => b.onclick = () => {
+          const k = +b.dataset.pa, e = A[k][2], p = P(); ans.push(k);
+          if (e.pop) p.pop = clamp(p.pop + e.pop / Q.length, 0, 100);
+          if (e.rep) p.rep = clamp(p.rep + e.rep / Q.length, 0, 100);
+          if (e.cond) p.cond = clamp(p.cond + e.cond, 0, 100);
+          if (e.trust && h.trainer != null) p.trust[h.trainer] = clamp((p.trust[h.trainer] || 0) + e.trust, 0, 100);
+          ['young', 'core', 'women'].forEach(sg => { if (e[sg]) Progress.addFans(W, sg, e[sg] / Q.length); });
+          ask(i + 1);
+        });
+      }, `${race.name}　共同記者会見　${i + 1} / ${Q.length}`);
+    };
+    ask(0);
+  }
+  // 会見の発言と結果
+  function pressAftermath(race, ev) {
+    if (!race.press || race.press.done) return;
+    race.press.done = true;
+    const p = P();
+    if (race.press.tone === 'bold') {
+      if (ev.pos === 1) { p.pop = clamp(p.pop + 2, 0, 100); World.news(W, `有言実行。${p.name}騎手が宣言どおり${race.name}を制す`, 'me'); }
+      else if (ev.pos >= 6) { p.rep = clamp(p.rep - 0.8, 0, 100); World.news(W, `強気発言の${p.name}騎手、${race.name}は${ev.pos}着に沈む`, 'bad'); }
+    } else if (race.press.tone === 'humble' && ev.pos <= 3) p.rep = clamp(p.rep + 0.4, 0, 100);
   }
   // 平日の予定：チェックボックスで3つ選ぶ
   function scheduleHtml() {
@@ -596,6 +706,7 @@
       const res = r.runToEnd();
       race.laps = r.laps(); race.my3F = null;
       const ev = World.applyResult(W, race, res, hid, 'auto', null);
+      if (!quick) pressAftermath(race, ev);
       if (!quick) logRide(race, hid, ev, 'auto');
       showResult(race, hid, ev);
     };
@@ -919,6 +1030,7 @@
     const me = res.find(x => x.runner === engine.player);
     curRace.my3F = engine.player3F ? me.time - engine.player3F : null;
     const ev = World.applyResult(W, curRace, res, curHid, mode, engine.inquiry);
+    if (!quick) pressAftermath(curRace, ev);
     if (!quick) logRide(curRace, curHid, ev, mode);
     showResult(curRace, curHid, ev);
   }

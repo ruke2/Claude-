@@ -406,7 +406,7 @@
     const P = W.player;
     if (!race.field[0].waku) {
       const n = race.field.length;
-      race.field.forEach((f, i) => { f.waku = Math.min(8, Math.ceil((i + 1) / Math.max(1, n / 8))); });
+      race.field.forEach((f, i) => { f.waku = wakuOf(i + 1, n); });
       if (race.field[0].pop == null) estimateOdds(W, race);
       const js = W.jockeys.slice().sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
       const order = race.field.slice().sort((a, b) => a.pop - b.pop);

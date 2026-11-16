@@ -123,6 +123,8 @@ window.FOREIGN_JOCKEYS = ['R.ムーアズ','W.ブラウン','L.デュポン','M.
 window.SILKS = ['#d32f2f','#1976d2','#388e3c','#fbc02d','#7b1fa2','#f57c00','#0097a7','#c2185b','#5d4037','#455a64','#e64a19','#303f9f','#689f38','#ffffff','#212121','#00796b'];
 // 枠色（1〜8枠）
 window.WAKU_COLORS = ['#ffffff','#222222','#e53935','#1e88e5','#fdd835','#43a047','#fb8c00','#ec407a'];
+// 馬番から枠番を出す。9頭以上では、外の枠から順に2頭（さらに多ければ3頭）入る（例：12頭なら5〜8枠が2頭ずつ、18頭なら7・8枠が3頭ずつ）
+window.wakuOf = function (num, n) { if (n <= 8) return num; const base = Math.floor(n / 8), extra = n % 8; let k = 0; for (let w = 1; w <= 8; w++) { k += base + (w > 8 - extra ? 1 : 0); if (num <= k) return w; } return 8; };
 
 // 馬主（架空）。勝負服は JRA の勝負服の柄の考え方（輪・縦縞・山形・襷・菱など）を参考にした架空のデザイン
 window.OWNERS = [

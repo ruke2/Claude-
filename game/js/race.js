@@ -219,7 +219,7 @@
         }
         let latWant = 0; const k0 = curvAt(this.course, this.pAt(r.s));
         if (r.finished) { r.effort = 0.1; latWant = 0; }
-        else if (r.auto) { this.ai(r, rem, dt); const lm = k0 > 0 ? 0.9 : rem < 700 ? 0.45 : 0.7; latWant = clamp((r.tx - r.X) * 1.2, -lm, lm); }
+        else if (r.auto) { this.ai(r, rem, dt); const lm = r.s < 450 ? 0.9 : k0 > 0 ? 0.55 : rem < 700 ? 0.6 : 0.6; latWant = clamp((r.tx - r.X) * 1.4, -lm, lm); }
         else {
           const inp = this.input;
           // 手綱の加減（0〜1）をそのまま馬への指示にする。急には変わらず、少しずつ伝わる
@@ -370,41 +370,73 @@
         if (r.kakari > 0.4) e = Math.max(e, 0.55);
         r.effort = e;
       }
+      // 外から内へ入りたいのに、すぐ内に馬が並んでいる：先行型は脚を使って前に出てから、差し・追込型は少し下げて後ろから入る
+      if (r.inBlocked && !(rem < r.spurtAt) && r.s < 700) r.effort = r.style <= 1 ? Math.max(r.effort, 0.85) : Math.min(r.effort, 0.3);
       if (r.think > 0) return;
-      r.think = 0.4 + Math.random() * 0.3;
-      const W = this.course.width;
-      const clear = (x) => {
-        let best = 40;
-        for (const o of this.runners) {
-          if (o === r) continue;
-          const ds = o.s - r.s, dx = Math.abs(o.X - x);
-          if (dx < 1.0) {
-            if (ds > -4.5 && ds < 2.6 && Math.abs(x - r.X) > 0.3) return -1;
-            if (ds > 0 && ds < best) best = ds;
-          }
+      r.think = 0.25 + Math.random() * 0.2;
+      this.chooseLane(r, rem);
+    }
+
+    // ---- 進路の選び方（CP） ----
+    //  序盤：内ラチ沿いを目指して、並んでいる馬の前か後ろから内へ寄る
+    //  道中：内が空けば内へ。前の馬の後ろについて風よけにする（差し・追込）
+    //  直線：前が詰まっていれば、空いている所へ外へ持ち出す。空いていればまっすぐ
+    chooseLane(r, rem) {
+      const W = this.course.width, R = this.runners;
+      const lane = (x) => {
+        let ahead = 60, side = false;
+        for (const o of R) {
+          if (o === r || o.finished) continue;
+          if (Math.abs(o.X - x) >= 1.0) continue;
+          const ds = o.s - r.s;
+          if (ds > -2.7 && ds < 2.7 && Math.abs(x - r.X) > 0.25) side = true; // 移りたい進路の真横に馬がいる
+          if (ds >= 2.7 && ds < ahead) ahead = ds;
         }
-        return best;
+        return { ahead, side };
       };
       const k = curvAt(this.course, this.pAt(r.s));
-      const late = rem < 750;
-      const straight = !(k > 0);
-      // 直線では、前が詰まった時だけ進路を変える（まっすぐ走らせる）。横に馬がいる側へは寄らない
-      const here = clear(r.X);
-      const goOut = late && straight && (this.bias.lane || 0) < -0.35 && r.X < 5; // 外が伸びる馬場では外へ持ち出す
-      if (late && straight && here > 9 && !goOut) { r.tx = r.X; return; }
-      const cands = (late && straight ? [r.X, r.X - 1.1, r.X + 1.1] : [r.X - 1.2, r.X, r.X + 1.2, r.X + 2.4]).filter(x => x > 0.6 && x < W - 0.6);
-      let bestX = r.X, bestScore = -1e9;
-      const lane = this.bias.lane || 0;
-      for (const x of cands) {
-        const c = clear(x);
-        if (c < 0) continue;
-        let score = Math.min(c, late ? 30 : 12) * (late ? 1.4 : 0.6);
-        score -= (x - 0.8) * (k > 0 ? 1.6 : late ? 0.1 + 0.5 * Math.max(0, lane) : 0.7);
-        if (late && straight && lane < 0) score += -lane * Math.min(x, 6) * 3; // 外が伸びる馬場なら外へ
-        if (x === r.X) score += late && straight ? 4 : 0.5; // 今の進路を優先
-        if (score > bestScore) { bestScore = score; bestX = x; }
+      const corner = k > 0;
+      const spurt = rem < r.spurtAt * (r.st < 0.35 ? 0.7 : 1);
+      const late = rem < 700;
+      const here = lane(r.X);
+      const lb = this.bias.lane || 0;
+      let tx = r.X;
+      r.inBlocked = false;
+      if (late && !corner && spurt) {
+        // 直線の追い比べ：前が8m以内に詰まっていたら、近い順に外（または内）の空いた進路を探す
+        const wantOut = lb < -0.35 && r.X < 5;
+        if (here.ahead < 8 || wantOut) {
+          let best = null;
+          for (const d of [1.1, -1.1, 2.2, 3.3, -2.2, 4.4]) {
+            const x = r.X + d; if (x < 0.7 || x > W - 0.7) continue;
+            const L = lane(x); if (L.side) continue;
+            const sc = Math.min(L.ahead, 30) - Math.abs(d) * 1.5 + (wantOut && d > 0 ? 8 : 0) + (lb > 0.35 && d < 0 ? 4 : 0);
+            if (L.ahead >= 12 && (!best || sc > best.sc)) best = { x, sc };
+          }
+          if (best) tx = best.x;
+        }
+      } else {
+        // 内へ寄せる：1頭分内が空いていれば寄る。内に並ばれていたら、前後どちらかへずれてから入る
+        // 道中に通りたい進路（1頭目＝内ラチ沿い・2頭目・3頭目）。外枠ほど外を回りやすい。コーナーでは1頭分内を狙う
+        if (r.pref == null) { const u = Math.random() + (r.num / R.length - 0.5) * 0.35; r.pref = u < 0.45 ? 0 : u < 0.8 ? 1 : 2; }
+        const floor = 0.8 + 1.05 * Math.max(0, r.pref - (corner ? 1 : 0));
+        const xin = Math.max(floor, r.X - 1.05);
+        if (r.X > xin + 0.3) {
+          const L = lane(xin);
+          const roomAhead = L.ahead >= (r.s < 400 ? 2.7 : 4);
+          if (!L.side && roomAhead) tx = xin;
+          else if (L.side) r.inBlocked = true;
+        }
+        // 前の馬にふさがれて抑えすぎになる先行・逃げ馬は、外へ1頭分出して前へ
+        if (!late && r.style <= 1 && here.ahead < 3.5 && r.s > 250) {
+          const L = lane(r.X + 1.05); if (!L.side && L.ahead > 8) tx = r.X + 1.05;
+        }
+        // 直線の手前（4コーナー）から、差し・追込で前が壁なら早めに外へ
+        if (late && corner && spurt && r.style >= 2 && here.ahead < 6) {
+          const L = lane(r.X + 1.05); if (!L.side) tx = r.X + 1.05;
+        }
       }
-      r.tx = bestX;
+      r.tx = Math.max(0.7, Math.min(W - 0.7, tx));
     }
 
     runToEnd() { let g = 0; while (!this.done && g++ < 40000) this.step(1 / 15); return this.results(); }
