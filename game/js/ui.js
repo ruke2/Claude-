@@ -307,7 +307,7 @@
       if (!n) L += `<p class="muted">今週の依頼はない。</p>`;
       L += `<div class="ctrack" id="reqs">${W.requests.map((q, i) => {
         const race = W.card[q.raceNo - 1], h = W.horses[q.hid], t = W.trainers[h.trainer], o = W.owners[h.owner];
-        const tags = [q.story ? '<span class="badge gold">相棒</span>' : q.bondHorse ? '<span class="badge gold">お手馬</span>' : '', p.contract === h.owner ? '<span class="badge green">主戦</span>' : '', q.viaAgent ? '<span class="badge">仲介</span>' : '', !q.okWeight ? '<span class="badge warn">斤量オーバー</span>' : ''].join(' ');
+        const tags = [q.story ? '<span class="badge gold">相棒</span>' : q.bondHorse ? '<span class="badge gold">お手馬</span>' : '', p.contract === h.owner ? '<span class="badge green">主戦</span>' : '', q.viaAgent ? '<span class="badge">仲介</span>' : '', q.clash ? '<span class="badge warn">2頭から依頼</span>' : '', q.pitched ? '<span class="badge green">売り込み</span>' : '', q.contest && !q.contest.won ? `<span class="badge warn">争奪：${esc(W.jockeys[q.contest.jid].name)}騎手（見込み${Math.round(q.contest.chance * 100)}%）</span>` : '', q.contest && q.contest.won ? '<span class="badge green">騎乗を勝ち取った</span>' : '', !q.okWeight ? '<span class="badge warn">斤量オーバー</span>' : ''].join(' ');
         return `<div class="reqcard ${q.accepted ? 'on' : ''} ${q.okWeight ? '' : 'ng'}" data-i="${i}"><span class="ck">✓</span>
           <div class="row"><span class="rno">${q.raceNo}R</span>${gradeTag(race)}<span class="small muted">${raceCond(race)}</span></div>
           <div class="small" style="margin-top:2px">${esc(race.name)}</div>
@@ -317,6 +317,7 @@
           <div class="small muted" style="margin-top:2px">${esc(t.name)}・${silkChip(o)} ${esc(o.name)}</div>
           <div style="margin-top:3px">${tags}</div></div>`;
       }).join('')}</div>
+      ${W.pitchUsed !== W.wk ? '<button class="btn small" id="b-pitch" style="margin-top:6px">有力馬に売り込む（今週1回）</button>' : '<div class="small muted" style="margin-top:6px">今週の売り込みは済んだ</div>'}
       ${n > 2 ? `<div class="cnav"><button class="cbtnn" id="c-prev" aria-label="前へ">‹</button>${W.requests.map((_, i) => `<span class="cdot" data-d="${i}"></span>`).join('')}<button class="cbtnn" id="c-next" aria-label="次へ">›</button></div>` : ''}`;
       (W.offers || []).forEach((o, i) => {
         const h = W.horses[o.hid];
@@ -333,14 +334,19 @@
       <div class="card" style="margin-bottom:8px">${scheduleHtml()}</div>
       <button class="btn primary" style="width:100%;padding:11px" id="b-day">開催日へ進む（${n}鞍に騎乗）</button>
     </div></div>`;
+    const rerender = () => { const sc = $('reqs') ? $('reqs').scrollLeft : 0; showWeek(); if ($('reqs')) $('reqs').scrollLeft = sc; };
     pane.querySelectorAll('.reqcard').forEach(el => el.onclick = () => {
       const q = W.requests[+el.dataset.i];
       if (!q.okWeight) { toast('斤量オーバーで受けられない'); return; }
+      // 同じレースの2頭から依頼：比べて選ぶ
+      if (!q.accepted && q.clash && W.requests.filter(o => o.raceNo === q.raceNo).length > 1) return chooseRide(q.raceNo, rerender);
+      if (!q.accepted && q.contest && !q.contest.won) return contestRide(q, rerender);
       const on = !q.accepted;
       W.requests.forEach(o => { if (o.raceNo === q.raceNo) o.accepted = false; });
       q.accepted = on;
-      const sc = $('reqs').scrollLeft; showWeek(); if ($('reqs')) $('reqs').scrollLeft = sc;
+      rerender();
     });
+    if ($('b-pitch')) $('b-pitch').onclick = () => pitchMenu(rerender);
     // カルーセル
     const tr = $('reqs');
     if (tr && $('c-prev')) {
@@ -354,7 +360,11 @@
     pane.querySelectorAll('[data-od]').forEach(b => b.onclick = () => { W.offers.splice(+b.dataset.od, 1); showWeek(); });
     bindSchedule(pane);
     $('b-day').onclick = () => {
-      if (!W.isOverseas) { W.booked = {}; W.requests.filter(q => q.accepted).forEach(q => W.booked[q.raceNo] = q.hid); }
+      if (!W.isOverseas) {
+        W.booked = {}; W.requests.filter(q => q.accepted).forEach(q => W.booked[q.raceNo] = q.hid);
+        // 2頭から依頼が来ていたレースで、選ばなかった馬（どちらも選ばなければ両方）の陣営には断りを入れる
+        W.requests.filter(q => q.clash && !q.accepted && !q.declined).forEach(q => { q.declined = true; World.declineRide(W, W.card[q.raceNo - 1], q); });
+      }
       W.dayIdx = W.dayIdx || 0; World.save(W);
       bigRaceEvents(() => showDay());
     };
@@ -467,6 +477,58 @@
       if (ev.pos === 1) { p.pop = clamp(p.pop + 2, 0, 100); World.news(W, `有言実行。${p.name}騎手が宣言どおり${race.name}を制す`, 'me'); }
       else if (ev.pos >= 6) { p.rep = clamp(p.rep - 0.8, 0, 100); World.news(W, `強気発言の${p.name}騎手、${race.name}は${ev.pos}着に沈む`, 'bad'); }
     } else if (race.press.tone === 'humble' && ev.pos <= 3) p.rep = clamp(p.rep + 0.4, 0, 100);
+  }
+  // ---------- 騎乗依頼の選択・取り合い・売り込み ----------
+  function chooseRide(raceNo, done) {
+    const race = W.card[raceNo - 1], qs = W.requests.filter(o => o.raceNo === raceNo);
+    const p = P();
+    const col = (q) => {
+      const h = W.horses[q.hid], t = W.trainers[h.trainer], o = W.owners[h.owner];
+      return `<div class="card" style="margin:0"><div class="hn" style="font-family:var(--serif);font-weight:900;font-size:17px">${esc(h.name)}${realTag(h)}</div>
+        <div class="small muted">${sexAge(h)}・${STYLE[h.style]}・斤量${q.kin}kg</div>
+        <div class="kv"><span>人気（想定）</span><b>${q.pop}番人気・${q.odds}倍</b></div>
+        <div class="kv"><span>総合点</span><b class="tnum">${World.rating(h, W.year).toFixed(1)}</b></div>
+        <div class="kv"><span>これまでの相性 ${tip('一緒に走った経験。高いほど馬の癖を知っていて、陣営からの信頼もある')}</span><b class="tnum">${Math.round(p.bond[h.id] || 0)}</b></div>
+        <div class="kv"><span>${esc(t.name)}の信頼</span><b class="tnum">${Math.round(p.trust[h.trainer] || 0)}</b></div>
+        <div class="kv"><span>馬主</span><b class="small">${silkChip(o)} ${esc(o.name)}${p.contract === h.owner ? ' <span class="badge green">主戦</span>' : ''}</b></div>
+        <button class="btn primary" style="width:100%;margin-top:6px" data-pick="${q.hid}">${esc(h.name)}に乗る</button></div>`;
+    };
+    modal(`<p class="small" style="margin:0 0 6px">${race.no}R ${esc(race.name)}（${raceCond(race)}）で、これまで乗ってきた馬の両方から依頼が来た。選ばなかった陣営からの信頼は下がり、その馬には別の騎手が乗る。</p>
+      <div class="cols" style="grid-template-columns:repeat(${qs.length},1fr);gap:8px;padding:0">${qs.map(col).join('')}</div>
+      <div class="choices"><button class="btn" id="m-cancel">あとで決める</button></div>`, (el) => {
+      el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { const hid = +b.dataset.pick; qs.forEach(q => { q.accepted = q.hid === hid; }); closeModal(); toast(`${W.horses[hid].name}に乗ると決めた`); done(); });
+      $('m-cancel').onclick = closeModal;
+    }, 'どちらに乗るか');
+  }
+  function contestRide(q, done) {
+    const h = W.horses[q.hid], j = W.jockeys[q.contest.jid], race = W.card[q.raceNo - 1];
+    modal(`<p>${esc(h.name)}（${race.no}R ${esc(race.name)}）の騎乗は、${esc(j.name)}騎手と取り合いになっている。陣営が決めるまで結果は分からない。</p>
+      <div class="kv"><span>自分に決まる見込み ${tip('評価・人気・陣営の信頼・この馬との相性と、相手騎手の腕と人気で決まる')}</span><b>${Math.round(q.contest.chance * 100)}%</b></div>
+      <div class="choices"><button class="btn primary" id="m-go">騎乗を申し出る</button><button class="btn" id="m-cancel">やめておく</button></div>`, () => {
+      $('m-go').onclick = () => {
+        closeModal();
+        if (Math.random() < q.contest.chance) {
+          q.contest.won = true; W.requests.forEach(o => { if (o.raceNo === q.raceNo) o.accepted = false; }); q.accepted = true;
+          j.pop = Math.max(0, j.pop - 1); World.news(W, `${h.name}の鞍上は${P().name}騎手に。${j.name}騎手との争奪を制す`, 'me');
+          toast(`${h.name}の騎乗を勝ち取った`);
+        } else {
+          W.requests.splice(W.requests.indexOf(q), 1); World.giveRide(W, race, h.id, j.id, '（争奪の末）');
+          toast(`${h.name}は${j.name}騎手に決まった`);
+        }
+        World.save(W); done();
+      };
+      $('m-cancel').onclick = closeModal;
+    }, '騎乗の争奪');
+  }
+  function pitchMenu(done) {
+    const ts = World.pitchTargets(W);
+    if (!ts.length) { toast('売り込める有力馬がいない'); return; }
+    modal(`<p class="small" style="margin:0 0 6px">今週の出走馬で、まだ依頼の来ていない有力馬の陣営に騎乗を申し出る（週1回）。決まれば依頼が来る。断られると、その調教師の信頼が少し下がる。</p>
+      <table><tr><th>R</th><th>馬名</th><th>人気</th><th>いまの騎手</th><th>見込み</th><th></th></tr>${ts.map(t => { const race = W.card[t.raceNo - 1], f = race.field.find(x => x.hid === t.hid), h = W.horses[t.hid]; const jn = f.jid >= 0 ? W.jockeys[f.jid].name : (f.jname || '未定'); return `<tr><td>${t.raceNo}R ${gradeTag(race)}</td><td>${esc(h.name)}${realTag(h)}</td><td>${t.pop}</td><td class="small">${esc(jn)}</td><td>${Math.round(t.chance * 100)}%</td><td><button class="btn small" data-pt="${t.hid}" data-r="${t.raceNo}">申し出る</button></td></tr>`; }).join('')}</table>
+      <div class="choices"><button class="btn" id="m-cancel">やめる</button></div>`, (el) => {
+      el.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { const ok = World.pitch(W, +b.dataset.r, +b.dataset.pt); closeModal(); toast(ok ? `${W.horses[+b.dataset.pt].name}の騎乗依頼が来た` : '今回は断られた'); World.save(W); done(); });
+      $('m-cancel').onclick = closeModal;
+    }, '有力馬への売り込み');
   }
   // 平日の予定：チェックボックスで3つ選ぶ
   function scheduleHtml() {
@@ -699,7 +761,7 @@
     if (h.real) src = `<div class="small muted" style="margin-top:6px">2026年GⅠ：${h.runs2026.map(r => `${esc(r[0])} ${r[1]}着`).join(' / ')}<br>出典：${h.src.map(u => `<a href="${u}" target="_blank" rel="noopener" style="color:var(--green)">JRA</a>`).join(' ')}</div>`;
     $('pad-left').innerHTML = `<div class="card" style="margin-top:8px">
       <div class="row">${waku(f.waku)}<span class="small muted">${race.field.indexOf(f) + 1}番</span><div class="grow"></div>${realTag(h)}</div>
-      <div style="font-family:var(--serif);font-size:21px;font-weight:900;margin:2px 0">${esc(h.name)}</div>
+      <div style="font-family:var(--serif);font-size:21px;font-weight:900;margin:2px 0">${esc(h.name)}</div>${h.nameMean ? `<div class="small muted">馬名の意味：${esc(h.nameMean)}</div>` : ''}
       <div class="small muted">${sexAge(h)}・${esc(t.name)}・${silkChip(o)} ${esc(o.name)}</div>
       <div class="row" style="margin:6px 0"><span class="big">${f.pop}<small>番人気</small></span><span class="muted">単勝 ${f.odds}倍</span></div>
       <div class="kv"><span>脚質</span><b>${STYLE[h.style]}</b></div>
@@ -918,7 +980,7 @@
   const SNAPF = ['s', 'X', 'phase', 'v', 'effort', 'whipT', 'latV'];
   function startReplay() {
     const fin = engine.runners.filter(r => r.finished).sort((a, b) => a.finishTime - b.finishTime);
-    if (tut || snaps.length < 8 || !fin.length) { Sound.stopAll(); return finishRace(); }
+    if (tut || snaps.length < 8 || !fin.length) { Sound.stopAll(); return afterRace(); }
     const tW = engine.gateOpenAt + fin[0].finishTime;
     rp = { t: Math.max(snaps[0].t, tW - 2.3), end: Math.min(snaps[snaps.length - 1].t, tW + 0.6), tW, hold: 0, i: 0, win: fin[0], saved: engine.runners.map(r => SNAPF.map(k => r[k])) };
     R3.setReplay(true); $('race').classList.add('replay'); $('replay-res').style.display = 'none';
@@ -946,9 +1008,72 @@
     cancelAnimationFrame(rafId);
     engine.runners.forEach((r, j) => SNAPF.forEach((f, q) => { r[f] = rp.saved[j][q]; }));
     rp = null; R3.setReplay(false); $('race').classList.remove('replay'); Sound.stopAll();
-    finishRace();
+    afterRace();
   }
   $('replay-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); endReplay(); });
+  // ---- 勝ったあと：ウイニングラン（GⅠ）→ 口取り（記念撮影。重賞は優勝レイ） ----
+  let cer = null;
+  const LEI = { g1: ['#4b2c83', '#ffffff', '#f2c318'], classic: ['#4b2c83', '#f2c318', '#ffffff'], derby: ['#c9a13b', '#ffffff', '#c8102e'], g2: ['#9c2a1f', '#ffffff', '#f2c318'], g3: ['#1d6b40', '#ffffff', '#f2c318'] };
+  function afterRace() {
+    const res = engine.results();
+    const Pl = engine.player, won = res[0] && res[0].runner === Pl && !Pl.auto;
+    if (!won || tut || !R3) return finishRace();
+    const race = curRace, kind = Zekken.kindOf(race), big = race.graded === 1 || race.overseas;
+    const steps = [];
+    if (big) steps.push('run');
+    steps.push('photo');
+    cer = { steps, i: -1, race, kind, lei: !!(race.graded || race.overseas), saved: ['s', 'X', 'v', 'phase', 'effort', 'whipT', 'latV'].map(k => Pl[k]) };
+    $('race').classList.add('cer');
+    nextCer();
+  }
+  function nextCer() {
+    cer.i++;
+    const step = cer.steps[cer.i], Pl = engine.player, e = engine, race = cer.race;
+    if (!step) return endCer();
+    cer.t = 0; cer.step = step; cer.flashed = false;
+    const h = W.horses[curHid], f = race.field.find(x => x.hid === curHid) || {};
+    const t = h ? W.trainers[h.trainer] : null, o = h ? W.owners[h.owner] : null;
+    const res = e.results(), me = res[0];
+    if (step === 'run') {
+      Pl.s = e.D - 80; Pl.X = e.course.width - 2.6; Pl.v = 7.2; Pl.effort = 0.2; Pl.whipT = 0; Pl.latV = 0;
+      $('cer-tag').textContent = 'ウイニングラン';
+      $('cer-card').innerHTML = `<div class="k">${esc(race.name)} ${race.graded ? `G${'ⅠⅡⅢ'[race.graded - 1]}` : ''}</div><h2>${esc(h.name)}</h2><div class="d">${esc(P().name)}騎手、スタンドの歓声に応える</div>`;
+      Sound.cheer(1.6);
+    } else {
+      Pl.s = e.D - 22; Pl.X = e.course.width - 3.2; Pl.v = 0; Pl.effort = 0.1; Pl.latV = 0;
+      $('cer-tag').textContent = cer.lei ? '口取り式・優勝レイ' : '口取り';
+      $('cer-card').innerHTML = `<div class="k">${esc(VENUES[race.venue].name)}${race.overseas ? '' : ' 第' + race.no + '競走'}　${esc(race.name)}${race.graded ? ` (G${'ⅠⅡⅢ'[race.graded - 1]})` : ''}</div><h2>優勝　${esc(h.name)}</h2>
+        <div class="d">騎手 ${esc(P().name)}　調教師 ${esc(t ? t.name.replace('厩舎', '') : '')}　馬主 ${esc(o ? o.name : '')}　タイム ${RaceEngine.fmtTime(me.time)}${me.runner && res[1] ? `　着差 ${esc(res[1].margin)}` : ''}</div>`;
+    }
+    $('cer-card').style.display = 'none';
+    R3.startCeremony(step, { lei: cer.lei, leiColors: LEI[cer.kind] });
+    lastT = performance.now(); cancelAnimationFrame(rafId); rafId = requestAnimationFrame(cerLoop);
+  }
+  function cerLoop(now) {
+    if (!cer) return;
+    try {
+      const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; cer.t += dt;
+      const Pl = engine.player;
+      if (cer.step === 'run') { Pl.s = Math.min(engine.D - 4, Pl.s + Pl.v * dt); Pl.phase += dt * Pl.v / RaceEngine.STRIDE; if (cer.t > 1.2) $('cer-card').style.display = 'block'; }
+      else {
+        Pl.phase += dt * 0.3;
+        if (cer.t > 1.4 && !cer.flashed) { cer.flashed = true; const fl = $('cer-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on'); Sound.shutter && Sound.shutter(); $('cer-card').style.display = 'block'; }
+      }
+      R3.render(engine, dt);
+      Sound.update(0, 0, cer.step === 'run' ? 1 : 0.55, 0);
+      if ((cer.step === 'run' && (cer.t > 9.5 || Pl.s >= engine.D - 4)) || (cer.step === 'photo' && cer.t > 7)) return nextCer();
+    } catch (err) { console.error(err); return endCer(); }
+    rafId = requestAnimationFrame(cerLoop);
+  }
+  function endCer() {
+    if (!cer) return;
+    cancelAnimationFrame(rafId);
+    const Pl = engine.player;
+    ['s', 'X', 'v', 'phase', 'effort', 'whipT', 'latV'].forEach((k, i) => { Pl[k] = cer.saved[i]; });
+    cer = null; R3.endCeremony(); $('race').classList.remove('cer'); Sound.stopAll();
+    finishRace();
+  }
+  $('cer-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); if (cer) nextCer(); });
   let introStage = '', raceSeq = 0;
   function introCard(stage) {
     const e = engine, race = curRace, Pl = e.player, card = $('intro-card');
@@ -1209,8 +1334,19 @@
       if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }, 'チュートリアル'); } return; }
       W.dayIdx++; World.save(W); showDay();
     };
-    const afterTitles = () => { if (ev.interview && !quick) showInterview(ev.interview, hid, () => playScenes()); else if (!quick) playScenes(); };
+    const afterMilestone = () => { if (ev.interview && !quick) showInterview(ev.interview, hid, () => playScenes()); else if (!quick) playScenes(); };
+    const afterTitles = () => { if (!quick && W.milestonePending) showMilestone(afterMilestone); else afterMilestone(); };
     if (!quick && W.titlePending && W.titlePending.length) showTitles(afterTitles); else afterTitles();
+  }
+  // 通算勝利の節目のセレモニー
+  function showMilestone(done) {
+    const m = W.milestonePending; W.milestonePending = null; World.save(W);
+    Sound.cheer && Sound.cheer(1.1);
+    modal(`<div class="mile"><div class="mile-k">JRA通算</div><div class="mile-n">${m.wins}<small>勝</small></div><div class="mile-l">達成</div></div>
+      <div style="text-align:center;font-family:var(--serif);margin-top:8px"><b>${esc(P().name)}騎手</b></div>
+      <p class="small muted" style="text-align:center;margin:4px 0">${esc(m.date)}　${esc(m.race)}　${esc(m.horse)}</p>
+      <p class="small" style="text-align:center">検量室前で記念のボードと花束を受け取った。</p>
+      <div class="choices"><button class="btn primary" id="m-ok">次へ</button></div>`, () => { $('m-ok').onclick = () => { closeModal(); done(); }; }, '記念セレモニー');
   }
   // 称号の獲得を祝う画面
   function showTitles(done) {
@@ -1251,6 +1387,7 @@
     if (ye) showYearEnd(ye); else showWeek();
   }
   function showYearEnd(ye) {
+    if (ye.jra && !ye.ceremonyDone) { ye.ceremonyDone = true; show('s-info'); gnav('info-nav'); $('info-body').innerHTML = ''; return awardCeremony(ye, () => showYearEnd(ye)); }
     show('s-info');
     gnav('info-nav');
     const ys = ye.ys, g = ye.goal, v = ye.vote;
@@ -1262,12 +1399,28 @@
         <div class="kv"><span>リーディング</span><b>${ye.rank}位</b></div>
         <div class="kv"><span>重賞</span><b>${ys.g.length}勝</b></div>
         <div class="kv"><span>収入</span><b>${money(ys.income || 0)}</b></div>
-        ${ye.awards.length ? `<div style="margin-top:6px">${ye.awards.map(a => `<span class="badge gold">${esc(a)}</span>`).join(' ')}</div>` : ''}</div>
+        ${ye.awards.length ? `<div style="margin-top:6px">${ye.awards.map(a => `<span class="badge gold">JRA賞 ${esc(a)}</span>`).join(' ')}</div>` : ''}
+        ${ye.jra ? `<div class="small" style="margin-top:6px">${ye.jra.map(a => `<div class="kv"><span>${esc(a.name)}</span><b class="small" style="${a.me ? 'color:var(--gold)' : ''}">${esc(a.winner || '該当者なし')}</b></div>`).join('')}</div>` : ''}</div>
       <div class="card"><div class="sec"><h3>シーズン目標</h3></div>${g ? `<div style="font-family:var(--serif);font-weight:700">${esc(g.name)}</div><div class="big">${g.cur}<small> / ${g.target}</small></div><div class="bar gold"><i style="width:${g.rate * 100}%"></i></div><div style="margin-top:6px">${g.ok ? `<span class="badge green">達成</span> <span class="small">${esc(g.reward)}</span>` : '<span class="badge warn">未達成</span> <span class="small">評価 -1</span>'}</div>` : '<p class="small muted">目標なし</p>'}</div>
       <div class="card" style="padding:0"><div class="sec" style="margin:8px 10px 4px"><h3>騎手人気投票</h3><span class="sub">あなたは${v ? v.rank : '-'}位</span></div><table>${v ? v.top.map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td>${esc(r.name)}</td></tr>`).join('') : ''}</table></div>
       </div>
       <div style="text-align:center;margin-top:8px"><button class="btn primary" style="padding:11px 30px" id="b-ny">${ye.year + 1}年へ</button></div>`;
     $('b-ny').onclick = showWeek;
+  }
+  // JRA賞の授賞式：部門ごとに受賞者を読み上げる。続いて年度代表馬と顕彰馬の選定
+  function awardCeremony(ye, done) {
+    const pages = ye.jra.map(a => ({ k: `${ye.year}年度 JRA賞 騎手部門`, t: a.name, w: a.winner || '該当者なし', s: a.stat, me: a.me }));
+    if (ye.hoy) pages.push({ k: `${ye.year}年度 JRA賞`, t: '年度代表馬', w: ye.hoy.name, s: `GⅠ ${ye.hoy.n}勝（${ye.hoy.races.join('・')}）`, me: ye.hoy.mine, horse: true });
+    (ye.hof || []).forEach(h => pages.push({ k: '顕彰馬選定（殿堂入り）', t: h.ok ? '選定' : '選定ならず', w: h.name, s: `記者投票 得票率${(h.pct * 100).toFixed(1)}%（4分の3以上で選定）・GⅠ ${h.g1}勝`, me: h.ok, horse: true }));
+    let i = 0;
+    const show1 = () => {
+      if (i >= pages.length) return done();
+      const pg = pages[i];
+      if (pg.me) Sound.cheer && Sound.cheer(1.0);
+      modal(`<div class="award ${pg.me ? 'me' : ''}"><div class="aw-k">${esc(pg.k)}</div><div class="aw-t">${esc(pg.t)}</div><div class="aw-w">${esc(pg.w)}${pg.me && !pg.horse ? ' <span class="badge gold">あなた</span>' : pg.me ? ' <span class="badge gold">騎乗馬</span>' : ''}</div><div class="aw-s">${esc(pg.s)}</div></div>
+        <div class="choices"><button class="btn primary" id="m-ok">${i < pages.length - 1 ? '次へ' : 'シーズン総括へ'}</button></div>`, () => { $('m-ok').onclick = () => { closeModal(); i++; show1(); }; }, `授賞式　${i + 1} / ${pages.length}`);
+    };
+    show1();
   }
   function showRetire() {
     show('s-info');

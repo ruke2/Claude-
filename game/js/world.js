@@ -48,6 +48,26 @@
   }
 
   // ---- 名前 ----
+  // 馬主の好みに合わせて名付ける。冠名を持つ馬主は「冠名＋言葉」が多い。意味も残す（パドックで見られる）
+  function namedHorse(used, owner) {
+    const langs = (window.OWNER_NAMING && OWNER_NAMING[owner]) || Object.keys(HORSE_WORDS || {});
+    const km = window.KANMEI && KANMEI[owner];
+    for (let i = 0; i < 300; i++) {
+      const lang = pick(langs), [w, mean] = pick(HORSE_WORDS[lang]);
+      let name, m;
+      const r = Math.random();
+      if (km && r < 0.65 && (km + w).length <= 9) { name = km + w; m = `冠名＋${mean}（${lang}）`; }
+      else if (r < 0.88 || !HORSE_WORDS[lang]) { name = w; m = `${mean}（${lang}）`; }
+      else {
+        // 同じ言葉どうしで2語：「月の光」「春の風」のような組み合わせ
+        const [w2, mean2] = pick(HORSE_WORDS[lang]);
+        if (w2 === w) continue;
+        name = w + w2; m = `${mean}＋${mean2}（${lang}）`;
+      }
+      if (name.length >= 2 && name.length <= 9 && !used.has(name)) { used.add(name); return { name, mean: m }; }
+    }
+    return { name: horseName(used), mean: '' };
+  }
   function horseName(used) {
     for (let i = 0; i < 400; i++) {
       // 2語の組み合わせが基本。足りなくなったら冠名風の3語も使う
@@ -89,6 +109,8 @@
     };
     if (Math.random() < 0.12) h.hood = pick(['#1e3a8a', '#b91c1c', '#e5e7eb', '#065f46']);
     if (surf === 'D' && h.dist > 2100) h.dist = 1800;
+    // 仮の名前を外して、馬主に合わせた名前を付け直す
+    if (window.HORSE_WORDS && !opts.keepName) { W.usedNames.delete(h.name); const nm = namedHorse(W.usedNames, h.owner); h.name = nm.name; h.nameMean = nm.mean; }
     W.horses[h.id] = h;
     return h;
   }
@@ -334,6 +356,49 @@
   function gearOf(P) { return 2.0 + (P.gear && window.Progress ? (Progress.GEAR.saddle[P.gear.saddle || 0].gear || 0) : 0); }
   function canMakeWeight(P, kin) { return P.weight + gearOf(P) <= kin + 0.05; }
 
+  // 取り合いになったとき、自分に依頼が残る見込み（0〜1）
+  function contestChance(W, h, j) {
+    const P = W.player;
+    const me = P.rep * 0.9 + P.pop * 0.4 + (P.trust[h.trainer] || 0) * 0.5 + (P.otrust[h.owner] || 0) * 0.3 + (P.bond[h.id] || 0) * 0.8 + (P.agent != null ? W.agents[P.agent].net * 4 : 0);
+    const them = j.skill * 0.9 + j.pop * 0.5 + 15;
+    return clamp(0.5 + (me - them) / 120, 0.08, 0.92);
+  }
+  // 依頼を断ったとき・取り合いに負けたときの後始末。その馬には別の騎手が乗る
+  function giveRide(W, race, hid, jid, why) {
+    race.forcedJ = race.forcedJ || {}; race.forcedJ[hid] = jid;
+    const h = W.horses[hid]; if (h) h.mainJ = jid;
+    if (why) news(W, `${h ? h.name : ''}（${race.name}）は${W.jockeys[jid].name}騎手が騎乗${why}`, 'race');
+  }
+  function declineRide(W, race, q) {
+    const P = W.player, h = W.horses[q.hid];
+    P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) - 4, 0, 100);
+    P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) - 3, 0, 100);
+    P.bond[h.id] = Math.max(0, (P.bond[h.id] || 0) - 3);
+    const used = new Set(Object.values(race.forcedJ || {}));
+    const j = W.jockeys.filter(x => !used.has(x.id)).sort((a, b) => (b.skill + rnd(-8, 8)) - (a.skill + rnd(-8, 8)))[0];
+    giveRide(W, race, h.id, j.id, '（' + P.name + '騎手は別の馬を選択）');
+    race.declined = (race.declined || []).concat([h.id]);
+  }
+  // 有力馬への売り込み（週1回）。成功すると依頼が来て、もともと乗る予定だった騎手からは恨まれる
+  function pitchTargets(W) {
+    const P = W.player, have = new Set(W.requests.map(q => q.hid));
+    const out = [];
+    W.card.forEach(race => race.field.forEach(f => { const h = W.horses[f.hid]; if (!have.has(h.id) && f.pop <= 4) out.push({ race, f, h }); }));
+    return out.sort((a, b) => (b.race.graded ? 4 - b.race.graded : 0) * 3 - (a.race.graded ? 4 - a.race.graded : 0) * 3 + a.f.pop - b.f.pop).slice(0, 6)
+      .map(o => ({ raceNo: o.race.no, hid: o.h.id, pop: o.f.pop, chance: clamp(0.03 + P.rep / 220 + (P.trust[o.h.trainer] || 0) / 300 + (P.otrust[o.h.owner] || 0) / 400 - (o.race.graded === 1 ? 0.1 : 0) - o.f.pop * 0.02, 0.04, 0.6) }));
+  }
+  function pitch(W, raceNo, hid) {
+    const P = W.player, race = W.card[raceNo - 1], h = W.horses[hid];
+    const t = pitchTargets(W).find(x => x.hid === hid);
+    W.pitchUsed = W.wk;
+    if (!t || Math.random() > t.chance) { P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) - 1, 0, 100); return false; }
+    const f = race.field.find(x => x.hid === hid);
+    const kin = kinryo(W, race, h, true);
+    W.requests.push({ raceNo, hid, trainer: h.trainer, owner: h.owner, pop: f.pop, odds: f.odds, kin, okWeight: canMakeWeight(P, kin), accepted: false, bondHorse: (P.bond[hid] || 0) > 0, pitched: true });
+    W.requests.sort((a, b) => a.raceNo - b.raceNo);
+    news(W, `${P.name}騎手が${h.name}（${race.name}）の騎乗を射止める`, 'me');
+    return true;
+  }
   function buildRequests(W) {
     const P = W.player;
     W.card.forEach(r => estimateOdds(W, r));
@@ -354,6 +419,7 @@
         // 評価が低いと人気薄、高いと人気馬に乗れる
         let sc = trust * 0.55 + ot * 0.45 + bond * 1.5 + rnd(0, 30) - Math.abs(quality * 100 - target) * 0.6;
         if (P.contract === h.owner) sc += 35;
+        if (h.mainJ != null) sc -= 18; // 別の騎手に乗り替わった馬は戻りにくい
         if (race.graded === 1 && P.rep < 30 && bond < 10) sc -= 40;
         if (h.real && P.rep < 55 && bond < 10) sc -= 30;
         return { f, h, sc };
@@ -361,8 +427,17 @@
       const c = cands[0];
       if (!c) continue;
       if (c.sc < -15 && reqs.length >= n) continue;
-      const kin = kinryo(W, race, c.h, true);
-      reqs.push({ raceNo: race.no, hid: c.h.id, trainer: c.h.trainer, owner: c.h.owner, pop: c.f.pop, odds: c.f.odds, kin, okWeight: canMakeWeight(P, kin), accepted: false, bondHorse: (P.bond[c.h.id] || 0) > 0, viaAgent: net > 0 && Math.random() < 0.35 });
+      const mk = (cc) => { const kin = kinryo(W, race, cc.h, true); return { raceNo: race.no, hid: cc.h.id, trainer: cc.h.trainer, owner: cc.h.owner, pop: cc.f.pop, odds: cc.f.odds, kin, okWeight: canMakeWeight(P, kin), accepted: false, bondHorse: (P.bond[cc.h.id] || 0) > 0, viaAgent: net > 0 && Math.random() < 0.35 }; };
+      const q = mk(c);
+      // 同じレースに、これまで乗ってきた馬（お手馬）がもう1頭いて、そちらからも依頼が来ることがある
+      const other = cands.slice(1).find(o => (P.bond[o.h.id] || 0) >= 8 && o.sc > c.sc - 25);
+      if (other && (P.bond[c.h.id] || 0) >= 6 && Math.random() < 0.55) { const q2 = mk(other); q.clash = q2.clash = race.no; reqs.push(q2); }
+      // 人気馬の依頼は、他の騎手と取り合いになることがある
+      if (c.f.pop <= 3 && (P.bond[c.h.id] || 0) < 12 && P.contract !== c.h.owner && Math.random() < 0.2) {
+        const rival = W.jockeys.slice().sort((a, b) => (b.skill + b.pop * 0.3) - (a.skill + a.pop * 0.3))[ri(0, 5)];
+        q.contest = { jid: rival.id, chance: contestChance(W, c.h, rival) };
+      }
+      reqs.push(q);
     }
     reqs.sort((a, b) => a.raceNo - b.raceNo);
     return reqs.slice(0, Math.max(n, 1) + 2);
@@ -415,12 +490,14 @@
       const n = race.field.length;
       race.field.forEach((f, i) => { f.waku = wakuOf(i + 1, n); });
       if (race.field[0].pop == null) estimateOdds(W, race);
-      const js = W.jockeys.slice().sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
+      const forced = race.forcedJ || {}, fset = new Set(Object.values(forced).map(Number));
+      const js = W.jockeys.filter(j => !fset.has(j.id)).sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
       const order = race.field.slice().sort((a, b) => a.pop - b.pop);
       let ji = 0;
       order.forEach(f => {
         if (f.hid === playerHid) { f.jid = -1; return; }
         if (race.overseas && W.horses[f.hid].foreign) { const used = new Set(race.field.map(x => x.jname).filter(Boolean)); const fj = FOREIGN_JOCKEYS.filter(n => !used.has(n)); f.jname = fj.length ? pick(fj) : pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
+        if (forced[f.hid] != null) { f.jid = +forced[f.hid]; return; }
         const j = js[ji++ % js.length]; f.jid = j.id;
       });
       if (W.story && W.story.rivalHorse != null) {
@@ -511,6 +588,7 @@
       const h = r.horse; h.starts++; h.last = W.abs;
       if (r.pos <= 5) h.earn += Math.round(prize1 * share[r.pos - 1]);
       const f = race.field.find(f => f.hid === h.id);
+      if (f.jid >= 0) { const j = W.jockeys[f.jid]; const st = (j.ys = j.ys || {})[W.year] || (j.ys[W.year] = { rides: 0, wins: 0, earn: 0 }); st.rides++; if (r.pos === 1) st.wins++; if (r.pos <= 5) st.earn += Math.round(prize1 * share[r.pos - 1]); }
       if (r.pos === 1) {
         h.wins++;
         if (!race.graded && !race.overseas && h.cls < 5) h.cls = Math.max(h.cls + 1, 2);
@@ -522,6 +600,14 @@
       } else if (h.cls === 0) h.cls = 1;
     });
     let ev = null;
+    if (playerHid != null && race.declined && race.declined.length) {
+      const myPos = results.find(r => r.horse.id === playerHid).pos;
+      race.declined.forEach(dh => {
+        const d = results.find(r => r.horse.id === dh); if (!d) return;
+        if (d.pos < myPos) { P.rep = clamp(P.rep - 0.4, 0, 100); news(W, `${race.name}：${P.name}騎手が選ばなかった${d.horse.name}が${d.pos}着、騎乗馬に先着`, 'bad'); }
+        else { P.rep = clamp(P.rep + 0.3, 0, 100); news(W, `${race.name}：${P.name}騎手の選択が的中（選ばなかった${d.horse.name}は${d.pos}着）`, 'me'); }
+      });
+    }
     if (playerHid != null) {
       const me = results.find(r => r.horse.id === playerHid);
       const f = race.field.find(f => f.hid === playerHid);
@@ -531,7 +617,11 @@
       P.rep = Math.min(100, P.rep + 0.04);
       const ys = P.years[W.year] || (P.years[W.year] = { rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, g: [], income: 0 });
       ys.rides++;
-      if (me.pos === 1) { P.wins++; ys.wins++; }
+      if (me.pos === 1) {
+        P.wins++; ys.wins++;
+        // 通算勝利の節目
+        if ([100, 300, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000].includes(P.wins)) { W.milestonePending = { wins: P.wins, race: race.name, horse: h.name, date: W.date }; news(W, `${P.name}騎手がJRA通算${P.wins}勝を達成（${race.name}・${h.name}）`, 'me'); W.log.push({ abs: W.abs, text: `${W.date} 通算${P.wins}勝（${h.name}）` }); }
+      }
       if (me.pos === 2) { P.seconds++; ys.seconds++; }
       if (me.pos === 3) { P.thirds++; ys.thirds++; }
       if (me.pos <= 5) { const e = Math.round(prize1 * share[me.pos - 1]); P.earn += e; ys.earn += e; }
@@ -725,7 +815,7 @@
         if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) { h.retired = true; if (P.bond[h.id] >= 20) news(W, `お手馬の${h.name}が引退`, 'me'); }
       });
       Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) { W.usedNames.delete(h.name); delete W.horses[h.id]; } });
-      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); if (j.age >= 58) { j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; j.pop = 3; } });
+      W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); if (j.age >= 58) { j.debut = W.year + 1; j.name = personName(); j.age = 18; j.skill = ri(35, 55); j.years = {}; j.wins = 0; j.pop = 3; } });
     }
     prepareWeek(W);
     W.events = genEvents(W);
@@ -736,20 +826,49 @@
   function yearSummary(W) {
     const P = W.player;
     const ys = P.years[W.year] || { rides: 0, wins: 0, seconds: 0, thirds: 0, earn: 0, g: [] };
-    const table = W.jockeys.map(j => ({ name: j.name, wins: j.years[W.year] || 0, jid: j.id }));
-    table.push({ name: P.name + '（あなた）', wins: ys.wins, me: true });
-    table.sort((a, b) => b.wins - a.wins);
+    const rows = W.jockeys.map(j => { const st = (j.ys || {})[W.year] || { rides: 0, wins: j.years[W.year] || 0, earn: 0 }; return { name: j.name, jid: j.id, wins: st.wins, rides: st.rides, earn: st.earn, rookie: j.debut === W.year }; });
+    rows.push({ name: P.name, me: true, wins: ys.wins, rides: ys.rides, earn: ys.earn || 0, rookie: (P.yearsActive || 0) === 0 });
+    const table = rows.slice().sort((a, b) => b.wins - a.wins);
     const rank = table.findIndex(t => t.me) + 1;
     const popRank = W.jockeys.filter(j => j.pop > P.pop).length + 1;
-    const awards = [];
-    if (rank === 1) awards.push('最多勝利騎手');
-    if (ys.rides >= 100 && ys.wins / ys.rides >= 0.2) awards.push('高勝率騎手（ゲーム独自）');
-    if (ys.g.length >= 3) awards.push('重賞ハンター賞（ゲーム独自）');
-    if (popRank === 1) awards.push('ファン投票1位（ゲーム独自）');
-    if (P.yearsActive === 0 && ys.wins >= 10) awards.push('最多勝利新人騎手');
-    W.log.push({ abs: W.abs, text: `${W.year}年 ${ys.wins}勝（リーディング${rank}位）` });
+    // JRA賞（騎手部門）。MVJ は勝利数・勝率・獲得賞金・騎乗回数の順位を点数にして合計する（JRAの説明による）。
+    // 勝率の対象になる騎乗回数の下限と、順位の点数の付け方はゲーム上の決まり
+    const top = (arr, key) => arr.slice().sort((a, b) => b[key] - a[key])[0];
+    const minRides = Math.max(30, Math.round(Math.max(...rows.map(r => r.rides)) * 0.3));
+    rows.forEach(r => { r.rate = r.rides ? r.wins / r.rides : 0; });
+    const elig = rows.filter(r => r.rides >= minRides);
+    const pts = new Map(rows.map(r => [r, 0]));
+    ['wins', 'rate', 'earn', 'rides'].forEach(k => { (k === 'rate' ? elig : rows).slice().sort((a, b) => b[k] - a[k]).slice(0, 10).forEach((r, i) => pts.set(r, pts.get(r) + 10 - i)); });
+    rows.forEach(r => { r.mvj = pts.get(r); });
+    const rookies = rows.filter(r => r.rookie && r.wins > 0);
+    const jra = [
+      { name: '最多勝利騎手', who: top(rows, 'wins'), stat: (r) => `${r.wins}勝` },
+      { name: '最高勝率騎手', who: top(elig.length ? elig : rows, 'rate'), stat: (r) => `勝率${(r.rate * 100).toFixed(1)}%（${r.rides}騎乗）` },
+      { name: '最多賞金獲得騎手', who: top(rows, 'earn'), stat: (r) => `${(r.earn / 10000).toFixed(2)}億円` },
+      { name: '最多勝利新人騎手', who: rookies.length ? top(rookies, 'wins') : null, stat: (r) => `${r.wins}勝` },
+      { name: 'MVJ', who: top(rows, 'mvj'), stat: (r) => `${r.mvj}ポイント` },
+    ].map(a => ({ name: a.name, winner: a.who ? a.who.name : null, me: !!(a.who && a.who.me), stat: a.who ? a.stat(a.who) : '該当者なし' }));
+    const awards = jra.filter(a => a.me).map(a => a.name);
+    // 年度代表馬（その年のGⅠ勝利が最も多い馬）
+    let hoy = null;
+    Object.values(W.horses).forEach(h => { const n = (h.g1 || []).filter(t => t.startsWith(String(W.year))).length; if (n && (!hoy || n > hoy.n)) hoy = { h, n }; });
+    const hoyInfo = hoy ? { name: hoy.h.name, n: hoy.n, races: hoy.h.g1.filter(t => t.startsWith(String(W.year))).map(t => t.slice(5)), mine: (P.trophies || []).some(t => t.horse === hoy.h.name && t.year === W.year) } : null;
+    // 顕彰馬（殿堂入り）：自分が乗ってGⅠを勝った引退馬から、記者投票で4分の3以上の票を集めると選ばれる（JRAの方式。投票の中身はゲーム上の計算）
+    const hof = [];
+    const ridden = new Set((P.trophies || []).map(t => t.horse));
+    Object.values(W.horses).forEach(h => {
+      if (!h.retired || h.hof || !ridden.has(h.name) || (h.g1 || []).length < 3 || h.hofTried >= 3) return;
+      const g = h.g1.length, tri = ['皐月賞', '日本ダービー', '菊花賞'].every(n => h.g1.some(t => t.includes(n))) || ['桜花賞', 'オークス', '秋華賞'].every(n => h.g1.some(t => t.includes(n)));
+      const pct = Math.min(0.99, 0.35 + g * 0.09 + (tri ? 0.3 : 0) + rnd(-0.06, 0.06));
+      h.hofTried = (h.hofTried || 0) + 1;
+      const ok = pct >= 0.75; if (ok) { h.hof = W.year; P.hofHorses = (P.hofHorses || 0) + 1; news(W, `${h.name}が顕彰馬に選定（得票率${(pct * 100).toFixed(1)}%）`, 'me'); }
+      hof.push({ name: h.name, g1: g, pct, ok });
+    });
+    W.log.push({ abs: W.abs, text: `${W.year}年 ${ys.wins}勝（リーディング${rank}位）${awards.length ? '・' + awards.join('・') : ''}` });
     news(W, `${W.year}年の成績：${ys.wins}勝、リーディング${rank}位`, 'me');
-    const ye = { year: W.year, ys, rank, popRank, table: table.slice(0, 10), awards };
+    if (awards.length) news(W, `${P.name}騎手がJRA賞（${awards.join('・')}）を受賞`, 'me');
+    if (awards.includes('MVJ')) P.mvjYears = (P.mvjYears || 0) + 1;
+    const ye = { year: W.year, ys, rank, popRank, table: table.slice(0, 10).map(t => ({ name: t.me ? t.name + '（あなた）' : t.name, wins: t.wins, me: t.me })), awards, jra, hoy: hoyInfo, hof };
     if (window.Progress) Progress.yearEnd(W, ye);
     return ye;
   }
@@ -757,7 +876,7 @@
   // ---- セーブ ----
   // ---- セーブ ----
   // 保存先の名前（SAVE_KEY）は今後も変えない。中身の形が変わっても migrate で古いセーブを読めるようにする
-  const SAVE_VER = 3;
+  const SAVE_VER = 4;
   const BAK_KEY = SAVE_KEY + '-bak';
   const OLD_KEYS = ['jockey-life-save', 'jockey-life-save-v1'];
   let onSaved = null;
@@ -788,6 +907,11 @@
     for (const k of Object.keys(fresh.player)) if (o.player[k] === undefined) o.player[k] = fresh.player[k];
     (o.card || []).forEach((r) => { if (!r.weather) r.weather = '晴'; if (!r.ground) r.ground = '良'; if (!r.bias) r.bias = { lane: 0, pace: 0 }; });
     dedupeJockeys(o);
+    // 古い名付け方の馬名（英単語の組み合わせ）を付け直す。乗ったことのある馬・実在馬・物語の馬・GⅠ馬はそのまま
+    if ((o.saveVer || 0) < 4 && window.HORSE_WORDS) {
+      const keep = (h) => h.real || h.story || h.nameMean || (o.player.bond && o.player.bond[h.id]) || (h.g1 && h.g1.length) || (o.story && o.story.partner === h.id);
+      Object.values(o.horses || {}).forEach(h => { if (keep(h) || h.foreign) return; o.usedNames.delete(h.name); const nm = namedHorse(o.usedNames, h.owner); h.name = nm.name; h.nameMean = nm.mean; });
+    }
     o.saveVer = SAVE_VER;
     return o;
   }
@@ -815,7 +939,7 @@
   }
 
   window.World = {
-    mudOf, biasText, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
+    mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
     buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible, gearOf,

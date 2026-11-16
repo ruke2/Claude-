@@ -129,7 +129,7 @@
         return m;
       });
       this.playerModel = this.horses[race.runners.indexOf(race.player)];
-      this.camYaw = null; this.intro = null; this.replay = false;
+      this.camYaw = null; this.intro = null; this.replay = false; this.cer = null;
       this.lastPhase = race.runners.map(r => r.phase);
       this.screenT = 0;
       this.resize();
@@ -836,6 +836,97 @@
       if (this.playerModel) this.playerModel.setPlayerView(false);
       this.updateFov();
     }
+    // ---------- 勝ったあとの演出：ウイニングランと口取り ----------
+    // kind: 'run'（スタンド前を流して戻る）| 'photo'（決勝線の先で記念撮影。重賞は優勝レイを掛ける）
+    startCeremony(kind, opt = {}) {
+      this.endCeremony();
+      const race = this.race, c = race.course, P = race.player, m = this.playerModel;
+      this.cer = { kind, t: 0, opt, grp: new T.Group() };
+      this.camSnap = false;
+      if (m) m.setPlayerView(false);
+      if (kind === 'photo') {
+        const G = this.cer.grp; this.raceGroup.add(G);
+        // 関係者（調教師・馬主・厩務員など）。スーツとジャンパーの人が並ぶ
+        // 人：脚2本・背広の上着（肩が広く腰で絞る）・腕・シャツとネクタイ・首・頭・髪
+        const person = (col, x, z, h = 1.72, rot = 0, tie = '#7a1f2b') => {
+          const g = new T.Group(), k = h / 1.72;
+          const mat = (cc, r = 0.8) => new T.MeshStandardMaterial({ color: cc, roughness: r });
+          const suit = mat(col), pants = mat('#1b1d23'), skin = mat('#d6a888', 0.7);
+          for (const sd of [-1, 1]) { const leg = new T.Mesh(new T.CylinderGeometry(0.075, 0.065, 0.86, 10), pants); leg.position.set(0, 0.43, sd * 0.1); g.add(leg); const shoe = new T.Mesh(new T.BoxGeometry(0.26, 0.07, 0.1), mat('#0d0d0f', 0.3)); shoe.position.set(0.05, 0.035, sd * 0.1); g.add(shoe); }
+          const torsoG = new T.CylinderGeometry(0.24, 0.19, 0.66, 14, 1); torsoG.scale(0.62, 1, 1);
+          const torso = new T.Mesh(torsoG, suit); torso.position.y = 1.2; g.add(torso);
+          const shirt = new T.Mesh(new T.CylinderGeometry(0.06, 0.012, 0.3, 3), mat('#f3f2ee')); shirt.rotation.x = Math.PI; shirt.rotation.y = Math.PI / 2; shirt.position.set(0.15, 1.36, 0); shirt.scale.z = 0.5; g.add(shirt);
+          const t2 = new T.Mesh(new T.BoxGeometry(0.015, 0.26, 0.035), mat(tie, 0.5)); t2.position.set(0.158, 1.33, 0); g.add(t2);
+          for (const sd of [-1, 1]) { const arm = new T.Mesh(new T.CylinderGeometry(0.055, 0.045, 0.62, 10), suit); arm.position.set(0.02, 1.17, sd * 0.255); arm.rotation.x = sd * 0.06; g.add(arm); const hand = new T.Mesh(new T.SphereGeometry(0.045, 10, 8), skin); hand.position.set(0.03, 0.85, sd * 0.27); g.add(hand); }
+          const neck = new T.Mesh(new T.CylinderGeometry(0.05, 0.055, 0.1, 10), skin); neck.position.y = 1.56; g.add(neck);
+          const head = new T.Mesh(new T.SphereGeometry(0.105, 16, 12), skin); head.scale.set(1, 1.15, 0.92); head.position.y = 1.68; g.add(head);
+          const hair = new T.Mesh(new T.SphereGeometry(0.11, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), mat(['#151515', '#2a221c', '#8a8780'][Math.floor(Math.random() * 3)], 0.9)); hair.position.set(-0.01, 1.71, 0); hair.rotation.z = 0.3; g.add(hair);
+          g.scale.setScalar(k);
+          g.position.set(x, 0, z); g.rotation.y = rot; g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+          return g;
+        };
+        const lineup = [['#20242e', 0.9], ['#2b2f3a', 1.6], ['#1a1d24', 2.3], ['#3a3f4c', -0.6], ['#262a33', -1.3], ['#30343f', -2.0]];
+        lineup.forEach(([col, x], i) => G.add(person(col, x * 0.85, 0.78 + (i % 2) * 0.1, 1.64 + (i % 3) * 0.05)));
+        // 厩務員が手綱を持つ（馬の頭の横）
+        const groom = person('#2d5a8c', 1.25, 0.55, 1.68, 0, '#2d5a8c'); G.add(groom);
+        this.cer.people = G;
+        // 優勝レイ（重賞）：花を連ねた輪を首に掛ける
+        if (opt.lei && m) {
+          const n = 46, fl = new T.InstancedMesh(new T.SphereGeometry(0.05, 8, 6), new T.MeshStandardMaterial({ roughness: 0.7 }), n * 3);
+          const Mx = new T.Matrix4(), C = new T.Color(), pal = opt.leiColors || ['#c8102e', '#ffffff', '#f2c318'];
+          let k = 0;
+          for (let i = 0; i < n; i++) {
+            const a = i / n * Math.PI * 2;
+            for (let j = 0; j < 3; j++) {
+              const r = 0.31 + (j - 1) * 0.045;
+              // 首の付け根を斜めに一周し、胸の前で垂れ下がる
+              const y = Math.cos(a) * r * 0.55 - Math.max(0, -Math.cos(a)) * 0.18, x = Math.cos(a) * r * 0.42, z = Math.sin(a) * r * 0.95;
+              Mx.makeTranslation(x, y, z); fl.setMatrixAt(k, Mx); fl.setColorAt(k++, C.set(pal[(i + j) % pal.length]));
+            }
+          }
+          fl.count = k;
+          const lei = new T.Group(); lei.add(fl);
+          const band = new T.Mesh(new T.TorusGeometry(0.31, 0.03, 8, 40), new T.MeshStandardMaterial({ color: '#1d5a35', roughness: 0.8 })); band.rotation.y = Math.PI / 2; band.scale.set(1, 0.95, 0.42 / 0.95 * 0.95); lei.add(band); band.visible = false;
+          const info = (window.HorseGLB && HorseGLB.info) || {};
+          lei.position.set(0.62, 1.5, 0); lei.rotation.z = -0.75;
+          m.root.add(lei); this.cer.lei = lei;
+        }
+      }
+    }
+    endCeremony() {
+      if (!this.cer) return;
+      if (this.cer.grp && this.cer.grp.parent) this.cer.grp.parent.remove(this.cer.grp);
+      if (this.cer.lei && this.cer.lei.parent) this.cer.lei.parent.remove(this.cer.lei);
+      this.cer = null; this.camSnap = false;
+      if (this.playerModel) this.playerModel.setPlayerView(this.camMode === 'jockey');
+      this.updateFov();
+    }
+    ceremonyCamera(race, dt) {
+      const C = this.cer, c = race.course, P = race.player, cam = this.camera;
+      C.t += dt;
+      const p = race.pAt(P.s), a = CXY(c, p, P.X), e = this.E ? this.E(p) : 0;
+      if (C.dbg) { const sd = new T.Vector3(-a.hz, 0, a.hx); cam.position.set(a.x + a.hx * 1.6 + sd.x * 2.4, e + 1.9, a.z + a.hz * 1.6 + sd.z * 2.4); cam.lookAt(a.x + a.hx * 0.6, e + 1.45, a.z + a.hz * 0.6); this.camTarget = new T.Vector3(a.x, 0, a.z); return; }
+      if (C.kind === 'run') {
+        // スタンド側の柵の外から、近づいて通り過ぎる馬を追う
+        const k = Math.min(1, C.t / 9);
+        const cp = CXY(c, p + 14 - 22 * k, c.width + 5);
+        const want = new T.Vector3(cp.x, e + 2.2, cp.z);
+        cam.position.copy(want);
+        cam.up.set(0, 1, 0); cam.lookAt(a.x, e + 1.8, a.z);
+      } else {
+        // 記念撮影：馬の横、少し離れて正面から
+        const cp = CXY(c, p + 0.4, P.X + (c.dir === 'L' ? 7.2 : -7.2) * (1));
+        const side = new T.Vector3(cp.x - a.x, 0, cp.z - a.z).normalize();
+        cam.position.set(a.x + side.x * 5.4, e + 2.1, a.z + side.z * 5.4); cam.up.set(0, 1, 0); cam.lookAt(a.x + a.hx * 0.3, e + 1.35, a.z + a.hz * 0.3);
+        if (C.people) { // 関係者は馬のカメラ側に並び、カメラの方を向く
+          const yaw = Math.atan2(-a.hz, a.hx), right = new T.Vector3(0, 0, 1).applyAxisAngle(new T.Vector3(0, 1, 0), yaw);
+          const sg = right.dot(side) >= 0 ? 1 : -1;
+          C.people.position.set(a.x, e, a.z); C.people.rotation.y = yaw;
+          C.people.children.forEach(o => { o.position.z = sg * Math.abs(o.position.z); o.rotation.y = sg > 0 ? -Math.PI / 2 : Math.PI / 2; });
+        }
+      }
+      this.camTarget = new T.Vector3(a.x, 0, a.z);
+    }
     setReplay(on) { this.replay = !!on; this.camSnap = false; if (this.playerModel) this.playerModel.setPlayerView(!on && this.camMode === 'jockey'); this.updateFov(); }
     endIntro() {
       if (!this.intro) return;
@@ -889,7 +980,7 @@
     updateFov() {
       const asp = this.camera.aspect;
       const mode = this.intro && this.intro.stage !== 'set' ? 'chase' : this.camMode;
-      const hfov = this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 21 : 75;
+      const hfov = this.cer ? (this.cer.kind === 'photo' ? 58 : 56) : this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 21 : 75;
       this.camera.fov = Math.min(80, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / asp) * 180 / Math.PI);
       this.camera.updateProjectionMatrix();
     }
@@ -920,9 +1011,9 @@
         m.root.rotation.y = yaw;
         const d2 = (a.x - camPos.x) ** 2 + (a.z - camPos.z) ** 2;
         const near = d2 < 140 * 140 || r.isPlayer;
-        m.root.visible = d2 < 900 * 900 || r.isPlayer;
+        m.root.visible = (d2 < 900 * 900 || r.isPlayer) && !(this.cer && !r.isPlayer);
         if (near || Math.floor(this.clock * 10) % 4 === i % 4) {
-          m.update({ ease: r.finished, win: r.finished && r === winner, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
+          m.update({ ease: r.finished, win: r.finished && (r === winner || (this.cer && r.isPlayer)), photo: this.cer && this.cer.kind === 'photo' && r.isPlayer, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
         }
         const sh = d2 < 45 * 45 || r.isPlayer;
         if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
@@ -982,6 +1073,7 @@
       // 角度の差を -π..π に
       let dy = yawHorse - this.camYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       this.camYaw += dy * Math.min(1, dt * 6);
+      if (this.cer) return this.ceremonyCamera(race, dt);
       if (this.replay) { // ゴール前のリプレイ：決勝線の外から、先頭の馬を追ってゴール板で止める
         const lead = race.runners.reduce((b, r) => r.s > b.s ? r : b, race.runners[0]);
         const eH = this.E ? this.E(c.H) : 0;

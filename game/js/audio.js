@@ -142,6 +142,8 @@
       });
       burst('lowpass', 300, 0.7, 0.8, 0.4);
     },
+    // カメラのシャッター音
+    shutter() { if (!ctx) return; const t = ctx.currentTime; burst('highpass', 3200, 0.7, 0.5, 0.03, t); burst('bandpass', 1400, 1.2, 0.35, 0.05, t + 0.06); },
     bump() { burst('lowpass', 160, 1, 0.8, 0.18); },
     // 毎フレーム：速度・周りの馬の数・スタンド前かどうか
     update(speed, nearby, crowdLevel, rain) {
