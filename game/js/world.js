@@ -302,7 +302,7 @@
     slots.push({ cls: 3, age: 'U3', label: '2勝クラス', ...T('D', dD) });
     const specialNames = ['若葉', '春風', '夏空', '秋晴', '紅葉', '雪見', '飛燕', '鳳凰', '白鷺', '銀河', '朝日', '月光', '彗星', '天馬'];
     const day = makeDay();
-    return slots.map((sl, i) => {
+    const races = slots.map((sl, i) => {
       let name;
       if (sl.graded) name = sl.gname;
       else if (sl.special) name = pick(specialNames) + (sl.label === 'オープン' ? 'ステークス' : '特別');
@@ -310,15 +310,34 @@
       if (sl.surf === 'D' && sl.dist > 2100) sl.dist = 1800;
       const race = { no: i + 1, name, label: sl.label, cls: sl.cls, clsMin: sl.clsMin, graded: sl.graded || 0, age: sl.age, sex: sl.sex, surf: sl.surf, dist: sl.dist, venue, field: [], result: null };
       Object.assign(race, dayCond(day, i, sl.surf));
-      race.field = buildField(W, race);
       return race;
+    });
+    // 同じ日に同じ馬が2つのレースに出ないようにする。有力馬が集まる重賞・上のクラスから先に出走馬を決める
+    const used = new Set();
+    races.slice().sort((a, b) => ((b.graded ? 10 - b.graded : 0) - (a.graded ? 10 - a.graded : 0)) || ((b.cls ?? b.clsMin ?? 0) - (a.cls ?? a.clsMin ?? 0)))
+      .forEach(r => { r.field = buildField(W, r, used); r.field.forEach(f => used.add(f.hid)); });
+    return races;
+  }
+  // 古いセーブで、同じ日の2つのレースに同じ馬がいたら後ろのレースから外して補充する
+  function fixCardDupes(W) {
+    const seen = new Set();
+    (W.card || []).forEach(r => {
+      if (r.result) { r.field.forEach(f => seen.add(f.hid)); return; }
+      const dup = r.field.filter(f => seen.has(f.hid));
+      r.field.forEach(f => seen.add(f.hid));
+      if (!dup.length) return;
+      const keep = r.field.filter(f => !dup.includes(f));
+      const extra = buildField(W, Object.assign({}, r), seen).filter(f => !keep.some(k => k.hid === f.hid)).slice(0, dup.length);
+      extra.forEach(f => seen.add(f.hid));
+      r.field = keep.concat(extra); r.drawDone = false;
+      if (W.requests) W.requests = W.requests.filter(q => !(q.raceNo === r.no && dup.some(d => d.hid === q.hid)));
     });
   }
 
-  function buildField(W, race) {
+  function buildField(W, race, used) {
     const size = race.graded === 1 ? ri(15, 18) : race.graded ? ri(12, 16) : ri(10, 16);
     const cond = { age: race.age, sex: race.sex, cls: race.cls, clsMin: race.clsMin, surf: race.surf };
-    let pool = Object.values(W.horses).filter(h => eligible(W, h, cond));
+    let pool = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && eligible(W, h, cond));
     if (race.graded) {
       // 能力・距離適性・(実在馬優先) でソート
       pool.forEach(h => h._k = rating(h, W.year) - Math.abs((h.dist || 1800) - race.dist) / 120 - (h.surf !== 'B' && h.surf !== race.surf ? 18 : 0) + (h.real ? 4 : 0) + rnd(-6, 6));
@@ -948,6 +967,7 @@
       if (o.rivals && o.rivals[2]) { o.rivals[2].jid = top.id; o.player.hh = o.player.hh || {}; if (!o.player.hh[top.id]) o.player.hh[top.id] = { w: 0, l: 0 }; }
     }
     dedupeJockeys(o);
+    fixCardDupes(o);
     // 古い名付け方の馬名（英単語の組み合わせ）を付け直す。乗ったことのある馬・実在馬・物語の馬・GⅠ馬はそのまま
     if ((o.saveVer || 0) < 4 && window.HORSE_WORDS) {
       const keep = (h) => h.real || h.story || h.nameMean || (o.player.bond && o.player.bond[h.id]) || (h.g1 && h.g1.length) || (o.story && o.story.partner === h.id);
