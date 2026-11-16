@@ -73,37 +73,116 @@
       this.scene.add(sun); this.scene.add(sun.target);
       this.sunDir = new T.Vector3(0.45, 0.75, -0.48).normalize();
     }
+    // 蹄が蹴り上げる芝・土（キックバック）。粒ごとに大きさ・硬さ（塊か土ぼこりか）・寿命を持たせる
     buildParticles() {
-      const N = 900;
+      const N = 4200;
       const g = new T.BufferGeometry();
-      const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+      const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N), soft = new Float32Array(N), seed = new Float32Array(N);
+      for (let i = 0; i < N; i++) { pos[i * 3 + 1] = -100; seed[i] = Math.random(); }
       g.setAttribute('position', new T.BufferAttribute(pos, 3));
       g.setAttribute('color', new T.BufferAttribute(col, 3));
-      const sprite = canvasTex(32, 32, (x) => { const gr = x.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.6, 'rgba(255,255,255,.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 32, 32); });
-      const m = new T.PointsMaterial({ size: 0.09, map: sprite, vertexColors: true, transparent: true, depthWrite: false });
-      const pts = new T.Points(g, m); pts.frustumCulled = false;
+      g.setAttribute('size', new T.BufferAttribute(size, 1));
+      g.setAttribute('alpha', new T.BufferAttribute(alpha, 1));
+      g.setAttribute('soft', new T.BufferAttribute(soft, 1));
+      g.setAttribute('seed', new T.BufferAttribute(seed, 1));
+      const m = new T.ShaderMaterial({
+        uniforms: { uScale: { value: 600 } },
+        vertexShader: `attribute float size; attribute float alpha; attribute float soft; attribute float seed; attribute vec3 color;
+          varying vec3 vC; varying float vA; varying float vS; varying float vSeed;
+          uniform float uScale;
+          void main() { vC = color; vA = alpha; vS = soft; vSeed = seed;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = clamp(size * uScale / max(0.1, -mv.z), 0.0, 220.0);
+            gl_Position = projectionMatrix * mv; }`,
+        fragmentShader: `varying vec3 vC; varying float vA; varying float vS; varying float vSeed;
+          void main() {
+            vec2 p = gl_PointCoord * 2.0 - 1.0;
+            float a = atan(p.y, p.x), r = length(p);
+            // 塊：ふちがぎざぎざの不定形。土ぼこり：ふわっとした円
+            float edge = 0.78 + 0.16 * sin(a * 3.0 + vSeed * 20.0) + 0.08 * sin(a * 7.0 + vSeed * 41.0);
+            float hard = 1.0 - smoothstep(edge - 0.08, edge, r);
+            float fluff = pow(max(0.0, 1.0 - r), 1.6);
+            float m = mix(hard, fluff, vS);
+            if (m * vA < 0.02) discard;
+            float shade = mix(0.75 + 0.35 * (-p.y * 0.5 + 0.5) - 0.15 * r, 1.0, vS);
+            gl_FragColor = vec4(vC * shade, m * vA);
+          }`,
+        transparent: true, depthWrite: false,
+      });
+      const pts = new T.Points(g, m); pts.frustumCulled = false; pts.renderOrder = 2;
       this.scene.add(pts);
-      return { pts, pos, col, vel: new Float32Array(N * 3), life: new Float32Array(N), N, i: 0 };
+      return { pts, pos, col, size, alpha, soft, vel: new Float32Array(N * 3), life: new Float32Array(N), max: new Float32Array(N), grow: new Float32Array(N), floor: new Float32Array(N), N, i: 0 };
     }
-    emit(x, y, z, vx, vy, vz, c) {
+    // kind: 0 = 塊（重力で落ちて跳ねる） / 1 = 土ぼこり・しぶき（ふわっと広がって消える）
+    emit(x, y, z, vx, vy, vz, c, sz = 0.06, kind = 0, life = 0.8) {
       const P = this.particles; const i = P.i = (P.i + 1) % P.N;
-      (P.floor || (P.floor = new Float32Array(P.N)))[i] = y - 0.07;
+      P.floor[i] = y - 0.06;
       P.pos[i * 3] = x; P.pos[i * 3 + 1] = y; P.pos[i * 3 + 2] = z;
       P.vel[i * 3] = vx; P.vel[i * 3 + 1] = vy; P.vel[i * 3 + 2] = vz;
-      P.col[i * 3] = c.r; P.col[i * 3 + 1] = c.g; P.col[i * 3 + 2] = c.b; P.life[i] = rnd(0.5, 0.9);
+      const j = kind ? 0.06 : 0.12; // 色に少しばらつき
+      const k = 1 + (Math.random() - 0.5) * j * 2;
+      P.col[i * 3] = c.r * k; P.col[i * 3 + 1] = c.g * k; P.col[i * 3 + 2] = c.b * k;
+      P.size[i] = sz; P.soft[i] = kind; P.life[i] = P.max[i] = life; P.grow[i] = kind ? sz * 1.6 : 0;
     }
     stepParticles(dt) {
       const P = this.particles;
+      this.particles.pts.material.uniforms.uScale.value = this.renderer.domElement.height / (2 * Math.tan(this.camera.fov * Math.PI / 360));
       for (let i = 0; i < P.N; i++) {
-        if (P.life[i] <= 0) { P.pos[i * 3 + 1] = -100; continue; }
+        if (P.life[i] <= 0) { if (P.alpha[i]) { P.alpha[i] = 0; P.pos[i * 3 + 1] = -100; } continue; }
         P.life[i] -= dt;
-        P.vel[i * 3 + 1] -= 9.8 * dt;
+        const t = P.life[i] / P.max[i];
+        if (P.soft[i]) {
+          // 土ぼこり：空気抵抗で止まり、ゆっくり広がって薄くなる
+          const drag = Math.exp(-dt * 2.6);
+          P.vel[i * 3] *= drag; P.vel[i * 3 + 2] *= drag; P.vel[i * 3 + 1] = P.vel[i * 3 + 1] * drag + 0.25 * dt;
+          P.size[i] += P.grow[i] * dt;
+          P.alpha[i] = Math.min(1, (1 - t) * 5) * Math.sqrt(t) * 0.85;
+        } else {
+          P.vel[i * 3 + 1] -= 9.8 * dt;
+          const drag = Math.exp(-dt * 0.5); P.vel[i * 3] *= drag; P.vel[i * 3 + 2] *= drag;
+          P.alpha[i] = Math.min(1, t * 4);
+        }
         P.pos[i * 3] += P.vel[i * 3] * dt; P.pos[i * 3 + 1] += P.vel[i * 3 + 1] * dt; P.pos[i * 3 + 2] += P.vel[i * 3 + 2] * dt;
-        const fl = P.floor ? P.floor[i] : 0;
-        if (P.pos[i * 3 + 1] < fl) { P.pos[i * 3 + 1] = fl + 0.01; P.vel[i * 3] *= 0.5; P.vel[i * 3 + 2] *= 0.5; P.vel[i * 3 + 1] = 0; }
+        if (!P.soft[i] && P.pos[i * 3 + 1] < P.floor[i]) {
+          P.pos[i * 3 + 1] = P.floor[i] + 0.005;
+          if (P.vel[i * 3 + 1] < -1.5) { P.vel[i * 3 + 1] *= -0.25; P.vel[i * 3] *= 0.4; P.vel[i * 3 + 2] *= 0.4; }
+          else { P.vel[i * 3] = P.vel[i * 3 + 1] = P.vel[i * 3 + 2] = 0; P.life[i] = Math.min(P.life[i], 0.35); }
+        }
       }
-      P.pts.geometry.attributes.position.needsUpdate = true;
-      P.pts.geometry.attributes.color.needsUpdate = true;
+      const at = P.pts.geometry.attributes;
+      at.position.needsUpdate = true; at.color.needsUpdate = true; at.size.needsUpdate = true; at.alpha.needsUpdate = true; at.soft.needsUpdate = true;
+    }
+    // 1回の蹄の着地で飛ばす量と色。芝は根ごとめくれた塊と細かい草、ダートは砂の塊と土ぼこり。道悪では泥はね
+    kickback(r, a, ey, race, sgn) {
+      const wet = this.groundIdx || 0, dirt = race.surf === 'D';
+      const KC = this._kc || (this._kc = {
+        turf: new T.Color('#3f5f24'), turfL: new T.Color('#6b8a3a'), soil: new T.Color('#5a4630'), sand: new T.Color('#9a7a58'), sandD: new T.Color('#6a5038'),
+        mud: new T.Color('#4a3a2a'), dust: new T.Color('#d6c4a6'), spray: new T.Color('#6e6458'),
+      });
+      const sp = Math.min(1.3, r.v / 16);
+      const fx = a.hx, fz = a.hz, lx = -a.hz, lz = a.hx;
+      const bx = a.x - fx * 0.7, bz = a.z - fz * 0.7;
+      const lat = () => (Math.random() - 0.5) * 0.35;
+      const shot = (n, speed, up, colFn, sz, kind, life) => {
+        for (let j = 0; j < n; j++) {
+          const back = speed * (0.6 + Math.random() * 0.8) * sp, side = (Math.random() - 0.5) * 2.2;
+          const o = lat();
+          this.emit(bx + lx * o, ey + 0.05, bz + lz * o, -fx * back + lx * side, up * (0.5 + Math.random()), -fz * back + lz * side, colFn(), sz * (0.6 + Math.random() * 0.8), kind, life * (0.7 + Math.random() * 0.6));
+        }
+      };
+      if (dirt) {
+        // ダート：砂の塊をたくさん後ろへ。乾いていれば土ぼこりが残り、湿っていれば暗い泥はね
+        shot(wet >= 2 ? 9 : 12, 7, 2.8, () => Math.random() < 0.5 ? (wet >= 2 ? KC.mud : KC.sand) : KC.sandD, 0.075, 0, 1.0);
+        if (wet < 2) shot(3, 2.5, 0.8, () => KC.dust, 0.45, 1, 1.8);
+        else shot(1, 4, 1.2, () => KC.spray, 0.18, 1, 0.5);
+      } else {
+        // 芝：めくれた芝の塊（緑と土）と細かい草。道悪ほど塊が大きく、泥が混じる
+        const big = Math.random() < 0.18 + wet * 0.08;
+        shot(big ? 3 : 2, 5.5, 2.4, () => Math.random() < 0.55 ? KC.turf : KC.soil, big ? 0.13 : 0.08, 0, 1.1);
+        shot(5, 4, 1.8, () => Math.random() < 0.6 ? KC.turfL : KC.turf, 0.04, 0, 0.7);
+        if (wet >= 2) shot(2, 5, 1.5, () => KC.mud, 0.05, 0, 0.9);
+        else if (Math.random() < 0.35) shot(1, 2, 0.5, () => KC.dust, 0.22, 1, 0.9);
+      }
     }
 
     // ---------- コースとレースのセットアップ ----------
@@ -112,6 +191,7 @@
       const G = this.raceGroup = new T.Group();
       this.scene.add(G);
       this.race = race; this.info = info || {};
+      this.groundIdx = Math.max(0, ['良', '稍重', '重', '不良'].indexOf((race.cfg && race.cfg.ground) || '良'));
       const c = race.course;
       this.buildCourse(G, c, race);
       this.buildGate(G, race);
@@ -1027,7 +1107,6 @@
       const P = race.player;
       // 馬の配置
       const camPos = this.camera.position;
-      const dirtCol = new T.Color(race.surf === 'D' ? '#8a6a4c' : '#5a4a32'), turfCol = new T.Color('#4f6b2c');
       let winner = null; for (const r of race.runners) if (r.finished && !this.replay && (!winner || r.finishTime < winner.finishTime)) winner = r;
       // 観客：直線に入ると沸き、ゴール後はしばらく続いて収まる
       if (this.crowdU) { let lead = 0; for (const r of race.runners) if (r.s > lead) lead = r.s; const want = race.open && lead > race.D - 420 ? (race.done ? 0.35 : 1) : 0; this.crowdU.uCheer.value += (want - this.crowdU.uCheer.value) * Math.min(1, (dt || 0.016) * 1.5); this.crowdU.uTime.value = this.clock; }
@@ -1051,14 +1130,18 @@
         if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
         if (m.lod) m.lod(r.isPlayer ? 0 : Math.sqrt(d2));
         // 蹄が地面を蹴るたびに土・芝を飛ばす
-        if (r.v > 6 && d2 < 70 * 70) {
+        if (r.v > 6 && d2 < 50 * 50 && (d2 < 22 * 22 || (i + Math.floor(this.clock * 8)) % 2 === 0)) {
           const prev = this.lastPhase[i] % 1, now = r.phase % 1;
           for (const off of [0, 0.1, 0.36, 0.46]) {
             const u0 = (prev + off) % 1, u1 = (now + off) % 1;
             if (u1 < u0 || (u0 < 0.3 && u1 >= 0.3)) {
-              const k = race.surf === 'D' ? 6 : 2;
               const ey = this.E ? this.E(race.pAt(r.s)) : 0;
-              for (let j = 0; j < k; j++) this.emit(a.x - a.hx * 0.6 + rnd(-0.3, 0.3), ey + 0.08, a.z - a.hz * 0.6 + rnd(-0.3, 0.3), -a.hx * rnd(2, 6) + a.hx * r.v * 0.2, rnd(1.2, 3.2), -a.hz * rnd(2, 6) + a.hz * r.v * 0.2, race.surf === 'D' ? dirtCol : (Math.random() < 0.5 ? turfCol : dirtCol));
+              this.kickback(r, a, ey, race);
+              // 自分の前を走る馬が蹴り上げた砂・泥が、ゴーグルに当たる
+              if (P && r !== P && this.onKickHit && (race.surf === 'D' || this.groundIdx >= 2)) {
+                const ds = r.s - P.s, dx = Math.abs(r.X - P.X);
+                if (ds > 1.5 && ds < 10 && dx < 1.3 && Math.random() < 0.5) this.onKickHit((1 - ds / 10) * (1 - dx / 1.3), race.surf === 'D' && this.groundIdx < 2 ? 'sand' : 'mud');
+              }
               if (r.isPlayer && this.onHoof) this.onHoof(off);
             }
           }

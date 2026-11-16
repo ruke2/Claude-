@@ -840,8 +840,9 @@
         if (hadIntro) { R3.startIntro(introOpts(race)); introStage = ''; }
       });
     }
-    if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
+    if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); R3.onKickHit = (k, kind) => goggleHit(k, kind); window.addEventListener('resize', () => R3 && R3.resize()); }
     R3.setupRace(engine, raceInfo3d(race));
+    goggleClear();
     R3.setCamMode(camMode); updateCamBtn();
     $('b-snd').textContent = Sound.isMuted() ? '音OFF' : '音ON';
     const L = engine.course.dir === 'L';
@@ -865,6 +866,42 @@
     wait();
   }
   let loopErr = 0;
+  // 前の馬が蹴り上げた砂・泥がゴーグルに当たる（騎手視点のときだけ）。当たった跡は少しずつ薄れる
+  const gog = { cv: null, x: null, last: 0, raf: 0 };
+  function goggleHit(k, kind) {
+    if (camMode !== 'jockey' || !engine || (R3 && (R3.replay || R3.cer))) return;
+    const now = performance.now();
+    if (now - gog.last < 90) return; gog.last = now;
+    if (!gog.cv) {
+      gog.cv = document.createElement('canvas'); gog.cv.id = 'goggle';
+      gog.cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2';
+      $('r3d').after(gog.cv); gog.x = gog.cv.getContext('2d');
+    }
+    const cv = gog.cv, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const x = gog.x, n = 1 + Math.round(k * 4);
+    const col = kind === 'mud' ? [62, 48, 34] : [128, 102, 74];
+    for (let i = 0; i < n; i++) {
+      // 画面の中央寄り（ゴーグルの前面）に当たりやすい
+      const px = w * (0.5 + (Math.random() - 0.5) * 0.9), py = h * (0.45 + (Math.random() - 0.5) * 0.7);
+      const r = (2 + Math.random() * (kind === 'mud' ? 9 : 5)) * dpr * (0.6 + k);
+      x.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${0.55 + Math.random() * 0.35})`;
+      x.beginPath();
+      for (let a = 0; a <= 12; a++) { const t = a / 12 * Math.PI * 2, rr = r * (0.7 + Math.random() * 0.5); x[a ? 'lineTo' : 'moveTo'](px + Math.cos(t) * rr, py + Math.sin(t) * rr); }
+      x.fill();
+      // 飛び散った細かい粒
+      for (let j = 0; j < 4; j++) { x.beginPath(); x.arc(px + (Math.random() - 0.5) * r * 5, py + (Math.random() - 0.5) * r * 5, r * 0.2, 0, 7); x.fill(); }
+    }
+    if (!gog.raf) gog.raf = requestAnimationFrame(goggleFade);
+  }
+  function goggleFade() {
+    const x = gog.x, cv = gog.cv;
+    x.globalCompositeOperation = 'destination-out'; x.fillStyle = 'rgba(0,0,0,0.035)'; x.fillRect(0, 0, cv.width, cv.height); x.globalCompositeOperation = 'source-over';
+    gog.raf = performance.now() - gog.last < 4000 ? requestAnimationFrame(goggleFade) : 0;
+    if (!gog.raf) x.clearRect(0, 0, cv.width, cv.height);
+  }
+  function goggleClear() { if (gog.x) gog.x.clearRect(0, 0, gog.cv.width, gog.cv.height); }
   function loop(now) {
     try { loopBody(now); } catch (err) {
       console.error(err);
@@ -1261,6 +1298,7 @@
     engine.runners.forEach(r => { const [a, b] = pt(engine.pAt(Math.min(r.s, engine.D + 30)), r.X); x.fillStyle = r === engine.player ? '#ffeb3b' : 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(a, b, r === engine.player ? 5 : 3, 0, 7); x.fill(); });
   }
   function finishRace() {
+    goggleClear();
     const res = engine.results();
     const mode = engine.player.auto ? 'auto' : 'manual';
     curRace.laps = engine.laps();
@@ -1337,7 +1375,7 @@
   $('startBtn').addEventListener('pointerdown', (e) => { e.preventDefault(); if (engine) engine.playerStart(); });
   document.querySelectorAll('.ctl, #startBtn').forEach(el => el.addEventListener('contextmenu', e => e.preventDefault()));
   function updateCamBtn() { $('b-cam').textContent = '視点:' + CAMS.find(c => c[0] === camMode)[1]; }
-  $('b-cam').onclick = () => { const i = CAMS.findIndex(c => c[0] === camMode); camMode = CAMS[(i + 1) % CAMS.length][0]; try { localStorage.setItem('jl-cam', camMode); } catch (e) {} R3.setCamMode(camMode); updateCamBtn(); };
+  $('b-cam').onclick = () => { goggleClear(); const i = CAMS.findIndex(c => c[0] === camMode); camMode = CAMS[(i + 1) % CAMS.length][0]; try { localStorage.setItem('jl-cam', camMode); } catch (e) {} R3.setCamMode(camMode); updateCamBtn(); };
   $('b-snd').onclick = () => { const m = Sound.toggleMute(); $('b-snd').textContent = m ? '音OFF' : '音ON'; };
   $('pauseBtn').onclick = () => {
     paused = true;
@@ -1375,8 +1413,47 @@
   window.addEventListener('keyup', (e) => { if (!engine) return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setSteer(0); });
 
   // ---------- 結果 ----------
+  // ---- レース後の着順掲示板 → 払戻金 ----
+  const PO_COL = { win: '#c8102e', place: '#e06d00', waku: '#6a3fa0', quin: '#1f6fbf', wide: '#0f8a6a', exa: '#2c3e8f', trio: '#7a8a12', tri: '#9b1f6b' };
+  function showBoard(race, hid, ev, done) {
+    let ov = $('board-ov');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'board-ov'; document.body.appendChild(ov); }
+    const F = race.field, res = race.result.slice().sort((a, b) => a.pos - b.pos);
+    const num = (h) => F.findIndex(f => f.hid === h) + 1;
+    const laps = race.laps || [];
+    const sum = (k) => laps.length >= k ? laps.slice(-k).reduce((a, b) => a + b, 0).toFixed(1) : '-';
+    const inq = !!(ev && ev.inquiry);
+    const photo = res[1] && /ハナ|アタマ|同着/.test(res[1].margin || '');
+    const rows = res.slice(0, 5).map((r, i) => `<div class="bd-row"><div class="bd-pos">${i + 1}</div><div class="bd-line"><div class="bd-num ${r.hid === hid ? 'me' : ''}">${num(r.hid)}</div><div class="bd-mg">${i ? esc(r.margin || '') : ''}</div><div class="bd-name">${esc(W.horses[r.hid].name)}${r.hid === hid ? '（あなた）' : ''}</div></div></div>`).join('');
+    const pay = window.Payout ? Payout.compute(race) : [];
+    const myNum = hid != null ? String(num(hid)) : null;
+    const groups = []; pay.forEach(x => { const g = groups.find(g => g.t === x.t); if (g) g.rows.push(x); else groups.push({ t: x.t, rows: [x] }); });
+    const ptab = groups.map(g => g.rows.map((x, i) => `<tr class="${myNum && x.combo.includes(myNum) && x.t !== 'waku' ? 'hit' : ''}">${i ? '' : `<td class="k" rowspan="${g.rows.length}" style="background:${PO_COL[g.t]}">${Payout.LABEL[g.t]}</td>`}<td class="c">${x.combo.join(g.t === 'exa' || g.t === 'tri' ? ' → ' : ' - ')}</td><td class="y">${x.pay.toLocaleString()}円</td><td class="p">${x.pop}番人気</td></tr>`).join('')).join('');
+    const title = `${esc(VENUES[race.venue].name)}${race.overseas ? '' : ' ' + race.no + 'R'}`;
+    ov.innerHTML = `<div class="pg on" id="bd-p1"><div class="bd">
+        <div class="bd-hd"><div class="rn"><small>${title}</small>${esc(race.name)}${race.graded ? ` G${'ⅠⅡⅢ'[race.graded - 1]}` : ''}</div>
+          <div class="bd-lamps"><span class="bd-lamp ${photo ? 'on blink' : ''}" id="bd-photo">写真</span><span class="bd-lamp ${inq ? 'on blink' : ''}" id="bd-inq">審議</span><span class="bd-lamp" id="bd-fix">確定</span></div></div>
+        <div class="bd-rows">${rows}</div>
+        <div class="bd-ft"><div><span>タイム</span><b>${RaceEngine.fmtTime(res[0].time)}</b></div><div><span>上がり 4F</span><b>${sum(4)}</b></div><div><span>3F</span><b>${sum(3)}</b></div></div>
+      </div><div class="bd-btns"><button class="btn small" id="bd-skip">結果へ</button><button class="btn primary small" id="bd-next" disabled>払戻金を見る ▶</button></div></div>
+      <div class="pg" id="bd-p2"><div class="po"><div class="po-hd"><b>払戻金</b><span class="small" style="opacity:.8">${title} ${esc(race.name)}</span><span class="kakutei">確定</span></div>
+        <table>${ptab}</table><div class="note">払戻金は100円あたり。各馬のオッズと設定払戻率から計算したゲーム内の目安。${myNum ? '黄色の行はあなたの騎乗馬を含む組。' : ''}</div></div>
+        <div class="bd-btns"><button class="btn primary small" id="bd-close">結果へ ▶</button></div></div>`;
+    ov.classList.add('on');
+    const close = () => { ov.classList.remove('on'); clearTimeout(t1); if (done) done(); };
+    // 写真判定・審議があれば少し待ってから確定のランプがつく
+    const wait = inq ? 2600 : photo ? 1800 : 900;
+    const t1 = setTimeout(() => {
+      $('bd-photo').classList.remove('on', 'blink'); $('bd-inq').classList.remove('blink');
+      if (!inq) $('bd-inq').classList.remove('on');
+      $('bd-fix').classList.add('on'); $('bd-next').disabled = false;
+    }, wait);
+    $('bd-next').onclick = () => { $('bd-p1').classList.remove('on'); $('bd-p2').classList.add('on'); };
+    $('bd-skip').onclick = close; $('bd-close').onclick = close;
+  }
   function showResult(race, hid, ev) {
     show('s-result');
+    if (race.result && !race._bd && !tut) { race._bd = 1; showBoard(race, hid, ev); }
     gnav('res-nav');
     crumbs('res-crumbs', quick ? [['タイトル', () => { quick = false; W = null; show('s-title'); }], ['お試し騎乗の結果', null]] : [['今週', () => showWeek()], [`${VENUES[race.venue].name} 開催日`, null], [`${race.overseas ? '' : race.no + 'R '}${race.name}`, null], ['結果', null]]);
     let tb = `<table><tr><th>着</th><th>枠</th><th>馬名</th><th>騎手</th><th>タイム</th><th>着差</th><th>人気</th></tr>`;

@@ -534,6 +534,48 @@ html.rot .thr-track{height:min(168px,44vw)}
 #race.intro.big #intro-skip{bottom:calc(var(--sb) + 11%)}
 #tut{top:calc(var(--st) + 58px)}
 input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
+/* ---- レース後の着順掲示板と払戻金 ---- */
+#board-ov{position:fixed;inset:0;z-index:60;display:none;align-items:flex-start;justify-content:center;background:rgba(6,10,20,.82);backdrop-filter:blur(4px);padding:10px 16px}
+#board-ov.on{display:flex}
+#board-ov .pg{display:none;width:min(760px,100%);max-height:100%;overflow:auto;margin:auto 0}
+#board-ov .pg.on{display:block;animation:bdIn .35s ease-out}
+@keyframes bdIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.bd{background:#0d0f0e;border:6px solid #2b2f2d;border-radius:6px;box-shadow:0 0 0 2px #000,0 18px 40px rgba(0,0,0,.6);padding:10px 14px 12px;color:#ffb21a;font-family:"Courier New",ui-monospace,monospace;position:relative}
+.bd::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle,rgba(0,0,0,0) 55%,rgba(0,0,0,.45) 60%) 0 0/3px 3px;mix-blend-mode:multiply}
+.bd-hd{display:flex;align-items:center;gap:10px;border-bottom:2px solid #262a28;padding-bottom:6px;margin-bottom:6px;font-family:var(--sans,sans-serif)}
+.bd-hd .rn{color:#f4f4f0;font-weight:800;font-size:15px;letter-spacing:.04em}
+.bd-hd .rn small{color:#9aa39e;font-weight:600;margin-right:6px}
+.bd-lamps{margin-left:auto;display:flex;gap:6px}
+.bd-lamp{font-family:var(--sans,sans-serif);font-weight:900;font-size:14px;padding:3px 8px;border-radius:3px;border:2px solid #3a2020;color:#4a2a2a;background:#1a1010;letter-spacing:.1em}
+.bd-lamp.on{color:#fff;background:#e0201c;border-color:#ff6a5a;box-shadow:0 0 14px rgba(255,40,30,.8)}
+.bd-lamp.blink{animation:bdBlink .5s steps(1) infinite}
+.bd-lamp.g.on{background:#1e9e3a;border-color:#64e07e;box-shadow:0 0 14px rgba(40,220,90,.7)}
+@keyframes bdBlink{50%{color:#4a2a2a;background:#1a1010;border-color:#3a2020;box-shadow:none}}
+.bd-rows{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center}
+.bd-row{display:contents}
+.bd-pos{font-family:var(--sans,sans-serif);color:#e8e8e2;font-weight:900;font-size:20px;width:30px;text-align:center;background:#1b1e1c;border-radius:3px;padding:2px 0}
+.bd-line{display:flex;align-items:center;gap:14px;min-height:34px}
+.bd-num{font-size:32px;font-weight:900;line-height:1;width:60px;text-align:right;text-shadow:0 0 8px rgba(255,170,20,.7);letter-spacing:-.02em}
+.bd-num.me{color:#ffe36a}
+.bd-mg{font-family:var(--sans,sans-serif);font-size:19px;font-weight:800;color:#ffb21a;text-shadow:0 0 6px rgba(255,170,20,.55);min-width:72px}
+.bd-name{font-family:var(--sans,sans-serif);font-size:12px;color:#8e968f;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.bd-ft{display:flex;gap:18px;flex-wrap:wrap;border-top:2px solid #262a28;margin-top:8px;padding-top:6px;align-items:baseline}
+.bd-ft span{font-family:var(--sans,sans-serif);color:#9aa39e;font-size:12px;font-weight:700;margin-right:6px}
+.bd-ft b{font-size:24px;text-shadow:0 0 8px rgba(255,170,20,.6)}
+.bd-btns{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:8px;z-index:2}
+#board-ov .pg{padding-bottom:48px}
+.po{background:#fff;color:#111;border-radius:8px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.po-hd{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#123d2a;color:#fff}
+.po-hd b{font-size:15px;letter-spacing:.06em}
+.po-hd .kakutei{margin-left:auto;background:#e0201c;color:#fff;font-weight:900;font-size:12px;padding:2px 8px;border-radius:3px;letter-spacing:.15em}
+.po table{width:100%;border-collapse:collapse;font-size:13.5px}
+.po td{border-bottom:1px solid #e3e6e4;padding:5px 10px;font-variant-numeric:tabular-nums}
+.po td.k{width:72px;text-align:center;font-weight:800;color:#fff;border-right:1px solid #fff}
+.po td.c{font-weight:800;letter-spacing:.04em}
+.po td.y{text-align:right;font-weight:800}
+.po td.p{text-align:right;color:#555;width:70px;font-size:12px}
+.po tr.hit td{background:#fff7d6}
+.po .note{font-size:11px;color:#666;padding:6px 10px;background:#f6f7f6}
 </style>
 </head>
 <body>
@@ -694,6 +736,7 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 <script src="js/cloudsave.js"></script>
 <script src="js/audio-data.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/payout.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>
