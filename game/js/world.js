@@ -225,7 +225,11 @@
     W.month = m;
     if (m === 6 && !W['crop' + W.year]) { // 2歳馬デビュー
       W['crop' + W.year] = true;
-      for (let i = 0; i < 330; i++) genHorse(W, { born: W.year - 2, base: rnd(48, 76), cls: 0 });
+      // 1世代をまとめて登録し、成長の早い馬から順に、6月〜翌春にかけてデビューさせる
+      for (let i = 0; i < 760; i++) {
+        const h = genHorse(W, { born: W.year - 2, base: rnd(48, 76), cls: 0 });
+        h.ready = W.abs + (h.grow === '早' ? ri(0, 8) : h.grow === '晩' ? ri(14, 40) : ri(0, 28));
+      }
     }
     W.booked = {}; W.dayIdx = 0; W.weekLog = [];
     if (W.pendingOverseas && W.pendingOverseas.abs < W.abs) W.pendingOverseas = null;
@@ -263,7 +267,8 @@
     if (cond.age === 'U3' && age < 3) return false;
     if (cond.age === 'U4' && age < 4) return false;
     if (cond.sex === 'F' && h.sex !== '牝') return false;
-    if (cond.cls != null && h.cls !== cond.cls) return false;
+    if (h.ready != null && W.abs < h.ready) return false; // 同世代でも、デビューの準備ができた馬から順に出てくる
+    if (cond.cls != null && h.cls !== cond.cls && !(cond.cls === 1 && h.cls === 0)) return false; // 未勝利戦には未出走の馬も出られる
     if (cond.clsMin != null && h.cls < cond.clsMin) return false;
     if (cond.surf && h.surf !== 'B' && h.surf !== cond.surf && Math.random() < 0.85) return false;
     if (W.abs - h.last < 3) return false;
@@ -343,13 +348,23 @@
       pool.forEach(h => h._k = rating(h, W.year) - Math.abs((h.dist || 1800) - race.dist) / 120 - (h.surf !== 'B' && h.surf !== race.surf ? 18 : 0) + (h.real ? 4 : 0) + rnd(-6, 6));
       pool.sort((a, b) => b._k - a._k);
       pool = pool.slice(0, size);
+      // オープン馬が足りなければ、条件クラスの馬を能力順に加える（2歳重賞など。実際も1勝クラスの馬が重賞に挑戦する）
+      if (pool.length < size) {
+        const more = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && !pool.includes(h) && h.cls >= 2 && eligible(W, h, { ...cond, clsMin: 2 }));
+        more.forEach(h => h._k = rating(h, W.year) + h.cls * 3 - Math.abs((h.dist || 1800) - race.dist) / 120 + rnd(-4, 4));
+        more.sort((a, b) => b._k - a._k);
+        pool = pool.concat(more.slice(0, size - pool.length));
+      }
     } else {
       pool.forEach(h => h._k = Math.random() - Math.abs((h.dist || 1800) - race.dist) / 3000 + (W.abs - h.last) * 0.01 - (h.real ? 0.5 : 0));
       pool.sort((a, b) => b._k - a._k);
       pool = pool.slice(0, size);
     }
-    // 頭数不足なら新規に補充
-    while (pool.length < size) {
+    // 頭数が少なくても、7頭以上いればそのまま行う（実際のレースも少頭数になることがある）
+    if (pool.length >= 7 && pool.length < size) return pool.map((h) => ({ hid: h.id }));
+    // それでも足りないときだけ新しく補う（その世代の馬として登録される）
+    while (pool.length < Math.min(size, 7)) {
+      if (W._fillLog) W._fillLog.push(race.label + race.surf + '/' + W.month + '月');
       const age = race.age === 'A2' ? 2 : race.age === 'A3' ? 3 : ri(3, 6);
       const clsBase = CLASS_BASE[race.cls ?? race.clsMin ?? 5] + (race.graded ? 3 * (4 - race.graded) : 0);
       const h = genHorse(W, { born: W.year - age, base: clsBase + rnd(-6, 6), cls: race.cls ?? Math.max(5, race.clsMin || 5), sex: race.sex === 'F' ? '牝' : undefined, surf: race.surf });
@@ -682,7 +697,8 @@
       const grade = score >= 85 ? 'S' : score >= 70 ? 'A' : score >= 50 ? 'B' : score >= 30 ? 'C' : 'D';
       const gMul = race.overseas ? 3 : race.graded === 1 ? 2.2 : race.graded ? 1.5 : 1;
       let dRep = ((score - 50) / 50) * 0.6 * gMul + (me.pos === 1 ? 0.6 * gMul : 0);
-      dRep *= P.rep > 70 ? 0.6 : 1;
+      if (dRep < 0) dRep *= 0.65; // 負けたときの下がり方は、勝ったときの上がり方より小さく
+      dRep *= P.rep > 85 ? 0.3 : P.rep > 70 ? 0.5 : 1;
       P.rep = clamp(P.rep + dRep, 0, 100);
       // 人気（ファン）
       let dPop = me.pos === 1 ? 0.25 * gMul * gMul : 0;

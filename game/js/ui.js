@@ -479,7 +479,7 @@
     const p = P();
     if (race.press.tone === 'bold') {
       if (ev.pos === 1) { p.pop = clamp(p.pop + 2, 0, 100); World.news(W, `有言実行。${p.name}騎手が宣言どおり${race.name}を制す`, 'me'); }
-      else if (ev.pos >= 6) { p.rep = clamp(p.rep - 0.8, 0, 100); World.news(W, `強気発言の${p.name}騎手、${race.name}は${ev.pos}着に沈む`, 'bad'); }
+      else if (ev.pos >= 6) { p.rep = clamp(p.rep - 0.5, 0, 100); World.news(W, `強気発言の${p.name}騎手、${race.name}は${ev.pos}着に沈む`, 'bad'); }
     } else if (race.press.tone === 'humble' && ev.pos <= 3) p.rep = clamp(p.rep + 0.4, 0, 100);
   }
   // ---------- 騎乗依頼の選択・取り合い・売り込み ----------
