@@ -214,13 +214,19 @@
       const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
       const m = new T.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true; return m;
     }
-    rail(G, c, X, mat, postMat) {
-      G.add(this.wall(c, X, 0.92, 1.05, mat));
-      G.add(this.ribbon(c, X - 0.07, X + 0.07, 1.05, mat, { step: 3 }));
+    // ラチ：支柱はコースの外側の地面から斜めに立ち上がり、先でラチを支える（馬がぶつかっても脚を取られにくい形）
+    rail(G, c, X, mat, postMat, side = 1) {
+      G.add(this.wall(c, X, 0.93, 1.06, mat));
+      G.add(this.ribbon(c, X - 0.07, X + 0.07, 1.06, mat, { step: 3 }));
       const n = Math.floor(c.lap / 2.5);
-      const im = new T.InstancedMesh(new T.CylinderGeometry(0.035, 0.035, 1.0, 6), postMat, n);
-      const M = new T.Matrix4();
-      for (let i = 0; i < n; i++) { const a = CXY(c, i * 2.5, X); M.makeTranslation(a.x, 0.5 + (this.E ? this.E(i * 2.5) : 0), a.z); im.setMatrixAt(i, M); }
+      const len = Math.hypot(0.55, 1.0);
+      const im = new T.InstancedMesh(new T.CylinderGeometry(0.035, 0.04, len, 6), postMat, n);
+      const M = new T.Matrix4(), Q = new T.Quaternion(), P = new T.Vector3(), S = new T.Vector3(1, 1, 1), up = new T.Vector3(0, 1, 0), d = new T.Vector3();
+      for (let i = 0; i < n; i++) {
+        const p = i * 2.5, a = CXY(c, p, X), b = CXY(c, p, X + side * 0.55), e = this.E ? this.E(p) : 0;
+        d.set(a.x - b.x, 1.0, a.z - b.z).normalize(); Q.setFromUnitVectors(up, d);
+        M.compose(P.set((a.x + b.x) / 2, e + 0.5, (a.z + b.z) / 2), Q, S); im.setMatrixAt(i, M);
+      }
       im.castShadow = true; G.add(im);
     }
 
@@ -234,7 +240,7 @@
       const turfMap = loadTex('turf.jpg'), turfN = loadTex('turf_n.jpg'), dirtMap = loadTex('dirt.jpg'), dirtN = loadTex('dirt_n.jpg'), fieldMap = loadTex('field.jpg');
       const wet = ['重', '不良'].includes(race.cfg.ground);
       // 芝の種類：洋芝（札幌・函館）は深い緑、野芝（新潟）は明るい緑
-      const turfTint = V.turf === 'yoshiba' ? '#cfe3c0' : V.turf === 'noshiba' ? '#f2fbe2' : '#ffffff';
+      const turfTint = V.turf === 'yoshiba' ? '#bcd4ac' : V.turf === 'noshiba' ? '#e6f2d0' : '#d6e4c6';
       const turfMat = new T.MeshStandardMaterial({ map: turfMap, normalMap: turfN, normalScale: new T.Vector2(0.6, 0.6), roughness: 0.92, vertexColors: true, color: wet ? '#b9c4ad' : turfTint });
       const dirtMat = new T.MeshStandardMaterial({ map: wet ? loadTex('dirt_wet.jpg') : dirtMap, normalMap: dirtN, normalScale: new T.Vector2(0.8, 0.8), roughness: wet ? 0.55 : 0.95, color: wet ? '#9b8a78' : '#ffffff' });
       const fieldMat = new T.MeshStandardMaterial({ map: fieldMap, roughness: 1, color: V.turf === 'yoshiba' ? '#a9bd90' : '#b7c69a' });
@@ -257,9 +263,9 @@
       let other;
       if (isTurf) { other = [-31, -8]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), dirtMat, { uvScale: 7 })); }
       else { other = [W + 7, W + 34]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), turfMat, { uvScale: 5, color: stripe })); }
-      this.rail(G, c, -0.35, railMat, railMat);
+      this.rail(G, c, -0.35, railMat, railMat, -1);
       this.rail(G, c, W + 0.35, railMat, railMat);
-      this.rail(G, c, other[0] - 0.3, railMat, railMat);
+      this.rail(G, c, other[0] - 0.3, railMat, railMat, -1);
       this.rail(G, c, other[1] + 0.3, railMat, railMat);
       const hx = -2.2;
       const hedgeSide = new T.MeshStandardMaterial({ color: '#3f6a2c', roughness: 1, side: T.DoubleSide });
@@ -352,6 +358,7 @@
       G.add(goal);
     }
 
+    // スタンド：中山競馬場の写真を手本にした形（大きく張り出した屋根、暗い軒裏、白い帯状の上層階、青緑のガラス面、階段状の下段席、舗装された前庭）
     buildStand(G, c, R) {
       const W = c.width;
       const sk = ((VENUES[c.key] || {}).scene || {}).stand || 1;
@@ -359,62 +366,79 @@
       const L = p1 - p0;
       const a0 = CXY(c, p0, 0);
       const grp = new T.Group();
-      // 直線は x 軸に平行。外側方向 nz
       const nz = a0.nz;
       grp.position.set(a0.x, this.E ? this.E((p0 + p1) / 2) : 0, a0.z);
-      // grp ローカル: x = 直線方向, z = 外向き(nz>0 なら +z)
-      grp.scale.z = nz >= 0 ? 1 : -1;
-      const concrete = new T.MeshStandardMaterial({ color: '#bdbcb6', roughness: 0.9 });
-      const dark = new T.MeshStandardMaterial({ color: '#3b4048', roughness: 0.6 });
-      const roofMat = new T.MeshStandardMaterial({ color: '#e8e9eb', roughness: 0.5, metalness: 0.2, side: T.DoubleSide });
-      const glassTex = canvasTex(256, 64, (x, w, h) => { x.fillStyle = '#1d2a36'; x.fillRect(0, 0, w, h); for (let i = 0; i < 32; i++) for (let j = 0; j < 4; j++) { x.fillStyle = `rgba(${150 + Math.random() * 60},${180 + Math.random() * 50},${200 + Math.random() * 40},${0.25 + Math.random() * 0.3})`; x.fillRect(i * 8 + 1, j * 16 + 2, 6, 12); } });
-      glassTex.wrapS = T.RepeatWrapping; glassTex.repeat.set(L / 40, 1);
-      const glass = new T.MeshStandardMaterial({ map: glassTex, roughness: 0.15, metalness: 0.4 });
+      grp.scale.z = nz >= 0 ? 1 : -1; // grp ローカル: x = 直線方向, z = 外向き
+      const M = (col, o) => new T.MeshStandardMaterial(Object.assign({ color: col, roughness: 0.8 }, o || {}));
+      const white = M('#eeeeea', { roughness: 0.55 }), offwhite = M('#d9d8d2', { roughness: 0.7 }), soffit = M('#4b463f', { roughness: 0.9 }), recess = M('#23262b', { roughness: 0.9 });
+      const dark = M('#3b4048', { roughness: 0.6 });
+      // 舗装（タイル）と、ガラスの方立て、座席の列
+      const paveT = canvasTex(128, 128, (x, w, h) => { for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { const v = 168 + ((i * 3 + j * 5) % 4) * 9 + Math.random() * 8; x.fillStyle = `rgb(${v},${v},${v - 4})`; x.fillRect(i * 16, j * 16, 16, 16); } x.strokeStyle = 'rgba(90,90,90,.35)'; for (let i = 0; i <= 8; i++) { x.beginPath(); x.moveTo(i * 16, 0); x.lineTo(i * 16, h); x.moveTo(0, i * 16); x.lineTo(w, i * 16); x.stroke(); } });
+      paveT.wrapS = paveT.wrapT = T.RepeatWrapping; paveT.repeat.set(L / 6, 26 / 6);
+      const glassT = canvasTex(256, 128, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#5fa3b3'); g.addColorStop(0.55, '#2f6f82'); g.addColorStop(1, '#1f4f60'); x.fillStyle = g; x.fillRect(0, 0, w, h); for (let i = 0; i < 16; i++) { x.fillStyle = `rgba(255,255,255,${0.03 + Math.random() * 0.08})`; x.fillRect(i * 16 + 1, 0, 14, h); } x.fillStyle = '#dfe5e6'; for (let i = 0; i <= 16; i++) x.fillRect(i * 16 - 1, 0, 2, h); x.fillRect(0, h * 0.5 - 1, w, 2); });
+      glassT.wrapS = T.RepeatWrapping; glassT.repeat.set(L / 32, 1);
+      const glass = M('#ffffff', { map: glassT, roughness: 0.12, metalness: 0.55 });
+      const seatT = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#c9c8c2'; x.fillRect(0, 0, w, h); for (let j = 0; j < 10; j++) for (let i = 0; i < 32; i++) { const blk = Math.floor(i / 8); x.fillStyle = blk % 2 ? '#2d4f9a' : '#b3312c'; if (i % 8 !== 7) x.fillRect(i * 8 + 1, j * 12.8 + 3, 6, 6); } });
+      seatT.wrapS = T.RepeatWrapping; seatT.repeat.set(L / 40, 1);
       const box = (w, h, d, x, y, z, m, rx = 0) => { const b = new T.Mesh(new T.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.rotation.x = rx; b.castShadow = true; b.receiveShadow = true; grp.add(b); return b; };
-      // 前庭（エプロン）
-      box(L, 0.2, 30, L / 2, 0.08, W + 16, concrete);
-      // 観客席（3層）
-      const tiers = [[W + 32, W + 52, 1, 10], [W + 50, W + 66, 13, 22], [W + 64, W + 78, 25, 33]];
-      tiers.forEach(([z0, z1, y0, y1]) => {
-        const d = Math.hypot(z1 - z0, y1 - y0), ang = Math.atan2(y1 - y0, z1 - z0);
-        const b = box(L, 0.6, d, L / 2, (y0 + y1) / 2, (z0 + z1) / 2, concrete); b.rotation.x = -ang;
-        box(L, 3, 0.4, L / 2, y1 + 1.2, z1, glass);
-      });
-      // 建物本体と屋根
-      box(L, 36, 8, L / 2, 18, W + 84, glass);
-      const roof = box(L + 20, 0.8, 54, L / 2, 41, W + 60, roofMat); roof.rotation.x = 0.08;
-      for (let x = 10; x < L; x += 40) box(1.2, 40, 1.2, x, 20, W + 80, dark);
-      // 観客（立ち見＋座席）
-      const n1 = Math.min(5200, Math.floor(L * 9));
-      const ppl = new T.InstancedMesh(new T.CapsuleGeometry(0.22, 0.85, 3, 6), new T.MeshStandardMaterial({ roughness: 0.8 }), n1 + 3000);
-      const M = new T.Matrix4(), C = new T.Color();
-      const pal = ['#2b2b2b', '#e8e8e8', '#3f51b5', '#c62828', '#455a64', '#8d6e63', '#fbc02d', '#1b5e20', '#7b1fa2', '#f5f5f5', '#212121', '#90a4ae'];
+      // --- 馬場ぎわ：生け垣と白い柵、芝の斜面、舗装された前庭 ---
+      box(L, 0.9, 0.9, L / 2, 0.45, W + 2.4, M('#2f5a27', { roughness: 1 }));
+      box(L, 0.06, 0.06, L / 2, 1.25, W + 3.3, white); box(L, 0.05, 0.05, L / 2, 0.75, W + 3.3, white);
+      { const posts = new T.InstancedMesh(new T.BoxGeometry(0.07, 1.25, 0.07), white, Math.floor(L / 2.5)); const mm = new T.Matrix4(); for (let i = 0; i < posts.count; i++) { mm.makeTranslation(i * 2.5 + 1, 0.62, W + 3.3); posts.setMatrixAt(i, mm); } grp.add(posts); }
+      box(L, 0.2, 26, L / 2, 0.06, W + 25, M('#ffffff', { map: paveT, roughness: 0.9 }));
+      // --- 下段の階段席 ---
+      const t0 = W + 38, t1 = W + 53, ty0 = 0.4, ty1 = 7.2;
+      { const d = Math.hypot(t1 - t0, ty1 - ty0), ang = Math.atan2(ty1 - ty0, t1 - t0);
+        box(L, 0.8, d, L / 2, (ty0 + ty1) / 2 - 0.4, (t0 + t1) / 2, offwhite, -ang);
+        const seats = new T.Mesh(new T.PlaneGeometry(L, d), M('#ffffff', { map: seatT, roughness: 0.85 })); seats.rotation.x = -Math.PI / 2 - ang; seats.position.set(L / 2, (ty0 + ty1) / 2 + 0.06, (t0 + t1) / 2); seats.receiveShadow = true; grp.add(seats);
+        box(L, 1.1, 0.25, L / 2, ty0 + 0.5, t0 - 0.1, white); }
+      // --- ガラス面と上層階（白い帯が前へせり出す） ---
+      box(L, 14, 0.5, L / 2, 14.2, W + 54, glass);
+      box(L, 2.0, 2.4, L / 2, 22.2, W + 53, white);
+      box(L, 3.4, 0.5, L / 2, 24.9, W + 56, recess);
+      box(L, 1.7, 3.2, L / 2, 27.4, W + 51.5, white);
+      box(L, 3.2, 0.5, L / 2, 29.8, W + 55, recess);
+      box(L, 1.6, 3.6, L / 2, 32.2, W + 50, white);
+      box(L, 2.6, 0.5, L / 2, 34.3, W + 54, recess);
+      // 建物本体（裏側）
+      box(L, 36, 30, L / 2, 18, W + 71, offwhite);
+      // --- 屋根：後ろから前へ持ち上がる片持ちの大屋根。上と縁は白、軒裏は暗い ---
+      const roofLen = 62, tilt = 0.13;
+      const roof = new T.Mesh(new T.BoxGeometry(L + 26, 1.6, roofLen), [white, white, white, soffit, white, white]);
+      roof.position.set(L / 2, 39.5, W + 56); roof.rotation.x = tilt; roof.castShadow = true; roof.receiveShadow = true; grp.add(roof);
+      const fz = W + 56 - Math.cos(tilt) * roofLen / 2, fy = 39.5 + Math.sin(tilt) * roofLen / 2;
+      box(L + 26, 1.0, 1.0, L / 2, fy - 0.1, fz, white, tilt);
+      // 屋根を支える梁（軒裏に見える）と、屋根の上の照明
+      for (let x = 14; x < L; x += 28) { const bm = box(1.0, 1.6, roofLen - 6, x, 38.3, W + 57, soffit, tilt); bm.castShadow = false; }
+      { const n = Math.floor(L / 8), lamps = new T.InstancedMesh(new T.BoxGeometry(1.5, 0.9, 0.7), dark, n), mm = new T.Matrix4(); for (let i = 0; i < n; i++) { mm.makeTranslation(i * 8 + 4, fy + 1.0, fz + 0.8); lamps.setMatrixAt(i, mm); } grp.add(lamps); }
+      // --- 端の建物（白い棟と、丸いガラスの棟） ---
+      box(34, 26, 44, -19, 13, W + 62, white); box(34.4, 1.2, 44.4, -19, 26.5, W + 62, offwhite); box(30, 9, 0.4, -19, 12, W + 39.9, glass);
+      { const cyl = new T.Mesh(new T.CylinderGeometry(15, 15, 17, 32), M('#4f93b0', { roughness: 0.15, metalness: 0.6 })); cyl.position.set(-52, 8.5, W + 58); cyl.castShadow = true; grp.add(cyl);
+        const cap = new T.Mesh(new T.CylinderGeometry(15.6, 15.6, 1.2, 32), white); cap.position.set(-52, 17.5, W + 58); grp.add(cap); }
+      box(18, 18, 36, L + 11, 9, W + 62, white);
+
+      // --- 観客：胴体と頭の2部品。前庭の立ち見と、階段席 ---
+      const big = this.race && (this.race.cfg.name || '').match(/G|賞|記念|ステークス|カップ|ダービー|オークス/) ? 1 : 0.55;
+      const nA = Math.min(5200, Math.floor(L * 9 * big)), nS = Math.min(2600, Math.floor(L * 5 * big)), N = nA + nS;
+      const bodyG = new T.CylinderGeometry(0.2, 0.15, 1.32, 6); bodyG.translate(0, 0.66, 0);
+      const headG = new T.SphereGeometry(0.115, 6, 5); headG.translate(0, 1.47, 0);
+      const bodies = new T.InstancedMesh(bodyG, M('#ffffff', { roughness: 0.9 }), N), heads = new T.InstancedMesh(headG, M('#ffffff', { roughness: 0.8 }), N);
+      const Mx = new T.Matrix4(), C = new T.Color(), Q = new T.Quaternion(), S = new T.Vector3(), P = new T.Vector3();
+      const cloth = ['#1f2329', '#2b3340', '#3a4252', '#565d66', '#7c8288', '#b9bcbd', '#e4e3de', '#24324f', '#3d5a80', '#6b4a3a', '#8a7f6a', '#4a5a3c', '#7a2e2e', '#c9b458', '#f0efe9', '#101214'];
+      const hair = ['#17130f', '#221a14', '#2e2620', '#151515', '#3a3028', '#d8d4cc', '#1b1b1d'];
       let k = 0;
-      for (let i = 0; i < n1; i++) {
-        const zz = W + 3 + Math.pow(R(), 1.6) * 24, xx = R() * L;
-        M.makeTranslation(xx, 0.75 + 0.2, zz); ppl.setMatrixAt(k, M); ppl.setColorAt(k, C.set(pal[Math.floor(R() * pal.length)])); k++;
-      }
-      tiers.forEach(([z0, z1, y0, y1], ti) => {
-        for (let i = 0; i < 1000; i++) {
-          const t = R(), xx = R() * L; const zz = z0 + (z1 - z0) * t, yy = y0 + (y1 - y0) * t + 0.9;
-          M.makeTranslation(xx, yy, zz); ppl.setMatrixAt(k, M); ppl.setColorAt(k, C.set(pal[Math.floor(R() * pal.length)])); k++;
-        }
-      });
-      ppl.count = k; ppl.castShadow = false; ppl.receiveShadow = true;
-      grp.add(ppl);
-      this.crowd = ppl;
-      // 屋根の上の旗と、場名の看板
-      const flagCols = ['#c8102e', '#f4f4f0', '#1f3a6b', '#e0a81c', '#1f7a4a'];
-      for (let x = 12, i = 0; x < L; x += 26, i++) {
-        box(0.18, 7, 0.18, x, 45.5, W + 36, dark);
-        const f = new T.Mesh(new T.PlaneGeometry(3.4, 2.1), new T.MeshStandardMaterial({ color: flagCols[i % 5], side: T.DoubleSide, roughness: 0.8 })); f.position.set(x + 1.8, 47.6, W + 36); grp.add(f);
-      }
-      const V = VENUES[c.key] || {};
-      const signT = canvasTex(1024, 128, (x, w, h) => { x.fillStyle = '#143f2b'; x.fillRect(0, 0, w, h); x.fillStyle = '#f4f1e6'; x.font = 'bold 78px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(`${V.en || ''} RACECOURSE`, w / 2, h / 2 + 4); });
-      const sign = new T.Mesh(new T.PlaneGeometry(64, 8), new T.MeshStandardMaterial({ map: signT, roughness: 0.6, side: T.DoubleSide }));
-      sign.position.set(L / 2, 38.2, W + 79.6); sign.rotation.y = Math.PI; if (nz < 0) sign.scale.x = -1; grp.add(sign);
-      // 各階の床のふち（建物を横切る白い帯）
-      for (const y of [11.5, 23.5, 34]) box(L, 0.5, 0.6, L / 2, y, W + 79.7, concrete);
+      const put = (x, y, z, sit) => {
+        const h = 0.9 + R() * 0.16;
+        Mx.compose(P.set(x, y, z), Q, S.set(1, sit ? h * 0.62 : h, 1)); bodies.setMatrixAt(k, Mx); bodies.setColorAt(k, C.set(cloth[Math.floor(R() * cloth.length)]));
+        Mx.compose(P.set(x, y - (sit ? 1.47 * h * 0.38 : 0), z), Q, S.set(1, h, 1)); heads.setMatrixAt(k, Mx);
+        heads.setColorAt(k, R() < 0.8 ? C.set(hair[Math.floor(R() * hair.length)]) : C.set(cloth[Math.floor(R() * cloth.length)])); // 帽子の人もいる
+        k++;
+      };
+      for (let i = 0; i < nA; i++) put(R() * L, 0.16, W + 12.5 + Math.pow(R(), 1.8) * 24, false); // 柵ぎわほど混む
+      for (let i = 0; i < nS; i++) { const t = Math.floor(R() * 10) / 10 + 0.05; put(R() * L, ty0 + (ty1 - ty0) * t + 0.1, t0 + (t1 - t0) * t, true); }
+      bodies.count = heads.count = k; bodies.receiveShadow = heads.receiveShadow = true;
+      grp.add(bodies); grp.add(heads);
+      this.crowd = bodies;
       G.add(grp);
     }
 
@@ -517,12 +541,12 @@
           const ang = Math.atan2(rp.getZ(i), rp.getX(i));
           let hgt = 60 + 260 * Math.pow(Math.abs(Math.sin(ang * 2.3 + 1)), 1.5) * (0.55 + 0.45 * Math.sin(ang * 5.3)) + 50 * Math.abs(Math.sin(ang * 13));
           if (SC.sea) { const da = Math.abs(Math.atan2(Math.sin(ang - seaDir), Math.cos(ang - seaDir))); if (da < 1.3) hgt = 6 + 40 * Math.max(0, (da - 1.0) / 0.3); }
-          if (SC.flat) hgt *= 0.4;
+          if (SC.flat || ['tokyo', 'nakayama', 'niigata', 'chukyo'].includes(c.key)) hgt = 14 + hgt * 0.1; // 平野にある場は山を見せず、低い丘と木立ちだけ
           rp.setY(i, hgt);
         } else rp.setY(i, -5);
       }
       ring.computeVertexNormals();
-      const hills = new T.Mesh(ring, new T.MeshLambertMaterial({ color: '#4d6a55', side: T.BackSide }));
+      const hills = new T.Mesh(ring, new T.MeshLambertMaterial({ color: '#5f7868', side: T.BackSide }));
       hills.position.set(0, base, c.R * sgn);
       G.add(hills);
       // 函館：津軽海峡（向正面の向こうに海）
@@ -847,7 +871,7 @@
     updateFov() {
       const asp = this.camera.aspect;
       const mode = this.intro && this.intro.stage !== 'set' ? 'chase' : this.camMode;
-      const hfov = this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 30 : 75;
+      const hfov = this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 21 : 75;
       this.camera.fov = Math.min(80, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / asp) * 180 / Math.PI);
       this.camera.updateProjectionMatrix();
     }
@@ -967,9 +991,9 @@
         cam.lookAt(a.x + fwd.x * 6, 1.6 + ey, a.z + fwd.z * 6);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
       } else { // tv: 外側からの横移動カメラ
-        const out = CXY(c, race.pAt(P.s) - 6, c.width + 38);
+        const out = CXY(c, race.pAt(P.s) - 6, c.width + 30);
         const ey2 = this.E ? this.E(race.pAt(P.s)) : 0;
-        const want = new T.Vector3(out.x, 9 + ey2, out.z);
+        const want = new T.Vector3(out.x, 9.5 + ey2, out.z);
         if (!this.camSnap) { cam.position.copy(want); this.camSnap = true; } else cam.position.lerp(want, Math.min(1, dt * 3));
         cam.lookAt(a.x, 1.4 + ey2, a.z);
         this.camTarget = new T.Vector3(a.x, 0, a.z);
