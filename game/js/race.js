@@ -295,12 +295,17 @@
             if (o === r) continue;
             const ds = o.s - r.s;
             if (Math.sign(o.X - r.X) !== Math.sign(dX)) continue;
-            if (ds < 0 && ds > -2.6 && Math.abs(o.X - nx) < 0.95 && !r.auto && r.started) {
-              o.checkedT = 0.6; r.foul += dt * 3; r.fouled[o.num] = (r.fouled[o.num] || 0) + dt;
-              if (!this._foulMsg || this.t - this._foulMsg > 2) { this._foulMsg = this.t; this.msg('他馬の進路をカット!', 1.0, '#ff5252'); this.emit('foul'); }
+            // 斜行：すぐ後ろ（半馬身ほど以内）の馬の前へ、その馬が追いついてくる勢いのまま入ると、相手は手綱を引かされる
+            //  発走直後のもみ合いは数えない。自分で寄せた（◀▶）ときは重く、疲れやムチで流れたときは軽く数える
+            if (ds < 0 && ds > -1.5 && Math.abs(o.X - nx) < 0.9 && !r.auto && r.started && r.s > 60 && o.v > r.v - 0.25) {
+              const close = 1 - (-ds) / 1.5, own = Math.abs(this.input.steer) > 0.1 ? 1 : 0.35;
+              o.checkedT = Math.max(o.checkedT, 0.5 * close);
+              const add = dt * 2.6 * close * own;
+              r.foul += add; r.fouled[o.num] = (r.fouled[o.num] || 0) + add;
+              if (close > 0.3 && own === 1 && (!this._foulMsg || this.t - this._foulMsg > 2.5)) { this._foulMsg = this.t; this.msg('他馬の前をカット（審議の対象）', 1.0, '#ff5252'); this.emit('foul'); }
             }
             if (Math.abs(ds) < 2.3 && Math.abs(o.X - nx) < 0.95) {
-              if (!r.auto && Math.abs(r.latV) > 0.6) { r.sideContact = 0.3; o.v -= 0.15; r.v -= 0.1; r.foul += dt * 0.8; r.fouled[o.num] = (r.fouled[o.num] || 0) + dt * 0.3; this.emit('bump'); }
+              if (!r.auto && Math.abs(r.latV) > 0.9 && r.s > 60) { r.sideContact = 0.3; o.v -= 0.15; r.v -= 0.1; r.foul += dt * 0.3; r.fouled[o.num] = (r.fouled[o.num] || 0) + dt * 0.1; this.emit('bump'); }
               dX = 0;
               break;
             }
@@ -416,13 +421,14 @@
       // 審議（プレイヤーの斜行・接触）
       const p = this.player;
       this.inquiry = null;
-      if (p && p.foul > 0.6) {
+      if (p && p.foul > 0.8) {
         const me = res.find(x => x.runner === p);
         const victims = Object.keys(p.fouled).map(Number);
         const behind = res.filter(x => victims.includes(x.runner.num) && x.pos > me.pos && x.pos - me.pos <= 3);
-        const severe = p.foul > 2.2;
+        const severe = p.foul > 1.5;
         const demoteTo = behind.length && severe ? behind[behind.length - 1].pos : null;
-        const weeks = p.foul > 3.5 ? 4 : p.foul > 2.2 ? 2 : p.foul > 1.2 ? 1 : 0;
+        // 過怠金で済むことが多く、騎乗停止は大きく何度も進路を妨げたときだけ
+        const weeks = p.foul > 3.2 ? 4 : p.foul > 2.2 ? 2 : p.foul > 1.5 ? 1 : 0;
         this.inquiry = { foul: Math.round(p.foul * 10) / 10, demoteTo, weeks, fine: weeks === 0 ? 5 : 0 };
         if (demoteTo) {
           res.splice(res.indexOf(me), 1);
