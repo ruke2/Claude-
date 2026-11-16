@@ -41,7 +41,9 @@
     return rotDir === 'ccw' ? -(e.clientY - y0) : (e.clientY - y0);
   }
 
-  function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); closeDrawer(); flushToasts(); }
+  function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); closeDrawer(); flushToasts(); if (window.Sound) Sound.bgm(id !== 'race'); }
+  // 最初に画面に触れたときに音声を準備する（ブラウザは操作の前に音を出せない）
+  document.addEventListener('pointerdown', () => { if (window.Sound) { Sound.init(); if (!$('race').classList.contains('on')) Sound.bgm(true); } }, { once: true, capture: true });
   function gradeTag(race) {
     if (race.graded) return `<span class="badge g${race.graded}">G${'ⅠⅡⅢ'[race.graded - 1]}</span>`;
     if (race.overseas) return '<span class="badge g1">海外GⅠ</span>';
@@ -131,6 +133,7 @@
       <button class="item" data-a="tut">🎓 チュートリアル</button>
       <button class="item" data-a="rot">🔄 画面の回転方向を反転（縦持ち時）</button>
       <button class="item" data-a="snd">🔈 効果音：${Sound.isMuted() ? 'OFF' : 'ON'}</button>
+      <button class="item" data-a="bgm">🎵 BGM：${Sound.bgmEnabled() ? 'ON' : 'OFF'}</button>
       <button class="item" data-a="credit">ⓘ 素材のクレジット</button>
       <button class="item" data-a="title">↩ タイトルへ${inGame ? '（自動でセーブ）' : ''}</button>
       <p class="small muted" style="margin-top:auto">縦向きのまま（向きロック中）でも、画面は横向きに回して表示する。</p>`;
@@ -140,10 +143,11 @@
       if (a === 'save') { World.save(W); CloudSave.flush(); toast('セーブした'); }
       if (a === 'export') exportSave();
       if (a === 'home') showWeek();
-      if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
+      if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>BGM："Green Hills" by Igor Gundarev（CC0、OpenGameArt）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
       if (a === 'tut') { if (W && !quick) World.save(W); startTutorial(); }
       if (a === 'rot') { rotDir = rotDir === 'cw' ? 'ccw' : 'cw'; try { localStorage.setItem('jl-rot', rotDir); } catch (e) {} applyRotation(); }
       if (a === 'snd') Sound.toggleMute();
+      if (a === 'bgm') { Sound.init(); const on = Sound.toggleBgm(); toast('BGM：' + (on ? 'ON' : 'OFF')); }
       if (a === 'title') { setTimeout(refreshTitle, 0); if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
     });
   }

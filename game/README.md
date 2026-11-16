@@ -39,6 +39,7 @@
 ## 技術とデータ
 
 - 描画: Three.js r147（jsDelivr）
+- BGM: "Green Hills" by Igor Gundarev（CC0）https://opengameart.org/content/green-hills をモノラル化して `js/audio-data.js` に収録
 - 歓声: "Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0）https://commons.wikimedia.org/wiki/File:Arrowhead_Stadium_crowd_noise.wav を切り出し・モノラル化して `js/audio-data.js` に収録。この音源部分は CC BY-SA 4.0 で提供する
 - ファンファーレ: "Call to the Post (First Call)" U.S. Army Bands Online（米国政府の著作物・パブリックドメイン）https://archive.org/details/CallToThePostFirstCall を `js/audio-data.js` に収録
 - 芝・砂・空のテクスチャ: [Poly Haven](https://polyhaven.com/)（CC0）の leafy_grass, grass_ground, park_sand, damp_sand, kloofendal_48d_partly_cloudy_puresky を縮小・色調補正して `assets/` に収録

@@ -256,20 +256,24 @@
         if (this.bias.lane) f *= 1 + this.bias.lane * 0.012 * (0.5 - Math.min(1, r.X / 7));
         r.grade = gr;
         let vT = r.vMax * f;
-        vT *= r.st < 0.25 ? 0.9 + 0.4 * Math.max(0, r.st) : 1;
-        // バテ：脚が上がった状態が長く続くほど、どんどん止まる（早仕掛けの代償）
+        // 脚が上がると失速する。急に止まらず、脚の残りに応じてじわじわ遅くなる
+        vT *= r.st < 0.25 ? 0.93 + 0.28 * Math.max(0, r.st) : 1;
         if (r.st < 0.25 && !r.finished) r.bate = (r.bate || 0) + dt;
-        if (r.bate) vT *= 1 - Math.min(0.16, Math.pow(r.bate / 22, 2) * 0.16);
-        if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.94; }
-        // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
-        const acc = (r.s < 260 && r.v < this.vBase * 0.55 ? 7.0 : r.s < 260 && r.v < this.vBase * 0.85 ? 4.6 : r.v < this.vBase * 0.8 ? 1.2 : 0.2 + r.kick * 0.0028) * (M.sprint ? 1.1 : 1);
-        if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - 0.8 * dt);
+        if (r.bate) vT *= 1 - Math.min(0.07, Math.pow(r.bate / 25, 2) * 0.07);
+        if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.97; }
+        // 前の馬に詰まったとき：前の馬の速さに合わせて、間合いに応じて控える（一瞬で速さを落とさない）
         r.blocked = false;
-        if (ahead && aheadGap < 3.0) {
-          r.blocked = aheadGap < 2.4 && r.effort >= 0.5;
-          const cap = ahead.v - (aheadGap < 1.7 ? (M.inside ? 0.15 : 0.35) : 0.05);
-          if (r.v > cap) r.v = Math.max(0, cap);
+        let brake = 0.8;
+        if (ahead && aheadGap < 4.0) {
+          r.blocked = aheadGap < 2.6 && r.effort >= 0.5;
+          const follow = ahead.v + (aheadGap - 2.8) * 0.9 - (M.inside ? 0 : 0.05);
+          if (follow < vT) { vT = Math.max(0, follow); brake = aheadGap < 1.4 ? 4.5 : 2.2; }
         }
+        // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
+        const acc = (r.s < 260 && r.v < this.vBase * 0.55 ? 7.0 : r.s < 260 && r.v < this.vBase * 0.85 ? 4.6 : r.v < this.vBase * 0.8 ? 1.0 : 0.25 + r.kick * 0.0025) * (M.sprint ? 1.1 : 1);
+        if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - brake * dt);
+        // 重なりそうなほど近いときだけ、前の馬より速くならないようにする
+        if (ahead && aheadGap < 1.0 && r.v > ahead.v) r.v = Math.max(ahead.v, r.v - 6 * dt);
         if (!r.finished) {
           let drain = r.drainBase * Math.pow(r.v / (this.vBase * 0.975), 6);
           if (r.covered) drain *= 0.86;
@@ -305,7 +309,7 @@
               if (close > 0.3 && own === 1 && (!this._foulMsg || this.t - this._foulMsg > 2.5)) { this._foulMsg = this.t; this.msg('他馬の前をカット（審議の対象）', 1.0, '#ff5252'); this.emit('foul'); }
             }
             if (Math.abs(ds) < 2.3 && Math.abs(o.X - nx) < 0.95) {
-              if (!r.auto && Math.abs(r.latV) > 0.9 && r.s > 60) { r.sideContact = 0.3; o.v -= 0.15; r.v -= 0.1; r.foul += dt * 0.3; r.fouled[o.num] = (r.fouled[o.num] || 0) + dt * 0.1; this.emit('bump'); }
+              if (!r.auto && Math.abs(r.latV) > 0.9 && r.s > 60) { r.sideContact = 0.3; o.checkedT = Math.max(o.checkedT, 0.4); r.checkedT = Math.max(r.checkedT, 0.3); r.foul += dt * 0.3; r.fouled[o.num] = (r.fouled[o.num] || 0) + dt * 0.1; this.emit('bump'); }
               dX = 0;
               break;
             }
@@ -383,15 +387,15 @@
     chooseLane(r, rem) {
       const W = this.course.width, R = this.runners;
       const lane = (x) => {
-        let ahead = 60, side = false;
+        let ahead = 60, side = false, aheadV = null;
         for (const o of R) {
           if (o === r || o.finished) continue;
           if (Math.abs(o.X - x) >= 1.0) continue;
           const ds = o.s - r.s;
           if (ds > -2.7 && ds < 2.7 && Math.abs(x - r.X) > 0.25) side = true; // 移りたい進路の真横に馬がいる
-          if (ds >= 2.7 && ds < ahead) ahead = ds;
+          if (ds >= 2.7 && ds < ahead) { ahead = ds; aheadV = o.v; }
         }
-        return { ahead, side };
+        return { ahead, side, aheadV };
       };
       const k = curvAt(this.course, this.pAt(r.s));
       const corner = k > 0;
@@ -402,9 +406,9 @@
       let tx = r.X;
       r.inBlocked = false;
       if (late && !corner && spurt) {
-        // 直線の追い比べ：前が8m以内に詰まっていたら、近い順に外（または内）の空いた進路を探す
+        // 直線の追い比べ：前の馬が近く、しかも自分より伸びていないときだけ、近い順に外（または内）の空いた進路を探す
         const wantOut = lb < -0.35 && r.X < 5;
-        if (here.ahead < 8 || wantOut) {
+        if ((here.ahead < 5.5 && (here.aheadV == null || here.aheadV < r.v + 0.3)) || wantOut) {
           let best = null;
           for (const d of [1.1, -1.1, 2.2, 3.3, -2.2, 4.4]) {
             const x = r.X + d; if (x < 0.7 || x > W - 0.7) continue;

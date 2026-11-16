@@ -36,11 +36,25 @@
       try {
         const bin = atob(B[k]), u8 = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-        ctx.decodeAudioData(u8.buffer, (buf) => { samples[k] = buf; if (k === 'crowd') startCrowd(); }, () => {});
+        ctx.decodeAudioData(u8.buffer, (buf) => { samples[k] = buf; if (k === 'crowd') startCrowd(); if (k === 'bgm' && bgmWant) playBgm(); }, () => {});
       } catch (e) {}
     });
   }
   const samples = {};
+  // ---- BGM（レース以外の画面） ----
+  let bgmWant = false, bgmSrc = null, bgmG = null, bgmOff = false;
+  try { bgmOff = localStorage.getItem('jl-bgm') === '0'; } catch (e) {}
+  function playBgm() {
+    if (!ctx || !samples.bgm || bgmSrc || bgmOff) return;
+    bgmG = ctx.createGain(); bgmG.gain.value = 0; bgmG.connect(master);
+    bgmSrc = ctx.createBufferSource(); bgmSrc.buffer = samples.bgm; bgmSrc.loop = true; bgmSrc.connect(bgmG); bgmSrc.start();
+    bgmG.gain.setTargetAtTime(0.32, ctx.currentTime, 0.8);
+  }
+  function stopBgm() {
+    if (!bgmSrc) return;
+    const s0 = bgmSrc, g0 = bgmG; bgmSrc = null; bgmG = null;
+    g0.gain.setTargetAtTime(0, ctx.currentTime, 0.35); setTimeout(() => { try { s0.stop(); } catch (e) {} }, 1600);
+  }
   let crowdG = null;
   function startCrowd() {
     // 同じ録音を速さと位置をずらして重ね、大人数に聞こえるようにする
@@ -69,6 +83,10 @@
   }
   const A = {
     init,
+    // on=true でBGMを流す（音声の準備がまだなら、準備でき次第流す）
+    bgm(on) { bgmWant = !!on; if (on) { if (ctx) playBgm(); } else stopBgm(); },
+    bgmEnabled: () => !bgmOff,
+    toggleBgm() { bgmOff = !bgmOff; try { localStorage.setItem('jl-bgm', bgmOff ? '0' : '1'); } catch (e) {} if (bgmOff) stopBgm(); else if (bgmWant && ctx) playBgm(); return !bgmOff; },
     isMuted: () => muted,
     toggleMute() { muted = !muted; try { localStorage.setItem('jl-muted', muted ? '1' : '0'); } catch (e) {} if (master) master.gain.value = muted ? 0 : 0.9; return muted; },
     hoof(surf) { // 自分の馬の蹄音
