@@ -194,6 +194,15 @@
         if (opts.color) { const k = opts.color(p); col.push(k, k, k, k, k, k); }
         if (i < n) { const o = i * 2; idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
       }
+      // 三角形の表裏をそろえる：左回りと右回りで X の向きが逆になり、表が下を向くことがある。
+      // 表が下を向くと上から見えず（下の地面だけが見え）、コースが高い所では馬やゲートが浮いて見えていた
+      if (idx.length >= 3) {
+        const P = (k) => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]];
+        const [a0, a1, a2] = [P(idx[0]), P(idx[1]), P(idx[2])];
+        const ux = a1[0] - a0[0], uz = a1[2] - a0[2], vx = a2[0] - a0[0], vz = a2[2] - a0[2];
+        const ny = uz * vx - ux * vz; // 面の法線の上下成分（右手系）
+        if (ny < 0) for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; }
+      }
       const g = new T.BufferGeometry();
       g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
       g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
@@ -761,7 +770,7 @@
       for (let i = 0; i <= n; i++) {
         const X = X0 + i * W, z = zOf(X);
         const end = i === 0 || i === n;
-        box(LEN - 0.2, end ? 2.2 : 1.45, end ? 0.16 : 0.13, (FRONT + REAR) / 2, end ? 1.25 : 1.05, z, end ? steel : pad);
+        box(LEN - 0.2, end ? 2.45 : 1.72, end ? 0.16 : 0.13, (FRONT + REAR) / 2, end ? 1.255 : 0.96, z, end ? steel : pad); // 仕切りは地面の近くまで下ろす
         if (!end) box(LEN - 0.2, 0.08, 0.15, (FRONT + REAR) / 2, 1.8, z, padEdge);
         post(FRONT, z, 2.75, 0.055); post(REAR, z, 2.75, 0.055); post((FRONT + REAR) / 2, z, 2.75, 0.045);
       }
@@ -782,12 +791,20 @@
         for (const side of [0, 1]) {
           const hinge = new T.Group(); hinge.position.set(FRONT, 0, zOf(Xa + side * W)); grp.add(hinge);
           const dw = W / 2 - 0.04;
-          const d = new T.Mesh(new T.PlaneGeometry(dw, 1.5), doorMat); d.position.set(0, 1.15, zOf((side ? -1 : 1) * dw / 2)); d.rotation.y = Math.PI / 2; d.castShadow = true; hinge.add(d);
+          const d = new T.Mesh(new T.PlaneGeometry(dw, 1.72), doorMat); d.position.set(0, 1.0, zOf((side ? -1 : 1) * dw / 2)); d.rotation.y = Math.PI / 2; d.castShadow = true; hinge.add(d);
           const bar = new T.Mesh(geoBox, steelL); bar.scale.set(0.04, 0.05, dw); bar.position.set(0, 1.9, zOf((side ? -1 : 1) * dw / 2)); hinge.add(bar);
           hinge.userData.open = (side ? -1 : 1) * outSign;
           this.gateDoors.push(hinge);
-          const r = new T.Mesh(new T.PlaneGeometry(dw, 1.5), doorMat); r.position.set(REAR, 1.15, zOf(Xa + W / 2 + (side ? 1 : -1) * dw / 2)); r.rotation.y = Math.PI / 2; grp.add(r); this.gateRear.push(r);
+          const r = new T.Mesh(new T.PlaneGeometry(dw, 1.72), doorMat); r.position.set(REAR, 1.0, zOf(Xa + W / 2 + (side ? 1 : -1) * dw / 2)); r.rotation.y = Math.PI / 2; grp.add(r); this.gateRear.push(r);
         }
+      }
+      // 足もとの枠（前後の下の横木と、各仕切りの下の台）と、接地の影
+      box(0.14, 0.12, spanZ, FRONT, 0.06, midZ, steel); box(0.14, 0.12, spanZ, REAR, 0.06, midZ, steel);
+      for (let i = 0; i <= n; i++) box(LEN, 0.1, 0.18, (FRONT + REAR) / 2, 0.05, zOf(X0 + i * W), steel);
+      {
+        const sh = canvasTex(128, 128, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(0.7, 'rgba(0,0,0,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+        const ao = new T.Mesh(new T.PlaneGeometry(LEN + 1.6, totalW + 2.2), new T.MeshBasicMaterial({ map: sh, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+        ao.rotation.x = -Math.PI / 2; ao.position.set((FRONT + REAR) / 2, 0.03, midZ); ao.renderOrder = 1; grp.add(ao);
       }
       // 両端の車輪
       for (const X of [X0 - 0.35, X0 + totalW + 0.35]) for (const x of [FRONT - 0.5, REAR + 0.5]) {
