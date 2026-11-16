@@ -434,6 +434,67 @@ details.acc>summary{font-weight:900}
 .ab-row.tot b{font-family:var(--display);font-weight:400}
 .ab-bar{height:10px;border-radius:999px}
 input[type=text],select{border:0;border-radius:12px;box-shadow:inset 0 0 0 2px var(--rule);font-weight:700}
+
+/* ================================================================
+   騎乗中の画面：映像を広く見せるため、情報は四隅に小さく、半透明の暗い札にまとめる
+   ================================================================ */
+#race .hud{color:#fff}
+#hud-info{top:calc(var(--st) + 10px);left:calc(var(--sl) + 12px);background:linear-gradient(90deg,rgba(14,18,40,.72),rgba(14,18,40,.35));border-radius:14px;padding:5px 14px 6px 10px;min-width:0;line-height:1.15;box-shadow:none;border:0;backdrop-filter:blur(3px)}
+#hud-info .pos{font-family:var(--display);font-size:26px;letter-spacing:.02em}
+#hud-info .pos small{font-family:var(--sans);font-size:12px;font-weight:800;opacity:.75;margin-left:2px}
+#hud-info .rem{font-size:12px;font-weight:800;opacity:.9}
+#hud-info .rem b{font-family:var(--display);font-weight:400;font-size:15px;margin:0 2px}
+#hud-bar{top:calc(var(--st) + 12px);height:10px;width:min(30vw,280px);background:rgba(14,18,40,.45);border:0;box-shadow:none;border-radius:999px}
+#hud-bar .d{top:2px;width:6px;height:6px;margin-left:-3px;border:0;opacity:.9}
+#hud-bar .d.me{width:12px;height:12px;top:-1px;margin-left:-6px;border:2px solid #fff;box-shadow:0 0 0 2px rgba(255,79,139,.8)}
+#hud-bar .lead{display:none}
+#hud-map{top:calc(var(--st) + 10px);right:calc(var(--sr) + 56px);width:96px;height:54px;border-radius:12px;opacity:.9}
+#pauseBtn{position:absolute;top:calc(var(--st) + 10px);right:calc(var(--sr) + 12px);width:38px;height:38px;border-radius:50%;padding:0;font-size:14px;font-weight:900;background:rgba(14,18,40,.6);color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.6);z-index:2}
+#hud-note{top:calc(var(--st) + 64px);left:calc(var(--sl) + 12px);font-size:12px;font-weight:800;background:rgba(255,79,139,.9);border-radius:999px;padding:3px 12px;opacity:0;transition:opacity .25s;white-space:nowrap}
+#hud-note.on{opacity:1}
+#hud-msg{top:30%;font-size:clamp(18px,6vh,30px);-webkit-text-stroke:0;text-shadow:0 2px 0 rgba(0,0,0,.35),0 0 18px rgba(0,0,0,.35)}
+#hud-side{top:auto;bottom:calc(var(--sb) + 96px);left:30%;right:30%;font-size:13px;opacity:.85}
+#hud-speed{bottom:calc(var(--sb) + 92px);left:calc(var(--sl) + 12px);background:none;box-shadow:none;border:0;padding:0;min-width:0;text-align:left}
+#hud-speed .spd b{font-size:30px;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+#hud-speed .spd small{color:#fff;opacity:.8;font-weight:800}
+#hud-speed .laps{display:none}
+#hud-gauges{top:auto;bottom:calc(var(--sb) + 92px);left:calc(var(--sl) + 108px);display:flex;flex-direction:column;gap:5px;padding:0;background:none;box-shadow:none;border:0}
+.hg{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800}
+.hg span{width:26px;opacity:.85}
+.hg .gauge{width:84px;height:7px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden}
+.hg .gauge i{top:0;bottom:0;left:0;right:auto;height:auto !important;border-radius:999px}
+#radar{left:calc(var(--sl) + 196px);bottom:calc(var(--sb) + 10px);width:96px;height:70px;opacity:.85}
+#hud-btns{top:auto;right:auto;bottom:calc(var(--sb) + 30px);left:calc(var(--sl) + 300px);display:flex;gap:6px;pointer-events:auto}
+#hud-btns .hbtn{background:rgba(14,18,40,.55);color:#fff;font-size:11px;box-shadow:0 0 0 1.5px rgba(255,255,255,.5)}
+#b-cam,#b-snd{display:none}
+#b-back.act{background:var(--pop2)}
+#ctl-left{bottom:calc(var(--sb) + 12px);left:calc(var(--sl) + 12px)}
+.steer{width:176px;height:62px;border-radius:31px;background:rgba(14,18,40,.45);box-shadow:0 0 0 2px rgba(255,255,255,.55)}
+.steer .sl{color:#fff;opacity:.75;font-size:11px}
+.steer .smid{border-left-color:rgba(255,255,255,.3)}
+#steer-knob{width:50px;height:50px;margin:-25px 0 0 -25px;background:radial-gradient(circle at 35% 30%,#fff,#dfe6ff);box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.steer.act #steer-knob{background:radial-gradient(circle at 35% 30%,#fff,#ffd1e0)}
+#ctl-right{bottom:calc(var(--sb) + 12px);right:calc(var(--sr) + 12px);gap:12px}
+.thr-track{width:58px;height:min(168px,44vh);border-radius:29px;background:rgba(14,18,40,.45);box-shadow:0 0 0 2px rgba(255,255,255,.55)}
+html.rot .thr-track{height:min(168px,44vw)}
+#thr-fill{opacity:.55}
+.tz{font-size:11px;color:#fff;text-shadow:none;opacity:.8}
+.tl{border-top-color:rgba(255,255,255,.35)}
+#thr-knob{left:3px;right:3px;height:20px;margin-bottom:-10px;border-radius:10px;border:0;font-size:10.5px;line-height:20px}
+.cbtn#c-whip{width:70px;height:70px;background:rgba(14,18,40,.5);color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.6);font-size:14px}
+.cbtn#c-whip small{opacity:.8;font-size:10px}
+.cbtn#c-whip.act{background:var(--pop2)}
+#coach{top:auto;left:auto;transform:none;right:calc(var(--sr) + 96px);bottom:calc(var(--sb) + 186px);width:auto;max-width:200px;background:none;border:0;box-shadow:none;padding:0;text-align:right;opacity:0;transition:opacity .3s}
+#coach.on{opacity:1}
+#coach-t{display:inline-block;font-size:12px;font-weight:900;background:rgba(14,18,40,.6);border-radius:999px;padding:3px 11px}
+#coach.go #coach-t{background:linear-gradient(90deg,var(--pop1),var(--pop2));animation:gopulse 1s infinite}
+@keyframes gopulse{50%{transform:scale(1.07)}}
+#coach .sbar{display:none}
+#caption{top:calc(var(--st) + 28px);width:min(46%,420px);background:rgba(14,18,40,.55);color:#fff;font-size:12px;padding:3px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none}
+#caption b{display:inline;margin-right:6px;font-size:10px}
+#startBtn{bottom:calc(var(--sb) + 40%)}
+#race.intro #pauseBtn,#race.replay #pauseBtn,#race.cer #pauseBtn{visibility:hidden}
+#tut{top:calc(var(--st) + 58px)}
 input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 </style>
 </head>
@@ -512,40 +573,39 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 
   <section class="screen" id="race">
     <div id="r3d"></div>
-    <div class="hud hudbox" id="hud-info"></div>
-    <div class="hud hudbox" id="hud-speed"><div class="spd"><b id="spd-v">0</b><small>km/h</small></div><div class="laps" id="laps"></div></div>
-    <div class="hud hudbox" id="hud-bar"></div>
-    <canvas class="hud" id="hud-map" width="280" height="156"></canvas>
-    <div class="hud hudbox" id="hud-gauges">
-      <div><div class="gauge"><i id="g-st"></i></div><div class="glabel">脚色</div></div>
-      <div><div class="gauge"><i id="g-ok"></i></div><div class="glabel">折合</div></div>
-      <div><div class="gauge"><i id="g-dr"></i></div><div class="glabel">追い</div></div>
-    </div>
+    <!-- 上：順位と残り距離 / 隊列 / 地図と一時停止 -->
+    <div class="hud" id="hud-info"></div>
+    <div class="hud" id="hud-bar"></div>
+    <canvas class="hud" id="hud-map" width="220" height="124"></canvas>
+    <button class="hbtn" id="pauseBtn" aria-label="一時停止">Ⅱ</button>
+    <div class="hud" id="hud-note"></div>
     <div class="hud" id="hud-msg"></div>
     <div class="hud" id="hud-side"><span id="side-l"></span><span id="side-r"></span></div>
+    <!-- 左下：速さと脚色・折合 / 周りの馬 / 進路 -->
+    <div class="hud" id="hud-speed"><div class="spd"><b id="spd-v">0</b><small>km/h</small></div><div class="laps" id="laps"></div></div>
+    <div class="hud" id="hud-gauges">
+      <div class="hg"><span>脚色</span><div class="gauge"><i id="g-st"></i></div></div>
+      <div class="hg"><span>折合</span><div class="gauge"><i id="g-ok"></i></div></div>
+      <i id="g-dr" style="display:none"></i>
+    </div>
     <canvas class="hud" id="radar" width="260" height="190"></canvas>
-    <div class="hud" id="hud-btns">
-      <button class="hbtn" id="b-back">後方確認</button>
-      <button class="hbtn" id="b-cam">騎手</button>
-      <button class="hbtn" id="b-snd">音ON</button>
-      <button class="hbtn" id="pauseBtn">Ⅱ 停止</button>
-    </div>
+    <div class="hud" id="hud-btns"><button class="hbtn" id="b-back" aria-label="後方確認">後ろ</button><button class="hbtn" id="b-cam">騎手</button><button class="hbtn" id="b-snd">音ON</button></div>
     <div class="ctl" id="ctl-left">
-      <div class="steer" id="steer"><span class="sl" id="lbl-l">◀ 内へ</span><span class="sl r" id="lbl-r">外へ ▶</span><i class="smid"></i><div id="steer-knob">進路</div></div>
+      <div class="steer" id="steer"><span class="sl" id="lbl-l">◀ 内</span><span class="sl r" id="lbl-r">外 ▶</span><i class="smid"></i><div id="steer-knob"></div></div>
     </div>
+    <!-- 右下：手綱 / ムチ。仕掛けどきは手綱の上の小さな札だけで知らせる -->
     <div class="ctl" id="ctl-right">
       <div class="thr" id="thr">
         <div class="thr-track" id="thr-track">
           <i id="thr-fill"></i>
-          <span class="tz" style="top:6px">追う</span><span class="tz" style="top:48%">馬なり</span><span class="tz" style="bottom:6px">抑える</span>
+          <span class="tz" style="top:5px">追</span><span class="tz" style="bottom:5px">控</span>
           <b class="tl" style="bottom:65%"></b><b class="tl" style="bottom:38%"></b>
           <div id="thr-knob"><span id="thr-v">42</span></div>
         </div>
-        <div class="rlab">手綱の加減（上下に動かす）</div>
       </div>
-      <div class="cbtn" id="c-whip">ムチ<small id="whip-n">連続0/5</small></div>
+      <div class="cbtn" id="c-whip">ムチ<small id="whip-n">0/5</small></div>
     </div>
-    <div class="hud hudbox" id="coach"><div id="coach-t"></div><div class="sbar"><i id="coach-b"></i><span id="coach-m"></span></div></div>
+    <div class="hud" id="coach"><div id="coach-t"></div><div class="sbar"><i id="coach-b"></i><span id="coach-m"></span></div></div>
     <button class="btn primary" id="startBtn">スタート</button>
     <div id="tut"><div class="row"><span class="small muted" id="tut-step"></span><div class="grow"></div><button class="hbtn" id="tut-skip">説明を閉じる</button></div><div id="tut-text"></div><button class="btn primary small" id="tut-next">次へ</button></div>
     <div id="caption"><b>実況</b><span id="caption-t"></span></div>

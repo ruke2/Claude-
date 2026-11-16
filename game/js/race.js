@@ -331,9 +331,8 @@
         if (!this._m600 && rem < 600) { this._m600 = true; this.msg('残り600m', 1.2, '#ffd54f'); }
         if (!this._m200 && rem < 200) { this._m200 = true; this.msg('ラスト200m!', 1.2, '#ffd54f'); }
         const free = !this.message || this.t > this.message.until;
-        if (p.kakari > 0.7 && free) this.msg('かかっている! 馬の後ろに入れて', 0.9, '#ff8a65');
-        else if (p.blocked && rem < 700 && free) this.msg('前が壁! 進路を探せ', 0.8, '#ff8a65');
-        else if (p.st < 0.3 && p.effort > 0.7 && Math.abs(p.lean) > 0.15 && free && rem < 500) this.msg('馬がヨレている', 0.8, '#ffb74d');
+        // かかり・前が壁は、画面の札（手綱の上）で知らせるので、ここでは馬のヨレだけ
+        if (p.st < 0.3 && p.effort > 0.7 && Math.abs(p.lean) > 0.15 && free && rem < 500 && !this._yore) { this._yore = true; this.msg('馬がヨレている', 1.0, '#ffb74d'); }
       }
       if (R.every(r => r.finished)) this.done = true;
       if (this.t > 600) { R.forEach(r => { if (!r.finished) { r.finished = true; r.finishTime = this.t + (this.D - r.s) / 10; } }); this.done = true; }
