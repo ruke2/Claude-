@@ -450,7 +450,7 @@
     W.card.forEach(r => estimateOdds(W, r));
     const ag = P.agent != null ? W.agents[P.agent] : null;
     const net = ag ? ag.net : 0;
-    const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5)), 1, 12);
+    const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5) + (window.Progress && Progress.has && Progress.has(W, 'scout') ? 1.5 : 0)), 1, 13);
     const target = P.rep * 0.65 + 40 + net * 4 + P.pop * 0.08;
     const reqs = [];
     const races = W.card.slice().sort(() => Math.random() - 0.5);
@@ -725,7 +725,7 @@
       const gfx = window.Progress && Progress.gearFx ? Progress.gearFx(W) : { tech: 1, fall: 1, heal: 1 };
       P.tech = clamp(P.tech + gain * gfx.tech * (0.05 + score / 2000) * (1 - P.tech / 110), 0, 99);
       P.judge = clamp(P.judge + gain * (0.06 + (race.graded ? 0.05 : 0)) * (1 - P.judge / 110), 0, 99);
-      P.fatigue += 1.2;
+      P.fatigue += 1.2 * (1.25 - (P.phys || 55) / 200); // 体力があるほど疲れにくい
       let interview = null;
       if (me.pos === 1) {
         if (race.graded || race.overseas) {

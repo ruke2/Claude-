@@ -260,13 +260,13 @@
       const [who, text] = sc.lines[i];
       const last = i >= sc.lines.length - 1;
       let extra = '';
-      if (last && sc.input) extra = `<div style="margin-top:10px"><label class="small muted" for="sc-in">名前（カタカナ9文字まで）</label><br><input type="text" id="sc-in" maxlength="9" placeholder="例：ツギノカゼ" style="margin-top:4px"></div>`;
-      const btns = last && sc.choice ? sc.choice.opts.map((o, k) => `<button class="btn ${k ? '' : 'primary'}" data-k="${k}">${esc(o)}</button>`).join('') : `<button class="btn primary" id="sc-next">${last ? (sc.input ? '名付ける' : '閉じる') : '次へ ›'}</button>`;
+      if (last && sc.input) extra = `<div style="margin-top:10px"><label class="small muted" for="sc-in">${esc(sc.inputLabel || '名前（カタカナ9文字まで）')}</label><br><input type="text" id="sc-in" maxlength="9" placeholder="例：${esc(sc.inputPh || 'ツギノカゼ')}" style="margin-top:4px"></div>`;
+      const btns = last && sc.choice ? sc.choice.opts.map((o, k) => `<button class="btn ${k ? '' : 'primary'}" data-k="${k}">${esc(o)}</button>`).join('') : `<button class="btn primary" id="sc-next">${last ? (sc.input ? (sc.inputBtn || '名付ける') : '閉じる') : '次へ ›'}</button>`;
       modal(`${who ? `<div class="speaker">${esc(who)}</div>` : ''}<p style="margin:2px 0 6px;font-size:15px;line-height:1.75;font-family:var(--serif)">${esc(text)}</p>${extra}<div class="choices">${btns}</div>`, (el) => {
         const finish = (val) => { S.pending.shift(); Story.answer(W, sc, val); closeModal(); World.save(W); playScenes(done); };
         el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => finish(+b.dataset.k));
         const nx = $('sc-next');
-        if (nx) nx.onclick = () => { if (!last) { i++; render(); } else finish(sc.input ? ($('sc-in').value || 'ツギノカゼ') : null); };
+        if (nx) nx.onclick = () => { if (!last) { i++; render(); } else finish(sc.input ? ($('sc-in').value || sc.inputPh || 'ツギノカゼ') : null); };
       }, `ストーリー　${i + 1} / ${sc.lines.length}`);
     };
     render();
@@ -600,10 +600,14 @@
   }
   function renderSkill(pane) {
     const p = P(), cats = [...new Set(Progress.SKILLS.map(s => s.cat))];
-    pane.innerHTML = `<div class="scroll" style="padding-top:8px"><div class="row" style="margin-bottom:6px"><h2>スキル</h2><span class="badge warn">スキルポイント ${p.sp}</span><span class="small muted">レベルが上がると1ポイント。シーズン目標の報酬でももらえる。</span></div>
+    pane.innerHTML = `<div class="scroll" style="padding-top:8px"><div class="row" style="margin-bottom:6px"><h2>スキル</h2><span class="badge warn">スキルポイント ${p.sp}</span><span class="small muted">レベルが上がると1ポイント。シーズン目標の報酬や、重賞の勝利でももらえる。</span></div>
       ${cats.map((c, ci) => `<details class="acc" ${ci === 0 ? 'open' : ''}><summary>${esc(c)}のスキル <span class="small muted">${Progress.SKILLS.filter(s => s.cat === c && p.skills[s.id]).length}/${Progress.SKILLS.filter(s => s.cat === c).length}習得</span></summary><div class="in">
         ${Progress.SKILLS.filter(s => s.cat === c).map(s => `<div class="kv"><span><b>${esc(s.name)}</b> <span class="small muted">${esc(s.desc)}</span></span>${p.skills[s.id] ? '<span class="badge green">習得済み</span>' : `<button class="btn small ${p.sp >= s.cost ? 'primary' : ''}" data-sk="${s.id}" ${p.sp >= s.cost ? '' : 'disabled'}>習得（${s.cost}pt）</button>`}</div>`).join('')}
-      </div></details>`).join('')}</div>`;
+      </div></details>`).join('')}
+      <details class="acc" open><summary>特訓 <span class="small muted">スキルポイントで能力を上げる（能力が高いほど多く必要）</span></summary><div class="in">
+        ${Progress.TRAIN.map(t => `<div class="kv"><span><b>${t.name}</b> ${Math.round(p[t.id] * 10) / 10} <span class="small muted">${esc(t.desc)}</span></span>${(() => { const c = Progress.trainCost(p, t.id), ok = p.sp >= c && p[t.id] < 99; return `<button class="btn small ${ok ? 'primary' : ''}" data-tr="${t.id}" ${ok ? '' : 'disabled'}>+${t.add}（${c}pt）</button>`; })()}</div>`).join('')}
+        <p class="small muted" style="margin:6px 0 0">スキルポイントはレベルアップのほか、重賞を勝つともらえる（GⅢ・GⅡ +1、GⅠ +2、海外GⅠ +3、初重賞や初制覇でさらに+1）。</p></div></details></div>`;
+    pane.querySelectorAll('[data-tr]').forEach(b => b.onclick = () => { if (Progress.train(W, b.dataset.tr)) { toast('特訓した'); World.save(W); showWeek(); } });
     pane.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { if (Progress.learn(W, b.dataset.sk)) { toast('スキルを習得した'); World.save(W); showWeek(); } });
   }
   function renderFans(pane) {
@@ -661,13 +665,14 @@
   }
   function renderLife(pane) {
     const L = W.life, p = P();
-    const stage = { none: 'ひとり', met: `${L.partner}さんと知り合った`, dating: `${L.partner}さんと交際中`, married: `${L.partner}さんと結婚` }[L.stage];
+    if (window.Life) Life.ensure(W);
+    const stage = { none: 'ひとり', met: `${L.partner}さん（${L.job || '知人'}）と知り合った`, dating: `${L.partner}さん（${L.job || ''}）と交際中`, engaged: `${L.partner}さんと婚約中`, married: `${L.partner}さんと結婚` }[L.stage] || 'ひとり';
     pane.innerHTML = `<div class="cols" style="grid-template-columns:1fr 1fr"><div class="scroll card"><div class="sec"><h3>私生活</h3></div>
       <div class="kv"><span>パートナー</span><b>${esc(stage)}</b></div>${L.stage !== 'none' ? `<div class="kv"><span>${esc(L.partner)}さんとの仲</span><b>${Math.round(L.love)}</b></div><div class="bar gold"><i style="width:${L.love}%"></i></div>` : ''}
-      ${L.child ? '<div class="kv"><span>家族</span><b>子どもがいる</b></div>' : ''}
+      ${(L.kids || []).map(k => `<div class="kv"><span>子ども</span><b>${esc(k.name)}（${W.year - k.born}歳）</b></div>`).join('')}
       <div class="kv"><span>家族との関係</span><b>${Math.round(L.family)}</b></div><div class="bar"><i style="width:${L.family}%"></i></div>
       <div class="kv"><span>友人との関係</span><b>${Math.round(L.friends)}</b></div><div class="bar"><i style="width:${L.friends}%"></i></div>
-      <p class="small muted" style="margin:6px 0 0">私生活の出来事は「今週の出来事」として届く。選んだ答えで関係や体調が変わる。</p></div>
+      <p class="small muted" style="margin:6px 0 0">出会い・交際・プロポーズ・結婚・子どもの誕生などは、会話のシーンとして届く。選んだ答えで関係や体調、物語の行き先が変わる。</p></div>
       <div class="scroll card"><div class="sec"><h3>住まい</h3></div><div class="kv"><span>今の住まい</span><b>${esc(Progress.HOMES[p.home].name)}</b></div><p class="small muted">ショップから引っ越せる。広い家ほど体調が回復しやすい。</p></div></div>`;
   }
   function renderNews(pane) {

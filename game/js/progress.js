@@ -15,9 +15,15 @@
     { id: 'stayer', name: '長距離の達人', cat: '戦法', cost: 2, desc: '2400m以上でスタミナ消費が減る' },
     { id: 'sprint', name: '短距離の鬼', cat: '戦法', cost: 2, desc: '1400m以下で加速がよくなる' },
     { id: 'bigstage', name: '大舞台に強い', cat: '戦法', cost: 3, desc: 'GⅠと海外で馬の力を引き出す' },
+    { id: 'mud', name: '道悪巧者', cat: '騎乗', cost: 2, desc: '重・不良馬場で馬が走りやすい' },
+    { id: 'dirt', name: 'ダートの鬼', cat: '戦法', cost: 2, desc: 'ダートのレースで伸びが上がる' },
+    { id: 'clutch', name: '勝負強さ', cat: '戦法', cost: 3, desc: '残り250mの追い比べで、もうひと伸びさせる' },
     { id: 'weight', name: '体重管理', cat: '生活', cost: 1, desc: '体重が増えにくくなる' },
     { id: 'charm', name: '人たらし', cat: '生活', cost: 1, desc: '調教師・馬主の信頼が上がりやすい' },
     { id: 'fanservice', name: 'ファンサービス', cat: '生活', cost: 1, desc: '人気・ファンが増えやすい' },
+    { id: 'recover', name: '回復力', cat: '生活', cost: 1, desc: '疲労が抜けやすい' },
+    { id: 'scout', name: '顔が広い', cat: '生活', cost: 2, desc: '毎週の騎乗依頼が増える' },
+    { id: 'iron', name: '鉄人', cat: '生活', cost: 2, desc: '落馬でけがをしても、休む期間が半分になる' },
   ];
   const has = (W, id) => !!(W.player.skills && W.player.skills[id]);
   const xpNeed = (lv) => 60 + lv * 30;
@@ -203,11 +209,12 @@
       inside: has(W, 'inside'), closer: has(W, 'closer'), front: has(W, 'front'),
       stayer: has(W, 'stayer') && race.dist >= 2400, sprint: has(W, 'sprint') && race.dist <= 1400,
       big: has(W, 'bigstage') && (race.graded === 1 || race.overseas) ? 2.5 : 0,
+      mud: has(W, 'mud') && ['重', '不良'].includes(race.ground), dirt: has(W, 'dirt') && race.surf === 'D', clutch: has(W, 'clutch'), phys: W.player.phys,
     };
   }
   function gearWeight(W) { ensure(W); return 2.0 + gv(W, 'saddle', 'gear', 0); }
   // 自宅の設備・安全装備の効果（world.js から使う）
-  function gearFx(W) { ensure(W); return { tech: gv(W, 'sim', 'tech', 1), fall: gv(W, 'helmet', 'fall', 1), heal: gv(W, 'vest', 'heal', 1) }; }
+  function gearFx(W) { ensure(W); return { tech: gv(W, 'sim', 'tech', 1), fall: gv(W, 'helmet', 'fall', 1), heal: gv(W, 'vest', 'heal', 1) * (has(W, 'iron') ? 0.5 : 1) }; }
 
   // ---- 結果のあと ----
   function onResult(W, race, me, f, ev) {
@@ -236,6 +243,15 @@
       W.toasts = (W.toasts || []).concat([`レベル${P.lv}に上がった（スキルポイント+1）`]);
       checkAch(W);
     }
+  }
+  // 特訓：余ったスキルポイントで騎手の能力を上げる
+  const TRAIN = [{ id: 'tech', name: '技術', add: 1, desc: '手綱さばき。かかりにくさや、CPに任せたときの騎乗に効く' }, { id: 'judge', name: '判断', add: 1, desc: '仕掛けどころの判断。CPに任せたときの騎乗に効く' }, { id: 'phys', name: '体力', add: 1.5, desc: '最後の追い比べの粘りと、騎乗の疲れにくさに効く' }];
+  // 能力が高いほど、1回の特訓に必要なポイントが増える（50未満 1pt、62以上 2pt、74以上 3pt…）
+  const trainCost = (P, id) => 1 + Math.max(0, Math.floor((P[id] - 50) / 12));
+  function train(W, id) {
+    const P = W.player, t = TRAIN.find(x => x.id === id), c = t && trainCost(P, id);
+    if (!t || P.sp < c || P[id] >= 99) return false;
+    P.sp -= c; P[id] = clamp(P[id] + t.add, 0, 99); return true;
   }
   function learn(W, id) {
     const P = W.player, sk = SKILLS.find(s => s.id === id);
@@ -284,6 +300,7 @@
     if (P.staff.nutrition) { P.weight -= 0.03; P.cond = clamp(P.cond + 1, 0, 100); }
     if (P.staff.manager) { P.pop = clamp(P.pop + 0.08, 0, 100); addFans(W, 'young', 5); addFans(W, 'women', 4); }
     if (has(W, 'weight')) P.weight -= 0.02;
+    if (has(W, 'recover')) P.fatigue = Math.max(0, P.fatigue - 2);
     P.weight -= gv(W, 'sauna', 'slim', 0);
     P.fatigue = Math.max(0, P.fatigue - gv(W, 'capsule', 'rest', 0));
     P.phys = clamp(P.phys + gv(W, 'gym', 'fit', 0) * (P.age >= 42 ? 0.5 : 1), 0, 99);
@@ -291,6 +308,7 @@
     // 人気が上がるとファンも自然に増える
     addFans(W, 'core', P.pop * 0.6); addFans(W, 'local', P.pop * 0.2);
     lifeEvents(W);
+    if (window.Life) Life.onWeek(W); // 恋愛・結婚・子ども・家族の物語
     checkAch(W);
   }
 
@@ -302,14 +320,6 @@
     const r = Math.random();
     if (r < 0.04) ev.push({ title: '家族からの電話', text: '実家の家族から電話が来た。「ちゃんと食べてる？ 無理しないでね」', choices: [['ゆっくり話す', { cond: 5, life: { family: 6 } }], ['忙しいので手短に', { life: { family: -2 } }]] });
     else if (r < 0.07) ev.push({ title: '友人からの誘い', text: '学生時代の友人に飲みに誘われた。', choices: [['行く（体重に注意）', { cond: 6, weight: 0.4, life: { friends: 6 } }], ['断る', { life: { friends: -3 } }]] });
-    else if (L.stage === 'none' && P.age >= 20 && r < 0.11) {
-      const name = pick(PARTNER_NAMES);
-      ev.push({ title: '出会い', text: `ファン感謝イベントで、${name}さんと話が弾んだ。連絡先を交換しようか。`, choices: [['連絡先を交換する', { lifeStage: 'met', partner: name, life: { love: 15 } }], ['今は騎乗に集中する', {}]] });
-    } else if (L.stage === 'met' && r < 0.14) ev.push({ title: `${L.partner}さんとの食事`, text: `${L.partner}さんから食事の誘いが来た。`, choices: [['会いに行く', { cond: 6, life: { love: 15 } }], ['レース前なので断る', { life: { love: -5 } }]] });
-    else if (L.stage === 'met' && L.love >= 50 && r < 0.2) ev.push({ title: '気持ちを伝える', text: `${L.partner}さんと過ごす時間が増えてきた。気持ちを伝えようか。`, choices: [['伝える', { lifeStage: 'dating', life: { love: 15 } }], ['まだ早い', {}]] });
-    else if (L.stage === 'dating' && r < 0.12) ev.push({ title: `${L.partner}さんと休日`, text: '久しぶりの休日。どう過ごそう？', choices: [['一緒に出かける', { cond: 8, fatigue: -8, life: { love: 8 } }], ['ジムで体を絞る', { weight: -0.3, life: { love: -4 } }]] });
-    else if (L.stage === 'dating' && L.love >= 85 && P.age >= 24 && r < 0.16) ev.push({ title: 'プロポーズ', text: `${L.partner}さんと付き合って長くなった。プロポーズしようか。`, choices: [['プロポーズする', { lifeStage: 'married', money: -150, pop: 2, life: { love: 10 } }], ['もう少し先にする', {}]] });
-    else if (L.stage === 'married' && !L.child && r < 0.03) ev.push({ title: '家族が増える', text: `${L.partner}さんから、子どもが生まれるという知らせ。`, choices: [['喜ぶ', { cond: 10, life: { child: 1 } }]] });
     else if (P.money > 400 && r < 0.03) ev.push({ title: '寄付の依頼', text: '引退馬の支援団体から寄付の相談を受けた。', choices: [['100万円寄付する', { money: -100, pop: 2, fans: ['core', 300] }], ['今回は見送る', {}]] });
   }
   function applyLife(W, eff) {
@@ -384,5 +394,5 @@
   function toggleStaff(W, id) { const P = W.player; P.staff[id] = !P.staff[id]; return P.staff[id]; }
   function moveHome(W, i) { const P = W.player, h = HOMES[i]; if (i <= P.home || P.money < h.price) return false; P.money -= h.price; P.home = i; checkAch(W); return true; }
 
-  window.Progress = { SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
+  window.Progress = { TRAIN, train, trainCost, SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
 })();

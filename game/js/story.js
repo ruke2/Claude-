@@ -178,11 +178,13 @@
     }
     if (race.graded === 1 && me.pos === 1 && P.g1Wins.length === 1) say(W, [['', 'GⅠ初制覇。'], [mn(W), 'ここからだぞ。勝った後に何をするかで、騎手の値打ちは決まる。']]);
     if (P.g1Wins.length === 10 && me.pos === 1 && race.graded === 1 && !S.flags.g1ten) { S.flags.g1ten = true; say(W, [['', 'GⅠ通算10勝。'], [mn(W), 'もう誰もお前を見習いとは呼ばないな。']]); }
+    if (me.pos === 1 && (race.graded || race.overseas) && window.Life) Life.onGradedWin(W, race, me, f);
   }
 
   // シーンの選択肢・入力の結果
   function answer(W, scene, value) {
     const S = W.story;
+    if (scene.life && window.Life) return Life.answer(W, scene, value);
     if (scene.input === 'partner') {
       const name = (value || '').trim() || 'ツギノカゼ';
       const P = W.player;

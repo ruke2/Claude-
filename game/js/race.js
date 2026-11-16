@@ -251,6 +251,10 @@
         if (r.whipT > 0) { r.whipT -= dt; if (r.effort > 0.9 && r.st > 0.05) f += 0.012 * (M.whip || 1); }
         if (M.closer && r.style >= 2 && rem < 600 && r.effort >= 0.95) f += 0.004;
         if (M.drive && r.effort >= 0.95) f += M.drive;
+        if (M.mud) f += 0.004;
+        if (M.dirt) f += 0.003;
+        if (M.clutch && rem < 250 && r.effort >= 0.95) f += 0.004;
+        if (M.phys && rem < 400 && r.effort >= 0.95) f += (M.phys - 55) * 0.00005; // 騎手の体力：最後の追い比べ
         if (r.rhythmT > 0) f -= 0.015;
         if (r.sulkT > 0) { r.sulkT -= dt; f -= 0.02; }
         const gr = slopeAt(this.course, this.pAt(r.s)); // 上り坂ほど遅く
