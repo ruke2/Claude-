@@ -23,13 +23,48 @@
   const xpNeed = (lv) => 60 + lv * 30;
 
   // ---- 装備・スタッフ・住まい ----
+  // cat: race=レースで使う装備 / body=体を守る装備 / home=自宅の設備
+  // 最上位の品を買うと強化できる。up は強化1回目の上がり幅で、回を重ねるごとに少しずつ小さくなる（×UP_DECAY）
   const GEAR = {
-    saddle: [{ name: '支給の鞍', price: 0 }, { name: '軽量鞍', price: 180, gear: -0.4, desc: '装備重量 -0.4kg' }, { name: '特注カーボン鞍', price: 650, gear: -0.8, desc: '装備重量 -0.8kg' }],
-    whip: [{ name: '支給のムチ', price: 0 }, { name: '競技用ムチ', price: 60, whip: 1.15, desc: 'ムチの効果 +15%' }, { name: '特注ムチ', price: 240, whip: 1.3, desc: 'ムチの効果 +30%' }],
-    boots: [{ name: '支給のブーツ', price: 0 }, { name: '革ブーツ', price: 90, start: 0.04, desc: 'スタートの反応 +0.04秒' }, { name: '特注ブーツ', price: 300, start: 0.08, desc: 'スタートの反応 +0.08秒' }],
-    goggles: [{ name: '支給のゴーグル', price: 0 }, { name: '曇り止めゴーグル', price: 50, calm: 0.9, desc: '折り合いが少しつきやすい' }, { name: '特注ゴーグル', price: 160, calm: 0.8, desc: '折り合いがつきやすい' }],
+    saddle: [{ name: '支給の鞍', price: 0 }, { name: '軽量鞍', price: 180, gear: -0.4, desc: '装備重量 -0.4kg' }, { name: '特注カーボン鞍', price: 650, gear: -0.8, desc: '装備重量 -0.8kg', up: { gear: -0.04 } }],
+    whip: [{ name: '支給のムチ', price: 0 }, { name: '競技用ムチ', price: 60, whip: 1.15, desc: 'ムチの効果 +15%' }, { name: '特注ムチ', price: 240, whip: 1.3, desc: 'ムチの効果 +30%', up: { whip: 0.02 } }],
+    boots: [{ name: '支給のブーツ', price: 0 }, { name: '革ブーツ', price: 90, start: 0.04, desc: 'スタートの反応 +0.04秒' }, { name: '特注ブーツ', price: 300, start: 0.08, desc: 'スタートの反応 +0.08秒', up: { start: 0.006 } }],
+    goggles: [{ name: '支給のゴーグル', price: 0 }, { name: '曇り止めゴーグル', price: 50, calm: 0.9, desc: 'かかりにくさ +10%' }, { name: '特注ゴーグル', price: 160, calm: 0.8, desc: 'かかりにくさ +20%', up: { calm: -0.015 } }],
+    gloves: [{ name: '支給のグローブ', price: 0 }, { name: '滑り止めグローブ', price: 70, drive: 0.001, desc: '追い出しの伸び +0.1%' }, { name: '特注レザーグローブ', price: 260, drive: 0.002, desc: '追い出しの伸び +0.2%', up: { drive: 0.00015 } }],
+    helmet: [{ name: '支給のヘルメット', price: 0 }, { name: '軽量ヘルメット', price: 120, fall: 0.8, desc: '落馬の危険 -20%' }, { name: '特注カーボンヘルメット', price: 420, fall: 0.6, desc: '落馬の危険 -40%', up: { fall: -0.03 } }],
+    vest: [{ name: '支給のプロテクター', price: 0 }, { name: '衝撃吸収ベスト', price: 150, heal: 0.8, desc: 'けがの休養期間 -20%' }, { name: 'エアバッグベスト', price: 520, heal: 0.6, desc: 'けがの休養期間 -40%', up: { heal: -0.025 } }],
+    sim: [{ name: 'なし', price: 0 }, { name: '木馬', price: 400, tech: 1.1, desc: '技術の伸び +10%' }, { name: '騎乗シミュレーター', price: 1200, tech: 1.2, desc: '技術の伸び +20%', up: { tech: 0.02 } }],
+    capsule: [{ name: 'なし', price: 0 }, { name: 'マッサージチェア', price: 250, rest: 0.6, desc: '毎週の疲労回復 +0.6' }, { name: '酸素カプセル', price: 900, rest: 1.2, desc: '毎週の疲労回復 +1.2', up: { rest: 0.12 } }],
+    sauna: [{ name: 'なし', price: 0 }, { name: '家庭用サウナ', price: 200, slim: 0.01, desc: '体重の増え方 -0.01kg/週' }, { name: '本格サウナ室', price: 700, slim: 0.02, desc: '体重の増え方 -0.02kg/週', up: { slim: 0.002 } }],
+    gym: [{ name: 'なし', price: 0 }, { name: 'トレーニング器具', price: 300, fit: 0.03, desc: '体力 +0.03/週' }, { name: 'ホームジム', price: 1000, fit: 0.06, desc: '体力 +0.06/週', up: { fit: 0.006 } }],
   };
-  const GEAR_LABEL = { saddle: '鞍', whip: 'ムチ', boots: 'ブーツ', goggles: 'ゴーグル' };
+  const GEAR_LABEL = { saddle: '鞍', whip: 'ムチ', boots: 'ブーツ', goggles: 'ゴーグル', gloves: 'グローブ', helmet: 'ヘルメット', vest: 'プロテクター', sim: '騎乗練習', capsule: '疲労回復', sauna: '減量', gym: 'トレーニング' };
+  const GEAR_CAT = [['race', 'レース装備', ['saddle', 'whip', 'boots', 'goggles', 'gloves']], ['body', '安全装備', ['helmet', 'vest']], ['home', '自宅の設備', ['sim', 'capsule', 'sauna', 'gym']]];
+  const UP_MAX = 20, UP_DECAY = 0.93, UP_COST = 0.3, UP_GROW = 1.25;
+  const topLv = (k) => GEAR[k].length - 1;
+  const upLv = (W, k) => (W.player.gearUp && W.player.gearUp[k]) || 0;
+  const upCost = (k, n) => Math.round(GEAR[k][topLv(k)].price * UP_COST * Math.pow(UP_GROW, n) / 5) * 5;
+  const upSum = (n) => (1 - Math.pow(UP_DECAY, n)) / (1 - UP_DECAY); // 強化n回分の合計（1回目=1）
+  // 装備の実際の値（強化を含む）。持っていなければ def
+  function gv(W, k, key, def) {
+    const P = W.player, lv = (P.gear && P.gear[k]) || 0, it = GEAR[k][lv];
+    let v = it[key] != null ? it[key] : def;
+    if (lv === topLv(k) && it.up && it.up[key] != null) v += it.up[key] * upSum(upLv(W, k));
+    return v;
+  }
+  // 表示用：いまの効果（強化込み）
+  const FMT = {
+    gear: (v) => `装備重量 ${v.toFixed(2)}kg`, whip: (v) => `ムチの効果 +${Math.round((v - 1) * 100)}%`, start: (v) => `スタートの反応 +${v.toFixed(3)}秒`,
+    calm: (v) => `かかりにくさ +${Math.round((1 - v) * 100)}%`, drive: (v) => `追い出しの伸び +${(v * 100).toFixed(2)}%`, fall: (v) => `落馬の危険 -${Math.round((1 - v) * 100)}%`,
+    heal: (v) => `けがの休養期間 -${Math.round((1 - v) * 100)}%`, tech: (v) => `技術の伸び +${Math.round((v - 1) * 100)}%`, rest: (v) => `毎週の疲労回復 +${v.toFixed(2)}`,
+    slim: (v) => `体重の増え方 -${v.toFixed(3)}kg/週`, fit: (v) => `体力 +${v.toFixed(3)}/週`,
+  };
+  function gearEffect(W, k, extra) {
+    const it = GEAR[k][topLv(k)], key = Object.keys(it.up)[0], P = W.player;
+    const lv = (P.gear && P.gear[k]) || 0, n = upLv(W, k) + (extra || 0);
+    const v = (GEAR[k][lv][key] != null ? GEAR[k][lv][key] : 0) + (lv === topLv(k) ? it.up[key] * upSum(n) : 0);
+    return FMT[key](v);
+  }
   const STAFF = [
     { id: 'trainer', name: 'パーソナルトレーナー', weekly: 6, desc: '体力が伸び、疲労が抜けやすい' },
     { id: 'nutrition', name: '栄養士', weekly: 4, desc: '体重が増えにくく、体調が安定する' },
@@ -129,6 +164,9 @@
     { id: 'lv30', cat: '成長', name: 'レベル30', test: (W) => W.player.lv >= 30 },
     { id: 'rich', cat: '生活', name: '貯金3億円', test: (W) => W.player.money >= 30000 },
     { id: 'house', cat: '生活', name: 'マイホーム', test: (W) => W.player.home >= 2 },
+    { id: 'gearTop', cat: '生活', name: 'こだわりの道具', test: (W) => Object.keys(GEAR).every(k => (W.player.gear[k] || 0) === GEAR[k].length - 1) },
+    { id: 'gearUp10', cat: '生活', name: '道具を育てる', test: (W) => Object.values(W.player.gearUp || {}).some(n => n >= 10) },
+    { id: 'gearMax', cat: '生活', name: '究極の一品', test: (W) => Object.values(W.player.gearUp || {}).some(n => n >= UP_MAX) },
     { id: 'married', cat: '生活', name: '結婚', test: (W) => W.life && W.life.stage === 'married' },
     ...TITLES_ACH,
   ];
@@ -146,29 +184,30 @@
 
   function init(W) {
     const P = W.player;
-    Object.assign(P, { lv: 1, xp: 0, sp: 1, skills: {}, gear: { saddle: 0, whip: 0, boots: 0, goggles: 0 }, staff: {}, home: 0,
+    Object.assign(P, { lv: 1, xp: 0, sp: 1, skills: {}, gear: { saddle: 0, whip: 0, boots: 0, goggles: 0 }, gearUp: {}, staff: {}, home: 0,
       fanSeg: { core: 200, young: 40, women: 30, local: 80 }, sns: 0, ach: {}, trophies: [], voteWins: 0, leadingYears: 0, cheers: [] });
     P.fans = fansTotal(P);
     W.life = { stage: 'none', partner: null, love: 0, family: 60, friends: 50 };
     W.seasonGoal = null;
     W.pendingGoal = true;
   }
-  function ensure(W) { if (W.player.lv == null) init(W); }
+  function ensure(W) { if (W.player.lv == null) init(W); if (!W.player.gearUp) W.player.gearUp = {}; }
 
   // ---- レースに渡す補正 ----
   function raceMods(W, race) {
     ensure(W);
-    const P = W.player, gq = (k) => GEAR[k][P.gear[k] || 0];
     return {
-      start: (has(W, 'start') ? 0.1 : 0) + (gq('boots').start || 0),
-      calm: (has(W, 'calm') ? 0.6 : 1) * (gq('goggles').calm || 1),
-      whip: (has(W, 'whip') ? 1.5 : 1) * (gq('whip').whip || 1), noSulk: has(W, 'whip'),
+      start: (has(W, 'start') ? 0.1 : 0) + gv(W, 'boots', 'start', 0),
+      calm: (has(W, 'calm') ? 0.6 : 1) * gv(W, 'goggles', 'calm', 1),
+      whip: (has(W, 'whip') ? 1.5 : 1) * gv(W, 'whip', 'whip', 1), noSulk: has(W, 'whip'), drive: gv(W, 'gloves', 'drive', 0),
       inside: has(W, 'inside'), closer: has(W, 'closer'), front: has(W, 'front'),
       stayer: has(W, 'stayer') && race.dist >= 2400, sprint: has(W, 'sprint') && race.dist <= 1400,
       big: has(W, 'bigstage') && (race.graded === 1 || race.overseas) ? 2.5 : 0,
     };
   }
-  function gearWeight(W) { ensure(W); return 2.0 + (GEAR.saddle[W.player.gear.saddle || 0].gear || 0); }
+  function gearWeight(W) { ensure(W); return 2.0 + gv(W, 'saddle', 'gear', 0); }
+  // 自宅の設備・安全装備の効果（world.js から使う）
+  function gearFx(W) { ensure(W); return { tech: gv(W, 'sim', 'tech', 1), fall: gv(W, 'helmet', 'fall', 1), heal: gv(W, 'vest', 'heal', 1) }; }
 
   // ---- 結果のあと ----
   function onResult(W, race, me, f, ev) {
@@ -245,6 +284,9 @@
     if (P.staff.nutrition) { P.weight -= 0.03; P.cond = clamp(P.cond + 1, 0, 100); }
     if (P.staff.manager) { P.pop = clamp(P.pop + 0.08, 0, 100); addFans(W, 'young', 5); addFans(W, 'women', 4); }
     if (has(W, 'weight')) P.weight -= 0.02;
+    P.weight -= gv(W, 'sauna', 'slim', 0);
+    P.fatigue = Math.max(0, P.fatigue - gv(W, 'capsule', 'rest', 0));
+    P.phys = clamp(P.phys + gv(W, 'gym', 'fit', 0) * (P.age >= 42 ? 0.5 : 1), 0, 99);
     P.cond = clamp(P.cond + HOMES[P.home].cond * 0.5, 0, 100);
     // 人気が上がるとファンも自然に増える
     addFans(W, 'core', P.pop * 0.6); addFans(W, 'local', P.pop * 0.2);
@@ -331,10 +373,16 @@
   function buyGear(W, slot, lv) {
     const P = W.player, it = GEAR[slot][lv];
     if (!it || P.gear[slot] >= lv || P.money < it.price) return false;
-    P.money -= it.price; P.gear[slot] = lv; return true;
+    P.money -= it.price; P.gear[slot] = lv; checkAch(W); return true;
+  }
+  function upgradeGear(W, slot) {
+    ensure(W);
+    const P = W.player, n = upLv(W, slot), c = upCost(slot, n);
+    if ((P.gear[slot] || 0) !== topLv(slot) || n >= UP_MAX || P.money < c) return false;
+    P.money = Math.round((P.money - c) * 10) / 10; P.gearUp[slot] = n + 1; checkAch(W); return true;
   }
   function toggleStaff(W, id) { const P = W.player; P.staff[id] = !P.staff[id]; return P.staff[id]; }
   function moveHome(W, i) { const P = W.player, h = HOMES[i]; if (i <= P.home || P.money < h.price) return false; P.money -= h.price; P.home = i; checkAch(W); return true; }
 
-  window.Progress = { SKILLS, GEAR, GEAR_LABEL, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
+  window.Progress = { SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
 })();

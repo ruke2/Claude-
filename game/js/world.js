@@ -687,7 +687,8 @@
       // 成長（実際に操作した騎乗の方が伸びる）
       const gain = (mode === 'manual' ? 1.0 : 0.45) * (P.age < 35 ? 1 : P.age < 45 ? 0.6 : 0.3);
       P.exp += gain;
-      P.tech = clamp(P.tech + gain * (0.05 + score / 2000) * (1 - P.tech / 110), 0, 99);
+      const gfx = window.Progress && Progress.gearFx ? Progress.gearFx(W) : { tech: 1, fall: 1, heal: 1 };
+      P.tech = clamp(P.tech + gain * gfx.tech * (0.05 + score / 2000) * (1 - P.tech / 110), 0, 99);
       P.judge = clamp(P.judge + gain * (0.06 + (race.graded ? 0.05 : 0)) * (1 - P.judge / 110), 0, 99);
       P.fatigue += 1.2;
       let interview = null;
@@ -715,7 +716,7 @@
         if (inquiry.demoteTo) news(W, `${race.name}で${h.name}が${inquiry.demoteTo}着に降着`, 'bad');
       }
       // 落馬（低確率）
-      if (Math.random() < 0.002) { W.injury = ri(2, 6); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
+      if (Math.random() < 0.002 * gfx.fall) { W.injury = Math.max(1, Math.round(ri(2, 6) * gfx.heal)); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
       if (window.Story) Story.onResult(W, race, me, f);
       if (window.Progress) Progress.onResult(W, race, me, f, { grade, mode });
       ev = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, dPop: Math.round(dPop * 10) / 10, income, pos: me.pos, pop: f.pop, interview, inquiry, demoted: !!me.demoted };

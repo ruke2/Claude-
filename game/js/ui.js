@@ -593,7 +593,7 @@
         <div class="kv"><span>体調 ${tip('レースでの馬の力の出方に影響する。疲労がたまると下がる。')}</span><b>${Math.round(p.cond)}</b></div>
         <div class="kv"><span>疲労</span><b>${Math.round(p.fatigue)}</b></div></div>
       <div class="card"><div class="sec"><h3>装備・暮らし</h3></div>
-        ${Object.keys(Progress.GEAR).map(k => `<div class="kv"><span>${Progress.GEAR_LABEL[k]}</span><b>${esc(Progress.GEAR[k][p.gear[k] || 0].name)}</b></div>`).join('')}
+        ${Object.keys(Progress.GEAR).filter(k => p.gear[k]).map(k => `<div class="kv"><span>${Progress.GEAR_LABEL[k]}</span><b>${esc(Progress.GEAR[k][p.gear[k]].name)}${Progress.upLv(W, k) ? ` +${Progress.upLv(W, k)}` : ''}</b></div>`).join('') || '<div class="kv"><span>装備</span><b>支給品のみ</b></div>'}
         <div class="kv"><span>住まい</span><b>${esc(Progress.HOMES[p.home].name)}</b></div>
         <div class="kv"><span>所持金</span><b>${money(p.money)}</b></div></div>
     </div></div>`;
@@ -619,14 +619,25 @@
         <p class="small muted" style="margin:6px 0 0">GⅠを勝つと女性・若い世代、穴馬で勝つと競馬ファン、地元の競馬場で勝つと地元ファンが増える。</p></div>
     </div><div class="scroll card"><div class="sec"><h3>応援メッセージ</h3></div>${p.cheers.length ? p.cheers.map(c => `<div class="cheer">「${esc(c.text)}」<div class="m">${esc(c.date)}・${esc(c.race)}（${esc(c.horse)}）</div></div>`).join('') : '<p class="small muted">勝つと届く。</p>'}</div></div>`;
   }
+  function gearRow(p, k) {
+    const G = Progress.GEAR[k], lv = p.gear[k] || 0, top = Progress.topLv(k), n = Progress.upLv(W, k), cur = G[lv];
+    const name = `${esc(cur.name)}${lv === top && n ? ` <span class="badge warn">+${n}</span>` : ''}`;
+    let act;
+    if (lv < top) act = G.slice(lv + 1).map((it, i) => `<button class="btn small" data-gear="${k}:${lv + i + 1}" ${p.money >= it.price ? '' : 'disabled'}>${esc(it.name)} ${it.price.toLocaleString()}万<br><span class="small muted">${esc(it.desc)}</span></button>`).join('');
+    else if (n >= Progress.UP_MAX) act = '<span class="badge green">強化MAX</span>';
+    else { const c = Progress.upCost(k, n); act = `<button class="btn small ${p.money >= c ? 'primary' : ''}" data-up="${k}" ${p.money >= c ? '' : 'disabled'}>+${n + 1}に強化 ${c.toLocaleString()}万<br><span class="small">${esc(Progress.gearEffect(W, k, 1))}</span></button>`; }
+    const now = lv === top ? Progress.gearEffect(W, k) : (cur.desc || '効果なし');
+    return `<div class="kv"><span><b>${Progress.GEAR_LABEL[k]}</b>：${name}<br><span class="small muted">いま：${esc(now)}</span>${lv === top ? `<div class="bar gold" style="margin-top:3px;max-width:160px"><i style="width:${n / Progress.UP_MAX * 100}%"></i></div>` : ''}</span><span class="row wrap" style="justify-content:flex-end;gap:4px">${act}</span></div>`;
+  }
   function renderShop(pane) {
     const p = P();
     pane.innerHTML = `<div class="scroll" style="padding-top:8px"><div class="row" style="margin-bottom:6px"><h2>ショップ</h2><span class="small muted">所持金 ${money(p.money)}</span></div>
-      <details class="acc" open><summary>装備</summary><div class="in">${Object.keys(Progress.GEAR).map(k => `<div class="kv"><span><b>${Progress.GEAR_LABEL[k]}</b>：${esc(Progress.GEAR[k][p.gear[k] || 0].name)}</span><span class="row">${Progress.GEAR[k].slice(1).map((it, i) => p.gear[k] >= i + 1 ? `<span class="badge green">${esc(it.name)}</span>` : `<button class="btn small" data-gear="${k}:${i + 1}" ${p.money >= it.price ? '' : 'disabled'} title="${esc(it.desc)}">${esc(it.name)} ${it.price}万</button>`).join('')}</span></div>`).join('')}
-        <p class="small muted" style="margin:6px 0 0">${Object.keys(Progress.GEAR).map(k => Progress.GEAR[k].slice(1).map(it => `${it.name}：${it.desc}`).join(' / ')).join('　')}</p></div></details>
+      ${Progress.GEAR_CAT.map(([cid, cname, keys], ci) => `<details class="acc" ${ci === 0 ? 'open' : ''}><summary>${cname} <span class="small muted">${keys.filter(k => (p.gear[k] || 0) === Progress.topLv(k)).length}/${keys.length}最上位</span></summary><div class="in">${keys.map(k => gearRow(p, k)).join('')}</div></details>`).join('')}
+      <p class="small muted" style="margin:2px 2px 8px">最上位の品は強化できる（最大+${Progress.UP_MAX}）。強化するほど費用が上がり、上がり幅は少しずつ小さくなる。</p>
       <details class="acc"><summary>スタッフ <span class="small muted">（毎週の費用がかかる）</span></summary><div class="in"><div class="checks">${Progress.STAFF.map(s => `<label class="chk ${p.staff[s.id] ? 'on' : ''}"><input type="checkbox" data-staff="${s.id}" ${p.staff[s.id] ? 'checked' : ''}>${esc(s.name)}（週${s.weekly}万）</label>`).join('')}</div>
         <p class="small muted" style="margin:6px 0 0">${Progress.STAFF.map(s => `${s.name}：${s.desc}`).join('　')}</p></div></details>
       <details class="acc"><summary>住まい</summary><div class="in">${Progress.HOMES.map((h, i) => `<div class="kv"><span><b>${esc(h.name)}</b> <span class="small muted">体調の回復 +${h.cond}・週${h.weekly}万</span></span>${p.home === i ? '<span class="badge green">住んでいる</span>' : i < p.home ? '' : `<button class="btn small" data-home="${i}" ${p.money >= h.price ? '' : 'disabled'}>引っ越す ${h.price}万</button>`}</div>`).join('')}</div></details></div>`;
+    pane.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const k = b.dataset.up; if (Progress.upgradeGear(W, k)) { toast(`${Progress.GEAR[k][Progress.topLv(k)].name}を +${Progress.upLv(W, k)} に強化した`); World.save(W); showWeek(); } });
     pane.querySelectorAll('[data-gear]').forEach(b => b.onclick = () => { const [k, l] = b.dataset.gear.split(':'); if (Progress.buyGear(W, k, +l)) { toast('購入した'); World.save(W); showWeek(); } });
     pane.querySelectorAll('[data-staff]').forEach(c => c.onchange = () => { Progress.toggleStaff(W, c.dataset.staff); World.save(W); showWeek(); });
     pane.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { if (Progress.moveHome(W, +b.dataset.home)) { toast('引っ越した'); World.save(W); showWeek(); } });
