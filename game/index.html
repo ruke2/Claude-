@@ -178,7 +178,7 @@ details.acc>.in{padding:0 12px 10px}
 #hud-bar .d.me{width:15px;height:15px;top:2px;margin-left:-7.5px;border:2px solid var(--ink);z-index:2}
 #hud-bar .lead{position:absolute;right:6px;top:-14px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}
 #hud-map{top:calc(var(--st) + 8px);right:calc(var(--sr) + 10px);width:140px;height:78px;border-radius:6px}
-#hud-speed{bottom:calc(var(--sb) + 100px);left:calc(var(--sl) + 14px);text-align:center;padding:3px 12px;min-width:140px}
+#hud-speed{bottom:calc(var(--sb) + 96px);left:calc(var(--sl) + 14px);text-align:center;padding:3px 12px;min-width:140px}
 #hud-speed .spd b{font-family:var(--serif);font-size:26px;font-weight:900;font-variant-numeric:tabular-nums}
 #hud-speed .spd small{font-size:11px;margin-left:3px;color:var(--muted)}
 #hud-speed .laps{font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
@@ -187,7 +187,7 @@ details.acc>.in{padding:0 12px 10px}
 .gauge{width:11px;height:56px;background:var(--rule2);border-radius:6px;position:relative;overflow:hidden}
 .gauge i{position:absolute;left:0;right:0;bottom:0;border-radius:6px}
 .glabel{font-size:9.5px;text-align:center;margin-top:2px}
-#hud-msg{top:22%;left:0;right:0;text-align:center;font-family:var(--serif);font-size:clamp(20px,5.5vh,32px);font-weight:900;color:#fff;text-shadow:0 2px 6px #000c}
+#hud-msg{top:38%;left:0;right:0;text-align:center;font-family:var(--serif);font-size:clamp(20px,5.5vh,32px);font-weight:900;color:#fff;text-shadow:0 2px 6px #000c}
 #hud-side{top:56%;left:26%;right:26%;display:flex;justify-content:space-between;font-weight:800;color:#ffd54f;font-size:15px;text-shadow:0 1px 3px #000}
 #hud-btns{top:calc(var(--st) + 92px);right:calc(var(--sr) + 10px);display:flex;gap:4px;pointer-events:auto}
 .hbtn{background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.12);color:var(--ink);border-radius:5px;padding:4px 7px;font-size:11px}
@@ -201,6 +201,14 @@ details.acc>.in{padding:0 12px 10px}
 .cbtn{width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.92);border:2px solid var(--green);color:var(--green);font-weight:700;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;position:relative;touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .cbtn small{font-size:9.5px;font-weight:500;opacity:.85}
 .cbtn.act{background:var(--green);color:#fff}
+#radar{left:calc(var(--sl) + 228px);bottom:calc(var(--sb) + 10px);width:118px;height:86px;border-radius:8px}
+.steer{position:relative;width:200px;height:74px;border-radius:37px;background:rgba(255,255,255,.88);border:2px solid var(--green);touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.steer .sl{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:var(--green);pointer-events:none}
+.steer .sl.r{left:auto;right:12px}
+.steer .smid{position:absolute;left:50%;top:10px;bottom:10px;border-left:1px dashed rgba(0,0,0,.25)}
+#steer-knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:var(--green);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:transform .08s}
+.steer.act #steer-knob{background:var(--gold);transition:none}
+#b-back.act{background:var(--gold);color:#fff}
 #ctl-left{left:calc(var(--sl) + 14px);bottom:calc(var(--sb) + 12px);display:flex;gap:12px}
 .cbtn.lr{width:78px;height:78px;font-size:24px}
 .cbtn.lr small{font-size:11px}
@@ -226,10 +234,10 @@ html.rot .thr-track{height:min(190px,46vw)}
 #intro-card .d{font-size:13px;color:var(--muted);margin-top:2px}
 #intro-skip{position:absolute;right:calc(var(--sr) + 14px);bottom:calc(var(--sb) + 14px);pointer-events:auto;padding:8px 14px;font-size:13px}
 @keyframes introin{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
-#caption{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 8px);width:min(40%,420px);background:rgba(255,255,255,.92);border-left:5px solid var(--red);border-radius:4px;padding:4px 9px;font-size:12.5px;line-height:1.4;font-family:var(--serif);font-weight:700;z-index:2;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#caption{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--st) + 84px);width:min(40%,420px);background:rgba(255,255,255,.92);border-left:5px solid var(--red);border-radius:4px;padding:4px 9px;font-size:12.5px;line-height:1.4;font-family:var(--serif);font-weight:700;z-index:2;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 #caption.on{opacity:1}
 #caption b{font-family:var(--sans);font-size:9.5px;color:var(--red);letter-spacing:.2em;display:block;line-height:1.1}
-#race.intro #caption{left:auto;right:calc(var(--sr) + 110px);transform:none;bottom:calc(var(--sb) + 14px)}
+#race.intro #caption{top:calc(var(--st) + 14px)}
 #replay-ui{display:none;position:absolute;inset:0;z-index:3;pointer-events:none}
 #race.replay #replay-ui{display:block}
 #race.replay .hud,#race.replay .ctl,#race.replay #startBtn{visibility:hidden}
@@ -343,14 +351,15 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
     </div>
     <div class="hud" id="hud-msg"></div>
     <div class="hud" id="hud-side"><span id="side-l"></span><span id="side-r"></span></div>
+    <canvas class="hud" id="radar" width="260" height="190"></canvas>
     <div class="hud" id="hud-btns">
+      <button class="hbtn" id="b-back">後方確認</button>
       <button class="hbtn" id="b-cam">騎手</button>
       <button class="hbtn" id="b-snd">音ON</button>
       <button class="hbtn" id="pauseBtn">Ⅱ 停止</button>
     </div>
     <div class="ctl" id="ctl-left">
-      <div class="cbtn lr" id="c-left">◀<small id="lbl-l">内へ</small></div>
-      <div class="cbtn lr" id="c-right">▶<small id="lbl-r">外へ</small></div>
+      <div class="steer" id="steer"><span class="sl" id="lbl-l">◀ 内へ</span><span class="sl r" id="lbl-r">外へ ▶</span><i class="smid"></i><div id="steer-knob">進路</div></div>
     </div>
     <div class="ctl" id="ctl-right">
       <div class="thr" id="thr">

@@ -745,7 +745,7 @@
     R3.setCamMode(camMode); updateCamBtn();
     $('b-snd').textContent = Sound.isMuted() ? '音OFF' : '音ON';
     const L = engine.course.dir === 'L';
-    $('lbl-l').textContent = L ? '内へ' : '外へ'; $('lbl-r').textContent = L ? '外へ' : '内へ';
+    $('lbl-l').textContent = L ? '◀ 内へ' : '◀ 外へ'; $('lbl-r').textContent = L ? '外へ ▶' : '内へ ▶';
     engine.input.steer = 0; setPower(0.42);
     $('startBtn').style.display = '';
     $('loading').style.display = 'flex';
@@ -961,12 +961,15 @@
       if (bar.dataset.n !== String(e.runners.length) || bar.dataset.race !== String(raceSeq)) { bar.dataset.n = String(e.runners.length); bar.dataset.race = String(raceSeq); bar.innerHTML = e.runners.map(r => `<span class="d${r === Pl ? ' me' : ''}" style="background:${r === Pl ? (W.player.color || '#ffeb3b') : r.color}"></span>`).join('') + '<span class="lead">先頭▶</span>'; }
       const w = bar.clientWidth - 16;
       e.runners.forEach((r, i) => { bar.children[i].style.left = (8 + w - (lead - r.s) / span * w) + 'px'; });
-      drawMap();
+      drawMap(); drawRadar();
       // 横の馬
       let l = false, rr = false;
       const sgn = e.course.dir === 'L' ? 1 : -1;
       for (const o of e.runners) { if (o === Pl) continue; const ds = o.s - Pl.s, dx = (o.X - Pl.X) * sgn; if (ds > -3.5 && ds < 2.5 && Math.abs(dx) < 2.4) { if (dx < 0) l = true; else rr = true; } }
       $('side-l').textContent = l ? '◀ 馬' : ''; $('side-r').textContent = rr ? '馬 ▶' : '';
+      // ムチ：2完歩たつと輪が一周し、連続の数え直しになる
+      const wf = Pl.lastWhipPhase != null ? clamp((Pl.phase - Pl.lastWhipPhase) / 2, 0, 1) : 1;
+      $('c-whip').style.background = wf < 1 ? `conic-gradient(rgba(255,255,255,.92) ${wf * 360}deg, rgba(200,16,46,.35) 0)` : '';
       $('whip-n').textContent = `連続${Pl.lastWhipPhase != null && Pl.phase - Pl.lastWhipPhase < 2 ? Pl.whipRun : 0}/5`;
     }
     // コーチ：全力で持つ距離と、いまやるべきこと
@@ -1000,7 +1003,7 @@
     if (!P.started) return { t: 'スタートを押す!' };
     if (P.finished) return { t: 'ゴール!' };
     if (P.drive > 0.5 && P.st < 0.12) return { t: '脚が上がった…最後まで押し切れ' };
-    if (P.blocked && rem < 800) return { t: '前が壁！ ◀▶ で空いている所へ' };
+    if (P.blocked && rem < 800) return { t: '前が壁！ 進路を動かして空いている所へ' };
     if (P.kakari > 0.55) return { t: 'かかっている：前の馬の後ろに入れる' };
     if (rem < sustain + 30 && P.drive < 0.5) return { t: '仕掛けどき！ 手綱を上まで上げて追う', go: true };
     if (P.drive > 0.5) return { t: rem < 300 ? '追って！ ムチでもうひと伸び' : '追っている：このまま', go: rem < 300 };
@@ -1008,6 +1011,28 @@
     if (fr < ord[0] - 0.05 && e.input.power > 0.3) return { t: '指示より前すぎる：手綱を下げて抑える' };
     if (fr > ord[1] + 0.1 && e.input.power < 0.55) return { t: '指示より後ろ：手綱を少し上げる' };
     return { t: 'いい位置。仕掛けどきまで我慢' };
+  }
+  // 周りの馬の位置（上が進行方向）。割って入れるすき間を見るためのもの
+  function drawRadar() {
+    const cv = $('radar'), x = cv.getContext('2d'), e = engine, Pl = e.player, w = cv.width, h = cv.height;
+    x.clearRect(0, 0, w, h);
+    x.fillStyle = 'rgba(12,30,20,.62)'; x.beginPath(); x.roundRect ? x.roundRect(0, 0, w, h, 14) : x.rect(0, 0, w, h); x.fill();
+    const sgn = e.course.dir === 'L' ? 1 : -1, sx = 21, sy = 7.2, cx = w / 2, cy = h * 0.62;
+    const X2 = (X) => cx + (X - Pl.X) * sgn * sx, S2 = (s) => cy - (s - Pl.s) * sy;
+    // 内ラチと外ラチ
+    x.strokeStyle = '#ffffff'; x.lineWidth = 3;
+    for (const X of [-0.35, e.course.width + 0.35]) { const px = X2(X); if (px > -4 && px < w + 4) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, h); x.stroke(); } }
+    x.font = 'bold 15px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const o of e.runners) {
+      const px = X2(o.X), py = S2(o.s);
+      if (px < -12 || px > w + 12 || py < -16 || py > h + 16) continue;
+      const me = o === Pl;
+      x.fillStyle = me ? '#ffd54f' : (o.cfg.silks && o.cfg.silks.cap) || '#fff';
+      x.strokeStyle = me ? '#fff' : 'rgba(0,0,0,.6)'; x.lineWidth = me ? 3 : 1.5;
+      x.beginPath(); x.ellipse(px, py, 8.5, 17, 0, 0, 7); x.fill(); x.stroke();
+      const c = x.fillStyle; x.fillStyle = me || /^#(fff|fdd|f[0-9a-f]{5})/i.test(c) ? '#111' : '#fff';
+      x.fillText(String(o.num), px, py + 1);
+    }
   }
   function drawMap() {
     const cv = $('hud-map'), x = cv.getContext('2d'), c = engine.course;
@@ -1053,8 +1078,26 @@
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => el.addEventListener(t, end));
     return () => id;
   }
-  holdBtn($('c-left'), () => setSteer(-1), () => setSteer(0));
-  holdBtn($('c-right'), () => setSteer(1), () => setSteer(0));
+  // 進路：つまみを左右へ動かした分だけ寄せる（少し動かせばゆっくり、大きく動かせば速く）。離すと真ん中へ戻る
+  (function bindSteer() {
+    const pad = $('steer'), knob = $('steer-knob'); let id = null, x0 = 0, y0 = 0;
+    const set = (v) => { setSteer(v); knob.style.transform = `translateX(${v * 62}px)`; };
+    pad.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); id = e.pointerId; try { pad.setPointerCapture(id); } catch (_) {}
+      pad.classList.add('act');
+      // 触れた場所が端に近ければ、そのままその向きへ寄せ始める
+      const r = pad.getBoundingClientRect(), rot = document.documentElement.classList.contains('rot');
+      let u = rot ? (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width; if (rot && rotDir === 'ccw') u = 1 - u;
+      const v0 = Math.abs(u - 0.5) > 0.2 ? clamp((u - 0.5) * 2.4, -1, 1) : 0;
+      x0 = e.clientX; y0 = e.clientY; pad._v0 = v0; set(v0);
+    });
+    pad.addEventListener('pointermove', (e) => { if (e.pointerId !== id) return; set(clamp((pad._v0 || 0) + uiDX(e, x0, y0) / 62, -1, 1)); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => pad.addEventListener(t, (e) => { if (e.pointerId === id) { id = null; pad.classList.remove('act'); set(0); } }));
+  })();
+  // 後方確認：押している間だけ振り返る
+  holdBtn($('b-back'), () => { if (R3) R3.lookBack = true; }, () => { if (R3) R3.lookBack = false; });
+  // ゲートが開いた後は、画面のどこを押してもスタートできる
+  $('r3d').addEventListener('pointerdown', () => { if (engine && engine.open && engine.player && !engine.player.started && !R3.intro && !paused) engine.playerStart(); });
   (function bindThrottle() {
     const tr = $('thr-track'); let id = null;
     const at = (e) => {
@@ -1088,7 +1131,7 @@
     paused = true;
     modal(`<h2 style="margin-bottom:8px">一時停止</h2>
       <div class="small" style="line-height:1.75">
-      <b>◀ ▶（左下）</b> 押している間、内・外へ進路を変える。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。すぐ後ろ（半馬身ほど以内）に馬がいるのに、その馬の前へ寄せると斜行になり、審議の対象になる。1馬身ほど前に出てから寄せれば問題ない。軽ければ過怠金、何度も大きく妨げると騎乗停止や降着<br>
+      <b>進路（左下）</b> つまみを左右へ動かした分だけ内・外へ寄せる。離すと真ん中へ戻る。その上の図は周りの馬の位置で、黄色が自分、上が前。右上の「後方確認」は押している間だけ振り返る。前に馬がいると壁になる。コーナーは外を回るほど距離をロスする。すぐ後ろ（半馬身ほど以内）に馬がいるのに、その馬の前へ寄せると斜行になり、審議の対象になる。1馬身ほど前に出てから寄せれば問題ない。軽ければ過怠金、何度も大きく妨げると騎乗停止や降着<br>
       <b>手綱の加減（右の縦スライダー）</b> 指で上下に動かして、馬を走らせる強さを自分で決める。下ほど強く抑え、真ん中が馬なり、上ほど強く追う。離してもその位置のまま続く。前半は下げて脚をためるが、前に馬がいないと気の強い馬はかかる（折合ゲージ）。馬の後ろに入れると落ち着く。上げるほど脚色（スタミナ）を多く使う<br>
       <b>ムチ（右端）</b> 強く追っている間の伸びを上乗せする。回数の上限はないが、2完歩あけずに続けて打てるのは5回まで。超えると制裁（過怠金）の対象になる。打つ側は自動で選ばれる<br>
       <b>コーチ（画面上）</b> 緑のバーは「今から全力で追って持つ距離」。バーが残り距離に届いたら仕掛けどき<br>
@@ -1221,11 +1264,11 @@
     { text: '<b>視点</b>は騎手・後方・中継を切り替えられる。迷ったら「後方」が見やすい。', tap: true, hl: ['b-cam'] },
     { text: 'ではスタート。ゲートが開いた瞬間に<b>「スタート」</b>を押す。早すぎても遅すぎても出負けする。', hl: ['startBtn'], start: true, until: () => engine.player.started },
     { text: '右の<b>手綱スライダー</b>を指で<b>下</b>へ動かし、「抑える」まで下げる。前半は脚（スタミナ）をためるのが基本。指を離してもその位置のまま続く。', hl: ['thr'], speed: 0.6, until: () => engine.input.power < 0.3, hold: 1.2 },
-    { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。左下の<b>◀ ▶</b>を押して、前の馬の<b>真後ろ</b>に入れよう。', hl: ['c-left', 'c-right', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
+    { text: '前に馬がいないと、抑えた馬は<b>かかる</b>（折合ゲージが減る）。左下の<b>進路</b>のつまみを左右へ動かして、前の馬の<b>真後ろ</b>に入れよう。その上の小さな図が周りの馬の位置（黄色が自分、上が前）。', hl: ['steer', 'radar', 'hud-gauges'], speed: 0.7, until: () => engine.player.covered, hold: 2, timeout: 14 },
     { text: 'いい位置。画面上の<b>コーチ</b>が仕掛けどきを教えてくれる。緑のバーは「全力で走りきれる距離」。それまで我慢。<br>（早送り中）', hl: ['coach'], speed: 3, until: () => engine.D - engine.player.s < 650 },
     { text: '仕掛けどき。<b>手綱スライダーを一番上</b>まで上げる。上げるほど強く追って加速する。途中で止めれば、その強さで走る。', hl: ['thr', 'coach'], speed: 0.6, until: () => engine.player.drive > 0.8 },
     { text: '追いながら右端の<b>「ムチ」</b>をタップ。もうひと伸びする。続けて打てるのは5回まで（2完歩あければ数え直し）。', hl: ['c-whip'], speed: 0.6, until: () => engine.player.whips >= 1 },
-    { text: 'ゴールまで追い続けよう！ 前が壁になったら ◀ ▶ で進路を探す。', speed: 1, until: () => engine.player.finished },
+    { text: 'ゴールまで追い続けよう！ 前が壁になったら進路のつまみで空いている所を探す。', speed: 1, until: () => engine.player.finished },
   ];
   function startTutorial() {
     try { localStorage.setItem('jl-tut', '1'); } catch (e) {}

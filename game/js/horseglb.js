@@ -95,7 +95,7 @@
   // 毛色・脚先の黒（鹿毛など）をシェーダーで
   function coatMaterial(coat) {
     const c = new T.Color(coat.body).multiplyScalar(1.25);
-    const m = new T.MeshStandardMaterial({ map: G.tex.coat, normalMap: G.tex.coatN, color: c, roughness: 0.42, metalness: 0.0 });
+    const m = new T.MeshStandardMaterial({ map: G.tex.coat, normalMap: G.tex.coatN, color: c, roughness: 0.56, metalness: 0.0 });
     const pts = new T.Color(coat.points);
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uPoints = { value: pts };
@@ -239,7 +239,7 @@
         }
       },
       lod(d) { const near = d < 55; if (near !== this._near) { this._near = near; detail.forEach(n => { n.visible = near || /Hair/.test(n.name) && d < 90; }); } },
-      setPlayerView(on) { this.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = !on; J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.sh.visible = !on; a.fo.visible = !on; a.hand.scale.setScalar(on ? 0.75 : 1); }); J.hipBall.visible = !on; J.neckM.visible = !on; },
+      setPlayerView(on) { this.pov = on; J.setPov(on); },
       dispose() { clothT.dispose(); Object.values(mats).forEach(m => m.dispose()); },
     };
     if (G.restPitch == null) {

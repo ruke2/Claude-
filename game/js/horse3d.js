@@ -6,6 +6,7 @@
   const TAU = Math.PI * 2;
   const lerp = (a, b, t) => a + (b - a) * t;
   const sm = (t) => t * t * (3 - 2 * t);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   // ---- ジオメトリ生成：xy平面上の中心線に沿って楕円断面をつなぐ ----
   function loft(samples, seg = 18, rings = 3) {
@@ -271,7 +272,7 @@
       root, body, neckP, headP, legs, mane, tail, jockey: J, reins, bitL, bitR, clothT,
       lastPhase: 0,
       update(st, dt, time) { animate(model, st, dt, time); },
-      setPlayerView(on) { model.pov = on; J.whip.visible = !on; J.torso.visible = J.head.visible = J.helmet.visible = !on; J.goggle.visible = !on; J.arms.forEach(a => { a.up.visible = !on; a.sh.visible = !on; a.fo.visible = !on; a.hand.scale.setScalar(on ? 0.75 : 1); }); J.hipBall.visible = !on; J.neckM.visible = !on; },
+      setPlayerView(on) { model.pov = on; J.setPov(on); },
       dispose() { clothT.dispose(); },
     };
     if (opt.isPlayer) model.setPlayerView(true);
@@ -320,27 +321,37 @@
   // 鞍の上面を原点に、足（鐙）・腰・肩・手の位置を決め、膝と肘は2関節IKで求める。
   // 足は馬と一緒に動き、上体は膝で上下動を吸収する。向きは +x が前、z が左右。
   let JG = null;
+  // 両端を閉じた、長さ1（y方向・中心が原点）の手足。[位置0〜1, 前後の半径, 左右の半径]
+  function shaped(list, seg = 16) {
+    const first = list[0], last = list[list.length - 1];
+    const all = [[first[0] - 0.015, 0.004, 0.004], ...list, [last[0] + 0.015, 0.004, 0.004]];
+    const g = loft(all.map(([t, h, w, sq]) => ({ x: 0, y: t, h, w, sq: sq || 0 })), seg, 3);
+    g.translate(0, -0.5, 0);
+    return g;
+  }
   function jockeyGeoms() {
     if (JG) return JG;
     JG = {};
-    // 長さ1の手足（y方向・中心が原点）。太さは scale.x/z で決める
-    const limb = (r0, r1) => { const g = new T.CylinderGeometry(r1, r0, 1, 14, 1, false); return g; };
-    JG.limbArm = limb(1, 0.82); JG.limbLeg = limb(1, 0.7);
-    JG.ball = new T.SphereGeometry(1, 16, 12);
-    // 上体（腰→肩、長さ1）。h=胸の厚み、w=幅
-    JG.torso = loft([
-      { x: 0, y: -0.05, h: 0.01, w: 0.01 },
-      { x: 0, y: 0.02, h: 0.1, w: 0.13 },
-      { x: 0, y: 0.25, h: 0.1, w: 0.13 },
-      { x: 0, y: 0.55, h: 0.12, w: 0.16 },
-      { x: 0, y: 0.82, h: 0.11, w: 0.19, sq: 0.08 },
-      { x: 0, y: 0.97, h: 0.07, w: 0.17 },
-      { x: 0, y: 1.03, h: 0.01, w: 0.03 },
-    ], 22, 4);
-    JG.helmet = new T.SphereGeometry(1, 20, 12, 0, TAU, 0, Math.PI * 0.58);
-    JG.peak = new T.CylinderGeometry(1, 1, 1, 20, 1, false, -0.85, 1.7);
-    JG.goggle = new T.CylinderGeometry(1, 1, 1, 20, 1, true, -0.95, 1.9);
-    JG.boot = new T.CylinderGeometry(1, 1, 1, 12, 1, true);
+    JG.ball = new T.SphereGeometry(1, 18, 14);
+    // 太もも（腰→膝）、すね＝長靴（膝→足首）、上腕、前腕
+    JG.thigh = shaped([[0, 0.07, 0.078], [0.2, 0.076, 0.082], [0.55, 0.066, 0.07], [0.9, 0.054, 0.056], [1, 0.05, 0.052]]);
+    JG.shin = shaped([[0, 0.056, 0.056], [0.25, 0.064, 0.06], [0.6, 0.05, 0.048], [0.92, 0.04, 0.04], [1, 0.042, 0.042]]);
+    JG.upArm = shaped([[0, 0.055, 0.056], [0.3, 0.056, 0.054], [0.85, 0.045, 0.044], [1, 0.042, 0.042]], 12);
+    JG.foArm = shaped([[0, 0.043, 0.043], [0.3, 0.046, 0.044], [0.85, 0.034, 0.036], [1, 0.032, 0.034]], 12);
+    JG.neck = shaped([[0, 0.05, 0.052], [1, 0.045, 0.047]], 10);
+    // 上体（腰→肩）。背中はやや丸く、肩で広がる
+    JG.torso = shaped([[0, 0.1, 0.135], [0.18, 0.105, 0.14], [0.45, 0.112, 0.155], [0.72, 0.122, 0.185, 0.1], [0.9, 0.105, 0.2, 0.15], [0.98, 0.07, 0.15], [1.03, 0.045, 0.06]], 24);
+    JG.torso.translate(0, 0.5, 0); // 腰を原点に
+    // 靴（+x がつま先）
+    JG.shoe = (() => { const g = loft([[-0.06, 0.004, 0.004], [-0.05, 0.03, 0.034], [0, 0.034, 0.04], [0.06, 0.028, 0.04], [0.11, 0.018, 0.032], [0.125, 0.004, 0.004]].map(([x, h, w]) => ({ x, y: 0, h, w, sq: 0.2 })), 12, 3); return g; })();
+    JG.stirrup = new T.TorusGeometry(0.058, 0.006, 6, 16);
+    JG.strap = new T.BoxGeometry(0.02, 1, 0.004);
+    JG.helmet = new T.SphereGeometry(1, 24, 14, 0, TAU, 0, Math.PI * 0.6);
+    JG.peak = (() => { const sh = new T.Shape(); sh.absarc(0, 0, 1, -1.05, 1.05, false); sh.absarc(-0.25, 0, 0.9, 0.95, -0.95, true); const g = new T.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false, curveSegments: 16 }); g.rotateX(Math.PI / 2); return g; })();
+    JG.lens = new T.CylinderGeometry(1, 0.96, 1, 20, 1, true, -1.1, 2.2);
+    JG.band = new T.CylinderGeometry(1, 1, 1, 24, 1, true);
+    JG.whip = (() => { const g = new T.CylinderGeometry(0.004, 0.009, 0.62, 6); g.translate(0, 0.31 - 0.06, 0); return g; })();
+    JG.flap = (() => { const g = new T.BoxGeometry(0.004, 0.09, 0.026); g.translate(0, 0.62 - 0.06 + 0.03, 0); return g; })();
     return JG;
   }
 
@@ -348,55 +359,74 @@
     const jg = jockeyGeoms();
     const s = opt.silks || { base: '#c62828', accent: '#ffffff', pattern: 'plain', cap: '#c62828' };
     const tex = silksTexture(s);
-    const mSilk = new T.MeshStandardMaterial({ map: tex, roughness: 0.35 });
-    const mCap = std(s.cap || s.base, 0.28);
-    const mBreech = std('#f2f0ea', 0.6);
-    const mBoot = std('#0c0c0c', 0.22);
-    const mCuff = std('#7b4d2a', 0.5);
-    const mSkin = std('#c99478', 0.55);
-    const mGlove = std('#e9e9e9', 0.6);
-    const mGog = new T.MeshStandardMaterial({ color: '#15181c', roughness: 0.08, metalness: 0.7 });
+    const mSilk = new T.MeshStandardMaterial({ map: tex, roughness: 0.42 });
+    const mCap = std(s.cap || s.base, 0.3);
+    const mBreech = std('#f1efe8', 0.65);
+    const mBoot = std('#0e0e0f', 0.25);
+    const mCuff = std('#8a5a33', 0.5);
+    const mSkin = std('#c9997c', 0.6);
+    const mGlove = std('#ecebe6', 0.7);
+    const mMetal = std('#b9bcc0', 0.3, { metalness: 0.8 });
+    const mLeather = std('#2a1c12', 0.6);
+    const mGog = new T.MeshStandardMaterial({ color: '#1a2026', roughness: 0.06, metalness: 0.85 });
     const root = new T.Group();
-    const mk = (geo, mat, rx, rz, cast = true) => { const m = mesh(geo, mat, cast); m.userData.r = [rx, rz]; root.add(m); return m; };
-    const J = { root, segs: [], arms: [], legs: [] };
-    J.torso = mesh(jg.torso, mSilk); root.add(J.torso);
-    J.hipBall = mk(jg.ball, mBreech); J.hipBall.scale.set(0.11, 0.09, 0.13);
-    J.neckM = mk(jg.limbArm, mSkin, 0.04, 0.04);
-    // 頭
+    const add = (geo, mat, cast = true) => { const m = mesh(geo, mat, cast); root.add(m); return m; };
+    const J = { root, arms: [], legs: [], pov: [] };
+    J.torso = add(jg.torso, mSilk);
+    J.pelvis = add(jg.ball, mBreech); J.pelvis.scale.set(0.11, 0.088, 0.13);
+    J.hipBall = J.pelvis;
+    J.neckM = add(jg.neck, mSkin);
+    // 頭：顔・ヘルメット（帽色）・ひさし・ゴーグル・あごひも
     J.headG = new T.Group(); root.add(J.headG);
-    J.head = mesh(jg.ball, mSkin); J.head.scale.set(0.078, 0.088, 0.074); J.headG.add(J.head);
-    const helmet = mesh(jg.helmet, mCap); helmet.scale.set(0.097, 0.1, 0.092); helmet.position.set(-0.01, 0.015, 0); helmet.rotation.z = 0.5; J.headG.add(helmet);
-    const peak = mesh(jg.peak, mCap, false); peak.scale.set(0.1, 0.01, 0.1); peak.position.set(0.05, 0.03, 0); peak.rotation.set(0, Math.PI / 2, -0.15); J.headG.add(peak);
-    J.goggle = mesh(jg.goggle, mGog, false); J.goggle.scale.set(0.088, 0.035, 0.085); J.goggle.position.set(0.012, 0.0, 0); J.goggle.rotation.y = Math.PI / 2; J.headG.add(J.goggle);
-    J.helmet = { set visible(v) { helmet.visible = v; peak.visible = v; } };
+    J.head = mesh(jg.ball, mSkin); J.head.scale.set(0.092, 0.104, 0.086); J.headG.add(J.head);
+    const helmet = mesh(jg.helmet, mCap); helmet.scale.set(0.116, 0.118, 0.108); helmet.position.set(-0.008, 0.012, 0); helmet.rotation.z = 0.42; J.headG.add(helmet);
+    const peak = mesh(jg.peak, mCap, false); peak.scale.set(0.105, 0.14, 0.1); peak.position.set(0.035, 0.05, 0); peak.rotation.z = -0.2; J.headG.add(peak);
+    const lens = mesh(jg.lens, mGog, false); lens.scale.set(0.099, 0.042, 0.093); lens.position.set(0.004, 0.012, 0); lens.rotation.set(0, Math.PI / 2, 0); J.headG.add(lens);
+    const band = mesh(jg.band, mLeather, false); band.scale.set(0.1195, 0.016, 0.1115); band.position.set(-0.008, 0.03, 0); band.rotation.z = 0.3; J.headG.add(band);
+    const chin = mesh(jg.band, mLeather, false); chin.scale.set(0.004, 0.13, 0.088); chin.position.set(0.02, -0.045, 0); chin.rotation.set(0, 0, 0.1); J.headG.add(chin);
+    const nose = mesh(jg.ball, mSkin, false); nose.scale.set(0.02, 0.022, 0.014); nose.position.set(0.09, -0.03, 0); J.headG.add(nose);
+    J.goggle = lens;
+    J.helmet = { set visible(v) { helmet.visible = v; peak.visible = v; band.visible = v; chin.visible = v; } };
     // 腕
     for (const sd of [1, -1]) {
-      const up = mk(jg.limbArm, mSilk, 0.042, 0.042), fo = mk(jg.limbArm, mSilk, 0.036, 0.036);
+      const up = add(jg.upArm, mSilk), fo = add(jg.foArm, mSilk);
+      const sh = add(jg.ball, mSilk); sh.scale.set(0.054, 0.052, 0.054);
+      const el = add(jg.ball, mSilk); el.scale.setScalar(0.045);
       const hand = new T.Group(); root.add(hand);
-      const gl = mesh(jg.ball, mGlove); gl.scale.set(0.04, 0.035, 0.035); hand.add(gl);
-      const sh = mk(jg.ball, mSilk); sh.scale.setScalar(0.05);
-      J.arms.push({ sd, up, fo, hand, sh });
+      const gl = mesh(jg.ball, mGlove); gl.scale.set(0.044, 0.036, 0.038); hand.add(gl);
+      const cuff = add(jg.band, mGlove, false); cuff.scale.set(0.036, 0.03, 0.038);
+      J.arms.push({ sd, up, fo, hand, sh, el, cuff });
     }
-    // 脚
+    // 脚：白い乗馬ズボン、黒い長靴（上は茶色の折り返し）、鐙と鐙革
     for (const sd of [1, -1]) {
-      const th = mk(jg.limbLeg, mBreech, 0.07, 0.065), sn = mk(jg.limbLeg, mBoot, 0.05, 0.048);
-      const kn = mk(jg.ball, mBreech); kn.scale.setScalar(0.055);
-      const cuff = mk(jg.boot, mCuff, 0.056, 0.056, false);
-      const foot = mk(jg.ball, mBoot); foot.scale.set(0.1, 0.04, 0.045);
-      J.legs.push({ sd, th, sn, kn, cuff, foot });
+      const th = add(jg.thigh, mBreech), sn = add(jg.shin, mBoot);
+      const kn = add(jg.ball, mBreech); kn.scale.setScalar(0.06);
+      const cuff = add(jg.band, mCuff, false);
+      const foot = add(jg.shoe, mBoot);
+      const iron = add(jg.stirrup, mMetal, false);
+      const strap = add(jg.strap, mLeather, false);
+      J.legs.push({ sd, th, sn, kn, cuff, foot, iron, strap });
     }
-    J.whip = mesh(g.whip, mBoot, false); J.arms[1].hand.add(J.whip); J.whip.rotation.z = -2.3;
+    // ムチ（右手）
+    J.whip = new T.Group(); J.whip.add(mesh(jg.whip, mBoot, false)); J.whip.add(mesh(jg.flap, mLeather, false));
+    J.arms[0].hand.add(J.whip);
+    // 騎手視点では、自分の頭や胴は消し、前腕と手だけを見せる
+    J.pov = [J.torso, J.pelvis, J.neckM, J.headG, ...J.arms.flatMap(a => [a.up, a.sh])];
+    J.setPov = (on) => { J.pov.forEach(o => { o.visible = !on; }); };
     J.cfg = { hw: opt.bodyHalfWidth || 0.26 };
+    J.st = { whipDir: new T.Vector3(-0.5, -0.8, 0.2) };
     return J;
   }
 
   // 2点を結ぶように長さ1の手足を置く
-  const _a = new T.Vector3(), _b = new T.Vector3(), _d = new T.Vector3(), _Y = new T.Vector3(0, 1, 0);
-  function place(m, a, b) {
-    _d.subVectors(b, a); const L = _d.length();
+  const _a = new T.Vector3(), _b = new T.Vector3(), _d = new T.Vector3(), _Y = new T.Vector3(0, 1, 0), _X = new T.Vector3(1, 0, 0), _q = new T.Quaternion(), _m4 = new T.Matrix4(), _z = new T.Vector3(), _x2 = new T.Vector3();
+  // side: 手足の「前」をどちらへ向けるか（ひねりを決める）。なければ最短の回転
+  function place(m, a, b, side) {
+    _d.subVectors(b, a); const L = _d.length(); _d.multiplyScalar(1 / (L || 1));
     m.position.addVectors(a, b).multiplyScalar(0.5);
-    m.quaternion.setFromUnitVectors(_Y, _d.multiplyScalar(1 / (L || 1)));
-    const r = m.userData.r; m.scale.set(r ? r[0] : 1, L, r ? r[1] : 1);
+    if (side) { _z.crossVectors(side, _d).normalize(); _x2.crossVectors(_d, _z).normalize(); _m4.makeBasis(_x2, _d, _z); m.quaternion.setFromRotationMatrix(_m4); }
+    else m.quaternion.setFromUnitVectors(_Y, _d);
+    m.scale.set(1, L, 1);
   }
   // 2関節IK：根元 A、先端 C、長さ l1/l2、曲がる向き bend
   function ik(A, C, l1, l2, bend, out) {
@@ -412,53 +442,85 @@
 
   // 騎手のアニメーション（手続き馬・glb馬の共通）
   // baseY: 鞍上面の高さ（揺れの平均）、bounce: 今の鞍の上下ずれ
+  //  st.effort: 0=強く抑える 〜 1=全力で追う / st.whipT: ムチの残り時間 / st.ease: ゴール後に腰を上げて流す / st.win: 勝ってガッツポーズ
   const V = () => new T.Vector3();
-  const P = { hip: V(), sh: V(), head: V(), foot: V(), knee: V(), hipS: V(), shS: V(), hand: V(), elb: V(), tmp: V() };
+  const P = { hip: V(), sh: V(), head: V(), foot: V(), knee: V(), hipS: V(), shS: V(), hand: V(), rein: V(), elb: V(), wind: V(), hit: V(), dir: V(), up: V() };
+  const FWD = new T.Vector3(1, 0, 0);
+  const lerp3 = (out, a, b, t) => out.copy(a).lerp(b, t);
   function animateJockey(m, st, ph, bounce, pitch, baseY) {
-    const J = m.jockey;
+    const J = m.jockey, S = J.st;
     J.root.position.y = baseY + bounce; // 足（鐙）は馬と一緒に動く
     J.root.rotation.z = pitch * 0.6;
-    const push = st.effort > 0.85 ? 1 : st.effort > 0.6 ? 0.55 : 0.12;
-    const relax = st.effort < 0.3 ? 1 : 0;
-    const w = TAU * ph + 1.4;
+    // 追う強さ・抑える強さは急に切り替えず、なめらかに移る
+    const e = st.effort == null ? 0.5 : st.effort;
+    const pushT = clamp((e - 0.55) / 0.4, 0, 1), relaxT = clamp((0.34 - e) / 0.2, 0, 1) + (st.kakari > 0.6 ? 0.5 : 0);
+    S.push = S.push == null ? pushT : S.push + (pushT - S.push) * 0.15;
+    S.relax = S.relax == null ? relaxT : S.relax + (Math.min(1, relaxT) - S.relax) * 0.15;
+    S.ease = (S.ease || 0) + ((st.ease ? 1 : 0) - (S.ease || 0)) * 0.05;
+    const push = S.push * (1 - S.ease), relax = S.relax * (1 - S.ease), ease = S.ease;
+    const w = TAU * ph + 1.4, sw = Math.sin(w), cw = Math.cos(w);
     const hw = J.cfg.hw;
-    const absorb = -bounce * 0.85 / Math.max(0.3, 1); // 上体は上下動を吸収
-    // 腰・肩・頭（上体はほぼ水平、追うと前後に揺れる）
-    P.hip.set(-0.1 + 0.035 * push * Math.sin(w), 0.3 + absorb - 0.03 * relax + 0.015 * push * Math.sin(w + 1), 0);
-    P.sh.set(P.hip.x + 0.46 + 0.05 * push * Math.sin(w), P.hip.y + 0.12 + 0.08 * relax, 0);
-    // 上体
-    place(J.torso, P.hip, P.sh); J.torso.scale.set(1, P.hip.distanceTo(P.sh), 1); J.torso.position.copy(P.hip);
-    J.hipBall.position.copy(P.hip).add(_b.set(0, -0.01, 0));
-    // 頭：肩の少し前・上。前を見る
-    P.head.set(P.sh.x + 0.1, P.sh.y + 0.14, 0);
+    const absorb = -bounce * 0.85; // 上体は膝で上下動を吸収する
+    const lean = (st.lean || 0) * 0.06;
+    // 腰・肩・頭。追うと腰と肩が前後に大きく動き、抑えると上体が起きて後ろへ体重をかける
+    P.hip.set(-0.17 + 0.055 * push * sw - 0.05 * relax + 0.04 * ease, 0.35 + absorb - 0.04 * push + 0.025 * push * Math.sin(w + 1) - 0.02 * relax + 0.1 * ease, lean);
+    const back = 0.3 - 0.14 * push + 0.3 * relax + 0.9 * ease - 0.07 * push * sw; // 背中の角度（0=水平）
+    P.sh.set(P.hip.x + 0.5 * Math.cos(back), P.hip.y + 0.5 * Math.sin(back), lean * 1.5);
+    place(J.torso, P.hip, P.sh, FWD.set(-Math.sin(back), Math.cos(back), 0)); J.torso.position.copy(P.hip);
+    J.torso.scale.set(1, 0.5, 1);
+    J.pelvis.position.set(P.hip.x - 0.01, P.hip.y - 0.01, P.hip.z);
+    // 頭：肩の前・上。前を見る。追うときは少し下がる
+    P.head.set(P.sh.x + 0.1 - 0.07 * ease - 0.03 * relax, P.sh.y + 0.14 + 0.05 * ease + 0.02 * relax - 0.012 * push * sw, P.sh.z);
     J.headG.position.copy(P.head);
-    place(J.neckM, _b.set(P.sh.x - 0.02, P.sh.y + 0.02, 0).clone(), _a.set(P.head.x - 0.03, P.head.y - 0.06, 0).clone());
-    // 脚：足は鐙（鞍の少し前・下）、膝は前へ曲がる
+    J.headG.rotation.z = -0.1 * push + 0.08 * relax + (st.win ? 0.15 : 0);
+    J.headG.rotation.y = (st.lean || 0) * 0.2;
+    place(J.neckM, _b.set(P.sh.x - 0.01, P.sh.y + 0.01, P.sh.z).clone(), _a.set(P.head.x - 0.03, P.head.y - 0.07, P.head.z).clone());
+    // 脚：足は鐙（鞍の少し前・下）。太ももはほぼ水平、すねは後ろへ傾く
     J.legs.forEach(L => {
-      const z = L.sd * (hw + 0.05);
-      P.foot.set(0.02, -0.4, z);
-      P.hipS.set(P.hip.x + 0.03, P.hip.y - 0.03, L.sd * 0.11);
-      const bend = new T.Vector3(1, 0.3, L.sd * 0.18);
-      const f = ik(P.hipS, P.foot, 0.43, 0.43, bend, P.knee);
+      const z = L.sd * (hw + 0.055);
+      P.foot.set(0.07 - 0.03 * relax, -0.25, z);
+      P.hipS.set(P.hip.x + 0.02, P.hip.y - 0.04, P.hip.z + L.sd * 0.105);
+      const bend = _x2.set(1, 0.45, L.sd * 0.3).clone();
+      const f = ik(P.hipS, P.foot, 0.41, 0.45, bend, P.knee).clone();
       place(L.th, P.hipS, P.knee); place(L.sn, P.knee, f);
       L.kn.position.copy(P.knee);
-      L.cuff.position.copy(P.knee).lerp(f, 0.2); L.cuff.quaternion.copy(L.sn.quaternion); L.cuff.scale.set(0.058, 0.06, 0.058);
-      L.foot.position.copy(f).add(_b.set(0.04, -0.01, 0));
+      L.cuff.position.copy(P.knee).lerp(f, 0.13); L.cuff.quaternion.copy(L.sn.quaternion); L.cuff.scale.set(0.061, 0.07, 0.06);
+      L.foot.position.set(f.x - 0.01, f.y - 0.035, f.z); L.foot.rotation.set(0, L.sd * -0.12, -0.18 - 0.1 * relax);
+      L.iron.position.set(f.x + 0.03, f.y - 0.02, f.z); L.iron.rotation.set(0, Math.PI / 2, 0);
+      place(L.strap, _a.set(f.x + 0.03, f.y + 0.035, f.z).clone(), _b.set(-0.02, 0.0, L.sd * (hw + 0.01)).clone());
     });
-    // 腕：手は首（たてがみ）の上。追うと前後に押す。ムチは振り上げる
+    // 腕：手は首すじ（たてがみ）の上で手綱を持つ。追うと肘を使って前へ押し出す
+    const t = st.whipT > 0 ? 1.3 - st.whipT : -1;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
     J.arms.forEach(a => {
-      P.shS.set(P.sh.x - 0.02, P.sh.y - 0.02, a.sd * 0.17);
-      const reach = 0.13 * push * Math.sin(w);
-      P.hand.set(0.62 + reach - 0.1 * relax, 0.06 + 0.03 * push * Math.cos(w) + 0.04 * relax, a.sd * 0.085);
-      if (a.sd === st.whipSide && st.whipT > 0 && !m.pov) {
-        const t = 1.3 - st.whipT, sw = Math.sin(Math.min(1, t / 0.45) * Math.PI);
-        P.hand.set(P.sh.x - 0.05 - 0.25 * sw, P.sh.y + 0.05 + 0.25 * sw, a.sd * (0.32 + 0.1 * sw));
+      P.shS.set(P.sh.x - 0.03, P.sh.y - 0.035, P.sh.z + a.sd * 0.185);
+      const reach = 0.14 * push * sw;
+      P.rein.set(0.52 + reach - 0.14 * relax - 0.16 * ease, 0.08 + 0.035 * push * cw + 0.07 * relax + 0.12 * ease, a.sd * 0.085 + lean);
+      P.hand.copy(P.rein);
+      let bend = _x2.set(-0.25, -0.75, a.sd * 0.75);
+      const whipArm = a.sd === (st.whipSide || 1);
+      if (whipArm && t >= 0 && J.whip.parent !== a.hand) a.hand.add(J.whip); // 打つ側の手に持ち替える
+      let wd = P.dir.set(-0.45, -0.8, a.sd * 0.25); // ムチは普段、馬の肩に沿って下げて持つ
+      if (whipArm && t >= 0) {
+        // 振りかぶる → 馬の腰のあたりを打つ → 手綱へ戻す
+        P.wind.set(P.sh.x - 0.04, P.sh.y + 0.13, P.sh.z + a.sd * 0.42);
+        P.hit.set(P.hip.x - 0.1, P.hip.y - 0.03, P.hip.z + a.sd * 0.44);
+        if (t < 0.2) { const k = sm(t / 0.2); lerp3(P.hand, P.rein, P.wind, k); wd.lerp(_a.set(-0.35, 0.9, a.sd * 0.25), k); }
+        else if (t < 0.34) { const k = Math.pow((t - 0.2) / 0.14, 2); lerp3(P.hand, P.wind, P.hit, k); wd.copy(_a.set(-0.35, 0.9, a.sd * 0.25)).lerp(_b.set(-0.95, -0.3, a.sd * 0.05), Math.min(1, k * 1.3)); }
+        else if (t < 0.8) { const k = sm((t - 0.34) / 0.46); lerp3(P.hand, P.hit, P.rein, k); wd.copy(_b.set(-0.95, -0.3, a.sd * 0.05)).lerp(_a.set(-0.45, -0.8, a.sd * 0.25), k); }
+        bend = _x2.set(-0.5, 0.25, a.sd * 1.0);
+      } else if (st.win && !whipArm) {
+        // 勝ったら片手を突き上げる
+        const k = ease, pump = 0.04 * Math.sin(now * 7);
+        P.hand.lerp(_a.set(P.sh.x + 0.12, P.sh.y + 0.44 + pump, P.sh.z + a.sd * 0.3), k);
+        bend = _x2.set(0.3, -0.2, a.sd * 1.0);
       }
-      const bend = new T.Vector3(-0.2, -1, a.sd * 0.8);
-      const hnd = ik(P.shS, P.hand, 0.29, 0.27, bend, P.elb);
+      const hnd = ik(P.shS, P.hand, 0.29, 0.27, bend.clone(), P.elb).clone();
       place(a.up, P.shS, P.elb); place(a.fo, P.elb, hnd);
-      a.sh.position.copy(P.shS);
+      a.sh.position.copy(P.shS); a.el.position.copy(P.elb);
       a.hand.position.copy(hnd);
+      a.cuff.position.copy(hnd).lerp(P.elb, 0.16); a.cuff.quaternion.copy(a.fo.quaternion);
+      if (J.whip.parent === a.hand) { S.whipDir.lerp(wd.normalize(), 0.5).normalize(); J.whip.quaternion.setFromUnitVectors(_Y, S.whipDir); }
     });
     // 手綱
     m.root.updateMatrixWorld(true);

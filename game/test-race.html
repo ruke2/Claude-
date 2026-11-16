@@ -17,7 +17,7 @@ race.weather = q.get('w') || '晴'; race.ground = q.get('g') || '良';
 const hid = race.field[2].hid;
 const eng = World.setupRace(W, race, hid, 'auto');
 const R3 = new Render3D(document.getElementById('c'));
-HorseGLB.load().then(() => { window.glbInfo = HorseGLB.info; R3.setupRace(eng, { label: race.name }); R3.setCamMode(['gate','goal','air1','air2','air3','top','stand','stand2'].includes(q.get('cam')) ? 'chase' : (q.get('cam') || 'jockey')); go(); });
+HorseGLB.load().then(() => { window.glbInfo = HorseGLB.info; R3.setupRace(eng, { label: race.name }); R3.setCamMode(['gate','goal','air1','air2','air3','top','stand','stand2','close','close2','close3','close4','close5','crowd'].includes(q.get('cam')) ? 'chase' : (q.get('cam') || 'jockey')); go(); });
 const tEnd = +(q.get('t') || 0);
 function go() {
   if (Render3D.loaded < Render3D.toLoad) return setTimeout(go, 100);
@@ -31,6 +31,12 @@ function go() {
   if (cm === 'top') { const L = eng.runners.reduce((b, r) => r.s > b.s ? r : b); const pl = eng.pAt(L.s) - 14; const a = XY(co0, pl - 22, co0.width + 14), b = XY(co0, pl, 4); const e0 = RaceEngine.elevAt(co0, pl); R3.camera.position.set(a.x, e0 + 26, a.z); R3.camera.lookAt(b.x, e0, b.z); }
     if (cm === 'stand') { const a = XY(co0, co0.H - 330, co0.width + 14), b = XY(co0, co0.H - 120, co0.width + 60); R3.camera.position.set(a.x, RaceEngine.elevAt(co0, co0.H - 330) + 1.7, a.z); R3.camera.lookAt(b.x, 16, b.z); }
   if (cm === 'stand2') { const a = XY(co0, co0.H - 60, -40), b = XY(co0, co0.H - 200, co0.width + 60); R3.camera.position.set(a.x, RaceEngine.elevAt(co0, co0.H) + 6, a.z); R3.camera.lookAt(b.x, 14, b.z); }
+    if (/^close/.test(cm || '')) { const pl = eng.player, a = XY(co0, eng.pAt(pl.s), pl.X), e0 = RaceEngine.elevAt(co0, eng.pAt(pl.s)); const out = co0.dir === 'L' ? 1 : 1;
+    const k = cm === 'close' ? [0.3, 4.6, 1.5, 1.3] : cm === 'close2' ? [-3.2, 2.4, 2.2, 1.6] : cm === 'close3' ? [3.4, 2.6, 1.7, 1.5] : cm === 'close5' ? [0.3, 2.6, 2.1, 1.95] : [0.4, 2.3, 2.0, 1.9];
+    R3.camera.fov = cm === 'close4' ? 30 : 34; R3.camera.updateProjectionMatrix();
+    R3.playerModel.setPlayerView(false); R3.playerModel.update({ phase: pl.phase, speed: pl.v, effort: +(q.get('eff') || pl.effort), whipT: +(q.get('whip') || 0), whipSide: 1, kakari: 0, lean: 0 }, 0.016, 1);
+    R3.camera.position.set(a.x + a.hx * k[0] + a.nx * k[1], e0 + k[2], a.z + a.hz * k[0] + a.nz * k[1]); R3.camera.lookAt(a.x + a.hx * 0.2, e0 + k[3], a.z + a.hz * 0.2); }
+  if (cm === 'crowd') { const a = XY(co0, co0.H - 150, co0.width + 6), b = XY(co0, co0.H - 140, co0.width + 20); R3.camera.position.set(a.x, RaceEngine.elevAt(co0, co0.H - 150) + 1.7, a.z); R3.camera.lookAt(b.x, 1.6, b.z); R3.camera.fov = 45; R3.camera.updateProjectionMatrix(); }
     if (cm === 'goal') { const c = R3.camera; const co = eng.course; const a = RaceEngine.courseXY(co, co.H + 6, 7); const b = RaceEngine.courseXY(co, co.H, -1.6); const e = RaceEngine.elevAt(co, co.H); c.position.set(a.x, e + 3, a.z); c.lookAt(b.x, e + 2.8, b.z); } else if (q.get('cam') === 'gate') { const c = R3.camera; const pl = eng.player; const a = RaceEngine.courseXY(eng.course, eng.pAt(pl.s), pl.X); c.position.set(a.x + a.hx * 9 + a.nx * 4, 3.2, a.z + a.hz * 9 + a.nz * 4); c.lookAt(a.x, 1.4, a.z); } R3.renderer.render(R3.scene, R3.camera); window.done = true; }, 600);
 }
 </script></body></html>

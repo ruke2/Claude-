@@ -420,24 +420,44 @@
       // --- 観客：胴体と頭の2部品。前庭の立ち見と、階段席 ---
       const big = this.race && (this.race.cfg.name || '').match(/G|賞|記念|ステークス|カップ|ダービー|オークス/) ? 1 : 0.55;
       const nA = Math.min(5200, Math.floor(L * 9 * big)), nS = Math.min(2600, Math.floor(L * 5 * big)), N = nA + nS;
-      const bodyG = new T.CylinderGeometry(0.2, 0.15, 1.32, 6); bodyG.translate(0, 0.66, 0);
-      const headG = new T.SphereGeometry(0.115, 6, 5); headG.translate(0, 1.47, 0);
-      const bodies = new T.InstancedMesh(bodyG, M('#ffffff', { roughness: 0.9 }), N), heads = new T.InstancedMesh(headG, M('#ffffff', { roughness: 0.8 }), N);
-      const Mx = new T.Matrix4(), C = new T.Color(), Q = new T.Quaternion(), S = new T.Vector3(), P = new T.Vector3();
-      const cloth = ['#1f2329', '#2b3340', '#3a4252', '#565d66', '#7c8288', '#b9bcbd', '#e4e3de', '#24324f', '#3d5a80', '#6b4a3a', '#8a7f6a', '#4a5a3c', '#7a2e2e', '#c9b458', '#f0efe9', '#101214'];
-      const hair = ['#17130f', '#221a14', '#2e2620', '#151515', '#3a3028', '#d8d4cc', '#1b1b1d'];
-      let k = 0;
+      // 人の形：脚・胴と腕・頭・髪の4部品（遠くからは人の群れ、近くでは人影に見える）
+      const merge = (list) => { const pos = [], nor = []; list.forEach(g0 => { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); }); const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); return g; };
+      const bx = (w, h, d, x, y, z, rz = 0) => { const g = new T.BoxGeometry(w, h, d); if (rz) g.rotateZ(rz); g.translate(x, y, z); return g; };
+      const taper = (wt, wb, h, d, y) => { const g = new T.BoxGeometry(1, h, d); const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setX(i, p.getX(i) * (p.getY(i) > 0 ? wt : wb)); g.translate(0, y, 0); g.computeVertexNormals(); return g; };
+      const legsG = merge([bx(0.13, 0.82, 0.15, 0.085, 0.41, 0), bx(0.13, 0.82, 0.15, -0.085, 0.41, 0)]);
+      const torsoG = merge([taper(0.42, 0.33, 0.58, 0.21, 1.1), bx(0.09, 0.56, 0.11, 0.255, 1.08, 0, 0.06), bx(0.09, 0.56, 0.11, -0.255, 1.08, 0, -0.06)]);
+      const torsoUpG = merge([taper(0.42, 0.33, 0.58, 0.21, 1.1), bx(0.09, 0.56, 0.11, 0.3, 1.58, 0, -0.25), bx(0.09, 0.56, 0.11, -0.3, 1.58, 0, 0.25)]);
+      const headG = new T.SphereGeometry(0.105, 8, 6); headG.scale(0.92, 1.08, 1); headG.translate(0, 1.52, 0);
+      const hairG = new T.SphereGeometry(0.112, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.55); hairG.rotateX(0.35); hairG.translate(0, 1.535, 0.012);
+      // 歓声に合わせて体が弾む（頂点シェーダーで、人ごとに拍をずらす）
+      const U = this.crowdU = { uTime: { value: 0 }, uCheer: { value: 0 } };
+      const cm = (o) => { const mt = M('#ffffff', o); mt.onBeforeCompile = (sh) => { sh.uniforms.uTime = U.uTime; sh.uniforms.uCheer = U.uCheer; sh.vertexShader = 'uniform float uTime; uniform float uCheer;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float cph = instanceMatrix[3][0] * 1.7 + instanceMatrix[3][2] * 2.3;\n transformed.y += uCheer * 0.11 * max(0.0, sin(uTime * 7.5 + cph)) * step(0.3, fract(cph * 0.37));\n#endif'); }; return mt; };
+      const legs = new T.InstancedMesh(legsG, cm({ roughness: 0.9 }), N), torsos = new T.InstancedMesh(torsoG, cm({ roughness: 0.85 }), N), torsosUp = new T.InstancedMesh(torsoUpG, cm({ roughness: 0.85 }), Math.ceil(N * 0.2));
+      const heads = new T.InstancedMesh(headG, cm({ roughness: 0.75 }), N), hairs = new T.InstancedMesh(hairG, cm({ roughness: 0.9 }), N);
+      const bodies = torsos;
+      const Mx = new T.Matrix4(), C = new T.Color(), Q = new T.Quaternion(), S = new T.Vector3(), P = new T.Vector3(), UP = new T.Vector3(0, 1, 0);
+      const cloth = ['#1f2329', '#2b3340', '#3a4252', '#565d66', '#7c8288', '#b9bcbd', '#e4e3de', '#24324f', '#3d5a80', '#6b4a3a', '#8a7f6a', '#4a5a3c', '#7a2e2e', '#c9b458', '#f0efe9', '#101214', '#8d2f3a', '#2f6b5a'];
+      const pants = ['#1b1d22', '#262b36', '#3b3f47', '#2a3550', '#5a5348', '#8b8676', '#15161a'];
+      const hair = ['#17130f', '#221a14', '#2e2620', '#151515', '#3a3028', '#8c8a86', '#1b1b1d'];
+      const skin = ['#d8ad8c', '#cfa07e', '#e0b898', '#c4946f'];
+      let k = 0, ku = 0;
       const put = (x, y, z, sit) => {
-        const h = 0.9 + R() * 0.16;
-        Mx.compose(P.set(x, y, z), Q, S.set(1, sit ? h * 0.62 : h, 1)); bodies.setMatrixAt(k, Mx); bodies.setColorAt(k, C.set(cloth[Math.floor(R() * cloth.length)]));
-        Mx.compose(P.set(x, y - (sit ? 1.47 * h * 0.38 : 0), z), Q, S.set(1, h, 1)); heads.setMatrixAt(k, Mx);
-        heads.setColorAt(k, R() < 0.8 ? C.set(hair[Math.floor(R() * hair.length)]) : C.set(cloth[Math.floor(R() * cloth.length)])); // 帽子の人もいる
+        const h = 0.92 + R() * 0.14, drop = sit ? 0.5 * h : 0;
+        Q.setFromAxisAngle(UP, Math.PI + (R() - 0.5) * 0.9); // 馬場の方を向く
+        Mx.compose(P.set(x, y, z), Q, S.set(sit ? 0.001 : 1, sit ? 0.001 : h, sit ? 0.001 : 1)); legs.setMatrixAt(k, Mx); legs.setColorAt(k, C.set(pants[Math.floor(R() * pants.length)]));
+        const up = !sit && R() < 0.14 && ku < torsosUp.count;
+        C.set(cloth[Math.floor(R() * cloth.length)]);
+        if (up) { Mx.compose(P.set(x, -50, z), Q, S.set(1, h, 1)); torsos.setMatrixAt(k, Mx); torsos.setColorAt(k, C); }
+        Mx.compose(P.set(x, y - drop, z), Q, S.set(1, h, 1));
+        if (up) { torsosUp.setMatrixAt(ku, Mx); torsosUp.setColorAt(ku, C); ku++; } else { torsos.setMatrixAt(k, Mx); torsos.setColorAt(k, C); }
+        heads.setMatrixAt(k, Mx); heads.setColorAt(k, C.set(skin[Math.floor(R() * skin.length)]));
+        hairs.setMatrixAt(k, Mx); hairs.setColorAt(k, R() < 0.82 ? C.set(hair[Math.floor(R() * hair.length)]) : C.set(cloth[Math.floor(R() * cloth.length)])); // 帽子の人もいる
         k++;
       };
       for (let i = 0; i < nA; i++) put(R() * L, 0.16, W + 12.5 + Math.pow(R(), 1.8) * 24, false); // 柵ぎわほど混む
       for (let i = 0; i < nS; i++) { const t = Math.floor(R() * 10) / 10 + 0.05; put(R() * L, ty0 + (ty1 - ty0) * t + 0.1, t0 + (t1 - t0) * t, true); }
-      bodies.count = heads.count = k; bodies.receiveShadow = heads.receiveShadow = true;
-      grp.add(bodies); grp.add(heads);
+      [legs, torsos, heads, hairs].forEach(o => { o.count = k; o.receiveShadow = true; grp.add(o); });
+      torsosUp.count = ku; grp.add(torsosUp);
       this.crowd = bodies;
       G.add(grp);
     }
@@ -489,10 +509,7 @@
     buildScenery(G, c, R, other) {
       // 木
       const trunkG = new T.CylinderGeometry(0.25, 0.4, 1, 6); trunkG.translate(0, 0.5, 0);
-      const leafG = new T.IcosahedronGeometry(1, 2);
-      const lp = leafG.attributes.position;
-      for (let i = 0; i < lp.count; i++) { const f = 0.82 + Math.random() * 0.32; lp.setXYZ(i, lp.getX(i) * f, lp.getY(i) * f * 0.9, lp.getZ(i) * f); }
-      leafG.computeVertexNormals();
+      const leafG = Render3D.leafGeo();
       const nT = 520;
       const trunks = new T.InstancedMesh(trunkG, new T.MeshStandardMaterial({ color: '#4a3a2c', roughness: 1 }), nT);
       const leaves = new T.InstancedMesh(leafG, new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 }), nT * 2);
@@ -661,7 +678,7 @@
       // --- コース沿いの並木 ---
       {
         const trunkG = new T.CylinderGeometry(0.22, 0.34, 1, 6); trunkG.translate(0, 0.5, 0);
-        const leafG = new T.IcosahedronGeometry(1, 1);
+        const leafG = Render3D.leafGeo();
         const n = Math.floor((c.lap - c.H) / 17) + 2;
         const tr = new T.InstancedMesh(trunkG, std('#4a3a2c', { roughness: 1 }), n), lf = new T.InstancedMesh(leafG, std('#ffffff', { roughness: 0.95 }), n * 3);
         const M = new T.Matrix4(), Q = new T.Quaternion(), S = new T.Vector3(), P = new T.Vector3(), C = new T.Color();
@@ -677,11 +694,11 @@
       }
       // --- ゴール前の花壇 ---
       {
-        const n = 420, fl = new T.InstancedMesh(new T.IcosahedronGeometry(0.2, 0), std('#ffffff', { roughness: 0.7 }), n);
+        const n = 1500, fl = new T.InstancedMesh(new T.SphereGeometry(0.085, 6, 4), std('#ffffff', { roughness: 0.7 }), n);
         const M = new T.Matrix4(), C = new T.Color(), pal = ['#e53935', '#fdd835', '#ffffff', '#ec407a', '#fb8c00'];
         for (let i = 0; i < n; i++) {
           const p = c.H - 46 + R() * 60, X = -5.8 + R() * 2.2, a = CXY(c, p, X);
-          M.makeTranslation(a.x, E(p) + 0.18, a.z); fl.setMatrixAt(i, M); fl.setColorAt(i, C.set(pal[Math.floor(p / 4) % pal.length]));
+          M.makeTranslation(a.x, E(p) + 0.1 + R() * 0.06, a.z); fl.setMatrixAt(i, M); fl.setColorAt(i, C.set(pal[Math.floor(p / 4) % pal.length]));
         }
         G.add(fl);
         G.add(this.ribbon(c, -6.1, -3.3, (p) => (p > c.H - 48 && p < c.H + 16) ? E(p) + 0.05 : E(p) - 0.3, std('#5b3f28', { roughness: 1, side: T.DoubleSide }), { step: 2 }));
@@ -887,6 +904,9 @@
       // 馬の配置
       const camPos = this.camera.position;
       const dirtCol = new T.Color(race.surf === 'D' ? '#8a6a4c' : '#5a4a32'), turfCol = new T.Color('#4f6b2c');
+      let winner = null; for (const r of race.runners) if (r.finished && !this.replay && (!winner || r.finishTime < winner.finishTime)) winner = r;
+      // 観客：直線に入ると沸き、ゴール後はしばらく続いて収まる
+      if (this.crowdU) { let lead = 0; for (const r of race.runners) if (r.s > lead) lead = r.s; const want = race.open && lead > race.D - 420 ? (race.done ? 0.35 : 1) : 0; this.crowdU.uCheer.value += (want - this.crowdU.uCheer.value) * Math.min(1, (dt || 0.016) * 1.5); this.crowdU.uTime.value = this.clock; }
       race.runners.forEach((r, i) => {
         const m = this.horses[i];
         const back = I ? I.back[i] : 0, walking = I && back > 0.01 && back < I.BACK - 0.01;
@@ -901,7 +921,7 @@
         const near = d2 < 140 * 140 || r.isPlayer;
         m.root.visible = d2 < 900 * 900 || r.isPlayer;
         if (near || Math.floor(this.clock * 10) % 4 === i % 4) {
-          m.update({ phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
+          m.update({ ease: r.finished, win: r.finished && r === winner, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
         }
         const sh = d2 < 45 * 45 || r.isPlayer;
         if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
@@ -975,6 +995,13 @@
         m.root.updateMatrixWorld(true);
         const hp = new T.Vector3(); m.jockey.head.getWorldPosition(hp);
         const fwd = new T.Vector3(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
+        if (this.lookBack) { // 後方確認：振り返って後ろの馬を見る
+          cam.position.copy(hp).addScaledVector(fwd, -0.9); cam.position.y += 0.25;
+          const lk = cam.position.clone().addScaledVector(fwd, -10); lk.y -= 1.6;
+          cam.up.set(0, 1, 0); cam.lookAt(lk);
+          this.camTarget = new T.Vector3(a.x, 0, a.z).addScaledVector(fwd, -15);
+          return;
+        }
         // 騎手の頭より少し上・後ろから、馬の耳と首ごしに前を見る
         cam.position.copy(hp).addScaledVector(fwd, -0.42); cam.position.y += 0.34;
         const pitch = -0.27 + (P.effort > 0.9 ? -0.02 : 0);
@@ -1000,6 +1027,13 @@
       }
     }
   }
+  // 木の葉のかたまり：球を場所ごとに決まった量だけ凹凸させ、なめらかな陰影にする
+  Render3D.leafGeo = function () {
+    const g = new T.SphereGeometry(1, 12, 9), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = Math.sin(x * 5.1 + y * 3.7) * Math.cos(z * 4.3 + y * 2.9) * 0.5 + Math.sin(x * 9.3 + z * 7.1 + y * 8.3) * 0.25; const f = 0.9 + 0.22 * n; p.setXYZ(i, x * f, y * f * 0.9, z * f); }
+    g.computeVertexNormals();
+    return g;
+  };
   Render3D.loaded = 0; Render3D.toLoad = 0;
   window.Render3D = Render3D;
 })();
