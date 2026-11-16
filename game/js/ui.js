@@ -94,7 +94,7 @@
         <span class="gchip">${money(p.money)}</span>${allow ? `<span class="gchip">▲${allow}kg減</span>` : ''}
       </div>${extra}${W && !quick ? '<button class="gsave" data-save>セーブ</button>' : ''}<button class="burger" aria-label="メニュー" data-menu>☰</button>`;
     $(id).querySelector('[data-menu]').onclick = openDrawer;
-    const sv = $(id).querySelector('[data-save]'); if (sv) sv.onclick = () => { World.save(W); const d = new Date(); toast(`セーブした（${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}）`); };
+    const sv = $(id).querySelector('[data-save]'); if (sv) sv.onclick = () => { World.save(W); CloudSave.flush(); const d = new Date(); toast(`セーブした（${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}）`); };
   }
   function crumbs(id, items) {
     $(id).innerHTML = items.map((it, i) => (i ? '<span class="sep">›</span>' : '') + (it[1] ? `<a data-i="${i}">${esc(it[0])}</a>` : `<span>${esc(it[0])}</span>`)).join('');
@@ -106,7 +106,7 @@
   function openDrawer() {
     const inGame = !!W && !quick;
     $('drawer').innerHTML = `<h3>メニュー</h3>
-      ${inGame ? '<button class="item" data-a="save">💾 セーブする</button><button class="item" data-a="home">🏠 今週の画面へ</button>' : ''}
+      ${inGame ? '<button class="item" data-a="save">💾 セーブする</button><button class="item" data-a="export">📤 セーブを書き出す（ファイル）</button><button class="item" data-a="home">🏠 今週の画面へ</button>' : ''}
       <button class="item" data-a="tut">🎓 チュートリアル</button>
       <button class="item" data-a="rot">🔄 画面の回転方向を反転（縦持ち時）</button>
       <button class="item" data-a="snd">🔈 効果音：${Sound.isMuted() ? 'OFF' : 'ON'}</button>
@@ -116,23 +116,73 @@
     $('drawer').classList.add('on'); $('drawer-bg').classList.add('on');
     $('drawer').querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
       const a = b.dataset.a; closeDrawer();
-      if (a === 'save') { World.save(W); toast('セーブした'); }
+      if (a === 'save') { World.save(W); CloudSave.flush(); toast('セーブした'); }
+      if (a === 'export') exportSave();
       if (a === 'home') showWeek();
       if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
       if (a === 'tut') { if (W && !quick) World.save(W); startTutorial(); }
       if (a === 'rot') { rotDir = rotDir === 'cw' ? 'ccw' : 'cw'; try { localStorage.setItem('jl-rot', rotDir); } catch (e) {} applyRotation(); }
       if (a === 'snd') Sound.toggleMute();
-      if (a === 'title') { if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
+      if (a === 'title') { setTimeout(refreshTitle, 0); if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
     });
   }
   function closeDrawer() { $('drawer').classList.remove('on'); $('drawer-bg').classList.remove('on'); }
   $('drawer-bg').onclick = closeDrawer;
 
   // ---------- タイトル ----------
-  function refreshTitle() { $('b-continue').disabled = !World.hasSave(); }
+  const fmtStamp = (t) => { if (!t) return ''; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  function refreshTitle() {
+    $('b-continue').disabled = !World.hasSave();
+    const loc = World.rawSave(), li = loc ? World.saveInfo(loc) : null, cs = CloudSave.state(), cl = cs.last;
+    let t = li ? `この端末：${esc(li.name)}・${esc(li.date || '')}・${li.wins}勝${li.savedAt ? `（${fmtStamp(li.savedAt)} 保存）` : ''}` : 'この端末：セーブなし';
+    if (cs.available) t += `<br>クラウド：${cl ? `${esc(cl.name)}・${esc(cl.date || '')}・${cl.wins}勝（${fmtStamp(cl.savedAt)} 保存）` : 'まだ保存なし（遊ぶと自動で保存される）'}`;
+    $('save-status').innerHTML = `<span class="muted">${t}</span>`;
+    // 端末のセーブがない、またはクラウドの方が新しいときに復元ボタンを出す
+    const newer = cl && (!li || (cl.savedAt || 0) > (li.savedAt || 0) + 1000);
+    $('b-cloud').style.display = newer ? '' : 'none';
+  }
   refreshTitle();
+  CloudSave.onChange(() => { if ($('s-title').classList.contains('on')) refreshTitle(); });
+  CloudSave.init().then(() => refreshTitle());
+  // 保存するたびにクラウドへも送る（claude.ai 上でだけ動く）
+  World.setOnSaved((str) => { const i = World.saveInfo(str); CloudSave.queue(str, i); });
+  function startLoaded(w) { W = w; Progress.ensure(W); quick = false; tab = 'week'; showWeek(); }
+  $('b-cloud').onclick = async () => {
+    const b = $('b-cloud'); b.disabled = true; b.textContent = '読み込み中…';
+    try {
+      const str = await CloudSave.fetchSave();
+      const w = str && World.parse(str);
+      if (!w) { toast('クラウドのセーブを読めなかった'); return; }
+      World.save(w); toast('クラウドのセーブを復元した'); startLoaded(w);
+    } catch (e) { toast('クラウドに接続できなかった'); } finally { b.disabled = false; b.textContent = 'クラウドのセーブから再開'; }
+  };
+  async function exportSave() {
+    const str = W && !quick ? World.serialize(W) : World.rawSave();
+    if (!str) { toast('書き出すセーブがない'); return; }
+    const i = World.saveInfo(str) || {};
+    const d = new Date(), fn = `jockey-life-${(i.name || 'save').replace(/[^\w\u3040-\u30ff\u4e00-\u9fff-]/g, '')}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
+    let dl = null; try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) {}
+    if (dl) {
+      try { await dl.save({ filename: fn, data: new Blob([str]) }); toast('書き出した'); } catch (e) { if (e && e.code !== 'declined') toast('書き出せなかった（' + (e.code || 'error') + '）'); }
+      return;
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([str], { type: 'application/json' })); a.download = fn; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  $('b-export').onclick = exportSave;
+  $('b-import').onclick = () => $('f-import').click();
+  $('f-import').onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    const str = await f.text(), w = World.parse(str);
+    if (!w) { toast('セーブのファイルとして読めなかった'); return; }
+    const i = World.saveInfo(str);
+    modal(`<p>${esc(i.name)}（${esc(i.date || '')}・${i.wins}勝）のセーブを読み込む。いまの端末のセーブは控えに残る。</p><div class="choices"><button class="btn primary" id="m-imp">読み込んで再開</button><button class="btn" id="m-cancel">やめる</button></div>`, () => {
+      $('m-imp').onclick = () => { closeModal(); World.save(w); toast('読み込んだ'); startLoaded(w); };
+      $('m-cancel').onclick = closeModal;
+    }, 'セーブの読み込み');
+  };
   $('b-new').onclick = () => { renderSwatches(); show('s-new'); };
-  $('b-continue').onclick = () => { const w = World.load(); if (w) { W = w; Progress.ensure(W); quick = false; tab = 'week'; showWeek(); } };
+  $('b-continue').onclick = () => { const w = World.load(); if (w) startLoaded(w); else toast('セーブを読めなかった。クラウドかファイルから戻せる'); };
   $('b-quick').onclick = quickRace;
   $('b-tut').onclick = () => startTutorial();
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
@@ -558,7 +608,8 @@
   const CAMS = [['jockey', '騎手'], ['chase', '後方'], ['tv', '中継']];
   try { camMode = localStorage.getItem('jl-cam') || 'jockey'; } catch (e) {}
   function startRace(race, hid, opt = {}) {
-    curRace = race; curHid = hid; introStage = ''; snaps = []; rp = null;
+    curRace = race; curHid = hid; introStage = ''; snaps = []; rp = null; raceSeq++; loopErr = 0;
+    if (!opt.noIntro) { tut = null; document.querySelectorAll('.hl').forEach(el => el.classList.remove('hl')); }
     $('race').classList.remove('replay');
     Sound.init();
     $('tut').style.display = 'none';
@@ -567,7 +618,17 @@
     window.__cheered = false;
     Comm.reset(engine);
     show('race');
-    if (!glbDone) { HorseGLB.load().then(() => { glbDone = true; R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode); }); }
+    if (!glbDone) {
+      const seq = raceSeq;
+      HorseGLB.load().then(() => {
+        if (glbDone) return; glbDone = true;
+        // 馬のモデルが遅れて届いたら、同じレースの最中に限って描き直す。発走前の演出中ならやり直す
+        if (seq !== raceSeq || !R3 || !$('race').classList.contains('on') || rp) return;
+        const hadIntro = !!R3.intro;
+        R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode);
+        if (hadIntro) { R3.startIntro(); introStage = ''; }
+      });
+    }
     if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
     R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' });
     R3.setCamMode(camMode); updateCamBtn();
@@ -592,12 +653,27 @@
     };
     wait();
   }
+  let loopErr = 0;
   function loop(now) {
+    try { loopBody(now); } catch (err) {
+      console.error(err);
+      if (!loopErr++) toast('描画でエラーが出たが、レースは続ける');
+      if (loopErr > 300) { toast('レースを続けられないため、オートで結果を出す'); return bailOut(); }
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+  function bailOut() {
+    try { const e = engine; e.player.auto = true; if (e.player.reaction == null) e.player.reaction = 0.3; let g = 0; while (!e.done && g++ < 60000) e.step(1 / 30); } catch (e2) { console.error(e2); }
+    $('race').classList.remove('intro', 'replay'); if (R3) { R3.intro = null; R3.replay = false; }
+    Sound.stopAll(); finishRace();
+  }
+  function loopBody(now) {
     const rdt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
     const Pl = engine.player;
     let sdt = 0;
     if (tut) tutTick(rdt);
     // 出走前の演出（コース紹介 → 枠入り → ゲートの中）。この間レースの時計は進めない
+    $('race').classList.toggle('intro', !!R3.intro);
     if (R3.intro) {
       const I = R3.intro;
       if (I.stage !== introStage) { introStage = I.stage; introCard(I.stage); if (I.stage === 'load') { Sound.fanfare(); Comm.say('各馬、ゲートに入っていきます。', 3); } if (I.stage === 'set') Comm.say('最後の馬が収まって、態勢完了。', 2); }
@@ -718,6 +794,9 @@
   }
   function replayLoop(now) {
     if (!rp) return;
+    try { replayBody(now); } catch (err) { console.error(err); endReplay(); }
+  }
+  function replayBody(now) {
     const rdt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
     const slow = Math.abs(rp.t - rp.tW) < 0.22 ? 0.12 : 0.3;
     if (rp.t < rp.end) rp.t = Math.min(rp.end, rp.t + rdt * slow); else rp.hold += rdt;
@@ -737,7 +816,7 @@
     finishRace();
   }
   $('replay-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); endReplay(); });
-  let introStage = '';
+  let introStage = '', raceSeq = 0;
   function introCard(stage) {
     const e = engine, race = curRace, Pl = e.player, card = $('intro-card');
     const f = race.field.find(x => x.hid === curHid) || {};
@@ -768,7 +847,7 @@
       const ord = e.runners.slice().sort((a, b) => b.s - a.s);
       const lead = ord[0].s, last = ord[ord.length - 1].s, span = Math.max(30, lead - last);
       const bar = $('hud-bar');
-      if (!bar.children.length) bar.innerHTML = e.runners.map(r => `<span class="d${r === Pl ? ' me' : ''}" style="background:${r === Pl ? (W.player.color || '#ffeb3b') : r.color}"></span>`).join('') + '<span class="lead">先頭▶</span>';
+      if (bar.dataset.n !== String(e.runners.length) || bar.dataset.race !== String(raceSeq)) { bar.dataset.n = String(e.runners.length); bar.dataset.race = String(raceSeq); bar.innerHTML = e.runners.map(r => `<span class="d${r === Pl ? ' me' : ''}" style="background:${r === Pl ? (W.player.color || '#ffeb3b') : r.color}"></span>`).join('') + '<span class="lead">先頭▶</span>'; }
       const w = bar.clientWidth - 16;
       e.runners.forEach((r, i) => { bar.children[i].style.left = (8 + w - (lead - r.s) / span * w) + 'px'; });
       drawMap();
@@ -1016,7 +1095,7 @@
       ${p.g1Wins.map(g => `<div class="small">・${esc(g)}</div>`).join('')}
       <ul class="log" style="padding-left:16px">${W.log.map(l => `<li>${esc(l.text)}</li>`).join('')}</ul>
       <button class="btn primary" id="b-end">タイトルへ</button></div>`;
-    $('b-end').onclick = () => { World.deleteSave(); refreshTitle(); W = null; show('s-title'); };
+    $('b-end').onclick = () => { World.deleteSave(); W = null; refreshTitle(); show('s-title'); };
     if (W.story && !W.story.flags.ended) { W.story.flags.ended = true; W.story.pending.push({ lines: Story.epilogue(W) }); playScenes(); }
   }
 

@@ -274,6 +274,13 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
         <button class="btn" id="b-tut">チュートリアル</button>
         <button class="btn ghost" id="b-quick">お試し騎乗</button>
       </div>
+      <div id="save-status" class="small" style="margin-top:10px;line-height:1.6"></div>
+      <div class="row" style="justify-content:center;flex-wrap:wrap;gap:6px;margin-top:6px">
+        <button class="btn ghost small" id="b-cloud" style="display:none">クラウドのセーブから再開</button>
+        <button class="btn ghost small" id="b-export">セーブを書き出す</button>
+        <button class="btn ghost small" id="b-import">セーブを読み込む</button>
+        <input type="file" id="f-import" accept=".json,.txt,application/json,text/plain" style="display:none">
+      </div>
       <p class="muted small" style="margin-top:14px;line-height:1.6">非公式ファンメイドのドラフト版。実在の騎手は登場しない。実在馬のデータは JRA 公式の2026年GⅠ成績をもとにしている。<br>芝・砂・空の素材は Poly Haven（CC0）。馬のモデルは “Horse” by Henry S（Sketchfab, CC BY 4.0）を改変して使用。</p>
     </div>
   </section>
@@ -400,6 +407,7 @@ select{background:var(--surface);border:1px solid var(--rule);border-radius:6px;
 <script src="js/horse3d.js"></script>
 <script src="js/horseglb.js"></script>
 <script src="js/render3d.js"></script>
+<script src="js/cloudsave.js"></script>
 <script src="js/audio-data.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>

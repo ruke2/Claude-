@@ -748,27 +748,66 @@
   }
 
   // ---- セーブ ----
+  // ---- セーブ ----
+  // 保存先の名前（SAVE_KEY）は今後も変えない。中身の形が変わっても migrate で古いセーブを読めるようにする
+  const SAVE_VER = 3;
+  const BAK_KEY = SAVE_KEY + '-bak';
+  const OLD_KEYS = ['jockey-life-save', 'jockey-life-save-v1'];
+  let onSaved = null;
+  function serialize(W) { return JSON.stringify({ ...W, usedNames: [...(W.usedNames || [])], saveVer: SAVE_VER, savedAt: Date.now() }); }
   function save(W) {
     try {
-      const o = { ...W, usedNames: [...W.usedNames] };
-      localStorage.setItem(SAVE_KEY, JSON.stringify(o));
+      const str = serialize(W);
+      // 直前のセーブを控えに残してから上書きする（書き込みに失敗しても片方は残る）
+      try { const cur = localStorage.getItem(SAVE_KEY); if (cur) localStorage.setItem(BAK_KEY, cur); } catch (e) {}
+      localStorage.setItem(SAVE_KEY, str);
+      if (onSaved) try { onSaved(str); } catch (e) {}
       return true;
     } catch (e) { return false; }
   }
-  function load() {
+  // 文字列から読み込む（端末のセーブ・控え・書き出したファイル・クラウドの共通の入口）
+  function parse(str) {
     try {
-      const s = localStorage.getItem(SAVE_KEY);
-      if (!s) return null;
-      const o = JSON.parse(s);
-      o.usedNames = new Set(o.usedNames || []);
-      return o;
+      const o = JSON.parse(str);
+      if (!o || !o.player || !o.horses || !o.card) return null;
+      return migrate(o);
     } catch (e) { return null; }
   }
-  function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
-  function deleteSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+  // 古い版のセーブに、新しい版で増えた項目を補う
+  function migrate(o) {
+    o.usedNames = new Set(o.usedNames || []);
+    const fresh = newGame({ name: (o.player && o.player.name) || 'あなた', region: o.player && o.player.region, color: o.player && o.player.color });
+    for (const k of Object.keys(fresh)) if (o[k] === undefined) o[k] = fresh[k];
+    for (const k of Object.keys(fresh.player)) if (o.player[k] === undefined) o.player[k] = fresh.player[k];
+    (o.card || []).forEach((r) => { if (!r.weather) r.weather = '晴'; if (!r.ground) r.ground = '良'; if (!r.bias) r.bias = { lane: 0, pace: 0 }; });
+    o.saveVer = SAVE_VER;
+    return o;
+  }
+  function rawSave() {
+    try {
+      let s = localStorage.getItem(SAVE_KEY);
+      if (!s) for (const k of OLD_KEYS) { s = localStorage.getItem(k); if (s) break; }
+      return s || null;
+    } catch (e) { return null; }
+  }
+  function load() {
+    try {
+      const W = parse(rawSave() || '');
+      if (W) return W;
+      // 本体が壊れていたら控えから
+      const b = localStorage.getItem(BAK_KEY);
+      return b ? parse(b) : null;
+    } catch (e) { return null; }
+  }
+  function hasSave() { try { return !!(localStorage.getItem(SAVE_KEY) || localStorage.getItem(BAK_KEY) || OLD_KEYS.some(k => localStorage.getItem(k))); } catch (e) { return false; } }
+  // 消すときも控えは残す（引退後に新しく始めた場合など）
+  function deleteSave() { try { const cur = localStorage.getItem(SAVE_KEY); if (cur) localStorage.setItem(BAK_KEY, cur); localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+  function saveInfo(str) {
+    try { const o = JSON.parse(str); return { name: o.player.name, date: o.date, wins: o.player.wins, savedAt: o.savedAt || null }; } catch (e) { return null; }
+  }
 
   window.World = {
-    mudOf, biasText, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
+    mudOf, biasText, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
     buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible, gearOf,
