@@ -840,15 +840,17 @@
 
     // ---------- 出走前の演出 ----------
     // コースを上から見せる → 枠入り（奇数番が先、次に偶数番、最後に大外）→ ゲートの中
-    startIntro() {
+    // opt.perHorse：重賞では枠入りの前に1頭ずつ紹介する（1頭あたりの秒数）。opt.loadMin：枠入りに最低かける秒数（ファンファーレの長さ）
+    startIntro(opt = {}) {
       const n = this.race.runners.length, ord = [];
       for (let i = 0; i < n - 1; i += 2) ord.push(i);
       for (let i = 1; i < n - 1; i += 2) ord.push(i);
       ord.push(n - 1);
-      const T0 = 4.6, startAt = new Array(n);
-      ord.forEach((idx, j) => { startAt[idx] = T0 + j * 0.3; });
+      const T0 = opt.flyLen || 4.6, per = opt.perHorse || 0, TH = T0 + per * n, startAt = new Array(n);
+      const gap = Math.max(0.3, ((opt.loadMin || 0) - 11 / 2.4 - 0.7) / Math.max(1, n - 1));
+      ord.forEach((idx, j) => { startAt[idx] = TH + j * gap; });
       const BACK = 11, WALK = 2.4;
-      this.intro = { t: 0, stage: 'fly', T0, BACK, WALK, startAt, back: new Array(n).fill(BACK), loadEnd: T0 + (n - 1) * 0.3 + BACK / WALK + 0.7, setLen: 1.4, done: false };
+      this.intro = { t: 0, stage: 'fly', T0, TH, per, BACK, WALK, startAt, back: new Array(n).fill(BACK), loadEnd: TH + (n - 1) * gap + BACK / WALK + 0.7, setLen: 1.4, done: false, hIdx: -1 };
       this.gateRear.forEach(d => d.visible = false);
       if (this.playerModel) this.playerModel.setPlayerView(false);
       this.updateFov();
@@ -956,7 +958,8 @@
     stepIntro(dt) {
       const I = this.intro; I.t += dt;
       const was = I.stage;
-      I.stage = I.t < I.T0 ? 'fly' : I.t < I.loadEnd ? 'load' : 'set';
+      I.stage = I.t < I.T0 ? 'fly' : I.t < I.TH ? 'horses' : I.t < I.loadEnd ? 'load' : 'set';
+      I.hIdx = I.stage === 'horses' ? Math.min(I.back.length - 1, Math.floor((I.t - I.T0) / I.per)) : -1;
       for (let i = 0; i < I.back.length; i++) I.back[i] = Math.max(0, I.BACK - Math.max(0, I.t - I.startAt[i]) * I.WALK);
       this.gateRear.forEach((d, k) => { d.visible = I.back[k >> 1] <= 0.01; });
       // 発走委員が赤旗を振る
@@ -978,8 +981,19 @@
         const L0 = CXY(c, c.H - 200, c.width / 2);
         cam.lookAt(L0.x + (g.x - L0.x) * sm(k * 1.4), e0 + 1.5, L0.z + (g.z - L0.z) * sm(k * 1.4));
         this.camTarget = new T.Vector3(g.x, 0, g.z);
+      } else if (I.stage === 'horses') {
+        // 1頭ずつ：ゲートの後ろで待つ馬を、斜め前から寄りで撮る。次の馬へは横に流れる
+        const r = race.runners[I.hIdx], k = ((I.t - I.T0) / I.per) % 1;
+        const ph = race.pAt(0) - I.BACK, e1 = this.E(ph), X = r.X;
+        const want = CXY(c, ph + 6.2 + 0.5 * k, X + 3.4 - 0.7 * k), look = CXY(c, ph + 0.3, X);
+        const wp = new T.Vector3(want.x, e1 + 2.35, want.z);
+        if (!this._hcam || k < 0.02 && this._hcam.idx !== I.hIdx) this._hcam = { idx: I.hIdx, p: this._hcam ? this._hcam.p : wp.clone() };
+        this._hcam.p.lerp(wp, 0.18);
+        cam.position.copy(this._hcam.p);
+        cam.lookAt(look.x, e1 + 1.75, look.z);
+        this.camTarget = new T.Vector3(look.x, 0, look.z);
       } else {
-        const k = (I.t - I.T0) / (I.loadEnd - I.T0);
+        const k = (I.t - I.TH) / (I.loadEnd - I.TH);
         const B = CXY(c, p0 + 12 - 3 * k, Xm + (n * 0.5 + 3) * (1 - 1.5 * k));
         cam.position.set(B.x, e0 + 1.9 + 0.5 * k, B.z);
         const L = CXY(c, p0 - 3, Xm);
@@ -997,6 +1011,7 @@
     updateFov() {
       const asp = this.camera.aspect;
       const mode = this.intro && this.intro.stage !== 'set' ? 'chase' : this.camMode;
+      if (this.intro && this.intro.stage === 'horses') { this.camera.fov = 2 * Math.atan(Math.tan(48 * Math.PI / 360) / this.camera.aspect) * 180 / Math.PI; this.camera.updateProjectionMatrix(); return; }
       const hfov = this.cer ? (this.cer.kind === 'photo' ? 58 : 56) : this.replay ? 62 : mode === 'jockey' ? 100 : mode === 'tv' ? 21 : 75;
       this.camera.fov = Math.min(80, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / asp) * 180 / Math.PI);
       this.camera.updateProjectionMatrix();

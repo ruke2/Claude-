@@ -23,7 +23,7 @@ const tEnd = +(q.get('t') || 0);
 function go() {
   if (Render3D.loaded < Render3D.toLoad) return setTimeout(go, 100);
   while (eng.t < tEnd) eng.step(1 / 30);
-  if (q.get('intro')) { R3.startIntro(); while (R3.intro.t < +q.get('intro')) R3.render(eng, 0.4); } else
+  if (q.get('intro')) { R3.startIntro({ perHorse: +(q.get('per') || 0), loadMin: +(q.get('lm') || 0), flyLen: q.get('per') ? 6 : 4.6 }); while (R3.intro.t < +q.get('intro')) R3.render(eng, 0.4); } else
   for (let i = 0; i < 4; i++) { eng.step(1 / 60); R3.render(eng, 1 / 60); }
   setTimeout(() => { const cm = q.get('cam'), co0 = eng.course, XY = RaceEngine.courseXY;
   if (cm === 'air1') { const a = XY(co0, co0.H - 190, -130), b = XY(co0, co0.H - 60, co0.width + 60); R3.camera.position.set(a.x, 22, a.z); R3.camera.lookAt(b.x, 18, b.z); }

@@ -825,7 +825,7 @@
         if (seq !== raceSeq || !R3 || !$('race').classList.contains('on') || rp) return;
         const hadIntro = !!R3.intro;
         R3.setupRace(engine, raceInfo3d(race)); R3.setCamMode(camMode);
-        if (hadIntro) { R3.startIntro(); introStage = ''; }
+        if (hadIntro) { R3.startIntro(introOpts(race)); introStage = ''; }
       });
     }
     if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
@@ -846,7 +846,7 @@
       if (!ready) { $('loading').textContent = `コースを準備中…（${Render3D.loaded}/${Render3D.toLoad}）`; rafId = requestAnimationFrame(wait); return; }
       $('loading').style.display = 'none';
       R3.resize();
-      if (!opt.noIntro) { R3.startIntro(); $('race').classList.add('intro'); } else $('race').classList.remove('intro');
+      if (!opt.noIntro) { const io = introOpts(race); R3.startIntro(io); $('race').classList.add('intro'); $('race').classList.toggle('big', !!io.perHorse); } else $('race').classList.remove('intro', 'big');
       lastT = performance.now();
       rafId = requestAnimationFrame(loop);
     };
@@ -875,7 +875,13 @@
     $('race').classList.toggle('intro', !!R3.intro);
     if (R3.intro) {
       const I = R3.intro;
-      if (I.stage !== introStage) { introStage = I.stage; introCard(I.stage); if (I.stage === 'load') { Sound.fanfare(); Comm.say('各馬、ゲートに入っていきます。', 3); } if (I.stage === 'set') Comm.say('最後の馬が収まって、態勢完了。', 2); }
+      if (I.stage !== introStage) {
+        introStage = I.stage; introCard(I.stage);
+        if (I.stage === 'horses') Comm.say('出走馬を紹介します。', 2);
+        if (I.stage === 'load') { Sound.fanfare(fanfareKind(curRace)); Comm.say(curRace.graded === 1 || curRace.overseas ? 'ファンファーレが鳴り響きます。各馬、ゲートへ。' : '各馬、ゲートに入っていきます。', 3); }
+        if (I.stage === 'set') Comm.say('最後の馬が収まって、態勢完了。', 2);
+      }
+      if (I.stage === 'horses' && I.hIdx !== introHorse) { introHorse = I.hIdx; introCard('horse', I.hIdx); }
       R3.render(engine, rdt);
       Sound.update(0, 0, 0.16, RAIN[engine.cfg.weather] || 0);
       Comm.fade();
@@ -1079,12 +1085,47 @@
   }
   $('cer-skip').addEventListener('pointerdown', (e) => { e.preventDefault(); if (cer) nextCer(); });
   let introStage = '', raceSeq = 0;
-  function introCard(stage) {
+  // ファンファーレの種類：海外／GⅠ（東・西）／重賞／特別／一般
+  const WEST = ['kyoto', 'hanshin', 'chukyo', 'kokura'];
+  function fanfareKind(race) {
+    if (race.overseas) return 'intl';
+    if (race.graded === 1) return WEST.includes(race.venue) ? 'g1w' : 'g1e';
+    if (race.graded) return 'jusho';
+    return Zekken.kindOf(race) === 'special' ? 'special' : 'normal';
+  }
+  const FANFARE_LEN = { normal: 4.4, special: 6.4, jusho: 9.7, g1e: 14.6, g1w: 15.1, intl: 9.5 };
+  function introOpts(race) {
+    const big = race.graded === 1 || race.overseas;
+    return { perHorse: big ? 1.25 : race.graded ? 0.85 : 0, loadMin: FANFARE_LEN[fanfareKind(race)] || 5, flyLen: big ? 6 : 4.6 };
+  }
+  let introHorse = -1;
+  function introCard(stage, idx) {
+    if (stage !== 'horse') introHorse = stage === 'horses' ? introHorse : -1;
+    const race0 = curRace;
+    if (stage === 'horses') return; // 1頭目の札は直後に出す
+    if (stage === 'horse') {
+      const e = engine, r = e.runners[idx], f = race0.field[idx] || {}, h = r.horse;
+      const jn = r.isPlayer ? P().name : f.jid >= 0 ? W.jockeys[f.jid].name : (f.jname || r.cfg.jname || '');
+      const card = $('intro-card');
+      card.className = 'horse';
+      card.innerHTML = `<div class="hz" style="background:${WAKU_COLORS[(f.waku || 1) - 1]};color:${[1, 5].includes(f.waku) ? '#111' : '#fff'}"><b>${r.num}</b><small>${f.waku || 1}枠</small></div>
+        <div class="hb"><div class="k">${esc(sexAge(h))}・斤量${r.cfg.weight || ''}kg${r.isPlayer ? '　<span class="me">あなたの騎乗馬</span>' : ''}</div><h2>${esc(h.name)}</h2>
+        <div class="d">騎手 ${esc(jn)}　${f.pop || '-'}番人気・単勝${f.odds || '-'}倍${h.nameMean ? `　<span class="mean">${esc(h.nameMean)}</span>` : ''}</div></div>`;
+      card.style.animation = 'none'; void card.offsetWidth; card.style.animation = '';
+      return;
+    }
+    $('intro-card').className = '';
     const e = engine, race = curRace, Pl = e.player, card = $('intro-card');
     const f = race.field.find(x => x.hid === curHid) || {};
     const g = race.graded ? `G${'ⅠⅡⅢ'[race.graded - 1]}　` : race.overseas ? '海外GⅠ　' : '';
     let html;
-    if (stage === 'fly') html = `<div class="k">${esc(VENUES[race.venue].name)}競馬場${race.overseas ? '' : `　第${race.no}競走`}</div><h2>${g}${esc(race.name)}</h2><div class="d">${raceCond(race)}・${e.course.dir === 'L' ? '左' : '右'}回り・${e.runners.length}頭</div>`;
+    if (stage === 'fly' && (race.graded || race.overseas)) {
+      // 重賞のタイトル：格の色の帯、競走名を大きく、競馬場の英字
+      const kind = Zekken.kindOf(race), st = Zekken.STYLE[kind] || Zekken.STYLE.g1;
+      $('intro-card').className = 'title';
+      html = `<div class="tg" style="background:${kind === 'derby' ? 'linear-gradient(90deg,#c9a13b,#f2d77a)' : st.bg};color:${kind === 'derby' ? '#2a1e00' : '#fff'}">${race.overseas ? '海外 GⅠ' : `G${'ⅠⅡⅢ'[race.graded - 1]}`}</div>
+        <h2>${esc(race.name)}</h2><div class="d">${esc((VENUES[race.venue].en || VENUES[race.venue].name) + (VENUES[race.venue].en ? ' RACECOURSE' : '競馬場'))}　${raceCond(race)}・${e.course.dir === 'L' ? '左' : '右'}回り・${e.runners.length}頭</div>`;
+    } else if (stage === 'fly') html = `<div class="k">${esc(VENUES[race.venue].name)}競馬場${race.overseas ? '' : `　第${race.no}競走`}</div><h2>${g}${esc(race.name)}</h2><div class="d">${raceCond(race)}・${e.course.dir === 'L' ? '左' : '右'}回り・${e.runners.length}頭</div>`;
     else if (stage === 'load') html = `<div class="k">枠入り</div><h2>${waku(f.waku || 1)} ${Pl.num}番 ${esc(Pl.horse.name)}</h2><div class="d">${f.pop || '-'}番人気・単勝${f.odds || '-'}倍・騎手 ${esc(P().name)}</div>`;
     else html = `<div class="k">まもなく発走</div><h2>ゲートが開いたら「スタート」</h2>`;
     card.style.animation = 'none'; void card.offsetWidth; card.style.animation = '';

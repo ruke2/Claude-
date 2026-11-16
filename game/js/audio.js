@@ -40,6 +40,45 @@
       } catch (e) {}
     });
   }
+  // ---- ファンファーレの譜面（[半音, 始まりの拍, 長さの拍]）。どれもこのゲームのための創作 ----
+  const FANFARES = {
+    // 一般競走：ラッパ1本の短い呼び出し
+    normal: { bpm: 152, base: 349.23, len: 8, vol: 0.9, parts: [
+      { vol: 0.2, notes: [[0, 0, 0.5], [0, 0.5, 0.25], [0, 0.75, 0.25], [5, 1, 0.5], [9, 1.5, 0.5], [12, 2, 1], [9, 3, 0.5], [5, 3.5, 0.5], [9, 4, 0.5], [12, 4.5, 0.5], [14, 5, 0.5], [12, 5.5, 0.5], [17, 6, 2]] },
+      { vol: 0.1, tr: -12, notes: [[12, 2, 1], [17, 6, 2]] }] },
+    // 特別競走：ラッパ2本の三度の重なりと小太鼓
+    special: { bpm: 138, base: 349.23, len: 12, parts: [
+      { vol: 0.19, notes: [[7, 0, 0.5], [7, 0.5, 0.25], [7, 0.75, 0.25], [12, 1, 1], [11, 2, 0.5], [9, 2.5, 0.5], [7, 3, 1], [4, 4, 0.5], [7, 4.5, 0.5], [12, 5, 0.5], [16, 5.5, 0.5], [14, 6, 1.5], [12, 7.5, 0.5], [14, 8, 0.5], [16, 8.5, 0.5], [19, 9, 3]] },
+      { vol: 0.13, notes: [[4, 0, 0.5], [4, 0.5, 0.25], [4, 0.75, 0.25], [7, 1, 1], [7, 2, 0.5], [5, 2.5, 0.5], [4, 3, 1], [0, 4, 0.5], [4, 4.5, 0.5], [7, 5, 0.5], [12, 5.5, 0.5], [11, 6, 1.5], [9, 7.5, 0.5], [11, 8, 0.5], [12, 8.5, 0.5], [16, 9, 3]] }],
+      snare: [0, 0.5, 0.75, 1, 3, 5, 5.5, 6, 9], timp: [[0, 9, 0.7]] },
+    // 重賞（GⅡ・GⅢ）：金管の和音、低音のホルン、ティンパニ
+    jusho: { bpm: 120, base: 293.66, len: 17, parts: [
+      { vol: 0.19, notes: [[7, 0, 0.75], [7, 0.75, 0.25], [12, 1, 1], [14, 2, 0.5], [16, 2.5, 0.5], [14, 3, 1], [12, 4, 0.75], [12, 4.75, 0.25], [17, 5, 1], [16, 6, 0.5], [14, 6.5, 0.5], [12, 7, 1], [9, 8, 0.75], [9, 8.75, 0.25], [14, 9, 1], [12, 10, 0.5], [11, 10.5, 0.5], [12, 11, 0.5], [14, 11.5, 0.5], [16, 12, 1], [19, 13, 4]] },
+      { vol: 0.13, notes: [[4, 0, 0.75], [4, 0.75, 0.25], [7, 1, 1], [11, 2, 0.5], [12, 2.5, 0.5], [11, 3, 1], [9, 4, 0.75], [9, 4.75, 0.25], [14, 5, 1], [12, 6, 0.5], [11, 6.5, 0.5], [9, 7, 1], [5, 8, 0.75], [5, 8.75, 0.25], [11, 9, 1], [9, 10, 0.5], [7, 10.5, 0.5], [9, 11, 0.5], [11, 11.5, 0.5], [12, 12, 1], [16, 13, 4]] },
+      { vol: 0.12, tr: -12, bright: 0.6, notes: [[0, 1, 3], [5, 5, 3], [2, 9, 3], [7, 12, 1], [0, 13, 4]] }],
+      timp: [[0, 1, 0.8], [0, 5, 0.7], [7, 9, 0.7], [7, 12, 0.6], [0, 13, 1]], rolls: [[0, 1, 0.3], [12, 1, 0.35]], cym: [13] },
+    // GⅠ（東）：ティンパニの連打から始まる長い曲。最後は全員で伸ばす
+    g1e: { bpm: 112, base: 293.66, len: 25, vol: 1.05, claps: [2, 18], parts: [
+      { vol: 0.21, off: 2, notes: [[0, 0, 0.5], [0, 0.5, 0.25], [0, 0.75, 0.25], [7, 1, 1.5], [5, 2.5, 0.5], [4, 3, 0.5], [5, 3.5, 0.5], [7, 4, 2], [9, 6, 0.5], [9, 6.5, 0.25], [9, 6.75, 0.25], [14, 7, 1.5], [12, 8.5, 0.5], [11, 9, 0.5], [12, 9.5, 0.5], [14, 10, 2], [16, 12, 0.75], [14, 12.75, 0.25], [12, 13, 0.75], [11, 13.75, 0.25], [12, 14, 1], [9, 15, 1], [14, 16, 0.5], [16, 16.5, 0.5], [17, 17, 1], [19, 18, 5]] },
+      { vol: 0.14, off: 2, notes: [[-5, 0, 0.5], [-5, 0.5, 0.25], [-5, 0.75, 0.25], [4, 1, 1.5], [2, 2.5, 0.5], [0, 3, 0.5], [2, 3.5, 0.5], [4, 4, 2], [5, 6, 0.5], [5, 6.5, 0.25], [5, 6.75, 0.25], [11, 7, 1.5], [9, 8.5, 0.5], [7, 9, 0.5], [9, 9.5, 0.5], [11, 10, 2], [12, 12, 0.75], [11, 12.75, 0.25], [9, 13, 0.75], [7, 13.75, 0.25], [9, 14, 1], [5, 15, 1], [11, 16, 0.5], [12, 16.5, 0.5], [14, 17, 1], [16, 18, 5]] },
+      { vol: 0.13, off: 2, tr: -12, bright: 0.6, notes: [[0, 1, 3], [0, 4, 2], [5, 7, 3], [7, 10, 2], [9, 12, 2], [5, 14, 2], [7, 16, 2], [0, 18, 5]] }],
+      rolls: [[0, 2, 0.4], [19, 1, 0.45]], timp: [[0, 3, 0.9], [0, 6, 0.8], [5, 9, 0.8], [7, 12, 0.8], [9, 14, 0.7], [7, 18, 0.8], [0, 20, 1.1]], cym: [3, 20], snare: [8, 8.5, 8.75, 15, 15.5, 15.75] },
+    // GⅠ（西）：東とは別の旋律。ゆったり始まって、後半で駆け上がる
+    g1w: { bpm: 108, base: 311.13, len: 25, vol: 1.05, claps: [2, 18], parts: [
+      { vol: 0.21, off: 2, notes: [[7, 0, 1], [12, 1, 1], [11, 2, 0.5], [12, 2.5, 0.5], [14, 3, 1], [16, 4, 2], [14, 6, 0.75], [12, 6.75, 0.25], [11, 7, 1], [9, 8, 1], [11, 9, 0.5], [12, 9.5, 0.5], [14, 10, 2], [12, 12, 0.25], [14, 12.25, 0.25], [16, 12.5, 0.25], [17, 12.75, 0.25], [19, 13, 1], [17, 14, 0.5], [16, 14.5, 0.5], [17, 15, 1], [21, 16, 1], [19, 17, 1], [24, 18, 5]] },
+      { vol: 0.14, off: 2, notes: [[4, 0, 1], [7, 1, 1], [7, 2, 0.5], [9, 2.5, 0.5], [11, 3, 1], [12, 4, 2], [11, 6, 0.75], [9, 6.75, 0.25], [7, 7, 1], [5, 8, 1], [7, 9, 0.5], [9, 9.5, 0.5], [11, 10, 2], [9, 12, 0.25], [11, 12.25, 0.25], [12, 12.5, 0.25], [14, 12.75, 0.25], [16, 13, 1], [14, 14, 0.5], [12, 14.5, 0.5], [14, 15, 1], [17, 16, 1], [16, 17, 1], [19, 18, 5]] },
+      { vol: 0.13, off: 2, tr: -12, bright: 0.6, notes: [[0, 0, 4], [5, 4, 2], [2, 6, 2], [5, 8, 2], [7, 10, 2], [9, 12, 2], [5, 14, 2], [7, 16, 2], [0, 18, 5]] }],
+      rolls: [[0, 2, 0.35], [19, 1, 0.45]], timp: [[0, 2, 0.9], [5, 6, 0.8], [7, 10, 0.8], [9, 14, 0.7], [7, 18, 0.8], [0, 20, 1.1]], cym: [2, 20], snare: [14, 14.5, 14.75] },
+  };
+  // 場内に響く残響（ファンファーレ用）
+  let rvNode = null;
+  function reverb() {
+    if (rvNode) return rvNode;
+    const len = ctx.sampleRate * 2.2, buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    const cv = ctx.createConvolver(); cv.buffer = buf; const wet = ctx.createGain(); wet.gain.value = 0.32; cv.connect(wet); wet.connect(master);
+    return (rvNode = { in: cv });
+  }
   const samples = {};
   // ---- BGM（レース以外の画面） ----
   let bgmWant = false, bgmSrc = null, bgmG = null, bgmOff = false;
@@ -125,29 +164,44 @@
         src.connect(f); f.connect(g); g.connect(master); src.start(t, Math.random()); src.stop(t + 6);
       });
     },
-    // 出走前のファンファーレ（このゲーム用に作った旋律。実在の曲ではない）
-    fanfare() {
+    // 出走前のファンファーレ。種類：'normal'（一般）| 'special'（特別）| 'jusho'（GⅡ・GⅢ）| 'g1e' / 'g1w'（GⅠ・東西）| 'intl'（海外）
+    // 海外以外はこのゲームのために作った旋律で、JRAで実際に使われている曲ではない（実際の曲は著作物なので使えない）
+    fanfare(kind = 'normal') {
       if (!ctx) return 0;
-      if (samples.fanfare) { // 実在の曲「Call to the Post（First Call）」の録音
+      if (kind === 'intl' && samples.fanfare) { // 実在の曲「Call to the Post（First Call）」の録音（パブリックドメイン）
         const src = ctx.createBufferSource(); src.buffer = samples.fanfare;
         const g = ctx.createGain(); g.gain.value = 0.95; src.connect(g); g.connect(master); src.start();
         return samples.fanfare.duration;
       }
-      const t0 = ctx.currentTime + 0.05, bt = 0.19;
-      // [音の高さ(半音, 0=ド), 始まり(拍), 長さ(拍)]
-      const mel = [[0, 0, 1], [0, 1, 0.5], [0, 1.5, 0.5], [4, 2, 1], [7, 3, 1], [12, 4, 2], [7, 6, 0.5], [9, 6.5, 0.5], [11, 7, 1], [12, 8, 1], [16, 9, 1], [14, 10, 1], [12, 11, 1], [14, 12, 1], [11, 13, 1], [12, 14, 4]];
-      const note = (semi, st, len, vol, type) => {
-        const f = 261.63 * Math.pow(2, semi / 12), a = t0 + st * bt, d = len * bt;
-        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
-        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, a); lp.frequency.linearRampToValueAtTime(2600, a + 0.05); lp.Q.value = 0.7;
-        const g = ctx.createGain(); g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(vol, a + 0.025); g.gain.setValueAtTime(vol * 0.8, a + d * 0.7); g.gain.linearRampToValueAtTime(0.0001, a + d + 0.06);
-        o.connect(lp); lp.connect(g); g.connect(master); o.start(a); o.stop(a + d + 0.1);
+      const F = FANFARES[kind] || FANFARES.normal;
+      const t0 = ctx.currentTime + 0.08, bt = 60 / F.bpm, base = F.base;
+      const out = ctx.createGain(); out.gain.value = F.vol || 1; out.connect(master);
+      const rv = reverb(); out.connect(rv.in);
+      const hz = (s) => base * Math.pow(2, s / 12);
+      // 金管：ノコギリ波2つと矩形波を重ね、明るさを音の頭で開いてから少し閉じる。長い音には軽いビブラート
+      const brass = (s, st, len, vol, bright = 1) => {
+        const a = t0 + st * bt, d = Math.max(0.08, len * bt * 0.94), f = hz(s);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, a); g.gain.exponentialRampToValueAtTime(vol, a + 0.035); g.gain.setTargetAtTime(vol * 0.78, a + 0.06, 0.12); g.gain.setValueAtTime(vol * 0.78, a + d); g.gain.exponentialRampToValueAtTime(0.0001, a + d + 0.09);
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 1.2; lp.frequency.setValueAtTime(f * 1.2, a); lp.frequency.exponentialRampToValueAtTime(Math.min(9000, f * 7 * bright), a + 0.05); lp.frequency.setTargetAtTime(f * 4.2 * bright, a + 0.08, 0.15);
+        lp.connect(g); g.connect(out);
+        [[0, 'sawtooth', 1], [7, 'sawtooth', 0.8], [-5, 'square', 0.35]].forEach(([cent, type, amp]) => {
+          const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = cent;
+          if (d > 0.45) { const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5.2; lg.gain.setValueAtTime(0, a); lg.gain.linearRampToValueAtTime(f * 0.006, a + d); lfo.connect(lg); lg.connect(o.frequency); lfo.start(a); lfo.stop(a + d + 0.15); }
+          const og = ctx.createGain(); og.gain.value = amp; o.connect(og); og.connect(lp); o.start(a); o.stop(a + d + 0.15);
+        });
       };
-      mel.forEach(([s, st, len]) => { note(s, st, len * 0.92, 0.16, 'sawtooth'); note(s - 12, st, len * 0.92, 0.1, 'sawtooth'); note(s - (s % 12 === 0 ? 5 : 3), st, len * 0.92, 0.07, 'square'); });
-      // 小太鼓
-      for (let b = 0; b < 14; b += 0.5) burst('highpass', 1800, 0.7, b % 1 ? 0.07 : 0.14, 0.06, t0 + b * bt);
-      burst('lowpass', 140, 1, 0.9, 0.5, t0 + 14 * bt);
-      return 18 * bt + 0.3;
+      const timp = (s, st, vol = 0.9) => { const a = t0 + st * bt, f = hz(s - 24); const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(f * 1.5, a); o.frequency.exponentialRampToValueAtTime(f, a + 0.08); const g = ctx.createGain(); g.gain.setValueAtTime(vol, a); g.gain.exponentialRampToValueAtTime(0.0001, a + 0.9); o.connect(g); g.connect(out); o.start(a); o.stop(a + 1); burst('lowpass', 260, 0.8, vol * 0.5, 0.25, a); };
+      const roll = (st, len, vol = 0.35) => { for (let b = 0; b < len; b += 0.125) burst('lowpass', 300, 0.8, vol * (0.5 + 0.5 * b / len), 0.12, t0 + (st + b) * bt); };
+      const snare = (st, vol = 0.2) => { burst('highpass', 1800, 0.7, vol, 0.07, t0 + st * bt); burst('bandpass', 220, 1, vol * 0.8, 0.06, t0 + st * bt); };
+      const cymbal = (st, vol = 0.6) => { burst('highpass', 5200, 0.5, vol, 2.4, t0 + st * bt); };
+      F.parts.forEach(p => p.notes.forEach(([s, st, len]) => brass(s + (p.tr || 0), st + (p.off || 0), len, p.vol, p.bright || 1)));
+      (F.timp || []).forEach(([s, st, v]) => timp(s, st, v));
+      (F.rolls || []).forEach(([st, len, v]) => roll(st, len, v));
+      (F.snare || []).forEach(st => snare(st));
+      (F.cym || []).forEach(st => cymbal(st));
+      // GⅠでは場内の手拍子がファンファーレに合わせて起こる
+      if (F.claps) for (let b = F.claps[0]; b < F.claps[1]; b += 1) burst('bandpass', 1500 + Math.random() * 400, 1.4, 0.5, 0.05, t0 + b * bt + Math.random() * 0.03);
+      return F.len * bt + 1.2;
     },
     push() { burst('lowpass', 600, 0.5, 0.06, 0.12); },
     gate() {
