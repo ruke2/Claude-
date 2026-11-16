@@ -47,6 +47,83 @@
     return OVERSEAS.filter(o => o.month === m && o.nth === nth);
   }
 
+  // ---- ローテーション（有力馬の1年の出走予定） ----
+  // spring / autumn に分け、目標のレースへ間隔をあけて向かう。お手馬は調教師と相談して決める
+  const ROUTES = {
+    colt3: [
+      { k: 'triple', name: '牡馬三冠路線', desc: '皐月賞→日本ダービー→菊花賞', spring: ['弥生賞', '皐月賞', '日本ダービー'], autumn: ['セントライト記念', '菊花賞', '有馬記念'] },
+      { k: 'nhk', name: '変則二冠路線', desc: 'NHKマイルC→日本ダービー→天皇賞（秋）', spring: ['スプリングS', 'NHKマイルC', '日本ダービー'], autumn: ['毎日王冠', '天皇賞（秋）'] },
+      { k: 'derby', name: 'ダービー一本', desc: '青葉賞から日本ダービーへ。秋はジャパンC・有馬記念', spring: ['共同通信杯', '青葉賞', '日本ダービー'], autumn: ['ジャパンC', '有馬記念'] },
+      { k: 'mile3', name: 'マイル路線', desc: 'NHKマイルC→マイルチャンピオンシップ', spring: ['共同通信杯', 'NHKマイルC'], autumn: ['関屋記念', '毎日王冠', 'マイルチャンピオンシップ'] },
+    ],
+    filly3: [
+      { k: 'ftriple', name: '牝馬三冠路線', desc: '桜花賞→オークス→秋華賞', spring: ['チューリップ賞', '桜花賞', 'オークス'], autumn: ['秋華賞', 'エリザベス女王杯'] },
+      { k: 'fderby', name: 'ダービー挑戦', desc: '桜花賞から牡馬相手の日本ダービーへ', spring: ['チューリップ賞', '桜花賞', '日本ダービー'], autumn: ['秋華賞', 'ジャパンC'] },
+      { k: 'fmile', name: 'マイル路線', desc: '桜花賞→NHKマイルC→マイルチャンピオンシップ', spring: ['チューリップ賞', '桜花賞', 'NHKマイルC'], autumn: ['秋華賞', 'マイルチャンピオンシップ'] },
+    ],
+    older: [
+      { k: 'classic', name: '王道路線（古馬三冠）', desc: '大阪杯→宝塚記念、秋は天皇賞（秋）→ジャパンC→有馬記念', spring: ['京都記念', '大阪杯', '宝塚記念'], autumn: ['天皇賞（秋）', 'ジャパンC', '有馬記念'] },
+      { k: 'stayer', name: 'ステイヤー路線', desc: '阪神大賞典→天皇賞（春）、暮れは有馬記念', spring: ['阪神大賞典', '天皇賞（春）', '宝塚記念'], autumn: ['アルゼンチン共和国杯', '有馬記念'] },
+      { k: 'mile', name: 'マイル路線', desc: '安田記念→毎日王冠→マイルチャンピオンシップ', spring: ['安田記念'], autumn: ['関屋記念', '毎日王冠', 'マイルチャンピオンシップ'] },
+      { k: 'sprint', name: 'スプリント路線', desc: '高松宮記念→スプリンターズS', spring: ['高松宮記念', '安田記念'], autumn: ['スプリンターズS', 'マイルチャンピオンシップ'] },
+      { k: 'dirt', name: 'ダート路線', desc: 'フェブラリーS→チャンピオンズC', spring: ['フェブラリーS'], autumn: ['チャンピオンズC'] },
+    ],
+  };
+  const FILLY_SWAP = { 'ジャパンC': 'エリザベス女王杯', '安田記念': 'ヴィクトリアマイル' };
+  const routeCat = (W, h) => { const a = W.year - h.born; return a === 3 ? (h.sex === '牝' ? 'filly3' : 'colt3') : a >= 4 ? 'older' : null; };
+  function routeOptions(W, h) { const c = routeCat(W, h); return c ? ROUTES[c] : []; }
+  function autoRoute(W, h) {
+    const c = routeCat(W, h); if (!c) return null;
+    const d = h.dist || 1800, rr = ROUTES[c], by = (k) => rr.find(x => x.k === k);
+    if (c === 'colt3') return h.surf === 'D' ? null : d <= 1600 ? by('mile3') : d >= 2200 ? (Math.random() < 0.7 ? by('triple') : by('derby')) : (Math.random() < 0.65 ? by('triple') : by('nhk'));
+    if (c === 'filly3') return h.surf === 'D' ? null : d <= 1600 && Math.random() < 0.4 ? by('fmile') : by('ftriple');
+    if (h.surf === 'D') return by('dirt');
+    return d <= 1200 ? by('sprint') : d <= 1600 ? by('mile') : d >= 3000 ? by('stayer') : by('classic');
+  }
+  function routeRaces(W, h, r, half) {
+    let list = half === 'autumn' ? r.autumn : half === 'spring' ? r.spring : r.spring.concat(r.autumn);
+    if (h.sex === '牝' && routeCat(W, h) === 'older') list = list.map(n => FILLY_SWAP[n] || n);
+    return list.slice();
+  }
+  // 重賞の、その年の週番号
+  const _gw = {};
+  function gradedWeek(year, name) {
+    if (!_gw[year]) { _gw[year] = {}; weekSundays(year).forEach((sun, i) => gradedForWeek(year, sun).forEach(g => { _gw[year][g.name] = i; })); }
+    return _gw[year][name];
+  }
+  // 次の目標レースまで何週か（なければ Infinity）
+  function nextPlan(W, h) {
+    const pl = h.plan; if (!pl || pl.y !== W.year) return null;
+    let best = null;
+    for (const n of pl.races) { const wk = gradedWeek(W.year, n); if (wk == null || wk < W.wk) continue; if (!best || wk < best.wk) best = { name: n, wk, inW: wk - W.wk }; }
+    return best;
+  }
+  function setPlan(W, h, r, half) {
+    const pl = (h.plan && h.plan.y === W.year) ? h.plan : (h.plan = { y: W.year, races: [], route: null });
+    if (half === 'autumn') { const done = pl.races.filter(n => (gradedWeek(W.year, n) ?? 99) < W.wk); pl.races = done.concat(routeRaces(W, h, r, 'autumn')); }
+    else pl.races = routeRaces(W, h, r, half === 'spring' ? 'all' : half);
+    pl.route = r.name;
+  }
+  // 年のはじめ（と7月）に、有力馬の予定を決める。プレイヤーのお手馬は相談イベントで決める
+  function assignPlans(W, half) {
+    const alive = Object.values(W.horses).filter(h => !h.retired && !h.foreign);
+    const take = (arr, n) => arr.sort((a, b) => rating(b, W.year) - rating(a, W.year)).slice(0, n);
+    const groups = [
+      take(alive.filter(h => W.year - h.born === 3 && h.sex !== '牝' && h.cls >= 2), 40),
+      take(alive.filter(h => W.year - h.born === 3 && h.sex === '牝' && h.cls >= 2), 26),
+      take(alive.filter(h => W.year - h.born >= 4 && h.cls >= 5), 80),
+    ];
+    groups.flat().forEach(h => {
+      if (h.mainJ === -1 && (W.player.bond[h.id] || 0) >= 8 && !h.real) { h.consult = half; if (!h.plan || h.plan.y !== W.year) h.plan = { y: W.year, races: [], route: null }; return; }
+      const r = autoRoute(W, h); if (r) setPlan(W, h, r, half === 'autumn' ? 'autumn' : 'spring');
+    });
+  }
+  // 2歳の暮れのGⅠ
+  function assign2yo(W) {
+    const two = Object.values(W.horses).filter(h => !h.retired && W.year - h.born === 2 && h.cls >= 2).sort((a, b) => rating(b, W.year) - rating(a, W.year));
+    two.slice(0, 40).forEach(h => { h.plan = { y: W.year, route: '2歳GⅠ', races: [h.sex === '牝' && Math.random() < 0.8 ? '阪神ジュベナイルF' : (h.dist || 1600) <= 1600 ? '朝日杯フューチュリティS' : 'ホープフルS'] }; });
+  }
+
   // ---- 名前 ----
   // 馬主の好みに合わせて名付ける。冠名を持つ馬主は「冠名＋言葉」が多い。意味も残す（パドックで見られる）
   function namedHorse(used, owner) {
@@ -244,6 +321,10 @@
       return;
     }
     W.isOverseas = false;
+    if (W.planYear !== W.year) { W.planYear = W.year; assignPlans(W, 'spring'); }
+    if (m >= 7 && W.planAut !== W.year) { W.planAut = W.year; assignPlans(W, 'autumn'); }
+    if (m >= 10 && W.plan2 !== W.year) { W.plan2 = W.year; assign2yo(W); }
+    rideTalks(W);
     const graded = gradedForWeek(W.year, sun);
     const regionIdx = W.player.region === '美浦' ? 0 : 1;
     let venue = MONTH_VENUES[m][regionIdx];
@@ -252,6 +333,9 @@
     const homeG = gTop.find(g => g.v === venue);
     const mainG = homeG || (gTop[0] && (W.player.rep > 45 || VENUES[gTop[0].v] && MONTH_VENUES[m].indexOf(gTop[0].v) === regionIdx) ? gTop[0] : null);
     if (mainG) venue = mainG.v;
+    // 騎乗を約束したお手馬の目標レースがある週は、その競馬場へ
+    const prom = Object.values(W.horses).find(h => !h.retired && h.promise && graded.some(g => g.name === h.promise));
+    if (prom) venue = graded.find(g => g.name === prom.promise).v;
     W.venue = venue;
     const gHere = graded.filter(g => g.v === venue);
     W.card = buildCard(W, venue, gHere);
@@ -272,6 +356,8 @@
     if (cond.clsMin != null && h.cls < cond.clsMin) return false;
     if (cond.surf && h.surf !== 'B' && h.surf !== cond.surf && Math.random() < 0.85) return false;
     if (W.abs - h.last < 3) return false;
+    // オープン馬は間隔をあける（目標のレースへ向かうときは別）
+    if (h.cls >= 5 && !cond.plan && W.abs - h.last < 5) return false;
     return true;
   }
 
@@ -344,18 +430,24 @@
     const cond = { age: race.age, sex: race.sex, cls: race.cls, clsMin: race.clsMin, surf: race.surf };
     let pool = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && eligible(W, h, cond));
     if (race.graded) {
-      // 能力・距離適性・(実在馬優先) でソート
+      // 目標にしてきた馬から先に入れる（ローテーション）
+      const planned = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && h.plan && h.plan.y === W.year && h.plan.races.includes(race.name) && eligible(W, h, { ...cond, clsMin: Math.min(2, cond.clsMin ?? 2), plan: true }));
+      planned.sort((a, b) => (b.promise === race.name) - (a.promise === race.name) || rating(b, W.year) - rating(a, W.year));
+      const pick1 = planned.slice(0, size);
+      // それ以外は、近くに目標のレースがある馬を除いて能力順
+      pool = pool.filter(h => !pick1.includes(h) && W.abs - h.last >= 5 && !(nextPlan(W, h) && nextPlan(W, h).inW < 7));
       pool.forEach(h => h._k = rating(h, W.year) - Math.abs((h.dist || 1800) - race.dist) / 120 - (h.surf !== 'B' && h.surf !== race.surf ? 18 : 0) + (h.real ? 4 : 0) + rnd(-6, 6));
       pool.sort((a, b) => b._k - a._k);
-      pool = pool.slice(0, size);
+      pool = pick1.concat(pool.slice(0, size - pick1.length));
       // オープン馬が足りなければ、条件クラスの馬を能力順に加える（2歳重賞など。実際も1勝クラスの馬が重賞に挑戦する）
       if (pool.length < size) {
-        const more = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && !pool.includes(h) && h.cls >= 2 && eligible(W, h, { ...cond, clsMin: 2 }));
+        const more = Object.values(W.horses).filter(h => !(used && used.has(h.id)) && !pool.includes(h) && h.cls >= 2 && W.abs - h.last >= 5 && eligible(W, h, { ...cond, clsMin: 2 }) && !(nextPlan(W, h) && nextPlan(W, h).inW < 7));
         more.forEach(h => h._k = rating(h, W.year) + h.cls * 3 - Math.abs((h.dist || 1800) - race.dist) / 120 + rnd(-4, 4));
         more.sort((a, b) => b._k - a._k);
         pool = pool.concat(more.slice(0, size - pool.length));
       }
     } else {
+      pool = pool.filter(h => !(nextPlan(W, h) && nextPlan(W, h).inW < 7));
       pool.forEach(h => h._k = Math.random() - Math.abs((h.dist || 1800) - race.dist) / 3000 + (W.abs - h.last) * 0.01 - (h.real ? 0.5 : 0));
       pool.sort((a, b) => b._k - a._k);
       pool = pool.slice(0, size);
@@ -445,6 +537,83 @@
     news(W, `${P.name}騎手が${h.name}（${race.name}）の騎乗を射止める`, 'me');
     return true;
   }
+  // ---- お手馬の路線相談と、次走の騎乗の打診 ----
+  function rideTalks(W) {
+    if (!W.story) return;
+    const P = W.player, pend = W.story.pending;
+    const mine = Object.values(W.horses).filter(h => !h.retired && h.mainJ === -1 && !h.foreign && !h.story)
+      .sort((a, b) => rating(b, W.year) - rating(a, W.year));
+    let scenes = 0; // 1週に出す相談・打診は2つまで（残りは翌週以降）
+    for (const h of mine) {
+      const t = W.trainers[h.trainer], tn = t ? t.name.replace('厩舎', '') + '調教師' : '調教師';
+      if (h.consult) {
+        if (scenes >= 2) continue;
+        scenes++;
+        const half = h.consult; h.consult = null;
+        const opts = routeOptions(W, h); if (!opts.length) continue;
+        const age = W.year - h.born, a = ability(h, W.year);
+        const sug = autoRoute(W, h) || opts[0];
+        pend.push({ lines: [
+          ['', `${tn}から呼ばれた。${h.name}（${age}歳）の${half === 'autumn' ? '秋' : '今年'}の路線の相談だ。`],
+          [tn, `${h.name}は${h.wins}勝。${half === 'autumn' ? '夏を越して、体がひと回り大きくなった。' : 'この冬でずいぶん力をつけた。'}`],
+          [tn, `距離は${h.dist}mくらいが合うと見ている。私は${sug.name}がいいと思うが、乗っている${P.name}くんの意見を聞きたい。`],
+        ], route: { hid: h.id, half, keys: opts.map(o => o.k) }, choice: { key: 'route', opts: opts.map(o => `${o.name}（${o.desc}）`) } });
+        continue;
+      }
+      // 次の目標レースの2〜3週前に打診
+      const np = nextPlan(W, h);
+      if (np && np.inW >= 1 && np.inW <= 3 && h.promise !== np.name && h.asked !== W.year + np.name) {
+        const g = GRADED.find(x => x.name === np.name);
+        const other = mine.find(o => o !== h && o.promise === np.name);
+        // GⅡ・GⅢは話が早い（ほかに約束した馬がいなければ、そのまま騎乗が決まる）
+        if (!other && g && g.g >= 2) { h.asked = W.year + np.name; h.promise = np.name; news(W, `${h.name}の次走${np.name}も${P.name}騎手が騎乗予定`, 'me'); continue; }
+        if (scenes >= 2) continue;
+        scenes++; h.asked = W.year + np.name;
+        if (other) {
+          pend.push({ lines: [
+            [tn, `${h.name}は${np.inW}週後の${np.name}に向かう。乗ってもらえるか。`],
+            ['', `${np.name}には、すでに${other.name}で乗る約束をしている。どちらに乗るか決めなければならない。`],
+          ], ride: { hid: h.id, race: np.name, other: other.id }, choice: { key: 'ride', opts: [`${h.name}に乗る（${other.name}は降りる）`, `${other.name}に乗る（${h.name}は断る）`] } });
+          continue;
+        }
+        pend.push({ lines: [
+          [tn, `${h.name}は${np.inW}週後の${np.name}${g ? `（G${'ⅠⅡⅢ'[g.g - 1]}）` : ''}に向かう。${pick(['状態はいい。', '調教の動きは文句なしだ。', '前走の疲れも抜けた。'])}`],
+          [tn, '引き続き、手綱を任せたい。乗ってくれるか。'],
+        ], ride: { hid: h.id, race: np.name }, choice: { key: 'ride', opts: ['乗る（騎乗を約束する）', '断る（主戦を降りる）'] } });
+      }
+    }
+  }
+  function talkAnswer(W, sc, v) {
+    const P = W.player;
+    if (sc.route) {
+      const h = W.horses[sc.route.hid]; if (!h) return;
+      const r = routeOptions(W, h).find(o => o.k === sc.route.keys[v]) || routeOptions(W, h)[0];
+      setPlan(W, h, r, sc.route.half === 'autumn' ? 'autumn' : 'spring');
+      P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + 2, 0, 100);
+      news(W, `${h.name}は${r.name}へ（${r.desc}）`, 'me');
+      W.story.pending.unshift({ lines: [[W.trainers[h.trainer] ? W.trainers[h.trainer].name.replace('厩舎', '') + '調教師' : '調教師', `よし、${r.name}で行こう。予定は「${h.plan.races.filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk).join('→')}」だ。`]] });
+      return true;
+    }
+    if (sc.ride) {
+      const h = W.horses[sc.ride.hid]; if (!h) return;
+      const drop = (x) => {
+        const j = W.jockeys.slice().sort((a, b) => b.skill - a.skill)[ri(0, 4)];
+        x.mainJ = j.id; x.promise = null;
+        P.trust[x.trainer] = clamp((P.trust[x.trainer] || 0) - 4, 0, 100); P.otrust[x.owner] = clamp((P.otrust[x.owner] || 0) - 3, 0, 100);
+        news(W, `${x.name}の${sc.ride.race}は${j.name}騎手に乗り替わり`, 'race');
+      };
+      if (sc.ride.other != null) { const o = W.horses[sc.ride.other]; if (v === 0) { h.promise = sc.ride.race; if (o) drop(o); } else drop(h); return true; }
+      if (v === 0) { h.promise = sc.ride.race; P.bond[h.id] = (P.bond[h.id] || 0) + 2; news(W, `${P.name}騎手、${h.name}で${sc.ride.race}へ`, 'me'); }
+      else {
+        const j = W.jockeys.slice().sort((a, b) => b.skill - a.skill)[ri(0, 4)];
+        h.mainJ = j.id; h.promise = null;
+        P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) - 4, 0, 100); P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) - 3, 0, 100);
+        news(W, `${h.name}の${sc.ride.race}は${j.name}騎手に乗り替わり`, 'race');
+      }
+      return true;
+    }
+  }
+
   function buildRequests(W) {
     const P = W.player;
     W.card.forEach(r => estimateOdds(W, r));
@@ -453,7 +622,17 @@
     const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5) + (window.Progress && Progress.has && Progress.has(W, 'scout') ? 1.5 : 0)), 1, 13);
     const target = P.rep * 0.65 + 40 + net * 4 + P.pop * 0.08;
     const reqs = [];
-    const races = W.card.slice().sort(() => Math.random() - 0.5);
+    // 自分が主戦の馬は、毎回まず自分に依頼が来る。騎乗を約束した馬は最初から受けた状態
+    const pinned = [], pinRaces = new Set();
+    if (!W.injury && !(P.suspended > 0)) W.card.forEach(race => race.field.forEach(f => {
+      const h = W.horses[f.hid]; if (!h || h.mainJ !== -1) return;
+      const kin = kinryo(W, race, h, true), ok = canMakeWeight(P, kin), prom = h.promise === race.name;
+      pinned.push({ raceNo: race.no, hid: h.id, trainer: h.trainer, owner: h.owner, pop: f.pop, odds: f.odds, kin, okWeight: ok, accepted: prom && ok && !pinned.some(q => q.raceNo === race.no && q.accepted), bondHorse: true, main: true, promised: prom });
+      pinRaces.add(race.no);
+    }));
+    // 同じレースに主戦の馬が2頭いれば、どちらに乗るか選ぶ
+    pinned.forEach(q => { if (pinned.filter(o => o.raceNo === q.raceNo).length > 1) q.clash = q.raceNo; });
+    const races = W.card.slice().filter(r => !pinRaces.has(r.no)).sort(() => Math.random() - 0.5);
     for (const race of races) {
       if (reqs.length >= n + 3) break;
       const cands = race.field.map(f => {
@@ -486,8 +665,9 @@
       }
       reqs.push(q);
     }
-    reqs.sort((a, b) => a.raceNo - b.raceNo);
-    return reqs.slice(0, Math.max(n, 1) + 2);
+    const out = pinned.concat(reqs.slice(0, Math.max(0, Math.max(n, 1) + 2 - pinned.length)));
+    out.sort((a, b) => a.raceNo - b.raceNo);
+    return out;
   }
 
   // ---- 海外遠征 ----
@@ -546,6 +726,7 @@
         if (f.hid === playerHid || forced[f.hid] != null) return;
         const h = W.horses[f.hid]; if (!h || h.foreign) return;
         const big = (h.cls || 0) >= 5 || (h.g1 && h.g1.length);
+        if (h.mainJ === -1 && !W.injury && !(W.player.suspended > 0)) { h.skip = (h.skip || 0) + 1; if (h.skip >= 2) { h.mainJ = null; h.promise = null; news(W, `${h.name}の主戦が乗り替わり（${W.player.name}騎手が2度続けて乗らなかったため）`, 'bad'); } }
         if (h.mainJ != null && h.mainJ >= 0 && W.jockeys[h.mainJ] && !taken.has(h.mainJ) && Math.random() > (big ? 0.03 : 0.12)) { f.jid = h.mainJ; taken.add(h.mainJ); }
       });
       const pool = js.filter(j => !taken.has(j.id));
@@ -651,12 +832,15 @@
       if (r.pos === 1) {
         h.wins++;
         if (!race.graded && !race.overseas && h.cls < 5) h.cls = Math.max(h.cls + 1, 2);
+        if (race.graded || race.overseas) h.cls = 5; // 重賞を勝てばオープン馬
         if (h.cls === 0) h.cls = 2;
         if (race.graded === 1) h.g1.push(`${W.year} ${race.name}`);
         if (h.story) h.cls = 5; // 物語の馬は勝ち上がったら重賞路線へ
         if (f.jid >= 0) { const j = W.jockeys[f.jid]; j.wins++; j.years[W.year] = (j.years[W.year] || 0) + 1; j.pop = Math.min(100, j.pop + (race.graded === 1 ? 4 : race.graded ? 1 : 0.15)); }
         if (race.graded && playerHid !== h.id) news(W, `${race.name}は${h.name}${h.real ? '' : ''}が制した（${f.jid >= 0 ? W.jockeys[f.jid].name : f.jname || ''}騎手）`, 'race');
       } else if (h.cls === 0) h.cls = 1;
+      // 重賞で上位に来た馬も、賞金を加えて上のクラスへ（GⅠの3着以内はオープン）
+      if (r.pos > 1 && race.graded && h.cls < 5) { if (race.graded === 1 && r.pos <= 3) h.cls = 5; else if (r.pos === 2) h.cls = Math.min(5, Math.max(h.cls + 1, 3)); }
     });
     let ev = null;
     if (playerHid != null && race.declined && race.declined.length) {
@@ -710,7 +894,8 @@
       P.otrust[h.owner] = clamp((P.otrust[h.owner] || 0) + (score - 45) / 12 * charm, 0, 100);
       P.bond[h.id] = clamp((P.bond[h.id] || 0) + (me.pos <= 3 ? 6 : 2) + (score > 60 ? 3 : 0), 0, 100);
       // 結果を出せば、その馬の主戦になる（負け続けると、前の主戦に戻されることもある）
-      if (me.pos <= 3 || P.bond[h.id] >= 15) h.mainJ = -1;
+      if (me.pos <= 3 || P.bond[h.id] >= 15 || (race.graded && me.pos <= 5)) h.mainJ = -1;
+      h.skip = 0; if (h.promise === race.name) h.promise = null;
       // ライバルとの対戦成績
       (W.rivals || []).forEach(rv => {
         const rf = race.field.find(x => x.jid === rv.jid);
@@ -1019,6 +1204,6 @@
     mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
-    buildCard, buildRequests, gradedForWeek, genHorse, sundayOfWeek, eligible, gearOf,
+    buildCard, buildRequests, gradedForWeek, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
   };
 })();

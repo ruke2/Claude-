@@ -311,7 +311,7 @@
       if (!n) L += `<p class="muted">今週の依頼はない。</p>`;
       L += `<div class="ctrack" id="reqs">${W.requests.map((q, i) => {
         const race = W.card[q.raceNo - 1], h = W.horses[q.hid], t = W.trainers[h.trainer], o = W.owners[h.owner];
-        const tags = [q.story ? '<span class="badge gold">相棒</span>' : q.bondHorse ? '<span class="badge gold">お手馬</span>' : '', p.contract === h.owner ? '<span class="badge green">主戦</span>' : '', q.viaAgent ? '<span class="badge">仲介</span>' : '', q.clash ? '<span class="badge warn">2頭から依頼</span>' : '', q.pitched ? '<span class="badge green">売り込み</span>' : '', q.contest && !q.contest.won ? `<span class="badge warn">争奪：${esc(W.jockeys[q.contest.jid].name)}騎手（見込み${Math.round(q.contest.chance * 100)}%）</span>` : '', q.contest && q.contest.won ? '<span class="badge green">騎乗を勝ち取った</span>' : '', !q.okWeight ? '<span class="badge warn">斤量オーバー</span>' : ''].join(' ');
+        const tags = [q.story ? '<span class="badge gold">相棒</span>' : q.bondHorse ? '<span class="badge gold">お手馬</span>' : '', q.promised ? '<span class="badge green">騎乗の約束</span>' : q.main ? '<span class="badge green">主戦</span>' : p.contract === h.owner ? '<span class="badge green">主戦契約</span>' : '', q.viaAgent ? '<span class="badge">仲介</span>' : '', q.clash ? '<span class="badge warn">2頭から依頼</span>' : '', q.pitched ? '<span class="badge green">売り込み</span>' : '', q.contest && !q.contest.won ? `<span class="badge warn">争奪：${esc(W.jockeys[q.contest.jid].name)}騎手（見込み${Math.round(q.contest.chance * 100)}%）</span>` : '', q.contest && q.contest.won ? '<span class="badge green">騎乗を勝ち取った</span>' : '', !q.okWeight ? '<span class="badge warn">斤量オーバー</span>' : ''].join(' ');
         return `<div class="reqcard ${q.accepted ? 'on' : ''} ${q.okWeight ? '' : 'ng'}" data-i="${i}"><span class="ck">✓</span>
           <div class="row"><span class="rno">${q.raceNo}R</span>${gradeTag(race)}<span class="small muted">${raceCond(race)}</span></div>
           <div class="small" style="margin-top:2px">${esc(race.name)}</div>
@@ -704,7 +704,7 @@
         <div class="kv"><span>重賞</span><b>${p.gWins.length}勝（GⅠ ${p.g1Wins.length}勝）</b></div></div>
       <div class="card" style="padding:0"><table><tr><th>年</th><th>騎乗</th><th>勝利</th><th>重賞</th></tr>${years.map(y => `<tr><td>${y}</td><td>${p.years[y].rides}</td><td>${p.years[y].wins}</td><td>${p.years[y].g.length}</td></tr>`).join('')}</table></div>
     </div><div class="scroll">
-      <details class="acc" open><summary>お手馬</summary><div class="in">${bonds.length ? bonds.map(h => `<div class="kv"><span>${esc(h.name)}${realTag(h)}</span><b class="small">${h.retired ? '引退' : sexAge(h)}・${h.starts}戦${h.wins}勝</b></div>`).join('') : '<p class="muted small">まだいない</p>'}</div></details>
+      <details class="acc" open><summary>お手馬</summary><div class="in">${bonds.length ? bonds.map(h => `<div class="kv"><span>${esc(h.name)}${realTag(h)}</span><b class="small">${h.retired ? '引退' : sexAge(h)}・${h.starts}戦${h.wins}勝${!h.retired && h.mainJ === -1 ? '・主戦' : ''}${!h.retired && h.plan && h.plan.y === W.year && h.plan.route ? `・${esc(h.plan.route)}` : ''}${h.promise ? `・次走${esc(h.promise)}` : ''}</b></div>`).join('') : '<p class="muted small">まだいない</p>'}</div></details>
       <details class="acc"><summary>歩み</summary><div class="in"><ul class="log" style="padding-left:16px;margin:4px 0">${W.log.slice(-20).reverse().map(l => `<li>${esc(l.text)}</li>`).join('')}</ul></div></details>
       <button class="btn small" id="b-retire" style="margin-top:6px">引退する</button>
     </div></div>`;
