@@ -100,7 +100,7 @@
       this.vMax = race.vBase * (1 + (spd - 75) * 0.0011 + mud);
       const vB = race.vBase;
       const tn = Math.max(0, D - 600) / (vB * 0.975), ts = 600 / (vB * 1.03);
-      this.drainBase = 1 / (tn + 1.39 * ts) / (1 + (sta - 75) * 0.006);
+      this.drainBase = 0.86 / (tn + 1.39 * ts) / (1 + (sta - 75) * 0.006);
       this.st = 1.06;
       this.s = 0; this.X = 0.9 + idx * 1.05; this.tx = this.X;
       this.v = 0; this.effort = 0.5; this.kakari = 0;
@@ -258,8 +258,8 @@
         r.grade = gr;
         let vT = r.vMax * f;
         // 脚が上がると失速する。急に止まらず、脚の残りに応じてじわじわ遅くなる
-        vT *= r.st < 0.25 ? 0.93 + 0.28 * Math.max(0, r.st) : 1;
-        if (r.st < 0.25 && !r.finished) r.bate = (r.bate || 0) + dt;
+        vT *= r.st < 0.18 ? 0.93 + 0.39 * Math.max(0, r.st) : 1;
+        if (r.st < 0.18 && !r.finished) r.bate = (r.bate || 0) + dt;
         if (r.bate) vT *= 1 - Math.min(0.07, Math.pow(r.bate / 25, 2) * 0.07);
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.97; }
         // 前の馬に詰まったとき：前の馬の速さに合わせて、間合いに応じて控える（一瞬で速さを落とさない）
@@ -282,7 +282,7 @@
           if (M.stayer) drain *= 0.96;
           // トラックバイアス（脚質）：前有利の馬場では前の馬が楽をし、差し有利では逆
           if (this.bias.pace) drain *= 1 + this.bias.pace * 0.1 * ((r.rank - 1) / Math.max(1, R.length - 1) - 0.5) * 2;
-          drain *= 1 + 0.9 * r.kakari;
+          drain *= 1 + 0.6 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
           drain *= 1 + 7 * Math.max(0, r.grade || 0) - 3 * Math.max(0, -(r.grade || 0));
           if (r.effort > 0.7) drain = Math.max(drain, r.drainBase * 1.05); // 追っている間は、失速していても脚を使う
@@ -290,7 +290,7 @@
         }
         // 横の動き：意図 + 疲れによるヨレ + ムチによる修正
         let lat = latWant;
-        if (r.started && !r.finished && r.st < 0.3 && r.effort > 0.7) lat += r.lean * (0.3 - r.st) * 2 * (r.auto ? 0.3 : 1);
+        if (r.started && !r.finished && r.st < 0.22 && r.effort > 0.7) lat += r.lean * (0.22 - r.st) * 2 * (r.auto ? 0.3 : 1);
         if (r.whipPushT > 0) { r.whipPushT -= dt; lat += r.whipPushDir * (r.auto ? 0 : 0.1); }
         r.latV += (lat - r.latV) * Math.min(1, dt * 4);
         let dX = r.latV * dt;
@@ -337,7 +337,7 @@
         if (!this._m200 && rem < 200) { this._m200 = true; this.msg('ラスト200m!', 1.2, '#ffd54f'); }
         const free = !this.message || this.t > this.message.until;
         // かかり・前が壁は、画面の札（手綱の上）で知らせるので、ここでは馬のヨレだけ
-        if (p.st < 0.3 && p.effort > 0.7 && Math.abs(p.lean) > 0.15 && free && rem < 500 && !this._yore) { this._yore = true; this.msg('馬がヨレている', 1.0, '#ffb74d'); }
+        if (p.st < 0.22 && p.effort > 0.7 && Math.abs(p.lean) > 0.15 && free && rem < 500 && !this._yore) { this._yore = true; this.msg('馬がヨレている', 1.0, '#ffb74d'); }
       }
       if (R.every(r => r.finished)) this.done = true;
       if (this.t > 600) { R.forEach(r => { if (!r.finished) { r.finished = true; r.finishTime = this.t + (this.D - r.s) / 10; } }); this.done = true; }

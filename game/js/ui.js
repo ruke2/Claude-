@@ -1195,7 +1195,7 @@
     }
     // ゲージ（毎フレーム）
     const st = clamp(Pl.st / 1.06, 0, 1);
-    const g = $('g-st'); g.style.width = (st * 100) + '%'; g.style.background = st > 0.5 ? '#5ee39a' : st > 0.25 ? '#ffd166' : '#ff5c7a';
+    const g = $('g-st'); g.style.width = (st * 100) + '%'; g.style.background = st > 0.45 ? '#5ee39a' : st > 0.17 ? '#ffd166' : '#ff5c7a';
     const ok = 1 - Pl.kakari; const g2 = $('g-ok'); g2.style.width = (ok * 100) + '%'; g2.style.background = Pl.kakari > 0.6 ? '#ff5c7a' : '#6ec8ff';
     // 画面の真ん中に大きく出すのは節目だけ。それ以外の注意は左上の小さな札に短く出す
     const m = e.message && e.t < e.message.until ? e.message : null;
@@ -1207,7 +1207,7 @@
   function estimateSustain(e, P) {
     // 今から全力（追う＋ムチ）で走ったときに、脚が残る距離の目安
     const vFull = P.vMax * (1.02 + (P.kick - 70) * 0.0006);
-    const rate = P.drainBase * Math.pow(vFull / (e.vBase * 0.975), 6) * 1.04 * (1 + 0.9 * P.kakari);
+    const rate = P.drainBase * Math.pow(vFull / (e.vBase * 0.975), 6) * 1.04 * (1 + 0.6 * P.kakari);
     return Math.max(0, (P.st - 0.12) / rate * vFull);
   }
   const ORDER_RANGE = [[0, 0.12], [0.1, 0.4], [0.35, 0.7], [0.6, 1.01]];
