@@ -100,7 +100,7 @@
       this.vMax = race.vBase * (1 + (spd - 75) * 0.0011 + mud);
       const vB = race.vBase;
       const tn = Math.max(0, D - 600) / (vB * 0.975), ts = 600 / (vB * 1.03);
-      this.drainBase = 0.86 / (tn + 1.39 * ts) / (1 + (sta - 75) * 0.006);
+      this.drainBase = 0.76 / (tn + 1.39 * ts) / (1 + (sta - 75) * 0.006);
       this.st = 1.06;
       this.s = 0; this.X = 0.9 + idx * 1.05; this.tx = this.X;
       this.v = 0; this.effort = 0.5; this.kakari = 0;
@@ -236,14 +236,16 @@
           const early = r.s < this.D - 700;
           const skill = (r.isPlayer && !r.auto ? (this.cfg.playerTech || 50) : r.jSkill) / 100;
           let gain = 0;
-          if (early && r.effort < 0.45 && !r.covered) gain = r.tmp / 100 * 0.16 * (r.effort < 0.2 ? 1.6 : 1);
+          if (early && r.effort < 0.45 && !r.covered) gain = r.tmp / 100 * 0.10 * (r.effort < 0.2 ? 1.3 : 1);
           else if (early && !r.covered && r.effort <= 0.55) gain = r.tmp / 100 * 0.05;
           gain *= (1.2 - skill * 0.7) * (r.isPlayer ? (this.mods.calm || 1) : 1);
           const loss = (r.covered ? 0.12 : 0.04) + (r.effort >= 0.7 ? 0.08 : 0);
           r.kakari = clamp(r.kakari + (gain - loss) * dt, 0, 1);
           if (r.kakari > 0.8) r.effort = Math.max(r.effort, 0.8);
         }
-        let f = 0.93 + 0.09 * Math.min(1, r.effort);
+        // 手綱の加減：真ん中（0.5）が馬なり。抑えるほどはっきり遅くなって脚がたまり、追うほど速くなって脚を使う
+        const ef = Math.min(1, r.effort);
+        let f = ef < 0.5 ? 0.975 - (0.5 - ef) * 0.2 : 0.975 + (ef - 0.5) * 0.12;
         if (r.effort >= 0.95) f += (r.kick - 70) * 0.0006 + (rem < 500 ? 0.006 : 0) + (r.style >= 2 && rem < 600 ? 0.007 : 0);
         const M = r.isPlayer ? this.mods : {};
         if (r.whipT > 0) { r.whipT -= dt; if (r.effort > 0.9 && r.st > 0.05) f += 0.012 * (M.whip || 1); }
@@ -258,9 +260,9 @@
         r.grade = gr;
         let vT = r.vMax * f;
         // 脚が上がると失速する。急に止まらず、脚の残りに応じてじわじわ遅くなる
-        vT *= r.st < 0.18 ? 0.93 + 0.39 * Math.max(0, r.st) : 1;
+        vT *= r.st < 0.18 ? 0.82 + 1.0 * Math.max(0, r.st) : 1;
         if (r.st < 0.18 && !r.finished) r.bate = (r.bate || 0) + dt;
-        if (r.bate) vT *= 1 - Math.min(0.07, Math.pow(r.bate / 25, 2) * 0.07);
+        if (r.bate) vT *= 1 - Math.min(0.08, Math.pow(r.bate / 20, 2) * 0.08);
         if (r.checkedT > 0) { r.checkedT -= dt; vT *= 0.97; }
         // 前の馬に詰まったとき：前の馬の速さに合わせて、間合いに応じて控える（一瞬で速さを落とさない）
         r.blocked = false;
@@ -270,8 +272,8 @@
           const follow = ahead.v + (aheadGap - 2.8) * 0.9 - (M.inside ? 0 : 0.05);
           if (follow < vT) { vT = Math.max(0, follow); brake = aheadGap < 1.4 ? 4.5 : 2.2; }
         }
-        // 発馬直後は強く加速（0→時速50km台まで約3秒）、その後はゆるやかに
-        const acc = (r.s < 260 && r.v < this.vBase * 0.55 ? 7.0 : r.s < 260 && r.v < this.vBase * 0.85 ? 4.6 : r.v < this.vBase * 0.8 ? 1.0 : 0.25 + r.kick * 0.0025) * (M.sprint ? 1.1 : 1);
+        // 発馬直後は強めに加速（0→時速50km台まで約3〜4秒）、その後はゆるやかに
+        const acc = (r.s < 260 && r.v < this.vBase * 0.55 ? 4.6 : r.s < 260 && r.v < this.vBase * 0.85 ? 3.0 : r.v < this.vBase * 0.8 ? 1.0 : 0.25 + r.kick * 0.0025) * (M.sprint ? 1.1 : 1);
         if (r.v < vT) r.v = Math.min(vT, r.v + acc * dt); else r.v = Math.max(vT, r.v - brake * dt);
         // 重なりそうなほど近いときだけ、前の馬より速くならないようにする
         if (ahead && aheadGap < 1.0 && r.v > ahead.v) r.v = Math.max(ahead.v, r.v - 6 * dt);
@@ -282,6 +284,9 @@
           if (M.stayer) drain *= 0.96;
           // トラックバイアス（脚質）：前有利の馬場では前の馬が楽をし、差し有利では逆
           if (this.bias.pace) drain *= 1 + this.bias.pace * 0.1 * ((r.rank - 1) / Math.max(1, R.length - 1) - 0.5) * 2;
+          // 抑えて走ると息が入る（真ん中より下げるほど脚がたまる）
+          if (r.effort < 0.5) drain *= 0.55 + 0.9 * r.effort;
+          else drain *= 1 + (Math.min(1, r.effort) - 0.5) * 0.7; // 追うほど脚を使う
           drain *= 1 + 0.6 * r.kakari;
           if (r.whipT > 0) drain *= 1.08;
           drain *= 1 + 7 * Math.max(0, r.grade || 0) - 3 * Math.max(0, -(r.grade || 0));

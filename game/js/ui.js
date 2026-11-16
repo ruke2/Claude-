@@ -1161,7 +1161,7 @@
       const cond = `<div><span>内ラチから</span><b>${Pl.X.toFixed(1)}m</b></div><div><span>${esc(e.cfg.weather || '晴')}・${esc(e.cfg.ground || '良')}</span><b>${esc(World.biasText(e.bias))}</b></div>`;
       if ($('hud-cond')._h !== cond) { $('hud-cond').innerHTML = cond; $('hud-cond')._h = cond; }
       // 時速とラップ（先頭の1ハロンごと）
-      $('spd-v').textContent = String(Math.round(Pl.v * 3.6));
+      $('spd-v').textContent = (Pl.v * 3.6).toFixed(1);
       const lp = e.laps().slice(-4);
       $('laps').innerHTML = lp.length ? 'ラップ ' + lp.map((x, i) => i === lp.length - 1 ? `<b>${x.toFixed(1)}</b>` : x.toFixed(1)).join(' - ') : 'ラップ —';
       // 隊列
