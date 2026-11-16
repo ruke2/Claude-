@@ -54,6 +54,27 @@
   const horseAge = (h) => W.year - h.born;
   const sexAge = (h) => `${h.sex}${horseAge(h)}`;
   function realTag(h) { return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ' <span class="badge">外国馬</span>' : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
+  // 能力の点数（0〜100）。出走メンバーの中での順位と、平均との差も出す
+  function abilityHtml(race, h) {
+    const field = race.field.map(f => W.horses[f.hid]).filter(Boolean);
+    const abs = field.map(x => ({ x, a: World.ability(x, W.year), r: World.rating(x, W.year) }));
+    const me = abs.find(o => o.x === h) || { a: World.ability(h, W.year), r: World.rating(h, W.year) };
+    const rows = [['総合', 'r', '能力の総合点（スピード5割・スタミナ2.5割・瞬発力2.5割）'], ['スピード', 'spd', '巡航の速さ。高いほど楽に前へ行ける'], ['スタミナ', 'sta', '脚の持ち。長い距離や早めの仕掛けで効く'], ['瞬発力', 'kick', '追い出してからの伸び。直線の切れ']];
+    const val = (o, k) => k === 'r' ? o.r : o.a[k];
+    const color = (v) => v >= 85 ? 'var(--red)' : v >= 75 ? 'var(--gold)' : v >= 62 ? 'var(--green)' : '#7d8a99';
+    let out = '<div class="abil">';
+    rows.forEach(([name, k, help]) => {
+      const v = val(me, k), avg = abs.reduce((a, o) => a + val(o, k), 0) / Math.max(1, abs.length);
+      const rank = 1 + abs.filter(o => val(o, k) > v + 1e-9).length, d = v - avg;
+      out += `<div class="ab-row${k === 'r' ? ' tot' : ''}"><span class="ab-n">${name} ${tip(help)}</span><span class="ab-bar"><i style="width:${clamp(v, 0, 100)}%;background:${color(v)}"></i><em style="left:${clamp(avg, 0, 100)}%"></em></span><b class="tnum">${v.toFixed(1)}</b><span class="ab-d tnum ${d >= 0 ? 'up' : 'dn'}">${d >= 0 ? '+' : ''}${d.toFixed(1)}</span><span class="ab-k small muted">${rank}位</span></div>`;
+    });
+    const mud = World.mudOf(h), tmp = h.tmp;
+    out += `<div class="ab-row"><span class="ab-n">気性 ${tip('数字が大きいほど激しい。激しい馬は前に馬がいないとかかりやすい。馬の後ろに入れて落ち着かせる。')}</span><span class="ab-bar"><i style="width:${tmp}%;background:${tmp > 65 ? 'var(--red)' : tmp > 40 ? 'var(--gold)' : 'var(--blue)'}"></i></span><b class="tnum">${tmp.toFixed(0)}</b><span class="ab-d small">${tmp > 65 ? '激しい' : tmp > 40 ? 'ふつう' : '素直'}</span><span></span></div>`;
+    const mv = 50 + 50 * mud;
+    out += `<div class="ab-row"><span class="ab-n">道悪 ${tip('雨で湿った芝の巧拙。50がふつうで、高いほど得意。芝のレースで馬場が悪いほど差が出る。')}</span><span class="ab-bar"><i style="width:${mv}%;background:${mv > 70 ? 'var(--green)' : mv < 30 ? '#7d8a99' : 'var(--gold)'}"></i></span><b class="tnum">${mv.toFixed(0)}</b><span class="ab-d small">${mud > 0.4 ? '得意' : mud < -0.4 ? '苦手' : 'ふつう'}</span><span></span></div>`;
+    out += '<div class="small muted" style="margin-top:2px">数字の右は出走馬の平均との差と、メンバー中の順位。棒の細い線が平均。</div></div>';
+    return out;
+  }
   function stars(v) { const n = clamp(Math.round((v - 40) / 12), 1, 5); return '★'.repeat(n) + '☆'.repeat(5 - n); }
   function silkChip(o) { const s = o.silks; return `<span class="silk" style="background:linear-gradient(90deg,${s.base} 50%,${s.accent} 50%)"></span>`; }
   function waku(n) { const c = WAKU_COLORS[n - 1]; return `<span class="waku" style="background:${c};color:${[1, 5].includes(n) ? '#000' : '#fff'}">${n}</span>`; }
@@ -683,21 +704,17 @@
       <div class="row" style="margin:6px 0"><span class="big">${f.pop}<small>番人気</small></span><span class="muted">単勝 ${f.odds}倍</span></div>
       <div class="kv"><span>脚質</span><b>${STYLE[h.style]}</b></div>
       <div class="kv"><span>得意距離・馬場</span><b>${h.dist}m前後・${SURF[h.surf]}</b></div>
-      <div class="kv"><span>スピード</span><b style="color:var(--gold)">${stars(ab.spd)}</b></div>
-      <div class="kv"><span>スタミナ</span><b style="color:var(--gold)">${stars(ab.sta)}</b></div>
-      <div class="kv"><span>瞬発力</span><b style="color:var(--gold)">${stars(ab.kick)}</b></div>
-      <div class="kv"><span>気性 ${tip('激しい馬は前に馬がいないとかかりやすい。馬の後ろに入れて落ち着かせる。')}</span><b>${h.tmp > 65 ? '激しい' : h.tmp > 40 ? 'ふつう' : '素直'}</b></div>
-      <div class="kv"><span>道悪 ${tip('雨で湿った芝の得意・不得意。芝のレースで馬場が悪いほど差が出る。')}</span><b>${(m => m > 0.4 ? '得意' : m < -0.4 ? '苦手' : 'ふつう')(World.mudOf(h))}</b></div>
+      ${abilityHtml(race, h)}
       <div class="kv"><span>本作での戦績</span><b>${h.starts}戦${h.wins}勝${h.g1.length ? '・GⅠ' + h.g1.length + '勝' : ''}</b></div>${src}</div>
       <div class="card"><div class="small">${condLine(race)} ${tip(BIAS_TIP)}</div></div>
       <div class="card"><div class="small muted">調教師の指示</div><div style="font-family:var(--serif)">「${ORDERS[h.style]}乗ってほしい」</div></div>
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-ride">ジョッキーカメラで騎乗</button>
       <button class="btn" style="width:100%;margin-top:6px" id="b-auto">オート騎乗（結果のみ）</button>`;
-    let tb = `<table><tr><th>枠</th><th>番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>人気</th><th>単勝</th></tr>`;
+    let tb = `<table><tr><th>枠</th><th>番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>総合</th><th>人気</th><th>単勝</th></tr>`;
     race.field.forEach((x, i) => {
       const hh = W.horses[x.hid];
       const jn = x.hid === hid ? P().name : x.jid >= 0 ? W.jockeys[x.jid].name : x.jname;
-      tb += `<tr class="${x.hid === hid ? 'me' : ''}"><td>${waku(x.waku)}</td><td>${i + 1}</td><td>${esc(hh.name)}${realTag(hh)}</td><td>${sexAge(hh)}</td><td>${esc(jn)}</td><td>${World.kinryo(W, race, hh, x.hid === hid)}</td><td>${x.pop}</td><td>${x.odds}</td></tr>`;
+      tb += `<tr class="${x.hid === hid ? 'me' : ''}"><td>${waku(x.waku)}</td><td>${i + 1}</td><td>${esc(hh.name)}${realTag(hh)}</td><td>${sexAge(hh)}</td><td>${esc(jn)}</td><td>${World.kinryo(W, race, hh, x.hid === hid)}</td><td class="tnum">${World.rating(hh, W.year).toFixed(1)}</td><td>${x.pop}</td><td>${x.odds}</td></tr>`;
     });
     $('pad-right').innerHTML = tb + '</table>';
     $('b-ride').onclick = () => startRace(race, hid);
@@ -718,6 +735,11 @@
   let engine = null, R3 = null, rafId = 0, lastT = 0, acc = 0, paused = false, endAt = 0, curRace = null, curHid = null, camMode = 'jockey', hudT = 0;
   const CAMS = [['jockey', '騎手'], ['chase', '後方'], ['tv', '中継']];
   try { camMode = localStorage.getItem('jl-cam') || 'jockey'; } catch (e) {}
+  // 3D描画に渡すレースの情報（ゼッケンの色と書く内容）
+  function raceInfo3d(race) {
+    const V = VENUES[race.venue] || {};
+    return { label: race.graded || race.overseas ? race.name : '', cloth: { kind: Zekken.kindOf(race), race: race.name, no: race.overseas ? null : race.no, venue: V.name || '', intl: !!race.overseas || /ジャパンC|ジャパンカップ/.test(race.name) } };
+  }
   function startRace(race, hid, opt = {}) {
     curRace = race; curHid = hid; introStage = ''; snaps = []; rp = null; raceSeq++; loopErr = 0;
     if (!opt.noIntro) { tut = null; document.querySelectorAll('.hl').forEach(el => el.classList.remove('hl')); }
@@ -736,12 +758,12 @@
         // 馬のモデルが遅れて届いたら、同じレースの最中に限って描き直す。発走前の演出中ならやり直す
         if (seq !== raceSeq || !R3 || !$('race').classList.contains('on') || rp) return;
         const hadIntro = !!R3.intro;
-        R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' }); R3.setCamMode(camMode);
+        R3.setupRace(engine, raceInfo3d(race)); R3.setCamMode(camMode);
         if (hadIntro) { R3.startIntro(); introStage = ''; }
       });
     }
     if (!R3) { R3 = new Render3D($('r3d')); window.__R3 = R3; R3.onHoof = () => Sound.hoof(engine.surf); window.addEventListener('resize', () => R3 && R3.resize()); }
-    R3.setupRace(engine, { label: race.graded || race.overseas ? race.name : '' });
+    R3.setupRace(engine, raceInfo3d(race));
     R3.setCamMode(camMode); updateCamBtn();
     $('b-snd').textContent = Sound.isMuted() ? '音OFF' : '音ON';
     const L = engine.course.dir === 'L';

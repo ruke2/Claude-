@@ -255,8 +255,8 @@
     // 鞍・ゼッケン・腹帯
     const saddle = mesh(g.saddle, mTack); saddle.position.set(0.24, 1.68, 0); body.add(saddle);
     const clothT = clothTexture(opt.number || 1, opt.raceLabel);
-    const mCloth = new T.MeshStandardMaterial({ map: clothT, roughness: 0.85, side: T.DoubleSide });
-    for (const s of [1, -1]) { const c = mesh(g.cloth, mCloth, false); c.position.set(0.2, 1.4, s * 0.305); c.rotation.set(0, s > 0 ? 0 : Math.PI, 0); c.rotation.x = s * 0.12; body.add(c); }
+    const zc = opt.cloth || null;
+    for (const s of [1, -1]) { const mCloth = new T.MeshStandardMaterial({ map: zc && window.Zekken ? Zekken.texture(zc, s > 0 ? 'R' : 'L') : clothT, roughness: 0.85, side: T.DoubleSide, alphaTest: 0.5 }); const c = mesh(g.cloth, mCloth, false); c.position.set(0.2, 1.4, s * 0.305); c.rotation.set(0, s > 0 ? 0 : Math.PI, 0); c.rotation.x = s * 0.12; body.add(c); }
     const girth = mesh(g.girth, mTack, false); girth.position.set(0.36, 1.3, 0); girth.rotation.x = Math.PI / 2; girth.rotation.z = Math.PI / 2; girth.scale.set(1, 1, 1.02); body.add(girth);
 
     // 騎手

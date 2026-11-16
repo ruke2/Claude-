@@ -192,10 +192,13 @@
     const mTack = new T.MeshStandardMaterial({ color: '#141414', roughness: 0.5 });
     // ゼッケン：鞍の下に敷いた布が、背中から両脇へ体に沿って垂れる形
     const hw = G.bodyHalfWidth || 0.26;
-    const clothT = clothTexture(opt.number || 1, opt.raceLabel);
-    const mCloth = new T.MeshStandardMaterial({ map: clothT, roughness: 0.9, side: T.DoubleSide, alphaTest: 0.5 });
+    // 左右で書いてある内容が違う（片側が競走名、反対側が馬名など）。+z が馬の右側
+    const zc = opt.cloth || { kind: 'normal', num: opt.number || 1 };
+    const clothMats = [1, -1].map(sd => new T.MeshStandardMaterial({ map: window.Zekken ? Zekken.texture(zc, sd > 0 ? 'R' : 'L') : clothTexture(opt.number || 1, opt.raceLabel), roughness: 0.92, side: T.DoubleSide, alphaTest: 0.5 }));
+    const clothT = { dispose() {} };
     for (const sd of [1, -1]) {
-      const c = new T.Mesh(drape(0.72, hw * 1.05 + 0.02, 0.33, -0.08, 2.05, sd, 0.035), mCloth);
+      const mCloth = clothMats[sd > 0 ? 0 : 1];
+      const c = new T.Mesh(drape(0.74, hw * 1.05 + 0.02, 0.33, -0.08, 1.98, sd, 0.035), mCloth);
       c.position.set(-0.04, 0.005, 0); c.receiveShadow = true; c.castShadow = true; saddleG.add(c);
     }
     // 鞍：小さなレース用の鞍（背に沿った革）と、腹帯

@@ -121,6 +121,7 @@
         const h = r.horse;
         const m = Horse3D.create({
           coat: Horse3D.coatFor(h), coatKey: h.coatKey, number: r.num, raceLabel: info.label || '',
+          cloth: Object.assign({ kind: 'normal' }, info.cloth || {}, { num: r.num, horse: h.name }),
           silks: r.cfg.silks || { base: r.color, accent: '#ffffff', pattern: 'plain', cap: r.color },
           socks: h.socks || [], hood: h.hood || null, isPlayer: r.isPlayer,
         });
