@@ -1097,8 +1097,12 @@
       const t = e.open ? (Pl.finished ? Pl.finishTime : e.t - e.gateOpenAt) : 0;
       const pace = e.pace();
       // 左上：順位と残り距離だけ（細かい情報は一時停止の画面へ）
-      const info = `<div class="pos">${Pl.rank || '-'}<small>/${e.runners.length}</small></div><div class="rem">残り<b>${Math.ceil(rem)}</b>m</div>`;
+      const lapsAll = e.laps(), lastLap = lapsAll.length ? lapsAll[lapsAll.length - 1] : null;
+      const info = `<div class="rn">${esc(e.cfg.name)}</div><div class="row1"><div class="pos">${Pl.rank || '-'}<small>/${e.runners.length}</small></div><div class="rem">残り<b>${Math.ceil(rem)}</b>m<br><span>${RaceEngine.sectionName(e.course, e.pAt(Pl.s))}</span></div></div>
+        <div class="sub">${RaceEngine.fmtTime(t)}${pace ? `<i>ペース ${pace}</i>` : ''}${lastLap != null ? `<i>ラップ ${lastLap.toFixed(1)}</i>` : ''}</div>`;
       if ($('hud-info')._h !== info) { $('hud-info').innerHTML = info; $('hud-info')._h = info; }
+      const cond = `<div><span>内ラチから</span><b>${Pl.X.toFixed(1)}m</b></div><div><span>${esc(e.cfg.weather || '晴')}・${esc(e.cfg.ground || '良')}</span><b>${esc(World.biasText(e.bias))}</b></div>`;
+      if ($('hud-cond')._h !== cond) { $('hud-cond').innerHTML = cond; $('hud-cond')._h = cond; }
       // 時速とラップ（先頭の1ハロンごと）
       $('spd-v').textContent = String(Math.round(Pl.v * 3.6));
       const lp = e.laps().slice(-4);
