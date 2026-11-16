@@ -607,7 +607,7 @@
       <div class="card"><div class="sec"><h3>トロフィー棚</h3><span class="sub">GⅠ・海外GⅠの優勝 ${p.trophies.length}個</span></div>
         ${p.trophies.length ? `<div class="ctrack">${p.trophies.map(t => `<div class="trophy"><div class="cup">🏆</div><b>${esc(t.name)}</b><div class="small muted">${t.year}年・${esc(t.horse)}</div></div>`).join('')}</div>` : '<p class="small muted">GⅠを勝つと並ぶ。</p>'}</div>
       <div class="card"><div class="sec"><h3>実績</h3><span class="sub">${got} / ${Progress.ACH.length}</span></div>
-        ${cats.map(c => `<div class="small muted" style="margin:6px 0 3px">${esc(c)}</div><div class="ach">${Progress.ACH.filter(a => a.cat === c).map(a => `<div class="achi ${p.ach[a.id] ? 'on' : 'off'}">${p.ach[a.id] ? '🏅' : '🔒'} <b>${esc(a.name)}</b>${p.ach[a.id] ? `<div class="small muted">${esc(p.ach[a.id])}</div>` : ''}</div>`).join('')}</div>`).join('')}</div></div>`;
+        ${cats.map(c => `<div class="small muted" style="margin:6px 0 3px">${esc(c)}</div><div class="ach">${Progress.ACH.filter(a => a.cat === c).map(a => { const pr = a.prog ? a.prog(W) : null; return `<div class="achi ${p.ach[a.id] ? 'on' : 'off'}${a.title ? ' ttl' : ''}">${p.ach[a.id] ? (a.title || a.cat === '騎手の記録' ? '👑' : '🏅') : '🔒'} <b>${esc(a.name)}</b>${a.desc ? `<div class="small muted">${esc(a.desc)}</div>` : ''}${pr && !p.ach[a.id] ? `<div class="bar" style="margin-top:3px"><i style="width:${pr.best / pr.total * 100}%"></i></div><div class="small muted">${pr.best} / ${pr.total}</div>` : ''}${p.ach[a.id] ? `<div class="small muted">${esc(p.ach[a.id])}</div>` : ''}</div>`; }).join('')}</div>`).join('')}</div></div>`;
   }
   function renderCareer(pane) {
     const p = P();
@@ -1209,8 +1209,17 @@
       if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }, 'チュートリアル'); } return; }
       W.dayIdx++; World.save(W); showDay();
     };
-    if (ev.interview && !quick) showInterview(ev.interview, hid, () => playScenes());
-    else if (!quick) playScenes();
+    const afterTitles = () => { if (ev.interview && !quick) showInterview(ev.interview, hid, () => playScenes()); else if (!quick) playScenes(); };
+    if (!quick && W.titlePending && W.titlePending.length) showTitles(afterTitles); else afterTitles();
+  }
+  // 称号の獲得を祝う画面
+  function showTitles(done) {
+    const t = W.titlePending.shift();
+    if (!t) { World.save(W); return done(); }
+    Sound.cheer && Sound.cheer(1.2);
+    modal(`<div style="text-align:center;padding:6px 0"><div class="small" style="letter-spacing:.3em;color:var(--gold)">TITLE</div><div style="font-size:44px;line-height:1.1">👑</div>
+      <h2 style="font-family:var(--serif);font-size:28px;margin:4px 0">${esc(t.name)}</h2>${t.horse ? `<div style="font-family:var(--serif);font-size:16px">${esc(t.horse)}</div>` : ''}<p class="small muted" style="margin:6px 0 0">${esc(t.desc || '')}</p></div>
+      <div class="choices"><button class="btn primary" id="m-ok">次へ</button></div>`, () => { $('m-ok').onclick = () => { closeModal(); showTitles(done); }; }, '称号獲得');
   }
   function showInterview(iv, hid, after) {
     const def = World.INTERVIEW[iv.kind];

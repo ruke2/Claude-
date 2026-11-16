@@ -55,6 +55,57 @@
   function title(W) { const P = W.player; let t = TITLES[0].name; TITLES.forEach(x => { if (x.need(P)) t = x.name; }); return t; }
 
   // ---- 実績 ----
+  // ---- 称号（同じ馬・同じ年でのGⅠ制覇の組み合わせ） ----
+  // trophies: [{ year, name, horse }]（自分が騎乗して勝ったGⅠ・海外GⅠ）
+  const TR = (W) => W.player.trophies || [];
+  const won = (W, race) => TR(W).filter(t => t.name === race);
+  // 同じ馬で races をすべて勝ったか（sameYear なら同じ年に）。進み具合 [最大数, 全体] も返す
+  function combo(W, races, sameYear) {
+    let best = 0, done = false;
+    const keys = new Set(TR(W).filter(t => races.includes(t.name)).map(t => t.horse + (sameYear ? '|' + t.year : '')));
+    keys.forEach(k => {
+      const [h, y] = k.split('|');
+      const n = races.filter(r => TR(W).some(t => t.name === r && t.horse === h && (!sameYear || String(t.year) === y))).length;
+      best = Math.max(best, n); if (n === races.length) done = true;
+    });
+    return { done, best, total: races.length };
+  }
+  // 騎手として races をすべて勝ったか（馬は問わない）
+  function career(W, races) { const n = races.filter(r => won(W, r).length).length; return { done: n === races.length, best: n, total: races.length }; }
+  const T3 = (name, races, sameYear, desc, cat = '称号') => ({ id: 't_' + name, cat, name, desc: desc || races.join('・') + (sameYear ? '（同じ馬・同じ年）' : '（同じ馬）'), test: (W) => combo(W, races, sameYear).done, prog: (W) => combo(W, races, sameYear), title: true });
+  const C1 = ['皐月賞', '日本ダービー', '菊花賞'], C2 = ['桜花賞', 'オークス', '秋華賞'];
+  const JRA_G1 = (window.GRADED || []).filter(g => g.g === 1).map(g => g.name);
+  const TITLES_ACH = [
+    T3('牡馬三冠', C1, false),
+    T3('牝馬三冠', C2, false),
+    { id: 't_二冠', cat: '称号', name: '二冠', desc: '皐月賞・日本ダービー・菊花賞のうち2つ（同じ馬）', test: (W) => combo(W, C1, false).best >= 2, prog: (W) => ({ best: Math.min(2, combo(W, C1, false).best), total: 2 }), title: true },
+    { id: 't_牝馬二冠', cat: '称号', name: '牝馬二冠', desc: '桜花賞・オークス・秋華賞のうち2つ（同じ馬）', test: (W) => combo(W, C2, false).best >= 2, prog: (W) => ({ best: Math.min(2, combo(W, C2, false).best), total: 2 }), title: true },
+    T3('変則二冠', ['NHKマイルC', '日本ダービー'], false),
+    T3('春古馬三冠', ['大阪杯', '天皇賞（春）', '宝塚記念'], true),
+    T3('秋古馬三冠', ['天皇賞（秋）', 'ジャパンC', '有馬記念'], true),
+    T3('春秋グランプリ制覇', ['宝塚記念', '有馬記念'], true),
+    T3('天皇賞春秋制覇', ['天皇賞（春）', '天皇賞（秋）'], true),
+    T3('春秋スプリント制覇', ['高松宮記念', 'スプリンターズS'], true),
+    T3('春秋マイル制覇', ['安田記念', 'マイルチャンピオンシップ'], true),
+    T3('ダート王', ['フェブラリーS', 'チャンピオンズC'], true),
+    { id: 't_2歳王者', cat: '称号', name: '2歳王者', desc: '朝日杯フューチュリティS・ホープフルS・阪神ジュベナイルFのどれか', test: (W) => ['朝日杯フューチュリティS', 'ホープフルS', '阪神ジュベナイルF'].some(r => won(W, r).length), title: true },
+    // 騎手としての記録（馬は問わない）
+    { id: 't_八大', cat: '騎手の記録', name: '八大競走制覇', desc: '桜花賞・皐月賞・オークス・日本ダービー・菊花賞・天皇賞（春）・天皇賞（秋）・有馬記念をすべて勝つ', test: (W) => career(W, ['桜花賞', '皐月賞', 'オークス', '日本ダービー', '菊花賞', '天皇賞（春）', '天皇賞（秋）', '有馬記念']).done, prog: (W) => career(W, ['桜花賞', '皐月賞', 'オークス', '日本ダービー', '菊花賞', '天皇賞（春）', '天皇賞（秋）', '有馬記念']) },
+    { id: 't_classic5', cat: '騎手の記録', name: '五大クラシック制覇', desc: '桜花賞・皐月賞・オークス・日本ダービー・菊花賞をすべて勝つ', test: (W) => career(W, ['桜花賞', '皐月賞', 'オークス', '日本ダービー', '菊花賞']).done, prog: (W) => career(W, ['桜花賞', '皐月賞', 'オークス', '日本ダービー', '菊花賞']) },
+    { id: 't_allg1', cat: '騎手の記録', name: 'JRA・GⅠ完全制覇', desc: `JRAの平地GⅠ ${JRA_G1.length}競走をすべて勝つ（このゲームにある競走）`, test: (W) => JRA_G1.length > 0 && career(W, JRA_G1).done, prog: (W) => career(W, JRA_G1) },
+    { id: 't_year5', cat: '騎手の記録', name: '年間GⅠ 5勝', desc: '1年のうちにGⅠ・海外GⅠを5勝', test: (W) => yearMax(W) >= 5, prog: (W) => ({ best: Math.min(5, yearMax(W)), total: 5 }) },
+    { id: 't_3peat', cat: '騎手の記録', name: '同一GⅠ 3連覇', desc: '同じGⅠを3年続けて勝つ（馬は問わない）', test: (W) => repeatMax(W) >= 3, prog: (W) => ({ best: Math.min(3, repeatMax(W)), total: 3 }) },
+    { id: 't_abroad3', cat: '騎手の記録', name: '海外GⅠ 3勝', desc: '海外のGⅠを3勝', test: (W) => abroad(W) >= 3, prog: (W) => ({ best: Math.min(3, abroad(W)), total: 3 }) },
+  ];
+  const OVERSEAS_NAMES = (window.OVERSEAS || []).map(o => o.name);
+  function abroad(W) { return TR(W).filter(t => OVERSEAS_NAMES.includes(t.name)).length; }
+  function yearMax(W) { const c = {}; TR(W).forEach(t => c[t.year] = (c[t.year] || 0) + 1); return Math.max(0, ...Object.values(c)); }
+  function repeatMax(W) {
+    let best = 0; const by = {};
+    TR(W).forEach(t => (by[t.name] = by[t.name] || new Set()).add(t.year));
+    Object.values(by).forEach(ys => { ys.forEach(y => { let n = 1; while (ys.has(y + n)) n++; best = Math.max(best, n); }); });
+    return best;
+  }
   const ACH = [
     { id: 'win1', cat: '勝利', name: '初勝利', test: (W) => W.player.wins >= 1 },
     { id: 'win10', cat: '勝利', name: '10勝', test: (W) => W.player.wins >= 10 },
@@ -66,7 +117,6 @@
     { id: 'g1x10', cat: '重賞', name: 'GⅠ 10勝', test: (W) => W.player.g1Wins.length >= 10 },
     { id: 'derby', cat: '重賞', name: 'ダービージョッキー', test: (W) => W.player.g1Wins.some(t => /日本ダービー/.test(t)) },
     { id: 'arima', cat: '重賞', name: '有馬記念を制覇', test: (W) => W.player.g1Wins.some(t => /有馬記念/.test(t)) },
-    { id: 'triple', cat: '重賞', name: '三冠ジョッキー', test: (W) => ['皐月賞', '日本ダービー', '菊花賞'].every(n => W.player.g1Wins.some(t => t.includes(n))) },
     { id: 'world', cat: '海外', name: '海外GⅠ制覇', test: (W) => W.player.g1Wins.some(t => /凱旋門|ドバイ|香港|サウジ|キングジョージ|ブリーダーズ|メルボルン/.test(t)) },
     { id: 'arc', cat: '海外', name: '凱旋門賞制覇', test: (W) => W.player.g1Wins.some(t => /凱旋門/.test(t)) },
     { id: 'upset', cat: '騎乗', name: '10番人気以下で勝利', test: (W, c) => c && c.pos === 1 && c.pop >= 10 },
@@ -80,6 +130,7 @@
     { id: 'rich', cat: '生活', name: '貯金3億円', test: (W) => W.player.money >= 30000 },
     { id: 'house', cat: '生活', name: 'マイホーム', test: (W) => W.player.home >= 2 },
     { id: 'married', cat: '生活', name: '結婚', test: (W) => W.life && W.life.stage === 'married' },
+    ...TITLES_ACH,
   ];
 
   // ---- ファン層 ----
@@ -135,8 +186,8 @@
     // 応援メッセージ
     if (me.pos === 1 && Math.random() < 0.6) cheer(W, race, me);
     // 実績
-    checkAch(W, { pos: me.pos, pop: f.pop, grade: ev.grade });
     if (me.pos === 1 && (race.graded === 1 || race.overseas)) P.trophies.push({ year: W.year, name: race.name, horse: me.horse.name });
+    checkAch(W, { pos: me.pos, pop: f.pop, grade: ev.grade, race: race.name, horse: me.horse.name });
   }
   function gainXp(W, xp) {
     const P = W.player; P.xp += xp;
@@ -154,7 +205,19 @@
   }
   function checkAch(W, ctx) {
     const P = W.player;
-    ACH.forEach(a => { if (!P.ach[a.id] && a.test(W, ctx)) { P.ach[a.id] = W.date; W.toasts = (W.toasts || []).concat([`実績解除：${a.name}`]); } });
+    ACH.forEach(a => {
+      if (P.ach[a.id] || !a.test(W, ctx)) return;
+      P.ach[a.id] = W.date;
+      W.toasts = (W.toasts || []).concat([`${a.cat === '称号' || a.cat === '騎手の記録' ? '称号獲得' : '実績解除'}：${a.name}`]);
+      if (a.cat === '称号' || a.cat === '騎手の記録') {
+        // 大きな称号はニュースと歩みに残し、レース後に祝う画面を出す
+        const horse = a.cat === '称号' && ctx && ctx.horse ? `（${ctx.horse}）` : '';
+        if (window.World && World.news) World.news(W, `${P.name}騎手が${a.name}を達成${horse}`, 'me');
+        (W.log = W.log || []).push({ abs: W.abs, text: `${W.date} ${a.name}を達成${horse}` });
+        (W.titlePending = W.titlePending || []).push({ name: a.name, desc: a.desc, horse: ctx && ctx.horse, race: ctx && ctx.race });
+        addFans(W, 'core', 400); addFans(W, 'young', 150); P.pop = Math.min(100, P.pop + 2);
+      }
+    });
   }
   const CHEERS = {
     core: ['あの仕掛けのタイミング、完璧でした', '人気薄でも諦めない騎乗、ずっと応援してます', '馬券当たりました！ありがとう'],
