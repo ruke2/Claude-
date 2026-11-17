@@ -826,6 +826,12 @@
     const share = [1, 0.4, 0.25, 0.15, 0.1];
     results.forEach(r => {
       const h = r.horse; h.starts++; h.last = W.abs;
+      // お手馬（乗ったことのある馬）は、戦績を1走ずつ残す
+      if (h.id === playerHid || W.player.bond[h.id] != null) {
+        const ff = race.field.find(x => x.hid === h.id) || {};
+        (h.hist = h.hist || []).push({ y: W.year, d: (W.date || '').replace(/^\d+年/, '').replace(/\(.\)$/, ''), n: race.name, g: race.overseas ? 9 : (race.graded || 0), v: VENUES[race.venue] ? VENUES[race.venue].name : '', c: (race.surf === 'D' ? 'ダ' : '芝') + race.dist, gr: race.ground || '良', pos: r.pos, of: results.length, pop: ff.pop || 0, me: h.id === playerHid, j: h.id === playerHid ? W.player.name : (r.cfg.jname || ''), t: r.time, mg: r.margin || '' });
+        if (h.hist.length > 40) h.hist.shift();
+      }
       if (r.pos <= 5) h.earn += Math.round(prize1 * share[r.pos - 1]);
       const f = race.field.find(f => f.hid === h.id);
       if (f.jid >= 0) { const j = W.jockeys[f.jid]; const st = (j.ys = j.ys || {})[W.year] || (j.ys[W.year] = { rides: 0, wins: 0, earn: 0 }); st.rides++; if (r.pos === 1) st.wins++; if (r.pos <= 5) st.earn += Math.round(prize1 * share[r.pos - 1]); }

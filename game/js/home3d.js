@@ -128,6 +128,7 @@
     for (let i = 0; i < 10; i++) { pad.add(cyl(0.06, 0.6, '#ffffff', -3 + i * 0.66, 0, 1.6, 5)); pad.add(cyl(0.06, 0.6, '#ffffff', -3 + i * 0.66, 0, -1.6, 5)); }
     pad.add(box(6, 0.07, 0.07, '#ffffff', 0, 0.5, 1.6)); pad.add(box(6, 0.07, 0.07, '#ffffff', 0, 0.5, -1.6)); pad.add(box(0.07, 0.07, 3.2, '#ffffff', -3, 0.5, 0)); pad.add(box(0.07, 0.07, 3.2, '#ffffff', 3, 0.5, 0));
     pad.position.set(-22, 0, -3.6); sc.add(pad);
+    if (cfg.home) spot('horses', -22, 2.3, -3.6, null);
     [['#b5773f', -23.2, -3.9, 0.6], ['#d9d6d0', -20.9, -3.2, 2.6]].forEach(([c2, x, z, ry], i) => { const h = horse(c2, null, false); h.g.position.set(x, 0, z); h.g.rotation.y = ry; h.g.scale.setScalar(0.8); sc.add(h.g); H.anim.push((t) => { const k = Math.max(0, Math.sin(t * 0.6 + i * 2.4)); h.neck.rotation.z = -0.55 - k * 0.9; h.head.position.y = 1.3 - k * 0.75; h.head.position.x = 0.98 + k * 0.12; }); });
 
     if (home) {

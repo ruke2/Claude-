@@ -236,7 +236,7 @@
   };
 
   // ---------- 週の画面（タブ） ----------
-  const TABS = [['home', 'ホーム'], ['week', '今週'], ['goal', '目標・成績'], ['me', '騎手'], ['skill', 'スキル'], ['fans', '人気'], ['shop', 'ショップ'], ['people', '人脈'], ['life', '私生活'], ['news', 'ニュース'], ['ach', '実績'], ['career', 'キャリア']];
+  const TABS = [['home', 'ホーム'], ['week', '今週'], ['horses', 'お手馬'], ['goal', '目標・成績'], ['me', '騎手'], ['skill', 'スキル'], ['fans', '人気'], ['shop', 'ショップ'], ['people', '人脈'], ['life', '私生活'], ['news', 'ニュース'], ['ach', '実績'], ['career', 'キャリア']];
   function showWeek() {
     if (P().retired) return showRetire();
     Progress.ensure(W);
@@ -248,7 +248,7 @@
     const pane = $('tabpane');
     $('s-week').classList.toggle('home', tab === 'home');
     if (tab !== 'home' && window.Home3D) Home3D.stop();
-    ({ home: renderHome, week: renderWeekTab, goal: renderGoal, me: renderMe, skill: renderSkill, fans: renderFans, shop: renderShop, people: renderPeople, life: renderLife, news: renderNews, ach: renderAch, career: renderCareer }[tab] || renderWeekTab)(pane);
+    ({ home: renderHome, horses: renderHorses, week: renderWeekTab, goal: renderGoal, me: renderMe, skill: renderSkill, fans: renderFans, shop: renderShop, people: renderPeople, life: renderLife, news: renderNews, ach: renderAch, career: renderCareer }[tab] || renderWeekTab)(pane);
     // ストーリー → シーズン目標 → 出来事
     if (W.story && W.story.pending.length) playScenes(() => showWeek());
     else if (W.pendingGoal) showGoalPick();
@@ -318,6 +318,7 @@
       items = isHome ? [
         { tab: 'week', text: '調教スタンド', sub: weekSub, main: true },
         { tab: 'people', text: '厩舎', sub: '調教師・馬主' },
+        { tab: 'horses', text: '放牧地', sub: `お手馬 ${Object.keys(p.bond).filter(k => W.horses[k] && !W.horses[k].retired).length}頭` },
         { tab: 'goal', text: '本部', sub: gp ? `目標 ${gp.cur}/${gp.target}` : '目標・成績' },
         { tab: 'me', text: '騎手会館', sub: `Lv${p.lv} ${Progress.title(W)}` },
         { tab: 'life', text: '自宅', sub: L.stage === 'married' ? '家族' : '私生活' },
@@ -370,6 +371,67 @@
       $('sp-no').onclick = () => closeModal();
       $('sp-do').onclick = () => { const out = Progress.spotDo(W, id, tc); closeModal(); if (out) { out.forEach(t => toast(t)); toast(sp.eff); World.save(W); } showWeek(); };
     }, '限定の場所');
+  }
+  // ---------- お手馬 ----------
+  let hsSel = null, hsFilter = null, hsSort = 'bond';
+  const COAT = { bay: ['鹿毛', '#8a5a36'], darkbay: ['黒鹿毛', '#4a3020'], brown: ['青鹿毛', '#2f241d'], chestnut: ['栗毛', '#b5773f'], grey: ['芦毛', '#cfd2d6'] };
+  const posCls = (n) => n === 1 ? 'p1' : n === 2 ? 'p2' : n === 3 ? 'p3' : '';
+  function renderHorses(pane) {
+    const p = P();
+    const all = Object.keys(p.bond).map(k => W.horses[k]).filter(Boolean);
+    const myRec = (h) => { const m = (h.hist || []).filter(x => x.me); return { n: m.length, w: m.filter(x => x.pos === 1).length }; };
+    const F = { active: (h) => !h.retired, main: (h) => !h.retired && h.mainJ === -1, graded: (h) => (h.hist || []).some(x => x.g && x.pos === 1) || (h.g1 || []).length, retired: (h) => h.retired, all: () => true };
+    const SORT = { bond: (h) => p.bond[h.id] || 0, rate: (h) => World.rating(h, W.year), earn: (h) => h.earn || 0, wins: (h) => h.wins };
+    if (!hsFilter) hsFilter = all.some(F.main) ? 'main' : 'active'; // 最初は主戦の馬を出す
+    const list = all.filter(F[hsFilter]).sort((a, b) => SORT[hsSort](b) - SORT[hsSort](a));
+    if (!list.some(h => h.id === hsSel)) hsSel = list[0] ? list[0].id : null;
+    const chips = [['active', '現役'], ['main', '主戦'], ['graded', '重賞馬'], ['retired', '引退'], ['all', 'すべて']].map(([k, n]) => `<button class="hs-chip ${hsFilter === k ? 'on' : ''}" data-f="${k}">${n}<small>${all.filter(F[k]).length}</small></button>`).join('');
+    const sorts = [['bond', '絆'], ['rate', '能力'], ['earn', '賞金'], ['wins', '勝利']].map(([k, n]) => `<button class="hs-chip s ${hsSort === k ? 'on' : ''}" data-s="${k}">${n}順</button>`).join('');
+    const row = (h) => {
+      const np = !h.retired ? World.nextPlan(W, h) : null, c = COAT[h.coatKey] || COAT.bay;
+      return `<button class="hs-row ${h.id === hsSel ? 'on' : ''}" data-h="${h.id}">
+        <span class="hs-coat" style="background:${c[1]}"></span>
+        <span class="hs-nm"><b>${esc(h.name)}</b><small>${h.retired ? '引退' : sexAge(h) + '・' + World.CLASS_NAMES[Math.min(5, h.cls)]}・${h.starts}戦${h.wins}勝</small></span>
+        <span class="hs-tags">${h.story === 'partner' ? '<i class="g">相棒</i>' : ''}${!h.retired && h.mainJ === -1 ? '<i class="m">主戦</i>' : ''}${(h.g1 || []).length ? `<i class="g">GⅠ${h.g1.length}</i>` : ''}${h.hof ? '<i class="g">顕彰馬</i>' : ''}${np ? `<i>${esc(np.name)}</i>` : ''}</span>
+        <span class="hs-bond"><em style="width:${Math.min(100, p.bond[h.id] || 0)}%"></em></span></button>`;
+    };
+    pane.innerHTML = `<div class="hs-wrap"><div class="hs-left"><div class="hs-bar">${chips}<span class="hs-sep"></span>${sorts}</div>
+      <div class="scroll hs-list">${list.length ? list.map(row).join('') : '<p class="muted small" style="padding:10px">当てはまる馬がいない。レースで騎乗した馬がここに並ぶ。</p>'}</div></div>
+      <div class="scroll hs-detail card">${hsSel != null ? horseDetail(W.horses[hsSel]) : '<p class="muted">馬を選ぶと、くわしい情報が出る。</p>'}</div></div>`;
+    pane.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { hsFilter = b.dataset.f; showWeek(); });
+    pane.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { hsSort = b.dataset.s; showWeek(); });
+    pane.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { hsSel = +b.dataset.h; const st = pane.querySelector('.hs-list').scrollTop; showWeek(); const l = $('tabpane').querySelector('.hs-list'); if (l) l.scrollTop = st; });
+  }
+  function horseDetail(h) {
+    const p = P(), a = World.ability(h, W.year), r = World.rating(h, W.year), c = COAT[h.coatKey] || COAT.bay;
+    const t = W.trainers[h.trainer], o = W.owners[h.owner];
+    const hist = (h.hist || []).slice().reverse(), mine = hist.filter(x => x.me);
+    const np = !h.retired ? World.nextPlan(W, h) : null;
+    const col = (v) => v >= 85 ? 'var(--red)' : v >= 75 ? 'var(--gold)' : v >= 62 ? 'var(--green)' : '#7d8a99';
+    const bar = (n, v) => `<div class="hd-ab"><span>${n}</span><span class="ab-bar"><i style="width:${clamp(v, 0, 100)}%;background:${col(v)}"></i></span><b class="tnum">${Math.round(v)}</b></div>`;
+    const mud = World.mudOf(h), mudT = mud > 0.4 ? '得意' : mud < -0.4 ? '苦手' : '普通';
+    const main = h.retired ? '' : h.mainJ === -1 ? `<span class="badge green">主戦はあなた</span>` : h.mainJ != null && W.jockeys[h.mainJ] ? `<span class="badge">主戦 ${esc(W.jockeys[h.mainJ].name)}</span>` : '';
+    const plan = !h.retired && h.plan && h.plan.y === W.year && h.plan.races.length ? h.plan.races.map(n => { const ran = hist.find(x => x.y === W.year && x.n === n); return `<span class="hd-step ${ran ? 'done' : np && np.name === n ? 'next' : ''}">${esc(n)}${ran ? ` ${ran.pos}着` : ''}</span>`; }).join('<i>→</i>') : '';
+    const gl = (x) => x.g === 9 ? '<span class="badge g1">海外</span>' : x.g ? `<span class="badge g${x.g}">G${'ⅠⅡⅢ'[x.g - 1]}</span>` : '';
+    return `<div class="hd-head"><span class="hs-coat big" style="background:${c[1]}"></span><div class="grow"><h2>${esc(h.name)}${realTag(h)}</h2>
+        <div class="small muted">${h.nameMean ? '馬名の意味：' + esc(h.nameMean) : ''}</div></div>
+        <div class="hd-rate"><small>総合</small><b style="color:${col(r)}">${Math.round(r)}</b></div></div>
+      <div class="row wrap" style="gap:4px;margin:4px 0 6px">${h.retired ? '<span class="badge">引退</span>' : `<span class="badge">${World.CLASS_NAMES[Math.min(5, h.cls)]}</span>`}${main}${h.hof ? `<span class="badge gold">顕彰馬（${h.hof}年）</span>` : ''}${h.promise ? `<span class="badge green">次走 ${esc(h.promise)} に騎乗の約束</span>` : ''}</div>
+      <div class="hd-grid">
+        <div><span>性齢</span><b>${sexAge(h)}</b></div><div><span>毛色</span><b>${c[0]}</b></div>
+        <div><span>脚質</span><b>${STYLE[h.style]}</b></div><div><span>得意な距離</span><b>${h.dist}m前後</b></div>
+        <div><span>馬場</span><b>${h.surf === 'T' ? '芝' : h.surf === 'D' ? 'ダート' : '芝・ダート'}</b></div><div><span>道悪</span><b>${mudT}</b></div>
+        <div><span>成長</span><b>${h.grow === '早' ? '早熟' : h.grow === '晩' ? '晩成' : '普通'}</b></div><div><span>気性</span><b>${h.tmp >= 60 ? 'かかりやすい' : h.tmp <= 30 ? '素直' : '普通'}</b></div>
+        <div><span>調教師</span><b>${t ? esc(t.name.replace('厩舎', '')) + '（' + t.region + '）' : '-'}</b></div><div><span>馬主</span><b>${o ? silkChip(o) + ' ' + esc(o.name) : '-'}</b></div>
+        <div><span>通算</span><b>${h.starts}戦${h.wins}勝</b></div><div><span>獲得賞金</span><b>${money(h.earn || 0)}</b></div>
+        <div><span>あなたの騎乗</span><b>${mine.length}戦${mine.filter(x => x.pos === 1).length}勝</b></div><div><span>絆</span><b>${Math.round(p.bond[h.id] || 0)}</b></div>
+      </div>
+      <div class="hd-sec">能力${tip('今の年齢での力。若い馬は成長で伸び、年を取ると少しずつ落ちる。')}</div>
+      ${bar('スピード', a.spd)}${bar('スタミナ', a.sta)}${bar('瞬発力', a.kick)}
+      ${plan ? `<div class="hd-sec">今年の路線　${esc(h.plan.route || '')}</div><div class="hd-plan">${plan}</div>${np ? `<div class="small muted" style="margin-top:3px">次の目標は${esc(np.name)}（${np.inW === 0 ? '今週' : np.inW + '週後'}）</div>` : ''}` : ''}
+      ${(h.g1 || []).length ? `<div class="hd-sec">GⅠ勝利</div><div class="small">${h.g1.map(x => esc(x)).join('　')}</div>` : ''}
+      <div class="hd-sec">戦績${hist.length ? '' : '（記録はこれから残る）'}</div>
+      ${hist.length ? `<table class="hd-hist"><tr><th>日付</th><th>レース</th><th>条件</th><th>着</th><th>人気</th><th>騎手</th><th>タイム</th></tr>${hist.map(x => `<tr class="${x.me ? 'me' : ''}"><td>${x.y % 100}/${esc(x.d.replace('月', '/').replace('日', ''))}</td><td>${gl(x)} ${esc(x.n)}</td><td>${esc(x.v)} ${esc(x.c)} ${esc(x.gr)}</td><td><b class="${posCls(x.pos)}">${x.pos}</b><small>/${x.of}</small></td><td>${x.pop || '-'}</td><td>${esc(x.j)}</td><td>${RaceEngine.fmtTime(x.t)}</td></tr>`).join('')}</table>` : ''}`;
   }
   function renderWeekTab(pane) {
     const p = P();
@@ -787,10 +849,11 @@
         <div class="kv"><span>重賞</span><b>${p.gWins.length}勝（GⅠ ${p.g1Wins.length}勝）</b></div></div>
       <div class="card" style="padding:0"><table><tr><th>年</th><th>騎乗</th><th>勝利</th><th>重賞</th></tr>${years.map(y => `<tr><td>${y}</td><td>${p.years[y].rides}</td><td>${p.years[y].wins}</td><td>${p.years[y].g.length}</td></tr>`).join('')}</table></div>
     </div><div class="scroll">
-      <details class="acc" open><summary>お手馬</summary><div class="in">${bonds.length ? bonds.map(h => `<div class="kv"><span>${esc(h.name)}${realTag(h)}</span><b class="small">${h.retired ? '引退' : sexAge(h)}・${h.starts}戦${h.wins}勝${!h.retired && h.mainJ === -1 ? '・主戦' : ''}${!h.retired && h.plan && h.plan.y === W.year && h.plan.route ? `・${esc(h.plan.route)}` : ''}${h.promise ? `・次走${esc(h.promise)}` : ''}</b></div>`).join('') : '<p class="muted small">まだいない</p>'}</div></details>
+      <button class="btn" id="b-horses" style="width:100%;margin-top:8px">お手馬の一覧を見る（${Object.keys(p.bond).filter(k => W.horses[k]).length}頭）</button>
       <details class="acc"><summary>歩み</summary><div class="in"><ul class="log" style="padding-left:16px;margin:4px 0">${W.log.slice(-20).reverse().map(l => `<li>${esc(l.text)}</li>`).join('')}</ul></div></details>
       <button class="btn small" id="b-retire" style="margin-top:6px">引退する</button>
     </div></div>`;
+    $('b-horses').onclick = () => { tab = 'horses'; showWeek(); };
     $('b-retire').onclick = () => confirmTap($('b-retire'), 'もう一度押すと引退', () => { p.retired = true; W.log.push({ abs: W.abs, text: `${W.date} ${p.age}歳で現役引退` }); World.save(W); showRetire(); });
   }
 
