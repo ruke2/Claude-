@@ -186,6 +186,7 @@
     const S = W.story;
     if (scene.life && window.Life) return Life.answer(W, scene, value);
     if (scene.route || scene.ride) return World.talkAnswer(W, scene, value);
+    if (scene.dr && window.Drama) return Drama.answer(W, scene, value);
     if (scene.input === 'partner') {
       const name = (value || '').trim() || 'ツギノカゼ';
       const P = W.player;

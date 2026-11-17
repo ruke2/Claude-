@@ -295,7 +295,7 @@
   const TC_KEY = { '美浦': 'miho', '栗東': 'ritto' };
   function renderHome(pane) {
     const p = P();
-    const off = W.injury > 0 || p.suspended > 0;
+    const off = W.injury > 0 || p.suspended > 0 || !!W.away;
     const nReq = (W.requests || []).filter(q => q.okWeight).length;
     const main = W.card.find(r => r.graded) || W.card[W.card.length - 2] || W.card[0];
     const sg = window.Story && W.story ? Story.goal(W) : null;
@@ -304,7 +304,7 @@
     const L = W.life || {};
     const st = Progress.spotState(W), left = Progress.SPOT_MAX - st.used.length;
     const japan = homeView === 'japan', isHome = homeView === p.region;
-    const weekSub = off ? (W.injury > 0 ? `療養中 あと${W.injury}週` : `騎乗停止 あと${p.suspended}週`) : `騎乗依頼 ${nReq}件`;
+    const weekSub = off ? (W.away ? `${W.away.name}で修行中 あと${W.away.left}週` : W.injury > 0 ? `療養中 あと${W.injury}週` : `騎乗停止 あと${p.suspended}週`) : `騎乗依頼 ${nReq}件`;
     let items;
     if (japan) {
       items = [
@@ -461,8 +461,8 @@
     const p = P();
     const sg = window.Story && W.story ? Story.goal(W) : null;
     const gp = Progress.goalProgress(W);
-    if (W.injury > 0 || p.suspended > 0) {
-      const why = W.injury > 0 ? `負傷療養中（あと${W.injury}週）` : `騎乗停止中（あと${p.suspended}週）`;
+    if (W.injury > 0 || p.suspended > 0 || W.away) {
+      const why = W.away ? `${W.away.name}で武者修行中（あと${W.away.left}週）` : W.injury > 0 ? `負傷療養中（あと${W.injury}週）` : `騎乗停止中（あと${p.suspended}週）`;
       pane.innerHTML = `<div class="cols"><div class="card"><div class="sec"><h3>${why}</h3></div><p class="muted">今週は騎乗できない。平日の予定はこなせる。</p><button class="btn primary" id="b-skip">次の週へ</button></div><div class="card">${scheduleHtml()}</div></div>`;
       bindSchedule(pane);
       $('b-skip').onclick = () => { W.card.forEach(r => { if (!r.result) World.simulate(W, r, null); }); advanceWeek(); };
@@ -694,10 +694,10 @@
         if (won) {
           q.contest.won = true; W.requests.forEach(o => { if (o.raceNo === q.raceNo) o.accepted = false; }); q.accepted = true;
           j.pop = Math.max(0, j.pop - 1); World.news(W, `${h.name}の鞍上は${P().name}騎手に。${j.name}騎手との争奪を制す`, 'me');
-          toast(`${h.name}の騎乗を勝ち取った`);
+          toast(`${h.name}の騎乗を勝ち取った`); if (window.Drama) Drama.onContest(W, j.id, true, h);
         } else {
           W.requests.splice(W.requests.indexOf(q), 1); World.giveRide(W, race, h.id, j.id, '（争奪の末）');
-          toast(`${h.name}は${j.name}騎手に決まった`);
+          toast(`${h.name}は${j.name}騎手に決まった`); if (window.Drama) Drama.onContest(W, j.id, false, h);
         }
         World.save(W); done();
       };
@@ -836,7 +836,7 @@
     </div><div class="scroll">
       <div class="card"><div class="sec"><h3>エージェント</h3>${tip('騎乗依頼の数と質が上がる。収入から手数料が引かれる。')}</div>
         ${ag ? `<div class="kv"><span>${esc(ag.name)}</span><b>手数料 ${ag.fee}%</b></div><button class="btn small" id="b-fire" style="margin-top:6px">契約を解除する</button>` : W.agents.map(a => `<div class="kv"><span>${esc(a.name)}（手数料${a.fee}%）</span>${p.rep >= a.needRep ? `<button class="btn small primary" data-hire="${a.id}">契約する</button>` : `<span class="small muted">評価${a.needRep}以上</span>`}</div>`).join('')}</div>
-      <div class="card"><div class="sec"><h3>ライバル</h3></div>${(W.rivals || []).map(r => { const j = W.jockeys[r.jid]; const hh = p.hh[r.jid] || { w: 0, l: 0 }; return `<div class="kv"><span>${esc(j.name)}<span class="small muted">（${r.kind}・${j.age}歳）</span></span><b>今年${j.years[W.year] || 0}勝・対戦${hh.w}勝${hh.l}敗</b></div>`; }).join('')}</div>
+      <div class="card"><div class="sec"><h3>ライバル</h3>${window.Drama ? `<span class="sub">今年 ${Drama.leading(W).my}勝・全国${Drama.leading(W).rank}位</span>` : ''}</div>${(W.rivals || []).map(r => { const j = W.jockeys[r.jid]; const hh = p.hh[r.jid] || { w: 0, l: 0 }; const c = r.cid && window.Drama ? Drama.CAST[r.cid] : null; const on = !window.Drama || Drama.avail(W, j); return `<div class="kv"><span>${esc(j.name)}<span class="small muted">（${r.kind}・${Math.max(18, j.age)}歳${on ? '' : j.from && W.year < j.from ? '・デビュー前' : '・帰国中'}）</span></span><b>今年${j.years[W.year] || 0}勝・対戦${hh.w}勝${hh.l}敗</b></div>${c ? `<div class="small muted" style="margin:-2px 0 2px">${esc(c.persona)}</div><div class="bar gold" style="margin-bottom:6px" title="関係"><i style="width:${Drama.rel(W, r.cid)}%"></i></div>` : ''}`; }).join('')}<p class="small muted" style="margin:4px 0 0">金色のバーは関係の深さ。会話の受け答えで変わる。${p.free ? '現在はフリー。' : '現在は厩舎所属。'}</p></div>
     </div></div>`;
     pane.querySelectorAll('[data-hire]').forEach(b => b.onclick = () => { p.agent = +b.dataset.hire; World.news(W, `${p.name}騎手が${W.agents[p.agent].name}と契約`, 'me'); showWeek(); });
     if ($('b-fire')) $('b-fire').onclick = () => { p.agent = null; showWeek(); };
@@ -970,7 +970,7 @@
       ${abilityHtml(race, h)}
       <div class="kv"><span>本作での戦績</span><b>${h.starts}戦${h.wins}勝${h.g1.length ? '・GⅠ' + h.g1.length + '勝' : ''}</b></div>${src}</div>
       <div class="card"><div class="small">${condLine(race)} ${tip(BIAS_TIP)}</div></div>
-      ${(() => { const od = World.orderFor(W, race, h); return `<div class="card" style="border-left:4px solid var(--blue)"><div class="small muted">調教師の指示 ${tip('道中（レースの中ほど）の位置が指示に合っていれば、調教師の信頼が上がる。外れても、勝てば不問になる。')}</div><div style="font-family:var(--serif)">「${esc(od.text)}」</div>${od.free ? '' : `<div class="small" style="margin-top:3px">めやす：道中 <b>${od.lo}〜${od.hi}番手</b>${od.save ? '・仕掛けは直線まで待つ' : ''}</div>`}${h.tune && h.tune.abs === W.abs ? `<div class="small" style="margin-top:3px">追い切り評価 <b>${h.tune.g}</b>（調子 ${h.tune.v >= 0 ? '+' : ''}${h.tune.v}）</div>` : ''}</div>`; })()}
+      ${(() => { const od = World.orderFor(W, race, h); return `<div class="card" style="border-left:4px solid var(--blue)"><div class="small muted">調教師の指示 ${tip('道中（レースの中ほど）の位置が指示に合っていれば、調教師の信頼が上がる。外れても3着以内なら不問で、それ以外でも下がり幅は小さい。')}</div><div style="font-family:var(--serif)">「${esc(od.text)}」</div>${od.free ? '' : `<div class="small" style="margin-top:3px">めやす：道中 <b>${od.lo}〜${od.hi}番手</b>${od.save ? '・仕掛けは直線まで待つ' : ''}</div>`}${h.tune && h.tune.abs === W.abs ? `<div class="small" style="margin-top:3px">追い切り評価 <b>${h.tune.g}</b>（調子 ${h.tune.v >= 0 ? '+' : ''}${h.tune.v}）</div>` : ''}</div>`; })()}
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-ride">ジョッキーカメラで騎乗</button>
       <button class="btn" style="width:100%;margin-top:6px" id="b-auto">オート騎乗（結果のみ）</button>`;
     let tb = `<table><tr><th>枠</th><th>番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>総合</th><th>人気</th><th>単勝</th></tr>`;
@@ -1828,7 +1828,7 @@
       <ul class="log" style="padding-left:16px">${W.log.map(l => `<li>${esc(l.text)}</li>`).join('')}</ul>
       <button class="btn primary" id="b-end">タイトルへ</button></div>`;
     $('b-end').onclick = () => { World.deleteSave(); W = null; refreshTitle(); show('s-title'); };
-    if (W.story && !W.story.flags.ended) { W.story.flags.ended = true; W.story.pending.push({ lines: Story.epilogue(W) }); playScenes(); }
+    if (W.story && !W.story.flags.ended) { W.story.flags.ended = true; if (window.Drama) Drama.retireScene(W); W.story.pending.push({ lines: Story.epilogue(W) }); playScenes(); }
   }
 
   // ---------- チュートリアル ----------

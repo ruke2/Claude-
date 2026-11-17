@@ -341,6 +341,7 @@
     W.card = buildCard(W, venue, gHere);
     W.requests = buildRequests(W);
     W.offers = buildOverseasOffers(W, sun);
+    if (W.away) { W.requests = []; W.offers = []; } // 海外武者修行中は日本で乗れない
   }
 
   function eligible(W, h, cond) {
@@ -525,10 +526,11 @@
     const avg = pts.reduce((a, t) => a + t.r, 0) / pts.length, eff = pts.reduce((a, t) => a + t.e, 0) / pts.length;
     const inPos = avg >= o.lo - 0.6 && avg <= o.hi + 0.6, saved = !o.save || eff <= 0.72;
     const kept = inPos && saved;
-    let d = kept ? 1.5 + (pos <= 3 ? 0.5 : 0) : pos === 1 ? 0 : pos <= 3 ? -0.5 : -2;
+    // 守れなかったときの下がり幅は小さく（上位に来れば不問）。守れたときのほうを大きく
+    let d = kept ? 1.5 + (pos <= 3 ? 0.5 : 0) : pos <= 3 ? 0 : pos <= 5 ? -0.3 : -0.6;
     P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + d, 0, 100);
     const why = kept ? '指示どおりの競馬' : !inPos ? (avg < o.lo ? '指示より前で運んだ' : '指示より後ろになった') : '道中で脚を使いすぎた';
-    return { order: o, kept, avg: Math.round(avg * 10) / 10, dTrust: d, text: why + (!kept && pos === 1 ? '（勝ったので不問）' : '') };
+    return { order: o, kept, avg: Math.round(avg * 10) / 10, dTrust: d, text: why + (!kept && pos <= 3 ? '（上位に来たので不問）' : '') };
   }
 
   function giveRide(W, race, hid, jid, why) {
@@ -649,12 +651,12 @@
     W.card.forEach(r => estimateOdds(W, r));
     const ag = P.agent != null ? W.agents[P.agent] : null;
     const net = ag ? ag.net : 0;
-    const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5) + (window.Progress && Progress.has && Progress.has(W, 'scout') ? 1.5 : 0)), 1, 13);
+    const n = clamp(Math.round(1.5 + P.rep * 0.12 + net * 1.2 + P.pop * 0.03 + rnd(-1, 1.5) + (window.Progress && Progress.has && Progress.has(W, 'scout') ? 1.5 : 0) + (P.free ? 1.5 : 0)), 1, 14); // フリーの騎手は依頼が増える
     const target = P.rep * 0.65 + 40 + net * 4 + P.pop * 0.08;
     const reqs = [];
     // 自分が主戦の馬は、毎回まず自分に依頼が来る。騎乗を約束した馬は最初から受けた状態
     const pinned = [], pinRaces = new Set();
-    if (!W.injury && !(P.suspended > 0)) W.card.forEach(race => race.field.forEach(f => {
+    if (!W.injury && !W.away && !(P.suspended > 0)) W.card.forEach(race => race.field.forEach(f => {
       const h = W.horses[f.hid]; if (!h || h.mainJ !== -1) return;
       const kin = kinryo(W, race, h, true), ok = canMakeWeight(P, kin), prom = h.promise === race.name;
       pinned.push({ raceNo: race.no, hid: h.id, trainer: h.trainer, owner: h.owner, pop: f.pop, odds: f.odds, kin, okWeight: ok, accepted: prom && ok && !pinned.some(q => q.raceNo === race.no && q.accepted), bondHorse: true, main: true, promised: prom });
@@ -690,7 +692,8 @@
       if (other && (P.bond[c.h.id] || 0) >= 6 && Math.random() < 0.55) { const q2 = mk(other); q.clash = q2.clash = race.no; reqs.push(q2); }
       // 人気馬の依頼は、他の騎手と取り合いになることがある
       if (c.f.pop <= 3 && (P.bond[c.h.id] || 0) < 12 && P.contract !== c.h.owner && Math.random() < 0.2) {
-        const rival = W.jockeys.slice().sort((a, b) => (b.skill + b.pop * 0.3) - (a.skill + a.pop * 0.3))[ri(0, 5)];
+        let rival = W.jockeys.slice().sort((a, b) => (b.skill + b.pop * 0.3) - (a.skill + a.pop * 0.3))[ri(0, 5)];
+        if (window.Drama) rival = Drama.contestRival(W, rival);
         q.contest = { jid: rival.id, chance: contestChance(W, c.h, rival) };
       }
       reqs.push(q);
@@ -748,7 +751,8 @@
       race.field.forEach((f, i) => { f.waku = wakuOf(i + 1, n); });
       if (race.field[0].pop == null) estimateOdds(W, race);
       const forced = race.forcedJ || {}, fset = new Set(Object.values(forced).map(Number));
-      const js = W.jockeys.filter(j => !fset.has(j.id)).sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
+      const on = (j) => !window.Drama || Drama.avail(W, j); // デビュー前の後輩・来日していない外国人騎手は乗らない
+      const js = W.jockeys.filter(j => !fset.has(j.id) && on(j)).sort((a, b) => (b.skill + rnd(-10, 10)) - (a.skill + rnd(-10, 10)));
       const order = race.field.slice().sort((a, b) => a.pop - b.pop);
       // 主戦騎手：馬ごとに決まった騎手が続けて乗る。主戦が同じレースで別の馬に乗るときや、たまの乗り替わりのときだけ別の騎手
       const taken = new Set(Object.values(forced).map(Number));
@@ -756,8 +760,8 @@
         if (f.hid === playerHid || forced[f.hid] != null) return;
         const h = W.horses[f.hid]; if (!h || h.foreign) return;
         const big = (h.cls || 0) >= 5 || (h.g1 && h.g1.length);
-        if (h.mainJ === -1 && !W.injury && !(W.player.suspended > 0)) { h.skip = (h.skip || 0) + 1; if (h.skip >= 2) { h.mainJ = null; h.promise = null; news(W, `${h.name}の主戦が乗り替わり（${W.player.name}騎手が2度続けて乗らなかったため）`, 'bad'); } }
-        if (h.mainJ != null && h.mainJ >= 0 && W.jockeys[h.mainJ] && !taken.has(h.mainJ) && Math.random() > (big ? 0.03 : 0.12)) { f.jid = h.mainJ; taken.add(h.mainJ); }
+        if (h.mainJ === -1 && !W.injury && !W.away && !(W.player.suspended > 0)) { h.skip = (h.skip || 0) + 1; if (h.skip >= 2) { h.mainJ = null; h.promise = null; news(W, `${h.name}の主戦が乗り替わり（${W.player.name}騎手が2度続けて乗らなかったため）`, 'bad'); } }
+        if (h.mainJ != null && h.mainJ >= 0 && W.jockeys[h.mainJ] && on(W.jockeys[h.mainJ]) && !taken.has(h.mainJ) && Math.random() > (big ? 0.03 : 0.12)) { f.jid = h.mainJ; taken.add(h.mainJ); }
       });
       const pool = js.filter(j => !taken.has(j.id));
       let ji = 0;
@@ -972,8 +976,9 @@
         if (inquiry.demoteTo) news(W, `${race.name}で${h.name}が${inquiry.demoteTo}着に降着`, 'bad');
       }
       // 落馬（低確率）
-      if (Math.random() < 0.002 * gfx.fall) { W.injury = Math.max(1, Math.round(ri(2, 6) * gfx.heal)); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad'); }
+      if (Math.random() < 0.002 * gfx.fall) { W.injury = Math.max(1, Math.round(ri(2, 6) * gfx.heal)); W.log.push({ abs: W.abs, text: `${W.date} 落馬負傷（${W.injury}週休養）` }); news(W, `${P.name}騎手が落馬負傷、${W.injury}週の休養`, 'bad');  if (window.Drama) Drama.onInjury(W); }
       if (window.Story) Story.onResult(W, race, me, f);
+      if (window.Drama) Drama.afterRace(W, race, results, me);
       if (window.Progress) Progress.onResult(W, race, me, f, { grade, mode });
       ev = { grade, score: Math.round(score), dRep: Math.round(dRep * 10) / 10, dPop: Math.round(dPop * 10) / 10, income, pos: me.pos, pop: f.pop, interview, inquiry, demoted: !!me.demoted };
     }
@@ -1085,6 +1090,7 @@
     for (const k in P.otrust) if (P.otrust[k] > 15 && +k !== P.contract) P.otrust[k] -= 0.06;
     P.pop = Math.max(0, P.pop - 0.04); updateFans(P);
     if (W.injury > 0) W.injury--;
+    if (W.away) W.away.left--; // 海外武者修行の残り
     if (P.suspended > 0) P.suspended--;
     W.abs++; W.wk++;
     const weeks = weekSundays(W.year);
@@ -1106,6 +1112,7 @@
     W.events = genEvents(W);
     if (window.Progress) Progress.onWeekEnd(W);
     if (window.Story) Story.onWeekStart(W);
+    if (window.Drama) Drama.onWeek(W);
     return yearEnd;
   }
   function yearSummary(W) {

@@ -396,6 +396,7 @@
   function spotCheck(W, id, tc) {
     const st = spotState(W), P = W.player;
     if (W.injury > 0) return '療養中は行えない';
+    if (W.away) return '海外で修行中';
     if (st.used.includes(id + '@' + tc)) return '今週はもう行った';
     if (st.used.length >= SPOT_MAX) return `今週はここまで（1週に${SPOT_MAX}つまで）`;
     const away = tc !== P.region;
