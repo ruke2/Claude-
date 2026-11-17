@@ -576,6 +576,29 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 .po td.p{text-align:right;color:#555;width:70px;font-size:12px}
 .po tr.hit td{background:#fff7d6}
 .po .note{font-size:11px;color:#666;padding:6px 10px;background:#f6f7f6}
+/* ---- ホーム：町の立体マップ ---- */
+#s-week.home #tabs{display:none}
+#s-week.home #tabpane{padding:0;position:relative}
+#home3d{position:absolute;inset:0;overflow:hidden;touch-action:none}
+.home3d-cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.home3d-labels{position:absolute;inset:0;pointer-events:none}
+.home3d-pin{position:absolute;left:0;top:0;pointer-events:auto;border:0;cursor:pointer;background:#fff;color:var(--ink);border-radius:12px;padding:3px 9px 4px;box-shadow:0 3px 0 #cfd6f0,0 6px 14px rgba(40,50,110,.22);font-family:inherit;line-height:1.15;text-align:center;white-space:nowrap;transition:filter .12s}
+.home3d-pin::after{content:"";position:absolute;left:50%;bottom:-6px;width:12px;height:12px;background:#fff;transform:translateX(-50%) rotate(45deg);box-shadow:3px 3px 0 #cfd6f0;border-radius:2px}
+.home3d-pin b{display:block;font-size:12px;font-weight:900;position:relative;z-index:1}
+.home3d-pin small{display:block;font-size:9.5px;color:var(--muted);font-weight:700;position:relative;z-index:1}
+.home3d-pin:active{filter:brightness(.93)}
+.home3d-pin i{position:absolute;right:-7px;top:-7px;min-width:18px;height:18px;border-radius:9px;background:#ff3d6e;color:#fff;font-style:normal;font-size:10.5px;font-weight:900;line-height:18px;padding:0 4px;box-shadow:0 0 0 2px #fff;z-index:2}
+.home3d-pin.main{background:linear-gradient(180deg,#ff8a5b,#ff4d7e);color:#fff;padding:5px 14px 6px;box-shadow:0 4px 0 #c93560,0 8px 18px rgba(255,77,126,.4);animation:pinBob 1.6s ease-in-out infinite}
+.home3d-pin.main::after{background:#ff4d7e;box-shadow:3px 3px 0 #c93560}
+.home3d-pin.main b{font-size:14px}.home3d-pin.main small{color:#fff;opacity:.92;font-size:10.5px}
+@keyframes pinBob{50%{margin-top:-4px}}
+.home-info{position:absolute;left:calc(12px + var(--sl,0px));bottom:8px;background:rgba(255,255,255,.9);backdrop-filter:blur(6px);border-radius:14px;padding:7px 12px 8px;box-shadow:0 4px 14px rgba(40,50,110,.16);max-width:min(300px,42%);pointer-events:none;z-index:300}
+.home-info .hi-venue{font-size:11px;color:var(--muted);font-weight:800}
+.home-info .hi-main{font-size:14px;margin-top:1px}
+.home-info .hi-goal{font-size:11.5px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule);line-height:1.35}
+.home-info .hi-goal span{display:block;font-size:10px;color:var(--muted);font-weight:800}
+.home-hint{position:absolute;right:calc(12px + var(--sr,0px));bottom:6px;font-size:10.5px;color:#fff;background:rgba(39,43,69,.45);border-radius:999px;padding:3px 10px;pointer-events:none;z-index:300}
+.home-fallback{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
 </style>
 </head>
 <body>
@@ -738,6 +761,7 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 <script src="js/audio-data.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/payout.js"></script>
+<script src="js/home3d.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

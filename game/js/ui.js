@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  let W = null, quick = false, selColor = SILKS[0], tab = 'week', newsPage = 0;
+  let W = null, quick = false, selColor = SILKS[0], tab = 'home', newsPage = 0;
   const STYLE = ['逃げ', '先行', '差し', '追込'];
   const SURF = { T: '芝', D: 'ダ', B: '芝・ダ' };
   const ORDERS = ['ハナを切って自分のペースで', '好位で流れに乗って', '中団で脚をためて', '後方で脚をためて直線勝負'];
@@ -41,7 +41,7 @@
     return rotDir === 'ccw' ? -(e.clientY - y0) : (e.clientY - y0);
   }
 
-  function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); closeDrawer(); flushToasts(); if (window.Sound) Sound.bgm(id !== 'race'); }
+  function show(id) { if (id !== 's-week' && window.Home3D) Home3D.stop(); document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); closeDrawer(); flushToasts(); if (window.Sound) Sound.bgm(id !== 'race'); }
   // 最初に画面に触れたときに音声を準備する（ブラウザは操作の前に音を出せない）
   document.addEventListener('pointerdown', () => { if (window.Sound) { Sound.init(); if (!$('race').classList.contains('on')) Sound.bgm(true); } }, { once: true, capture: true });
   function gradeTag(race) {
@@ -171,7 +171,7 @@
   CloudSave.init().then(() => refreshTitle());
   // 保存するたびにクラウドへも送る（claude.ai 上でだけ動く）
   World.setOnSaved((str) => { const i = World.saveInfo(str); CloudSave.queue(str, i); });
-  function startLoaded(w) { W = w; Progress.ensure(W); quick = false; tab = 'week'; showWeek(); }
+  function startLoaded(w) { W = w; Progress.ensure(W); quick = false; tab = 'home'; showWeek(); }
   $('b-cloud').onclick = async () => {
     const b = $('b-cloud'); b.disabled = true; b.textContent = '読み込み中…';
     try {
@@ -229,14 +229,14 @@
     W.log.push({ abs: 0, text: `${W.date} ${region}所属の見習騎手としてデビュー` });
     World.news(W, `${name}騎手が${region}所属でデビュー`, 'me');
     World.save(W);
-    tab = 'week';
+    tab = 'home';
     let seen = false; try { seen = localStorage.getItem('jl-tut') === '1'; } catch (e) {}
     if (seen) showWeek();
     else { show('s-week'); gnav('week-nav'); modal(`<h2>操作に慣れておこう</h2><p>レースの操作と画面の見方を、練習レースで1つずつ説明するチュートリアルがある（3分ほど）。</p><div class="choices"><button class="btn primary" id="m-tut">チュートリアルをやる（キャリアは保存済み。終わったら「つづきから」）</button><button class="btn" id="m-no">あとで</button></div>`, () => { $('m-tut').onclick = () => { closeModal(); startTutorial(); }; $('m-no').onclick = () => { closeModal(); showWeek(); }; }, 'ようこそ'); }
   };
 
   // ---------- 週の画面（タブ） ----------
-  const TABS = [['week', '今週'], ['goal', '目標・成績'], ['me', '騎手'], ['skill', 'スキル'], ['fans', '人気'], ['shop', 'ショップ'], ['people', '人脈'], ['life', '私生活'], ['news', 'ニュース'], ['ach', '実績'], ['career', 'キャリア']];
+  const TABS = [['home', 'ホーム'], ['week', '今週'], ['goal', '目標・成績'], ['me', '騎手'], ['skill', 'スキル'], ['fans', '人気'], ['shop', 'ショップ'], ['people', '人脈'], ['life', '私生活'], ['news', 'ニュース'], ['ach', '実績'], ['career', 'キャリア']];
   function showWeek() {
     if (P().retired) return showRetire();
     Progress.ensure(W);
@@ -246,7 +246,9 @@
     $('tabs').innerHTML = TABS.map(([k, n]) => `<button class="tab ${tab === k ? 'on' : ''}" role="tab" data-t="${k}">${n}${(k === 'news' && W.news.some(x => x.abs >= W.abs - 1)) || (k === 'skill' && sp > 0) ? '<span class="dot"></span>' : ''}</button>`).join('');
     $('tabs').querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.t; showWeek(); });
     const pane = $('tabpane');
-    ({ week: renderWeekTab, goal: renderGoal, me: renderMe, skill: renderSkill, fans: renderFans, shop: renderShop, people: renderPeople, life: renderLife, news: renderNews, ach: renderAch, career: renderCareer }[tab] || renderWeekTab)(pane);
+    $('s-week').classList.toggle('home', tab === 'home');
+    if (tab !== 'home' && window.Home3D) Home3D.stop();
+    ({ home: renderHome, week: renderWeekTab, goal: renderGoal, me: renderMe, skill: renderSkill, fans: renderFans, shop: renderShop, people: renderPeople, life: renderLife, news: renderNews, ach: renderAch, career: renderCareer }[tab] || renderWeekTab)(pane);
     // ストーリー → シーズン目標 → 出来事
     if (W.story && W.story.pending.length) playScenes(() => showWeek());
     else if (W.pendingGoal) showGoalPick();
@@ -288,6 +290,45 @@
     }, 'シーズン目標');
   }
 
+  // ---------- ホーム：トレセンの町の立体マップ ----------
+  function renderHome(pane) {
+    const p = P();
+    const off = W.injury > 0 || p.suspended > 0;
+    const nReq = (W.requests || []).filter(q => q.okWeight).length;
+    const main = W.card.find(r => r.graded) || W.card[W.card.length - 2] || W.card[0];
+    const sg = window.Story && W.story ? Story.goal(W) : null;
+    const gp = Progress.goalProgress(W);
+    const newsNew = W.news.filter(x => x.abs >= W.abs - 1).length;
+    const L = W.life || {};
+    pane.innerHTML = `<div id="home3d"></div>
+      <div class="home-info">
+        <div class="hi-venue">${esc(VENUES[W.venue].name)}競馬場${W.isOverseas ? '（遠征）' : ''}</div>
+        <div class="hi-main">${main ? `${gradeTag(main)} <b>${esc(main.name)}</b> <span class="small">${main.surf === 'D' ? 'ダート' : '芝'}${main.dist}m</span>` : ''}</div>
+        ${sg ? `<div class="hi-goal"><span>${esc(sg.title)}</span>${esc(sg.goal)}</div>` : ''}
+      </div>
+      <div class="home-hint">建物の札を押すと移動　左右になぞると回せる</div>`;
+    const items = [
+      { tab: 'week', text: off ? '競馬場' : '競馬場へ', sub: off ? (W.injury > 0 ? `療養中 あと${W.injury}週` : `騎乗停止 あと${p.suspended}週`) : `騎乗依頼 ${nReq}件`, main: true },
+      { tab: 'people', text: '厩舎', sub: '調教師・馬主' },
+      { tab: 'goal', text: '本部', sub: gp ? `目標 ${gp.cur}/${gp.target}` : '目標・成績' },
+      { tab: 'me', text: '騎手会館', sub: `Lv${p.lv} ${Progress.title(W)}` },
+      { tab: 'life', text: '自宅', sub: L.stage === 'married' ? '家族' : '私生活' },
+      { tab: 'skill', text: 'ジム', sub: p.sp > 0 ? `スキル ${p.sp}pt` : 'スキル・特訓', badge: p.sp > 0 ? p.sp : null },
+      { tab: 'shop', text: 'ショップ', sub: money(p.money) },
+      { tab: 'news', text: '新聞', sub: 'ニュース', badge: newsNew || null },
+      { tab: 'ach', text: '記念館', sub: '実績・称号' },
+      { tab: 'fans', text: 'ファン広場', sub: `${p.fans.toLocaleString()}人` },
+      { tab: 'career', text: '資料館', sub: 'キャリア' },
+    ];
+    const el = $('home3d');
+    try { Home3D.mount(el, { month: W.month, items, onGo: (t) => { tab = t; showWeek(); } }); }
+    catch (err) { console.error(err); el.innerHTML = `<div class="home-fallback">${items.map(i => `<button class="btn" data-go="${i.tab}">${esc(i.text)}<br><span class="small muted">${esc(i.sub || '')}</span></button>`).join('')}</div>`; el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { tab = b.dataset.go; showWeek(); }); }
+    // 左右になぞって回す
+    let px = null, py = null;
+    el.onpointerdown = (e) => { px = e.clientX; py = e.clientY; };
+    el.onpointermove = (e) => { if (px == null) return; Home3D.drag(uiDX(e, px, py)); px = e.clientX; py = e.clientY; };
+    el.onpointerup = el.onpointercancel = el.onpointerleave = () => { px = null; };
+  }
   function renderWeekTab(pane) {
     const p = P();
     const sg = window.Story && W.story ? Story.goal(W) : null;
@@ -1535,7 +1576,7 @@
   function advanceWeek() {
     const ye = World.endWeek(W);
     World.save(W);
-    tab = 'week';
+    tab = 'home';
     if (ye) showYearEnd(ye); else showWeek();
   }
   function showYearEnd(ye) {
