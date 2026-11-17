@@ -372,6 +372,30 @@
       $('sp-do').onclick = () => { const out = Progress.spotDo(W, id, tc); closeModal(); if (out) { out.forEach(t => toast(t)); toast(sp.eff); World.save(W); } showWeek(); };
     }, '限定の場所');
   }
+  // ---------- 追い切り ----------
+  function uiDY(e, x0, y0) {
+    if (!document.documentElement.classList.contains('rot')) return e.clientY - y0;
+    return rotDir === 'ccw' ? (e.clientX - x0) : -(e.clientX - x0);
+  }
+  function startWorkout(hid, race) {
+    const h = W.horses[hid], t = W.trainers[h.trainer], kind = Progress.workoutKind(W, race, h);
+    const pl = Workout.plan(kind, World.rating(h, W.year)), tn = t ? t.name.replace('厩舎', '') + '調教師' : '調教師';
+    modal(`<div class="speaker">${esc(tn)}</div><p style="margin:2px 0 8px;line-height:1.7">${esc(h.name)}の追い切りだ。${esc(pl.say)}</p>
+      <div class="kv"><span>指示</span><b>${pl.name}</b></div><div class="kv"><span>4ハロンの時計</span><b>${pl.t4.toFixed(1)}秒</b></div><div class="kv"><span>終い1ハロン</span><b>${pl.l1.toFixed(1)}秒</b></div>
+      <p class="small muted" style="margin:6px 0 0">右側を上下になぞって手綱を加減する。速すぎても遅すぎても評価が下がる。${h.tmp >= 60 ? 'この馬は気性が激しく、抑えすぎると行きたがる。' : ''}</p>
+      <div class="choices"><button class="btn primary" id="wo-go">乗る</button><button class="btn" id="wo-cancel">やめておく</button></div>`, () => {
+      $('wo-cancel').onclick = () => closeModal();
+      $('wo-go').onclick = () => {
+        closeModal(); if (window.Home3D) Home3D.stop();
+        const o = W.owners[h.owner];
+        Workout.open($('app'), { name: h.name, coat: (COAT[h.coatKey] || COAT.bay)[1], silk: o && o.silks ? o.silks.base : '#ff5c7a', rating: World.rating(h, W.year), tmp: h.tmp, kind, dy: uiDY, onDone: (r) => {
+          if (r) { const fx = Progress.workoutDone(W, hid, r); toast(`追い切り 評価${r.g}：調子${fx.tune >= 0 ? '+' : ''}${fx.tune}・絆+${fx.bond}${fx.trust ? `・信頼${fx.trust > 0 ? '+' : ''}${fx.trust}` : ''}`); World.save(W); }
+          showWeek();
+        } });
+      };
+    }, '追い切り');
+  }
+
   // ---------- お手馬 ----------
   let hsSel = null, hsFilter = null, hsSort = 'bond';
   const COAT = { bay: ['鹿毛', '#8a5a36'], darkbay: ['黒鹿毛', '#4a3020'], brown: ['青鹿毛', '#2f241d'], chestnut: ['栗毛', '#b5773f'], grey: ['芦毛', '#cfd2d6'] };
@@ -477,13 +501,23 @@
       if (W.pendingOverseas) L += `<div class="card" style="margin-top:8px"><span class="small muted">予定：</span>${esc(W.pendingOverseas.date)} ${esc(W.pendingOverseas.race.name)} へ遠征</div>`;
     }
     const n = W.isOverseas ? 1 : W.requests.filter(q => q.accepted).length;
+    // 追い切り：受けた依頼の馬に、週1回だけ自分で乗れる
+    const woList = W.isOverseas ? [{ raceNo: 1, hid: W.booked[1] }] : W.requests.filter(q => q.accepted);
+    woList.sort((a, b) => ((W.card[b.raceNo - 1].graded ? 10 : 0) + (p.bond[b.hid] || 0) / 10) - ((W.card[a.raceNo - 1].graded ? 10 : 0) + (p.bond[a.hid] || 0) / 10));
+    const woDone = W.workoutAbs === W.abs;
+    const woCard = `<div class="card" style="margin-bottom:8px"><div class="sec"><h3>追い切り</h3><span class="sub">${woDone ? '今週は済み' : '週1回・自分で乗る'}</span>${tip('調教師の指示した時計で4ハロンを乗る。指示どおりに乗れると、その週のレースで馬の調子が上がり、絆と信頼も上がる。')}</div>
+      ${woDone ? woList.filter(q => W.horses[q.hid].tune && W.horses[q.hid].tune.abs === W.abs).map(q => { const h = W.horses[q.hid]; return `<div class="kv"><span>${esc(h.name)}</span><b>評価 ${h.tune.g}（調子 ${h.tune.v >= 0 ? '+' : ''}${h.tune.v}）</b></div>`; }).join('') || '<p class="small muted" style="margin:0">今週の追い切りは終わった。</p>'
+        : woList.length ? woList.slice(0, 3).map(q => { const h = W.horses[q.hid], race = W.card[q.raceNo - 1], k = Progress.workoutKind(W, race, h); return `<div class="kv"><span><b>${esc(h.name)}</b> <span class="small muted">${race.no}R ${esc(race.name)}・指示「${Workout.ORDERS[k].name}」</span></span><button class="btn small primary" data-wo="${q.hid}:${q.raceNo}">乗る</button></div>`; }).join('')
+          : '<p class="small muted" style="margin:0">騎乗依頼を受けると、その馬の追い切りに乗れる。</p>'}</div>`;
     const goalCard = gp ? `<div class="card" style="margin-bottom:8px"><div class="sec"><h3>シーズン目標</h3><span class="sub">${esc(gp.name)}</span></div><div class="row"><span class="big">${gp.cur}<small> / ${gp.target}</small></span><div class="grow"><div class="bar gold"><i style="width:${gp.rate * 100}%"></i></div></div></div></div>` : '';
     pane.innerHTML = `<div class="cols"><div class="scroll">${L}</div><div class="scroll">
       ${goalCard}
+      ${woCard}
       <div class="card" style="margin-bottom:8px">${scheduleHtml()}</div>
       <button class="btn primary" style="width:100%;padding:11px" id="b-day">開催日へ進む（${n}鞍に騎乗）</button>
     </div></div>`;
     const rerender = () => { const sc = $('reqs') ? $('reqs').scrollLeft : 0; showWeek(); if ($('reqs')) $('reqs').scrollLeft = sc; };
+    pane.querySelectorAll('[data-wo]').forEach(b => b.onclick = () => { const [hid, no] = b.dataset.wo.split(':').map(Number); startWorkout(hid, W.card[no - 1]); });
     pane.querySelectorAll('.reqcard').forEach(el => el.onclick = () => {
       const q = W.requests[+el.dataset.i];
       if (!q.okWeight) { toast('斤量オーバーで受けられない'); return; }

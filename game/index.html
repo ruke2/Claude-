@@ -651,6 +651,28 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 .hd-hist tr.me td{background:#fff9e3}
 .hd-hist small{color:var(--muted)}
 .hd-hist .p1{color:var(--red)}.hd-hist .p2{color:#2a6fd6}.hd-hist .p3{color:#157a47}
+/* ---- 追い切り ---- */
+#workout{position:absolute;inset:0;z-index:70;background:#b98858;touch-action:none;user-select:none;-webkit-user-select:none}
+#workout canvas{position:absolute;inset:0;width:100%;height:100%}
+.wo-top{position:absolute;left:calc(10px + var(--sl,0px));right:calc(10px + var(--sr,0px));top:8px;display:flex;gap:8px;align-items:flex-start}
+.wo-order{background:rgba(39,43,69,.86);color:#fff;border-radius:12px;padding:5px 12px 6px;line-height:1.25}
+.wo-order small{display:block;font-size:10px;opacity:.8}.wo-order b{font-size:16px;margin-right:8px}.wo-order span{font-size:12px}
+.wo-laps{display:flex;gap:5px;flex:1;justify-content:center}
+.wo-laps>div{background:rgba(255,255,255,.92);border-radius:10px;padding:3px 9px 4px;text-align:center;min-width:70px}
+.wo-laps small{display:block;font-size:9.5px;color:var(--muted);font-weight:800}
+.wo-laps b{font-size:17px;font-variant-numeric:tabular-nums;color:#9aa3b8}
+.wo-laps b.ok,.wo-pace span.ok{color:#157a47}.wo-laps b.fast,.wo-pace span.fast{color:#e0201c}.wo-laps b.slow,.wo-pace span.slow{color:#2a6fd6}
+.wo-pace{position:absolute;left:calc(12px + var(--sl,0px));bottom:26px;background:rgba(255,255,255,.94);border-radius:14px;padding:6px 14px 8px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.wo-pace small{display:block;font-size:10px;color:var(--muted);font-weight:800}
+.wo-pace b{font-size:30px;font-variant-numeric:tabular-nums;line-height:1}.wo-pace span{font-size:13px;font-weight:900;margin-left:8px}
+.wo-thr{position:absolute;right:calc(18px + var(--sr,0px));top:70px;bottom:30px;width:54px;border-radius:27px;background:linear-gradient(180deg,rgba(255,77,126,.85),rgba(255,255,255,.75) 50%,rgba(84,104,212,.85));box-shadow:inset 0 0 0 3px rgba(255,255,255,.8);pointer-events:none}
+.wo-thr i{position:absolute;left:4px;right:4px;height:30px;margin-top:-15px;border-radius:15px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.35)}
+.wo-thr em{position:absolute;right:62px;font-style:normal;font-size:11px;font-weight:900;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;transform:translateY(-50%)}
+.wo-msg{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);background:rgba(39,43,69,.88);color:#fff;border-radius:16px;padding:12px 22px;text-align:center;line-height:1.7;font-size:13.5px}
+.wo-msg.res{background:#fff;color:var(--ink);box-shadow:0 12px 30px rgba(0,0,0,.3);min-width:300px}
+.wo-grade{font-family:var(--serif);font-size:44px;font-weight:900;line-height:1}
+.wo-grade.gS{color:#e0201c}.wo-grade.gA{color:#e06d00}.wo-grade.gB{color:#2a6fd6}.wo-grade.gC{color:#7d8a99}
+.wo-msg .btn{margin-top:8px}
 </style>
 </head>
 <body>
@@ -814,6 +836,7 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 <script src="js/audio.js"></script>
 <script src="js/payout.js"></script>
 <script src="js/home3d.js"></script>
+<script src="js/workout.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

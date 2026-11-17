@@ -421,6 +421,22 @@
     return out;
   }
 
+  // ---- 追い切り（調教に自分で乗る） ----
+  // 1週に1頭。指示どおりの時計で乗れると、その週のレースで馬の調子が上がり、絆と調教師の信頼も上がる
+  const WORK_FX = { S: { tune: 1.6, bond: 3, trust: 2 }, A: { tune: 1.0, bond: 2, trust: 1 }, B: { tune: 0.4, bond: 1, trust: 0 }, C: { tune: 0, bond: 0, trust: -1 } };
+  function workoutKind(W, race, h) { return race.graded || race.overseas ? 'ippai' : (h.id + W.abs) % 2 ? 'shimai' : 'nari'; }
+  function workoutDone(W, hid, r) {
+    ensure(W);
+    const P = W.player, h = W.horses[hid], fx = WORK_FX[r.g];
+    W.workoutAbs = W.abs;
+    h.tune = { abs: W.abs, v: r.g === 'C' && r.fast ? -0.6 : fx.tune, g: r.g };
+    P.bond[hid] = (P.bond[hid] || 0) + fx.bond;
+    P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + fx.trust, 0, 100);
+    P.fatigue += 2; P.tech = clamp(P.tech + (r.g === 'S' ? 0.25 : r.g === 'A' ? 0.15 : 0.05) * (1 - P.tech / 110), 0, 99);
+    W.log && r.g === 'S' && World.news(W, `${h.name}、追い切りで抜群の動き（${P.name}騎手が騎乗）`, 'me');
+    return { ...fx, tune: h.tune.v };
+  }
+
   // ---- ショップ ----
   function buyGear(W, slot, lv) {
     const P = W.player, it = GEAR[slot][lv];
@@ -436,5 +452,5 @@
   function toggleStaff(W, id) { const P = W.player; P.staff[id] = !P.staff[id]; return P.staff[id]; }
   function moveHome(W, i) { const P = W.player, h = HOMES[i]; if (i <= P.home || P.money < h.price) return false; P.money -= h.price; P.home = i; checkAch(W); return true; }
 
-  window.Progress = { SPOTS, SPOT_MAX, spotState, spotCheck, spotDo, TRAIN, train, trainCost, SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
+  window.Progress = { workoutKind, workoutDone, SPOTS, SPOT_MAX, spotState, spotCheck, spotDo, TRAIN, train, trainCost, SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
 })();

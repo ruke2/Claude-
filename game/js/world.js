@@ -759,7 +759,7 @@
         // 帽子の色は枠番で決まる（1枠白・2枠黒・3枠赤・4枠青・5枠黄・6枠緑・7枠橙・8枠桃）
         color: silks.base, silks: { ...silks, cap: race.overseas ? silks.cap : WAKU_COLORS[(f.waku || 1) - 1] }, waku: f.waku, weight: kinryo(W, race, h, isP), jname: isP ? P.name : j ? j.name : f.jname,
         mud: mudOf(h),
-        condBonus: isP ? (P.cond - 70) * 0.08 + (mods ? mods.big : 0) : 0,
+        condBonus: isP ? (P.cond - 70) * 0.08 + (mods ? mods.big : 0) + (h.tune && h.tune.abs === W.abs ? h.tune.v : 0) : 0, // 追い切りの出来も調子に入る
       };
     });
     return new RaceEngine.Race({ name: `${VENUES[race.venue].name}${race.overseas ? '' : race.no + 'R'} ${race.name}`, venue: race.venue, surf: race.surf, dist: race.dist, runners, ground: race.ground || '良', weather: race.weather || '晴', bias: race.bias, playerTech: P.tech, mods });
