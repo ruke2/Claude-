@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<meta name="apple-mobile-web-app-title" content="ジョッキー・ライフ">
 <title>ジョッキー・ライフ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=M+PLUS+Rounded+1c:wght@500;700;800;900&family=Dela+Gothic+One&display=swap">
@@ -456,9 +459,10 @@ input[type=text],select{border:0;border-radius:12px;box-shadow:inset 0 0 0 2px v
 #hud-side{top:auto;bottom:calc(var(--sb) + 96px);left:30%;right:30%;font-size:13px;opacity:.85}
 #hud-speed{bottom:calc(var(--sb) + 92px);left:calc(var(--sl) + 12px);background:none;box-shadow:none;border:0;padding:0;min-width:0;text-align:left}
 #hud-speed .spd b{font-size:30px;text-shadow:0 2px 0 rgba(0,0,0,.35)}
-#hud-speed .spd small{color:#fff;opacity:.8;font-weight:800}
+#hud-speed .spd small{color:#fff;opacity:.8;font-weight:800;display:block;margin:-4px 0 0 1px;line-height:1}
+#hud-speed .spd{width:92px;line-height:1}
 #hud-speed .laps{display:none}
-#hud-gauges{top:auto;bottom:calc(var(--sb) + 92px);left:calc(var(--sl) + 108px);display:flex;flex-direction:column;gap:5px;padding:0;background:none;box-shadow:none;border:0}
+#hud-gauges{top:auto;bottom:calc(var(--sb) + 92px);left:calc(var(--sl) + 112px);display:flex;flex-direction:column;gap:5px;padding:0;background:none;box-shadow:none;border:0}
 .hg{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800}
 .hg span{width:26px;opacity:.85}
 .hg .gauge{width:84px;height:7px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden}

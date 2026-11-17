@@ -1124,7 +1124,9 @@
         const near = d2 < 140 * 140 || r.isPlayer;
         m.root.visible = (d2 < 900 * 900 || r.isPlayer) && !(this.cer && !r.isPlayer);
         if (near || Math.floor(this.clock * 10) % 4 === i % 4) {
-          m.update({ ease: r.finished, win: r.finished && (r === winner || (this.cer && r.isPlayer)), photo: this.cer && this.cer.kind === 'photo' && r.isPlayer, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
+          // リプレイ中は、レースが終わった後の状態（全馬ゴール済み）ではなく、その瞬間の位置で姿勢を決める
+          const fin = this.replay ? r.s >= race.D + 2 : r.finished;
+          m.update({ ease: fin, win: fin && (r === winner || (this.cer && r.isPlayer)), photo: this.cer && this.cer.kind === 'photo' && r.isPlayer, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
         }
         const sh = d2 < 45 * 45 || r.isPlayer;
         if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }

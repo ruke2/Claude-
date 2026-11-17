@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>icon</title>
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style></head>
+<body>
+<!-- アイコン画像を作るための撮影用ページ（ゲームでは使わない） -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/zekken.js"></script>
+<script src="js/horse3d.js"></script>
+<script src="js/horseglb.js"></script>
+<script>
+const q = new URLSearchParams(location.search), S = +(q.get('s') || 1024);
+const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setSize(S, S); r.setPixelRatio(1); document.body.appendChild(r.domElement);
+r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = +(q.get('ex') || 1.25); r.shadowMap.enabled = true;
+const sc = new THREE.Scene();
+sc.add(new THREE.HemisphereLight('#ffffff', '#6b5a8a', +(q.get('hl') || 0.55)));
+const sun = new THREE.DirectionalLight('#fff3e0', +(q.get('sl') || 1.5)); sun.position.set(4, 5, 5); sc.add(sun);
+const rim = new THREE.DirectionalLight('#ffd0f0', 1.6); rim.position.set(-4, 3, -4); sc.add(rim);
+HorseGLB.load().then(() => {
+  const m = Horse3D.create({ coat: Horse3D.coatFor({ coatKey: q.get('coat') || 'chestnut' }), coatKey: q.get('coat') || 'chestnut', number: 1, raceLabel: '', cloth: { kind: 'g1', num: 1, race: '', horse: '' }, silks: { base: '#ff4d7e', accent: '#ffffff', pattern: 'hoops', cap: '#ffd24a' }, socks: ['LF'], isPlayer: false });
+  sc.add(m.root);
+  m.update({ phase: +(q.get('ph') || 0.32), speed: 17, effort: 1, whipT: 0, whipSide: 1, kakari: 0, lean: 0 }, 0.016, 1);
+  const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 30), 1, 0.05, 100);
+  cam.position.set(+(q.get('cx') || 5.2), +(q.get('cy') || 1.75), +(q.get('cz') || 3.4)); cam.lookAt(+(q.get('lx') || 0.45), +(q.get('ly') || 1.35), 0);
+  // 毛色のテクスチャが届くまで待ってから撮る
+  let n = 0; const tick = () => { r.render(sc, cam); if (++n < 40) setTimeout(tick, 100); else window.done = true; }; tick();
+});
+</script></body></html>
