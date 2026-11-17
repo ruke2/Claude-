@@ -222,7 +222,7 @@
       const hg = new T.Mesh(new T.ExtrudeGeometry(hill, { depth: 4.4, bevelEnabled: false }), mat(S.grass2)); hg.rotation.y = Math.PI / 2; hg.position.set(-2.2, 0, 0); hg.castShadow = true; hg.receiveShadow = true; hr.add(hg);
       for (let i = 0; i < 9; i++) { const z = 5.4 - i * 1.35, y = 0.2 + (5.4 - z) * 0.2; hr.add(cyl(0.04, 0.5, '#ffffff', -1.7, y, z, 5)); hr.add(cyl(0.04, 0.5, '#ffffff', 1.7, y, z, 5)); }
       const hh = [horse('#5a3a26', '#ff5c7a'), horse('#b5773f', '#5b7cfa')];
-      hh.forEach((h, i) => { h.g.scale.setScalar(0.75); h.g.rotation.y = Math.PI / 2; h.g.rotation.z = 0; hr.add(h.g); H.anim.push((t) => { const u = ((t * 0.11 + i * 0.5) % 1), z = 5.6 - u * 11.2; h.g.position.set(i ? 0.6 : -0.6, 0.42 + (5.6 - z) * 0.2 + Math.abs(Math.sin(t * 11 + i)) * 0.08, z); const sn = Math.sin(t * 11 + i); h.legs[0].rotation.z = sn * 0.9; h.legs[1].rotation.z = sn * 0.9 - 0.3; h.legs[2].rotation.z = -sn * 0.9; h.legs[3].rotation.z = -sn * 0.9 + 0.3; }); });
+      hh.forEach((h, i) => { h.g.scale.setScalar(0.75); h.g.rotation.y = Math.PI / 2; h.g.rotation.z = 0; hr.add(h.g); H.anim.push((t) => { const u = ((t * 0.06 + i * 0.5) % 1), z = 5.6 - u * 11.2; h.g.position.set(i ? 0.6 : -0.6, 0.42 + (5.6 - z) * 0.2 + Math.abs(Math.sin(t * 7 + i)) * 0.06, z); const sn = Math.sin(t * 7 + i); h.legs[0].rotation.z = sn * 0.9; h.legs[1].rotation.z = sn * 0.9 - 0.3; h.legs[2].rotation.z = -sn * 0.9; h.legs[3].rotation.z = -sn * 0.9 + 0.3; }); });
       hr.add(box(1.6, 1.4, 1.2, '#f3f0ff', 2.9, 2.3, -5.2)); hr.add(pyramid(1.5, 0.7, '#8b7cf0', 2.9, 3.7, -5.2));
       hr.position.set(33.5, 0, -8.6); spot('spot:hanro', 33.5, 6.2, -9.5, hr);
       // 琵琶湖：湖と桟橋、湖岸の道
@@ -254,7 +254,7 @@
       const o1 = new T.Mesh(new T.RingGeometry(0.62, 1, 40), mat('#a9744a')); o1.rotation.x = -Math.PI / 2; o1.scale.set(5.4, 3.3, 1); o1.position.y = 0.04; o1.receiveShadow = true; wd.add(o1);
       const o2 = new T.Mesh(new T.CircleGeometry(0.62, 40), mat(S.grass2)); o2.rotation.x = -Math.PI / 2; o2.scale.set(5.4, 3.3, 1); o2.position.y = 0.035; wd.add(o2);
       const wh = [horse('#3a2a22', '#ffd24a'), horse('#b5773f', '#b06cff')];
-      wh.forEach((h, i) => { h.g.scale.setScalar(0.7); wd.add(h.g); H.anim.push((t) => { const a = -(t * 0.55 + i * 0.25); h.g.position.set(Math.cos(a) * 4.4, 0.04 + Math.abs(Math.sin(t * 11 + i)) * 0.08, Math.sin(a) * 2.7 + (i ? 0.25 : -0.25)); h.g.rotation.y = -a + Math.PI / 2; const sn = Math.sin(t * 11 + i); h.legs[0].rotation.z = sn * 0.9; h.legs[1].rotation.z = sn * 0.9 - 0.3; h.legs[2].rotation.z = -sn * 0.9; h.legs[3].rotation.z = -sn * 0.9 + 0.3; }); });
+      wh.forEach((h, i) => { h.g.scale.setScalar(0.7); wd.add(h.g); H.anim.push((t) => { const a = -(t * 0.2 + i * 0.09); h.g.position.set(Math.cos(a) * 4.4, 0.04 + Math.abs(Math.sin(t * 6 + i)) * 0.06, Math.sin(a) * 2.7 + (i ? 0.25 : -0.25)); h.g.rotation.y = -a + Math.PI / 2; const sn = Math.sin(t * 6 + i); h.legs[0].rotation.z = sn * 0.7; h.legs[1].rotation.z = sn * 0.7 - 0.25; h.legs[2].rotation.z = -sn * 0.7; h.legs[3].rotation.z = -sn * 0.7 + 0.25; }); });
       wd.add(box(1.4, 1.6, 1.2, '#eef3f9', 0, 0, -0.2)); wd.add(box(1.7, 0.2, 1.5, '#3d8bfd', 0, 1.6, -0.2));
       wd.position.set(34, 0, 9.4); spot('spot:wood', 34, 3.6, 9.4, wd);
       // ふれあい広場：ポニーと見学の人たち

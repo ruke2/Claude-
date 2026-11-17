@@ -27,13 +27,24 @@ window.VENUES = {
     elev: [['g', 0, 1.7], ['c2', 0, 0], ['bm', 40, 1.3], ['c3', 0, 1.3], ['c4', 0, 1.0], ['r', 170, 0.5], ['r', 50, 1.7]], scene: { stand: 0.8 } },
   kokura: { name: '小倉', en: 'KOKURA', dir: 'R', straight: 293, lap: 1615, jp: true, turf: 'mix', pole: 'andon', dirtElev: 2.9,
     elev: [['g', 0, 0], ['c2', 0, 3.0], ['c3', -60, 1.6], ['c3', 0, 1.8], ['c4', 0, 0.2], ['r', 250, 0]], scene: { stand: 0.8 } },
-  riyadh:    { name: 'キングアブドゥルアジーズ', dir: 'L', straight: 400, lap: 1800, country: 'サウジアラビア' },
-  meydan:    { name: 'メイダン', dir: 'L', straight: 450, lap: 2400, country: 'UAE' },
-  ascot:     { name: 'アスコット', dir: 'R', straight: 450, lap: 2800, country: 'イギリス' },
-  longchamp: { name: 'パリロンシャン', dir: 'R', straight: 533, lap: 2400, country: 'フランス' },
-  usa:       { name: '米国 BC開催地', dir: 'L', straight: 300, lap: 1609, country: 'アメリカ' },
-  flemington:{ name: 'フレミントン', dir: 'L', straight: 450, lap: 2300, country: 'オーストラリア' },
-  shatin:    { name: '沙田', dir: 'R', straight: 430, lap: 1900, country: '香港' },
+  // ---- 海外 ----（数値は JRA の海外競馬場紹介と各国主催者の公表値。出典は README）
+  //  dirt：ダート（オールウェザー）コースが芝と別の大きさのときの周長・直線
+  riyadh: { name: 'キングアブドゥルアジーズ', en: 'KING ABDULAZIZ', country: 'サウジアラビア', dir: 'L', lap: 1800, straight: 438, dirt: { lap: 2000, straight: 400 },
+    elev: [['g', 0, 0.4]], ov: 'riyadh', turf: 'mix' },
+  meydan: { name: 'メイダン', en: 'MEYDAN', country: 'UAE', dir: 'L', lap: 2400, straight: 450, dirt: { lap: 1750, straight: 400 },
+    elev: [['g', 0, 0.4]], ov: 'meydan', night: true, turf: 'mix' },
+  ascot: { name: 'アスコット', en: 'ASCOT', country: 'イギリス', dir: 'R', lap: 2800, straight: 500,
+    // 高低差 約20m。いちばん低いスウィンリー・ボトム（向正面の先）から、最後の直線は残り200mまで上り
+    elev: [['g', 0, 20], ['c2', 0, 18], ['bm', 0, 9], ['c3', 0, 0], ['c4', 0, 7], ['r', 500, 12], ['r', 200, 19.6]], ov: 'ascot', turf: 'yoshiba' },
+  longchamp: { name: 'パリロンシャン', en: 'PARISLONGCHAMP', country: 'フランス', dir: 'R', lap: 2750, straight: 533,
+    // 高低差 10m。向正面の半ばから3コーナー（プティ・ボワ）へ上り、そこから下ってフォルスストレート（約250m）、最後の直線は平坦
+    elev: [['g', 0, 0], ['c2', 0, 0.5], ['bm', -120, 1.5], ['c3', 0, 10], ['c34', 0, 6], ['c4', 0, 2], ['r', 533, 0.6]], ov: 'longchamp', turf: 'yoshiba', falseStraight: 250 },
+  usa: { name: 'ベルモントパーク', en: 'BELMONT PARK', country: 'アメリカ', dir: 'L', lap: 2012, straight: 334, dirt: { lap: 2414, straight: 334 },
+    elev: [['g', 0, 0.3]], ov: 'belmont', turf: 'mix' },
+  flemington: { name: 'フレミントン', en: 'FLEMINGTON', country: 'オーストラリア', dir: 'L', lap: 2312, straight: 450,
+    elev: [['g', 0, 0.8], ['c3', 0, 1.6], ['r', 300, 0.8]], ov: 'flemington', turf: 'mix' },
+  shatin: { name: '沙田', en: 'SHA TIN', country: '香港', dir: 'R', lap: 1899, straight: 430, dirt: { lap: 1555, straight: 365 }, width: 30.5,
+    elev: [['g', 0, 0.3]], ov: 'shatin', turf: 'mix' },
 };
 
 // 月ごとの開催場（東 / 西）。夏はローカル開催。ゲーム用の簡略化。

@@ -51,7 +51,7 @@
     buildSky() {
       const sky = loadTex('sky.jpg');
       sky.mapping = T.EquirectangularReflectionMapping; sky.wrapS = T.ClampToEdgeWrapping;
-      this.scene.background = sky;
+      this.scene.background = this.skyTex = sky;
       const pm = new T.PMREMGenerator(this.renderer);
       const self = this;
       const img = new Image();
@@ -189,13 +189,17 @@
     setupRace(race, info) {
       if (this.raceGroup) { this.scene.remove(this.raceGroup); this.disposeGroup(this.raceGroup); }
       const G = this.raceGroup = new T.Group();
+      this.anim = [];
       this.scene.add(G);
       this.race = race; this.info = info || {};
       this.groundIdx = Math.max(0, ['良', '稍重', '重', '不良'].indexOf((race.cfg && race.cfg.ground) || '良'));
       const c = race.course;
       this.buildCourse(G, c, race);
       this.buildGate(G, race);
+      // ナイター（メイダン）以外は昼の空に戻す
+      this.scene.background = this.skyTex; this.renderer.toneMappingExposure = 0.95; this.hemi.color.set('#d6e8ff'); this.hemi.groundColor.set('#5d6b3a'); this.sun.color.set('#fff1dc');
       this.applyWeather(G, race.cfg.weather || '晴');
+      if ((VENUES[c.key] || {}).night) this.applyNight(G);
       // 馬
       this.horses = race.runners.map((r, i) => {
         const h = r.horse;
@@ -333,7 +337,8 @@
       const turfTint = V.turf === 'yoshiba' ? '#bcd4ac' : V.turf === 'noshiba' ? '#e6f2d0' : '#d6e4c6';
       const turfMat = new T.MeshStandardMaterial({ map: turfMap, normalMap: turfN, normalScale: new T.Vector2(0.6, 0.6), roughness: 0.92, vertexColors: true, color: wet ? '#b9c4ad' : turfTint });
       const dirtMat = new T.MeshStandardMaterial({ map: wet ? loadTex('dirt_wet.jpg') : dirtMap, normalMap: dirtN, normalScale: new T.Vector2(0.8, 0.8), roughness: wet ? 0.55 : 0.95, color: wet ? '#9b8a78' : '#ffffff' });
-      const fieldMat = new T.MeshStandardMaterial({ map: fieldMap, roughness: 1, color: V.turf === 'yoshiba' ? '#a9bd90' : '#b7c69a' });
+      const desert = V.ov === 'riyadh' || V.ov === 'meydan';
+      const fieldMat = new T.MeshStandardMaterial({ map: desert ? dirtMap : fieldMap, roughness: 1, color: desert ? '#f3dfb6' : V.turf === 'yoshiba' ? '#a9bd90' : '#b7c69a' });
       const railMat = new T.MeshStandardMaterial({ color: '#f4f4f0', roughness: 0.35, emissive: '#222', emissiveIntensity: 0.15 });
       const hedgeMat = new T.MeshStandardMaterial({ map: fieldMap, color: '#4d7a34', roughness: 1 });
       // 地面（周りは平均の高さ。コースとの間は土手でつなぐ）
@@ -366,6 +371,7 @@
       this.buildScreen(G, c);
       this.buildScenery(G, c, R, other);
       this.buildExtras(G, c, R, other, race);
+      if (V.ov) this.buildOverseas(G, c, race, V, R);
     }
 
     // ハロン棒（日本経済新聞の記事による）
@@ -648,12 +654,15 @@
           const ang = Math.atan2(rp.getZ(i), rp.getX(i));
           let hgt = 60 + 260 * Math.pow(Math.abs(Math.sin(ang * 2.3 + 1)), 1.5) * (0.55 + 0.45 * Math.sin(ang * 5.3)) + 50 * Math.abs(Math.sin(ang * 13));
           if (SC.sea) { const da = Math.abs(Math.atan2(Math.sin(ang - seaDir), Math.cos(ang - seaDir))); if (da < 1.3) hgt = 6 + 40 * Math.max(0, (da - 1.0) / 0.3); }
-          if (SC.flat || ['tokyo', 'nakayama', 'niigata', 'chukyo'].includes(c.key)) hgt = 14 + hgt * 0.1; // 平野にある場は山を見せず、低い丘と木立ちだけ
+          const OV = (VENUES[c.key] || {}).ov;
+          if (SC.flat || ['tokyo', 'nakayama', 'niigata', 'chukyo'].includes(c.key) || (OV && OV !== 'shatin')) hgt = 14 + hgt * 0.1;
+          if (OV === 'shatin') hgt = 120 + hgt * 1.4; // 香港：すぐ後ろに切り立った緑の山 // 平野にある場は山を見せず、低い丘と木立ちだけ
           rp.setY(i, hgt);
         } else rp.setY(i, -5);
       }
       ring.computeVertexNormals();
-      const hills = new T.Mesh(ring, new T.MeshLambertMaterial({ color: '#5f7868', side: T.BackSide }));
+      const OVk = (VENUES[c.key] || {}).ov;
+      const hills = new T.Mesh(ring, new T.MeshLambertMaterial({ color: OVk === 'riyadh' || OVk === 'meydan' ? '#cdb58e' : OVk === 'shatin' ? '#4f7a55' : '#5f7868', side: T.BackSide }));
       hills.position.set(0, base, c.R * sgn);
       G.add(hills);
       // 函館：津軽海峡（向正面の向こうに海）
@@ -672,6 +681,124 @@
         fg.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
         const fuji = new T.Mesh(fg, new T.MeshBasicMaterial({ vertexColors: true, fog: false }));
         fuji.position.set(-c.H * 0.3, base + 750 - 120, 2 * sgn * c.R + sgn * 7800); G.add(fuji);
+      }
+    }
+
+    // ---- ナイター（メイダン）：暗い空、照明塔の白い光 ----
+    applyNight(G) {
+      const sky = canvasTex(16, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#04081a'); g.addColorStop(0.45, '#0b1640'); g.addColorStop(0.5, '#28305e'); g.addColorStop(0.53, '#3b2a4a'); g.addColorStop(1, '#0a0a14'); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+      sky.mapping = T.EquirectangularReflectionMapping;
+      this.scene.background = sky;
+      this.scene.fog.color.set('#141a33'); this.scene.fog.near = 600; this.scene.fog.far = 5200;
+      this.sun.color.set('#f2f4ff'); this.sun.intensity = 1.5; this.hemi.color.set('#9fb0ff'); this.hemi.groundColor.set('#2a2418'); this.hemi.intensity = 0.62;
+      this.renderer.toneMappingExposure = 1.02;
+      // 星
+      const N = 900, pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) { const a = Math.random() * Math.PI * 2, e = 0.12 + Math.random() * 1.3; pos[i * 3] = Math.cos(a) * Math.cos(e) * 4800; pos[i * 3 + 1] = Math.sin(e) * 4800; pos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * 4800; }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3));
+      G.add(new T.Points(g, new T.PointsMaterial({ color: '#ffffff', size: 6, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.8 })));
+    }
+
+    // ---- 海外の競馬場：その場所ならではの建物と景色 ----
+    buildOverseas(G, c, race, V, R) {
+      const W = c.width, E = this.E, base = this.meanE || 0, sgn = c.dir === 'L' ? -1 : 1;
+      const std = (col, o) => new T.MeshStandardMaterial(Object.assign({ color: col, roughness: 0.8 }, o || {}));
+      const glow = (col, k = 1) => new T.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: k, roughness: 0.5 });
+      const box = (g, sx, sy, sz, x, y, z, m) => { const o = new T.Mesh(new T.BoxGeometry(sx, sy, sz), m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+      const at = (p, X, y = null) => { const a = CXY(c, p, X); return { a, x: a.x, z: a.z, y: y == null ? E(p) : y }; };
+      const backZ = 2 * sgn * c.R; // 向正面の z
+      const ov = V.ov;
+      // 街並み（遠景のビル群）。windows: 窓の灯り
+      const towers = (cx, cz, n, hmin, hmax, spread, col, lit) => {
+        const winT = canvasTex(64, 256, (x, w, h) => { x.fillStyle = col; x.fillRect(0, 0, w, h); for (let j = 4; j < h; j += 9) for (let i = 4; i < w; i += 10) { x.fillStyle = Math.random() < (lit ? 0.6 : 0.25) ? (lit ? '#ffe2a0' : '#9fb4c8') : 'rgba(0,0,0,.25)'; x.fillRect(i, j, 6, 5); } });
+        const m = lit ? new T.MeshStandardMaterial({ map: winT, emissiveMap: winT, emissive: '#ffffff', emissiveIntensity: 0.9, roughness: 0.6 }) : new T.MeshStandardMaterial({ map: winT, roughness: 0.6 });
+        for (let i = 0; i < n; i++) { const h = hmin + R() * (hmax - hmin), w = 22 + R() * 30; const o = new T.Mesh(new T.BoxGeometry(w, h, w), m); o.position.set(cx + (R() - 0.5) * spread, base + h / 2, cz + (R() - 0.5) * spread * 0.35); G.add(o); }
+      };
+      const palm = (x, z, y, h = 9) => {
+        const g = new T.Group(); const tr = new T.Mesh(new T.CylinderGeometry(0.22, 0.38, h, 7), std('#8a6a48')); tr.position.y = h / 2; g.add(tr);
+        for (let k = 0; k < 8; k++) { const f = new T.Mesh(new T.ConeGeometry(0.5, 4.2, 4), std('#3f8a3e')); f.position.set(Math.cos(k * 0.8) * 1.6, h - 0.3, Math.sin(k * 0.8) * 1.6); f.rotation.set(Math.sin(k * 0.8) * 1.2, 0, -Math.cos(k * 0.8) * 1.2); g.add(f); }
+        g.position.set(x, y, z); g.rotation.y = R() * 6; G.add(g);
+      };
+      if (ov === 'meydan') {
+        // 三日月形の巨大な屋根（スタンド）。ゴール前の直線に沿って長く延び、縁が光る
+        const p0 = -260, p1 = c.H + 260, N = 70, pos = [], idx = [];
+        for (let i = 0; i <= N; i++) {
+          const p = p0 + (p1 - p0) * i / N, u = i / N, crest = Math.sin(u * Math.PI);
+          const a = CXY(c, p, W + 34), b = CXY(c, p, W + 34 + 70 + 30 * crest);
+          pos.push(a.x, base + 30 + 12 * crest, a.z, b.x, base + 44 + 34 * crest, b.z);
+        }
+        for (let i = 0; i < N; i++) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+        const rg = new T.BufferGeometry(); rg.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals();
+        G.add(new T.Mesh(rg, std('#eef1f6', { side: T.DoubleSide, roughness: 0.4, metalness: 0.2 })));
+        const edge = []; for (let i = 0; i <= N; i++) edge.push(new T.Vector3(pos[i * 6], pos[i * 6 + 1] - 0.4, pos[i * 6 + 2]));
+        G.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(edge), 200, 0.5, 6), glow('#5fd2ff', 1.6)));
+        // スタンド本体（光る窓の帯）
+        const winT = canvasTex(256, 64, (x, w, h) => { x.fillStyle = '#141a2c'; x.fillRect(0, 0, w, h); for (let j = 0; j < 4; j++) { x.fillStyle = j % 2 ? '#ffd9a0' : '#bfe7ff'; x.fillRect(0, 6 + j * 15, w, 6); } });
+        winT.wrapS = T.RepeatWrapping; winT.repeat.set(30, 1);
+        for (let i = 0; i < N; i += 2) { const p = p0 + (p1 - p0) * (i + 1) / N, a = CXY(c, p, W + 62); const o = new T.Mesh(new T.BoxGeometry((p1 - p0) / N * 2 + 0.5, 22, 50), new T.MeshStandardMaterial({ map: winT, emissiveMap: winT, emissive: '#ffffff', emissiveIntensity: 0.7, roughness: 1, metalness: 0, envMapIntensity: 0 })); o.position.set(a.x, base + 11, a.z); o.rotation.y = Math.atan2(-a.hz, a.hx); G.add(o); }
+        // 照明塔：コースを囲む
+        for (let p = 0; p < c.lap; p += 170) { const a = CXY(c, p, W + 26); const g = new T.Group(); g.add(new T.Mesh(new T.CylinderGeometry(0.6, 0.9, 42, 8), std('#9aa3b8'))); g.children[0].position.y = 21; const hd = new T.Mesh(new T.BoxGeometry(7, 3, 1.2), glow('#ffffff', 2.2)); hd.position.y = 42; g.add(hd); g.position.set(a.x, E(p), a.z); g.lookAt(0, E(p), sgn * c.R); G.add(g); }
+        // ドバイの街：遠くに超高層ビル（いちばん高い1本は尖塔）
+        towers(-c.H * 0.2, backZ + sgn * 2600, 40, 80, 260, 2400, '#1b2238', true);
+        const spire = new T.Mesh(new T.CylinderGeometry(4, 34, 820, 12), new T.MeshStandardMaterial({ color: '#8a9ab8', emissive: '#4b5d8a', emissiveIntensity: 0.6, roughness: 0.4 }));
+        spire.position.set(c.H * 0.5, base + 410, backZ + sgn * 3200); G.add(spire);
+        for (let i = 0; i < 24; i++) { const p = -200 + i * 40; const a = CXY(c, p, W + 140 + (i % 2) * 8); palm(a.x, a.z, base); }
+      }
+      if (ov === 'longchamp') {
+        // 風車（ムーラン）：内馬場に立つ石造りの風車小屋
+        const a = CXY(c, c.H + c.T * 0.7, -70), g = new T.Group();
+        g.add(new T.Mesh(new T.CylinderGeometry(5.5, 6.5, 16, 14), std('#e7dccb')));
+        g.children[0].position.y = 8;
+        const roof = new T.Mesh(new T.ConeGeometry(6.4, 6, 14), std('#5a4a40')); roof.position.y = 19; g.add(roof);
+        const sails = new T.Group(); sails.position.set(0, 16, 6.6);
+        for (let k = 0; k < 4; k++) { const arm = new T.Group(); const bl = new T.Mesh(new T.BoxGeometry(2.6, 13, 0.25), std('#f4efe6')); bl.position.y = 7; arm.add(bl); arm.rotation.z = k * Math.PI / 2; sails.add(arm); }
+        g.add(sails); this.anim = (this.anim || []); this.anim.push((t) => { sails.rotation.z = t * 0.25; });
+        g.position.set(a.x, E(c.H + c.T * 0.7), a.z); g.lookAt(CXY(c, c.H / 2, W + 200).x, g.position.y, CXY(c, c.H / 2, W + 200).z); G.add(g);
+        // ブローニュの森：コースのまわりを囲む背の高い木立（buildScenery の木に足す）
+        const lg = Render3D.leafGeo(), lm = new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 });
+        const n = 420, inst = new T.InstancedMesh(lg, lm, n), M = new T.Matrix4(), Q = new T.Quaternion(), S2 = new T.Vector3(), P2 = new T.Vector3(), Cc = new T.Color();
+        for (let i = 0; i < n; i++) { const p = R() * c.lap, X = W + 140 + R() * 220, b = CXY(c, p, X), s2 = 9 + R() * 8; M.compose(P2.set(b.x, base + s2 * 0.9, b.z), Q, S2.set(s2, s2 * 1.4, s2)); inst.setMatrixAt(i, M); Cc.setHSL(0.27 + R() * 0.05, 0.45, 0.13 + R() * 0.06); inst.setColorAt(i, Cc); }
+        G.add(inst);
+      }
+      if (ov === 'ascot') {
+        // 大きく弧を描くスタンドの屋根
+        const p0 = c.H - 470, p1 = c.H + 60, N = 40, pos = [], idx = [];
+        for (let i = 0; i <= N; i++) { const p = p0 + (p1 - p0) * i / N; const a = CXY(c, p, W + 32), b = CXY(c, p, W + 92); const e = E(Math.min(c.H, p)); const arc = Math.sin(i / N * Math.PI); pos.push(a.x, e + 24 + arc * 4, a.z, b.x, e + 36 + arc * 6, b.z); }
+        for (let i = 0; i < N; i++) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+        const rg = new T.BufferGeometry(); rg.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals();
+        G.add(new T.Mesh(rg, std('#f6f6f2', { side: T.DoubleSide, roughness: 0.35 })));
+        // 王室の行列が通る並木道（直線の外、緑の芝生と白い柵）
+        for (let p = 20; p < c.H - 40; p += 14) { const a = CXY(c, p, W + 10); const t = new T.Mesh(new T.SphereGeometry(3.2, 10, 8), std('#3e6f3a')); t.position.set(a.x, E(p) + 4.5, a.z); t.scale.y = 1.4; G.add(t); }
+      }
+      if (ov === 'flemington') {
+        // 名物のバラ：最後の直線の外ラチ沿いにずっと続くバラの植え込み
+        const n = Math.round((c.H + 60) / 1.1), cols = ['#d81b3c', '#ff6f91', '#ffffff', '#ffd24a', '#c2185b', '#ff8a5b'];
+        const bush = new T.InstancedMesh(new T.SphereGeometry(0.7, 8, 6), std('#2f6a2c'), n), fl = new T.InstancedMesh(new T.SphereGeometry(0.22, 6, 5), std('#ffffff', { roughness: 0.5 }), n * 4);
+        const M = new T.Matrix4(), Q = new T.Quaternion(), S2 = new T.Vector3(1, 0.8, 1), P2 = new T.Vector3(), Cc = new T.Color();
+        let k = 0;
+        for (let i = 0; i < n; i++) { const p = -40 + i * 1.1, a = CXY(c, p, W + 1.8); const y = E(p) + 0.55; M.compose(P2.set(a.x, y, a.z), Q, S2.set(1, 0.8, 1)); bush.setMatrixAt(i, M); const col = cols[Math.floor(R() * cols.length)]; for (let j = 0; j < 4; j++) { M.compose(P2.set(a.x + (R() - 0.5) * 1.1, y + 0.3 + R() * 0.35, a.z + (R() - 0.5) * 1.1), Q, S2.set(1, 1, 1)); fl.setMatrixAt(k, M); fl.setColorAt(k++, Cc.set(col)); } }
+        G.add(bush); G.add(fl);
+        // メルボルンの街並み（遠景）
+        towers(-c.H * 0.4, backZ + sgn * 2200, 34, 60, 230, 1500, '#5d6f86', false);
+      }
+      if (ov === 'shatin') {
+        // 内馬場の横長の大型ビジョン
+        const a = CXY(c, c.H * 0.45, -60); const g = new T.Group();
+        const sc = new T.Mesh(new T.BoxGeometry(70, 9, 1.2), [std('#222'), std('#222'), std('#222'), std('#222'), new T.MeshBasicMaterial({ color: '#2a6fd6' }), std('#222')]); sc.position.y = 12; g.add(sc);
+        for (const x of [-25, 0, 25]) { const l = new T.Mesh(new T.BoxGeometry(1.2, 8, 1.2), std('#444')); l.position.set(x, 4, 0); g.add(l); }
+        g.position.set(a.x, base, a.z); g.lookAt(CXY(c, c.H * 0.45, W + 100).x, base, CXY(c, c.H * 0.45, W + 100).z); G.add(g);
+        // 香港の高層住宅（向正面の向こう）
+        towers(0, backZ + sgn * 900, 46, 90, 190, 2200, '#d9d4c8', false);
+      }
+      if (ov === 'riyadh') {
+        // 砂漠の街：低い白い建物、ヤシ
+        for (let i = 0; i < 30; i++) { const p = -180 + i * 22; const a = CXY(c, p, W + 130 + (i % 3) * 10); palm(a.x, a.z, base, 7 + R() * 4); }
+        towers(0, backZ + sgn * 1800, 26, 20, 90, 2400, '#e8dcc4', false);
+      }
+      if (ov === 'belmont') {
+        // 内馬場の大きな池と、アメリカらしい木立
+        const pond = new T.Mesh(new T.CircleGeometry(1, 40), new T.MeshStandardMaterial({ color: '#4f7f9c', roughness: 0.08, metalness: 0.6 }));
+        pond.rotation.x = -Math.PI / 2; pond.scale.set(Math.min(220, c.H * 0.5), Math.min(70, c.R * 0.4), 1); pond.position.set(-c.H * 0.1, base + 0.12, sgn * c.R); G.add(pond);
       }
     }
 
@@ -1101,6 +1228,7 @@
     // ---------- 毎フレーム ----------
     render(race, dt) {
       this.clock += dt;
+      if (this.anim) for (const f of this.anim) f(this.clock);
       const I = this.intro;
       if (I) this.stepIntro(dt);
       const c = race.course;

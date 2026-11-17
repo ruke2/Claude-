@@ -7,11 +7,12 @@
   // ---- コース形状 ----
   function makeCourse(venueKey, surf) {
     const V = VENUES[venueKey];
-    let lap = V.lap * (surf === 'D' ? 0.88 : 1);
-    const H = V.straight * (surf === 'D' ? 0.93 : 1);
+    // ダートの大きさが分かっている競馬場はその値、なければ芝の内側として縮める
+    let lap = surf === 'D' && V.dirt ? V.dirt.lap : V.lap * (surf === 'D' ? 0.88 : 1);
+    const H = surf === 'D' && V.dirt ? V.dirt.straight : V.straight * (surf === 'D' ? 0.93 : 1);
     let T = (lap - 2 * H) / 2;
     if (T < 260) { T = 260; lap = 2 * H + 2 * T; }
-    const c = { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : 27, surf };
+    const c = { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : Math.min(30, V.width || 27), surf };
     // 起伏：基準点を1周上の距離（ゴールからの距離）に直す
     const at = { g: 0, c2: T, bm: T + H / 2, c3: T + H, c34: T + H + T / 2, c4: 2 * T + H };
     let pts = (V.elev || [['g', 0, 0]]).map(([k, off, h]) => [k === 'r' ? lap - off : at[k] + off, h]);
