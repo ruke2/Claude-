@@ -290,7 +290,9 @@
     }, 'シーズン目標');
   }
 
-  // ---------- ホーム：トレセンの町の立体マップ ----------
+  // ---------- ホーム：日本地図 → 美浦・栗東トレセンの町 ----------
+  let homeView = 'japan'; // 'japan' | '美浦' | '栗東'
+  const TC_KEY = { '美浦': 'miho', '栗東': 'ritto' };
   function renderHome(pane) {
     const p = P();
     const off = W.injury > 0 || p.suspended > 0;
@@ -300,34 +302,74 @@
     const gp = Progress.goalProgress(W);
     const newsNew = W.news.filter(x => x.abs >= W.abs - 1).length;
     const L = W.life || {};
-    pane.innerHTML = `<div id="home3d"></div>
+    const st = Progress.spotState(W), left = Progress.SPOT_MAX - st.used.length;
+    const japan = homeView === 'japan', isHome = homeView === p.region;
+    const weekSub = off ? (W.injury > 0 ? `療養中 あと${W.injury}週` : `騎乗停止 あと${p.suspended}週`) : `騎乗依頼 ${nReq}件`;
+    let items;
+    if (japan) {
+      items = [
+        { tab: 'week', text: W.isOverseas ? '海外遠征' : `今週は${VENUES[W.venue].name}`, sub: weekSub, main: true },
+        { tab: 'tc:miho', text: '美浦トレセン', sub: p.region === '美浦' ? '所属・自宅' : '出張する', cls: 'tc' },
+        { tab: 'tc:ritto', text: '栗東トレセン', sub: p.region === '栗東' ? '所属・自宅' : '出張する', cls: 'tc' },
+        { tab: 'note:hidaka', text: '日高', sub: '馬産地', note: true },
+      ].concat(Object.keys(VENUES).filter(k => VENUES[k].jp && k !== W.venue).map(k => ({ tab: 'v:' + k, text: VENUES[k].name, note: true, cls: 'tiny' })));
+    } else {
+      const spots = Object.entries(Progress.SPOTS).filter(([, v]) => v.tc === homeView).map(([k, v]) => ({ tab: 'spot:' + k, text: v.name, sub: st.used.includes(k + '@' + homeView) ? '今週は済み' : `${homeView}だけ`, cls: 'uniq' }));
+      items = isHome ? [
+        { tab: 'week', text: '調教スタンド', sub: weekSub, main: true },
+        { tab: 'people', text: '厩舎', sub: '調教師・馬主' },
+        { tab: 'goal', text: '本部', sub: gp ? `目標 ${gp.cur}/${gp.target}` : '目標・成績' },
+        { tab: 'me', text: '騎手会館', sub: `Lv${p.lv} ${Progress.title(W)}` },
+        { tab: 'life', text: '自宅', sub: L.stage === 'married' ? '家族' : '私生活' },
+        { tab: 'skill', text: 'ジム', sub: p.sp > 0 ? `スキル ${p.sp}pt` : 'スキル・特訓', badge: p.sp > 0 ? p.sp : null },
+        { tab: 'shop', text: 'ショップ', sub: money(p.money) },
+        { tab: 'news', text: '新聞', sub: 'ニュース', badge: newsNew || null },
+        { tab: 'ach', text: '記念館', sub: '実績・称号' },
+        { tab: 'fans', text: 'ファン広場', sub: `${p.fans.toLocaleString()}人` },
+        { tab: 'career', text: '資料館', sub: 'キャリア' },
+      ].concat(spots) : [
+        { tab: 'stand', text: '調教スタンド', sub: `${homeView}の馬が調教中`, note: true },
+        { tab: 'spot:visit', text: '厩舎', sub: st.used.includes('visit@' + homeView) ? '今週は済み' : 'あいさつ回り', cls: 'uniq' },
+        { tab: 'inn', text: '出張宿舎', sub: '泊まり先', note: true },
+      ].concat(spots);
+    }
+    const head = japan ? '' : `<button class="home-back" id="home-back">◀ 日本地図</button><div class="home-title">${homeView}トレセン<small>${isHome ? '所属' : '出張先'}・限定はあと${Math.max(0, left)}回</small></div>`;
+    pane.innerHTML = `<div id="home3d"></div>${head}
       <div class="home-info">
-        <div class="hi-venue">${esc(VENUES[W.venue].name)}競馬場${W.isOverseas ? '（遠征）' : ''}</div>
+        <div class="hi-venue">${W.isOverseas ? '海外遠征' : esc(VENUES[W.venue].name) + '競馬場'}</div>
         <div class="hi-main">${main ? `${gradeTag(main)} <b>${esc(main.name)}</b> <span class="small">${main.surf === 'D' ? 'ダート' : '芝'}${main.dist}m</span>` : ''}</div>
         ${sg ? `<div class="hi-goal"><span>${esc(sg.title)}</span>${esc(sg.goal)}</div>` : ''}
       </div>
-      <div class="home-hint">建物の札を押すと移動　左右になぞると回せる</div>`;
-    const items = [
-      { tab: 'week', text: off ? '競馬場' : '競馬場へ', sub: off ? (W.injury > 0 ? `療養中 あと${W.injury}週` : `騎乗停止 あと${p.suspended}週`) : `騎乗依頼 ${nReq}件`, main: true },
-      { tab: 'people', text: '厩舎', sub: '調教師・馬主' },
-      { tab: 'goal', text: '本部', sub: gp ? `目標 ${gp.cur}/${gp.target}` : '目標・成績' },
-      { tab: 'me', text: '騎手会館', sub: `Lv${p.lv} ${Progress.title(W)}` },
-      { tab: 'life', text: '自宅', sub: L.stage === 'married' ? '家族' : '私生活' },
-      { tab: 'skill', text: 'ジム', sub: p.sp > 0 ? `スキル ${p.sp}pt` : 'スキル・特訓', badge: p.sp > 0 ? p.sp : null },
-      { tab: 'shop', text: 'ショップ', sub: money(p.money) },
-      { tab: 'news', text: '新聞', sub: 'ニュース', badge: newsNew || null },
-      { tab: 'ach', text: '記念館', sub: '実績・称号' },
-      { tab: 'fans', text: 'ファン広場', sub: `${p.fans.toLocaleString()}人` },
-      { tab: 'career', text: '資料館', sub: 'キャリア' },
-    ];
+      <div class="home-hint">${japan ? 'トレセンか、今週の競馬場を押す' : '建物の札を押すと移動　左右になぞると回せる'}</div>`;
+    const go = (t) => {
+      if (t.startsWith('tc:')) { homeView = t === 'tc:miho' ? '美浦' : '栗東'; return showWeek(); }
+      if (t.startsWith('spot:')) return spotModal(t.slice(5), homeView);
+      tab = t; showWeek();
+    };
     const el = $('home3d');
-    try { Home3D.mount(el, { month: W.month, items, onGo: (t) => { tab = t; showWeek(); } }); }
-    catch (err) { console.error(err); el.innerHTML = `<div class="home-fallback">${items.map(i => `<button class="btn" data-go="${i.tab}">${esc(i.text)}<br><span class="small muted">${esc(i.sub || '')}</span></button>`).join('')}</div>`; el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { tab = b.dataset.go; showWeek(); }); }
+    try { Home3D.mount(el, { view: japan ? 'japan' : TC_KEY[homeView], home: isHome, venue: W.isOverseas ? '' : W.venue, month: W.month, items, onGo: go }); }
+    catch (err) { console.error(err); const fb = items.filter(i => !i.note); el.innerHTML = `<div class="home-fallback">${fb.map(i => `<button class="btn" data-go="${i.tab}">${esc(i.text)}<br><span class="small muted">${esc(i.sub || '')}</span></button>`).join('')}</div>`; el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go)); }
+    if ($('home-back')) $('home-back').onclick = () => { homeView = 'japan'; showWeek(); };
     // 左右になぞって回す
     let px = null, py = null;
     el.onpointerdown = (e) => { px = e.clientX; py = e.clientY; };
     el.onpointermove = (e) => { if (px == null) return; Home3D.drag(uiDX(e, px, py)); px = e.clientX; py = e.clientY; };
     el.onpointerup = el.onpointercancel = el.onpointerleave = () => { px = null; };
+  }
+  // 限定の場所：内容を見て、行うか決める
+  function spotModal(id, tc) {
+    const sp = Progress.SPOTS[id], p = P(), st = Progress.spotState(W);
+    const no = Progress.spotCheck(W, id, tc), away = tc !== p.region;
+    modal(`<div class="small muted">${esc(tc)}トレセン${sp.tc ? `　${esc(tc)}だけの場所` : ''}</div><h2 style="margin:2px 0 6px">${esc(sp.name)}</h2>
+      <p style="margin:0 0 6px;line-height:1.7">${esc(sp.desc)}</p>
+      <div class="kv"><span>効果</span><b>${esc(sp.eff)}</b></div>
+      ${away && !st.trip ? `<div class="kv"><span>出張</span><b>交通費5万円・疲労+3（今週の最初の1回だけ）</b></div>` : ''}
+      <div class="kv"><span>今週の残り</span><b>${Math.max(0, Progress.SPOT_MAX - st.used.length)}回</b></div>
+      ${no ? `<p class="small" style="color:var(--red);margin:6px 0 0">${esc(no)}</p>` : ''}
+      <div class="choices"><button class="btn primary" id="sp-do" ${no ? 'disabled' : ''}>${esc(sp.act)}</button><button class="btn" id="sp-no">やめる</button></div>`, () => {
+      $('sp-no').onclick = () => closeModal();
+      $('sp-do').onclick = () => { const out = Progress.spotDo(W, id, tc); closeModal(); if (out) { out.forEach(t => toast(t)); toast(sp.eff); World.save(W); } showWeek(); };
+    }, '限定の場所');
   }
   function renderWeekTab(pane) {
     const p = P();

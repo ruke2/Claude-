@@ -379,6 +379,48 @@
     checkAch(W);
   }
 
+  // ---- トレセンごとの限定の場所 ----
+  // 美浦と栗東で、できることが違う。1週に2つまで、同じ場所は週1回。所属でないトレセンへ行くと出張になる
+  const SPOTS = {
+    hanro: { tc: '栗東', name: '坂路コース', act: '坂路の追い切りに乗る', desc: '長い上り坂を駆け上がる馬に乗って、追い方を体で覚える。', eff: '技術+0.5・判断+0.2・疲労+5' },
+    biwako: { tc: '栗東', name: '琵琶湖ロードワーク', act: '湖岸を走り込む', desc: '湖からの風を受けながら、長い距離を走って体を絞る。', eff: '体力+0.6・体重-0.2kg・疲労+4' },
+    kaishoku: { tc: '栗東', name: '京の料亭', act: '馬主と会食する', desc: '関西の馬主に席を設けてもらい、顔をつなぐ。', eff: '馬主1人の信頼+4・体重+0.3kg・費用8万円' },
+    shinrin: { tc: '美浦', name: '森林馬道', act: 'お手馬と森を歩く', desc: '木立の中の道を、馬とゆっくり歩く。人も馬も気持ちがほぐれる。', eff: '疲労-8・体調+5・お手馬1頭との絆+1' },
+    wood: { tc: '美浦', name: '南馬場ウッドチップ', act: '併せ馬に乗る', desc: '2頭を並べて走らせ、仕掛けるタイミングと間合いを磨く。', eff: '判断+0.5・体力+0.2・疲労+5' },
+    fureai: { tc: '美浦', name: 'ふれあい広場', act: '見学のファンと交流する', desc: '見学に来た家族連れと話し、サインに応じる。', eff: '人気+0.4・ファンが増える・疲労+2' },
+    visit: { tc: null, name: '出張先の厩舎', act: 'あいさつ回りをする', desc: 'ふだん会えない調教師を回って、顔と名前を覚えてもらう。', eff: 'この地区の調教師2人の信頼+3・疲労+2' },
+  };
+  const SPOT_MAX = 2, TRIP_COST = 5, TRIP_FAT = 3;
+  function spotState(W) { if (!W.spot || W.spot.abs !== W.abs) W.spot = { abs: W.abs, used: [], trip: false }; return W.spot; }
+  // その場所で今できるか。できないときは理由を返す
+  function spotCheck(W, id, tc) {
+    const st = spotState(W), P = W.player;
+    if (W.injury > 0) return '療養中は行えない';
+    if (st.used.includes(id + '@' + tc)) return '今週はもう行った';
+    if (st.used.length >= SPOT_MAX) return `今週はここまで（1週に${SPOT_MAX}つまで）`;
+    const away = tc !== P.region;
+    if (id === 'kaishoku' && P.money < 8 + (away && !st.trip ? TRIP_COST : 0)) return '所持金が足りない';
+    if (away && !st.trip && P.money < TRIP_COST) return '交通費が足りない';
+    return null;
+  }
+  function spotDo(W, id, tc) {
+    ensure(W);
+    if (spotCheck(W, id, tc)) return null;
+    const st = spotState(W), P = W.player, out = [];
+    const up = (k, v) => { const b = P[k]; P[k] = clamp(b + v * (1 - b / 110), 0, 99); };
+    if (tc !== P.region && !st.trip) { st.trip = true; P.money = Math.round((P.money - TRIP_COST) * 10) / 10; P.fatigue += TRIP_FAT; out.push(`${tc}へ出張（交通費${TRIP_COST}万円・疲労+${TRIP_FAT}）`); }
+    st.used.push(id + '@' + tc);
+    if (id === 'hanro') { up('tech', 0.5); up('judge', 0.2); P.fatigue += 5; out.push('坂路を3本。追い出してからの馬の反応が、手に残っている。'); }
+    else if (id === 'biwako') { up('phys', 0.6); P.weight -= 0.2; P.fatigue += 4; out.push('湖岸を走り切った。体が軽い。'); }
+    else if (id === 'kaishoku') { const o = pick(W.owners); P.otrust[o.id] = clamp((P.otrust[o.id] || 0) + 4, 0, 100); P.weight += 0.3; P.money = Math.round((P.money - 8) * 10) / 10; out.push(`${o.name}と会食した。「いい馬が入ったら、声をかけるよ」`); }
+    else if (id === 'shinrin') { P.fatigue = Math.max(0, P.fatigue - 8); P.cond = clamp(P.cond + 5, 0, 100); const hs = Object.keys(P.bond).map(k => W.horses[k]).filter(h => h && !h.retired); if (hs.length) { const h = pick(hs); P.bond[h.id] += 1; out.push(`${h.name}と森の道を歩いた。耳がこちらを向いている。`); } else out.push('森の道を歩いた。木漏れ日が気持ちいい。'); }
+    else if (id === 'wood') { up('judge', 0.5); up('phys', 0.2); P.fatigue += 5; out.push('併せ馬で半馬身先着。仕掛けの間合いが少しつかめた。'); }
+    else if (id === 'fureai') { P.pop = clamp(P.pop + 0.4, 0, 100); addFans(W, 'local', 40); addFans(W, 'young', 25); P.fatigue += 2; out.push('子どもに「がんばって」と言われた。色紙を10枚書いた。'); }
+    else if (id === 'visit') { const ts = W.trainers.filter(t => t.region === tc).sort(() => Math.random() - 0.5).slice(0, 2); ts.forEach(t => { P.trust[t.id] = clamp((P.trust[t.id] || 0) + 3, 0, 100); }); P.fatigue += 2; out.push(`${ts.map(t => t.name).join('・')}にあいさつした。`); }
+    checkAch(W);
+    return out;
+  }
+
   // ---- ショップ ----
   function buyGear(W, slot, lv) {
     const P = W.player, it = GEAR[slot][lv];
@@ -394,5 +436,5 @@
   function toggleStaff(W, id) { const P = W.player; P.staff[id] = !P.staff[id]; return P.staff[id]; }
   function moveHome(W, i) { const P = W.player, h = HOMES[i]; if (i <= P.home || P.money < h.price) return false; P.money -= h.price; P.home = i; checkAch(W); return true; }
 
-  window.Progress = { TRAIN, train, trainCost, SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
+  window.Progress = { SPOTS, SPOT_MAX, spotState, spotCheck, spotDo, TRAIN, train, trainCost, SKILLS, GEAR, GEAR_LABEL, GEAR_CAT, UP_MAX, topLv, upLv, upCost, gearEffect, gearFx, upgradeGear, STAFF, HOMES, ACH, SEGS, TITLES, init, ensure, raceMods, gearWeight, onResult, onWeekEnd, learn, title, xpNeed, addFans, applyLife, goalOptions, setGoal, goalProgress, yearEnd, buyGear, toggleStaff, moveHome, has };
 })();

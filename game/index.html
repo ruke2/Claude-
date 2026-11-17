@@ -598,6 +598,19 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 .home-info .hi-goal{font-size:11.5px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--rule);line-height:1.35}
 .home-info .hi-goal span{display:block;font-size:10px;color:var(--muted);font-weight:800}
 .home-hint{position:absolute;right:calc(12px + var(--sr,0px));bottom:6px;font-size:10.5px;color:#fff;background:rgba(39,43,69,.45);border-radius:999px;padding:3px 10px;pointer-events:none;z-index:300}
+.home3d-pin.note{background:rgba(255,255,255,.82);box-shadow:0 2px 6px rgba(40,50,110,.18);pointer-events:none}
+.home3d-pin.note::after{display:none}
+.home3d-pin{transition:filter .12s,opacity .2s}
+.home3d-pin.tiny{padding:1px 7px 2px;border-radius:9px}.home3d-pin.tiny b{font-size:10px;font-weight:800;color:var(--muted)}
+.home3d-pin.tc{background:linear-gradient(180deg,#7a94ff,#5468d4);color:#fff;box-shadow:0 4px 0 #3b4ba8,0 8px 16px rgba(84,104,212,.4);padding:5px 13px 6px}
+.home3d-pin.tc::after{background:#5468d4;box-shadow:3px 3px 0 #3b4ba8}
+.home3d-pin.tc b{font-size:13.5px}.home3d-pin.tc small{color:#fff;opacity:.9}
+.home3d-pin.uniq{background:linear-gradient(180deg,#fff6c9,#ffe27a);box-shadow:0 3px 0 #d9b23a,0 6px 14px rgba(190,150,30,.3)}
+.home3d-pin.uniq::after{background:#ffe27a;box-shadow:3px 3px 0 #d9b23a}
+.home3d-pin.uniq small{color:#8a6a10}
+.home-back{position:absolute;left:calc(12px + var(--sl,0px));top:8px;z-index:300;border:0;border-radius:999px;background:#fff;color:var(--ink);font-weight:900;font-size:12.5px;padding:7px 14px;box-shadow:0 3px 0 #cfd6f0,0 6px 14px rgba(40,50,110,.2);cursor:pointer;font-family:inherit}
+.home-title{position:absolute;left:calc(128px + var(--sl,0px));top:6px;z-index:300;background:rgba(39,43,69,.72);color:#fff;border-radius:999px;padding:4px 16px 5px;font-weight:900;font-size:13px;text-align:center;white-space:nowrap;pointer-events:none}
+.home-title small{display:block;font-size:10px;font-weight:700;opacity:.85}
 .home-fallback{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
 </style>
 </head>
