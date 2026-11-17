@@ -348,6 +348,8 @@
         // かかり・前が壁は、画面の札（手綱の上）で知らせるので、ここでは馬のヨレだけ
         if (p.st < 0.22 && p.effort > 0.7 && Math.abs(p.lean) > 0.15 && free && rem < 500 && !this._yore) { this._yore = true; this.msg('馬がヨレている', 1.0, '#ffb74d'); }
       }
+      // 振り返り用：プレイヤーの100mごとの位置・手綱・脚色を残す
+      { const p = this.player; if (p && p.started && !p.finished) { const k = Math.floor(p.s / 100); if (k > (this._tk ?? -1)) { this._tk = k; (this.trace = this.trace || []).push({ s: k * 100, r: p.rank, e: Math.round(p.effort * 100) / 100, st: Math.round(p.st * 100) / 100, v: Math.round(p.v * 10) / 10, k: Math.round(p.kakari * 100) / 100, w: p.whips, b: p.blocked ? 1 : 0 }); } } }
       if (R.every(r => r.finished)) this.done = true;
       if (this.t > 600) { R.forEach(r => { if (!r.finished) { r.finished = true; r.finishTime = this.t + (this.D - r.s) / 10; } }); this.done = true; }
     }

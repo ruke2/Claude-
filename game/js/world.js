@@ -501,6 +501,36 @@
     return clamp(0.5 + (me - them) / 120 + 0.07 * (W.contestFails || 0), 0.08, 0.92);
   }
   // 依頼を断ったとき・取り合いに負けたときの後始末。その馬には別の騎手が乗る
+  // ---- 調教師の指示 ----
+  // 脚質に合わせた位置取りの指示。道中（レースの35〜60%の区間）の平均の位置で、守れたかを見る
+  const ORDER_DEF = [
+    { k: 'nige', text: 'ハナを切って、自分のペースで運んでくれ', short: '逃げる（先頭か2番手）', lo: 0, hi: 0.15 },
+    { k: 'senko', text: '好位につけて、早めに動いてくれ', short: '好位につける（前のほう）', lo: 0, hi: 0.42 },
+    { k: 'sashi', text: '中団で脚をためて、直線で外へ出してくれ', short: '中団で脚をためる', lo: 0.28, hi: 0.78, save: true },
+    { k: 'oikomi', text: '後方でじっくり構えて、直線だけの競馬でいい', short: '後方で脚をためる', lo: 0.55, hi: 1, save: true },
+  ];
+  function orderFor(W, race, h) {
+    const P = W.player, n = race.field.length;
+    if ((P.trust[h.trainer] || 0) >= 70 && (h.id + W.abs) % 3 === 0 || (h.id + W.abs) % 7 === 0) return { k: 'free', text: '乗り方は任せる。馬と相談して決めてくれ', short: '任せる', free: true };
+    const d = ORDER_DEF[h.style] || ORDER_DEF[1];
+    const lo = Math.max(1, Math.round(1 + d.lo * (n - 1))), hi = Math.max(d.k === 'nige' ? 2 : lo + 1, Math.round(1 + d.hi * (n - 1)));
+    return { ...d, lo, hi };
+  }
+  // trace：race.js が残した100mごとの記録
+  function judgeOrder(W, race, hid, trace, pos) {
+    const P = W.player, h = W.horses[hid], o = orderFor(W, race, h);
+    if (o.free || !trace || trace.length < 4) return { order: o, kept: null, text: o.free ? '指示なし（任された）' : '' };
+    const mid = trace.filter(t => t.s >= race.dist * 0.35 && t.s <= race.dist * 0.6);
+    const pts = mid.length ? mid : trace;
+    const avg = pts.reduce((a, t) => a + t.r, 0) / pts.length, eff = pts.reduce((a, t) => a + t.e, 0) / pts.length;
+    const inPos = avg >= o.lo - 0.6 && avg <= o.hi + 0.6, saved = !o.save || eff <= 0.72;
+    const kept = inPos && saved;
+    let d = kept ? 1.5 + (pos <= 3 ? 0.5 : 0) : pos === 1 ? 0 : pos <= 3 ? -0.5 : -2;
+    P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + d, 0, 100);
+    const why = kept ? '指示どおりの競馬' : !inPos ? (avg < o.lo ? '指示より前で運んだ' : '指示より後ろになった') : '道中で脚を使いすぎた';
+    return { order: o, kept, avg: Math.round(avg * 10) / 10, dTrust: d, text: why + (!kept && pos === 1 ? '（勝ったので不問）' : '') };
+  }
+
   function giveRide(W, race, hid, jid, why) {
     race.forcedJ = race.forcedJ || {}; race.forcedJ[hid] = jid;
     const h = W.horses[hid]; if (h) h.mainJ = jid;
@@ -1210,6 +1240,6 @@
     mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
-    buildCard, buildRequests, gradedForWeek, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
+    buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
   };
 })();

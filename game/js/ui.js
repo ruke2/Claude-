@@ -970,7 +970,7 @@
       ${abilityHtml(race, h)}
       <div class="kv"><span>本作での戦績</span><b>${h.starts}戦${h.wins}勝${h.g1.length ? '・GⅠ' + h.g1.length + '勝' : ''}</b></div>${src}</div>
       <div class="card"><div class="small">${condLine(race)} ${tip(BIAS_TIP)}</div></div>
-      <div class="card"><div class="small muted">調教師の指示</div><div style="font-family:var(--serif)">「${ORDERS[h.style]}乗ってほしい」</div></div>
+      ${(() => { const od = World.orderFor(W, race, h); return `<div class="card" style="border-left:4px solid var(--blue)"><div class="small muted">調教師の指示 ${tip('道中（レースの中ほど）の位置が指示に合っていれば、調教師の信頼が上がる。外れても、勝てば不問になる。')}</div><div style="font-family:var(--serif)">「${esc(od.text)}」</div>${od.free ? '' : `<div class="small" style="margin-top:3px">めやす：道中 <b>${od.lo}〜${od.hi}番手</b>${od.save ? '・仕掛けは直線まで待つ' : ''}</div>`}${h.tune && h.tune.abs === W.abs ? `<div class="small" style="margin-top:3px">追い切り評価 <b>${h.tune.g}</b>（調子 ${h.tune.v >= 0 ? '+' : ''}${h.tune.v}）</div>` : ''}</div>`; })()}
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-ride">ジョッキーカメラで騎乗</button>
       <button class="btn" style="width:100%;margin-top:6px" id="b-auto">オート騎乗（結果のみ）</button>`;
     let tb = `<table><tr><th>枠</th><th>番</th><th>馬名</th><th>性齢</th><th>騎手</th><th>斤量</th><th>総合</th><th>人気</th><th>単勝</th></tr>`;
@@ -984,8 +984,9 @@
     $('b-auto').onclick = () => {
       const r = World.setupRace(W, race, hid, 'auto');
       const res = r.runToEnd();
-      race.laps = r.laps(); race.my3F = null;
+      race.laps = r.laps(); race.my3F = null; race.trace = r.trace || [];
       const ev = World.applyResult(W, race, res, hid, 'auto', null);
+      if (!quick && ev) ev.order = World.judgeOrder(W, race, hid, race.trace, ev.pos);
       if (!quick) pressAftermath(race, ev);
       if (!quick) logRide(race, hid, ev, 'auto');
       showResult(race, hid, ev);
@@ -1489,7 +1490,9 @@
     curRace.laps = engine.laps();
     const me = res.find(x => x.runner === engine.player);
     curRace.my3F = engine.player3F ? me.time - engine.player3F : null;
+    curRace.trace = engine.trace || [];
     const ev = World.applyResult(W, curRace, res, curHid, mode, engine.inquiry);
+    if (!quick && ev) ev.order = World.judgeOrder(W, curRace, curHid, curRace.trace, ev.pos);
     if (!quick) pressAftermath(curRace, ev);
     if (!quick) logRide(curRace, curHid, ev, mode);
     showResult(curRace, curHid, ev);
@@ -1598,6 +1601,61 @@
   window.addEventListener('keyup', (e) => { if (!engine) return; if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setSteer(0); });
 
   // ---------- 結果 ----------
+  // ---- レースの振り返り：位置取り・手綱と脚色・速さを1枚の図で ----
+  function showReview(race, hid, ev) {
+    const tr = race.trace, D = race.dist, n = race.field.length, laps = race.laps || [];
+    const Wd = 720, L = 46, Rr = 12, pw = Wd - L - Rr;
+    const X = (s) => L + pw * Math.min(1, s / D);
+    const P1 = { y: 22, h: 92 }, P2 = { y: 136, h: 62 }, P3 = { y: 220, h: 62 }, Ht = 312;
+    const od = ev && ev.order && ev.order.order && !ev.order.order.free ? ev.order.order : null;
+    const yR = (r) => P1.y + (n <= 1 ? 0 : (r - 1) / (n - 1)) * P1.h;
+    // 仕掛けた地点：後半で、そこから先ずっと追い続けた最初の地点
+    let go = null; for (let i = tr.length - 1; i >= 0; i--) { if (tr[i].e >= 0.88) go = tr[i]; else break; }
+    if (go && go.s < D * 0.3) go = tr.find(t => t.s >= D * 0.3 && t.e >= 0.88) || go;
+    const whip = tr.find((t, i) => i && t.w > tr[i - 1].w);
+    const blocked = tr.filter(t => t.b);
+    const line = (pts) => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const vs = tr.filter(t => t.s >= 200).map(t => t.v * 3.6), vmin = Math.max(48, Math.min(...vs, 58)), vmax = Math.max(...vs, 64);
+    const lv = laps.slice(1).map(x => 200 / x * 3.6), lmin = Math.min(vmin, ...lv), lmax = Math.max(vmax, ...lv);
+    const yV = (v) => P3.y + P3.h - (v - lmin) / Math.max(1, lmax - lmin) * P3.h;
+    const ticks = []; for (let rem = Math.floor(D / 200) * 200; rem >= 0; rem -= 200) ticks.push(rem);
+    const grid = ticks.map(rem => { const x = X(D - rem); return `<line x1="${x}" y1="${P1.y}" x2="${x}" y2="${P3.y + P3.h}" stroke="#e3e7f3" stroke-width="1"/><text x="${x}" y="${Ht - 6}" font-size="10" fill="#7a809c" text-anchor="middle">${rem ? '残' + rem : 'ゴール'}</text>`; }).join('');
+    const effBars = tr.map((t, i) => { const x0 = X(t.s), x1 = X(i + 1 < tr.length ? tr[i + 1].s : D), c = t.e >= 0.88 ? '#ff4d7e' : t.e >= 0.6 ? '#ffb05b' : t.e >= 0.4 ? '#8fd3a6' : '#7a94ff'; return `<rect x="${x0.toFixed(1)}" y="${(P2.y + P2.h - t.e * P2.h).toFixed(1)}" width="${Math.max(1, x1 - x0 - 0.6).toFixed(1)}" height="${(t.e * P2.h).toFixed(1)}" fill="${c}" opacity=".75"/>`; }).join('');
+    const mark = (t, label, col, dy) => t ? `<line x1="${X(t.s)}" y1="${P1.y - 4}" x2="${X(t.s)}" y2="${P3.y + P3.h}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4 3"/><rect x="${X(t.s) - 34}" y="${P1.y - 18 + dy}" width="68" height="14" rx="7" fill="${col}"/><text x="${X(t.s)}" y="${P1.y - 8 + dy}" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">${label} 残${Math.max(0, D - t.s)}m</text>` : '';
+    const svg = `<svg viewBox="0 0 ${Wd} ${Ht}" style="width:100%;height:auto;display:block;background:#fff;border-radius:10px">
+      ${grid}
+      ${od ? `<rect x="${X(D * 0.35)}" y="${yR(od.lo) - 3}" width="${X(D * 0.6) - X(D * 0.35)}" height="${yR(od.hi) - yR(od.lo) + 6}" fill="#35c98b" opacity=".18"/><text x="${X(D * 0.475)}" y="${Math.min(P1.y + P1.h - 2, yR(od.hi) + 14)}" font-size="9.5" fill="#157a47" text-anchor="middle">指示の位置</text>` : ''}
+      <text x="4" y="${P1.y + 4}" font-size="10" fill="#7a809c">1番手</text><text x="4" y="${P1.y + P1.h + 3}" font-size="10" fill="#7a809c">${n}番手</text>
+      <text x="4" y="${P1.y + P1.h / 2 + 3}" font-size="10.5" fill="#272b45" font-weight="700">位置</text>
+      <path d="${line(tr.map(t => [X(t.s), yR(t.r)]))}" fill="none" stroke="#5468d4" stroke-width="2.5" stroke-linejoin="round"/>
+      ${tr.filter((t, i) => i % 2 === 0 || i === tr.length - 1).map(t => `<circle cx="${X(t.s)}" cy="${yR(t.r)}" r="2.6" fill="#5468d4"/>`).join('')}
+      <circle cx="${X(D)}" cy="${yR(ev.pos)}" r="5" fill="#ff4d7e"/><text x="${X(D) - 8}" y="${yR(ev.pos) - 7}" font-size="11" fill="#ff4d7e" text-anchor="end" font-weight="800">${ev.pos}着</text>
+      ${blocked.map(t => `<rect x="${X(t.s) - 2}" y="${yR(t.r) - 9}" width="4" height="5" fill="#e0201c"/>`).join('')}
+      <text x="4" y="${P2.y + P2.h / 2 + 3}" font-size="10.5" fill="#272b45" font-weight="700">手綱</text>
+      <text x="4" y="${P2.y + 6}" font-size="9" fill="#7a809c">追う</text><text x="4" y="${P2.y + P2.h}" font-size="9" fill="#7a809c">控える</text>
+      ${effBars}
+      <path d="${line(tr.map(t => [X(t.s), P2.y + P2.h - Math.min(1, t.st / 1.06) * P2.h]))}" fill="none" stroke="#157a47" stroke-width="2"/>
+      ${tr.some(t => t.k > 0.25) ? `<path d="${line(tr.map(t => [X(t.s), P2.y + P2.h - t.k * P2.h]))}" fill="none" stroke="#9b4fd1" stroke-width="1.5" stroke-dasharray="3 2"/>` : ''}
+      <text x="4" y="${P3.y + P3.h / 2 + 3}" font-size="10.5" fill="#272b45" font-weight="700">速さ</text>
+      <text x="4" y="${P3.y + 6}" font-size="9" fill="#7a809c">${Math.round(lmax)}km</text><text x="4" y="${P3.y + P3.h}" font-size="9" fill="#7a809c">${Math.round(lmin)}km</text>
+      ${laps.map((x, i) => { const y = yV(Math.max(lmin, 200 / x * 3.6)); return `<line x1="${X(i * 200)}" y1="${y}" x2="${X(Math.min(D, (i + 1) * 200))}" y2="${y}" stroke="#b9c0d6" stroke-width="3"/>`; }).join('')}
+      <path d="${line(tr.map(t => [X(t.s), yV(Math.max(lmin, t.v * 3.6))]))}" fill="none" stroke="#ff8a5b" stroke-width="2.2"/>
+      ${mark(go, '仕掛け', '#ff4d7e', 0)}${whip && (!go || Math.abs(whip.s - go.s) > D * 0.12) ? mark(whip, 'ムチ', '#e06d00', 0) : ''}
+    </svg>`;
+    const mid = tr.filter(t => t.s >= D * 0.35 && t.s <= D * 0.6), avg = mid.length ? (mid.reduce((a, t) => a + t.r, 0) / mid.length).toFixed(1) : '-';
+    const stEnd = tr[tr.length - 1].st, maxK = Math.max(...tr.map(t => t.k));
+    const notes = [];
+    if (go) notes.push(`仕掛けは残り${Math.max(0, D - go.s)}m。${stEnd < 0.1 && ev.pos > 1 ? '最後は脚が上がった。もう少し待てたかもしれない。' : stEnd > 0.3 ? '脚を余してゴールした。もう少し早く動けた。' : '脚をほぼ使い切った。'}`); else notes.push('最後まで追い出さなかった。');
+    if (maxK > 0.5) notes.push('道中でかかった（紫の点線）。前に馬を置くと落ち着く。');
+    if (blocked.length >= 3) notes.push(`前が壁になった区間がある（赤い印 ${blocked.length}か所）。`);
+    if (ev.order && ev.order.kept === false) notes.push(`指示は「${ev.order.order.short}」。${ev.order.text}。`);
+    modal(`<div class="row" style="margin-bottom:4px"><b>${esc(race.name)}</b><span class="small muted">${race.surf === 'D' ? 'ダート' : '芝'}${D}m・${n}頭・${esc(W.horses[hid].name)}</span></div>${svg}
+      <div class="small" style="display:flex;gap:10px;flex-wrap:wrap;margin:5px 0"><span><i style="display:inline-block;width:14px;height:3px;background:#5468d4;vertical-align:middle"></i> 位置</span><span><i style="display:inline-block;width:10px;height:8px;background:#ff4d7e;vertical-align:middle"></i> 追う <i style="display:inline-block;width:10px;height:8px;background:#7a94ff;vertical-align:middle"></i> 控える</span><span><i style="display:inline-block;width:14px;height:3px;background:#157a47;vertical-align:middle"></i> 脚色</span><span><i style="display:inline-block;width:14px;height:3px;background:#ff8a5b;vertical-align:middle"></i> 自分の速さ <i style="display:inline-block;width:14px;height:3px;background:#b9c0d6;vertical-align:middle"></i> 先頭のラップ</span></div>
+      <div class="kv"><span>道中の平均位置</span><b>${avg}番手</b></div>${race.my3F ? `<div class="kv"><span>上がり3F</span><b>${race.my3F.toFixed(1)}秒</b></div>` : ''}
+      ${notes.map(t => `<p class="small" style="margin:4px 0 0">・${esc(t)}</p>`).join('')}
+      <div class="choices"><button class="btn primary" id="rv-ok">閉じる</button></div>`, () => { $('rv-ok').onclick = () => closeModal(); }, 'レースの振り返り');
+  }
+
   // ---- レース後の着順掲示板 → 払戻金 ----
   const PO_COL = { win: '#c8102e', place: '#e06d00', waku: '#6a3fa0', quin: '#1f6fbf', wide: '#0f8a6a', exa: '#2c3e8f', trio: '#7a8a12', tri: '#9b1f6b' };
   function showBoard(race, hid, ev, done) {
@@ -1659,9 +1717,12 @@
     $('res-side').innerHTML = `${inq}<div class="card" style="margin-top:8px;text-align:center"><div class="small muted">騎乗評価</div><div class="eval">${ev.grade}</div>
       <div style="margin-top:2px;font-family:var(--serif)"><b style="font-size:18px">${ev.pos}着</b>（${ev.pop}番人気）</div><div class="small muted">${comment}</div></div>
       <div class="card"><div class="kv"><span>評価</span><b>${ev.dRep >= 0 ? '+' : ''}${ev.dRep}</b></div><div class="kv"><span>人気</span><b>${ev.dPop >= 0 ? '+' : ''}${ev.dPop}</b></div><div class="kv"><span>収入</span><b>${ev.income}万円</b></div></div>
+      ${ev.order && ev.order.order ? `<div class="card" style="border-left:4px solid ${ev.order.kept == null ? 'var(--rule)' : ev.order.kept ? 'var(--green)' : 'var(--red)'}"><div class="small muted">調教師の指示：${esc(ev.order.order.short)}</div><b>${ev.order.kept == null ? '任された' : ev.order.kept ? '守れた' : '守れなかった'}</b> <span class="small">${esc(ev.order.text)}${ev.order.avg ? `（道中の平均 ${ev.order.avg}番手）` : ''}${ev.order.dTrust ? `　信頼${ev.order.dTrust > 0 ? '+' : ''}${ev.order.dTrust}` : ''}</span></div>` : ''}
+      ${race.trace && race.trace.length > 3 ? '<button class="btn" style="width:100%;margin-top:8px" id="b-review">レースを振り返る（位置取りの図）</button>' : ''}
       ${race.commentary && race.commentary.length ? '<button class="btn" style="width:100%;margin-top:8px" id="b-comm">実況の文字起こしを読む</button>' : ''}
       <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-resnext">${quick ? 'タイトルへ' : '次へ'}</button>`;
     if ($('b-comm')) $('b-comm').onclick = () => modal(`<div class="scroll" style="max-height:62vh">${race.commentary.map(l => `<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px dotted var(--rule)"><span class="tnum muted small" style="flex:0 0 44px">${l.t == null ? '発走前' : RaceEngine.fmtTime(l.t)}</span><span style="font-family:var(--serif)">${esc(l.text)}</span></div>`).join('')}</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '実況（文字起こし）');
+    if ($('b-review')) $('b-review').onclick = () => showReview(race, hid, ev);
     $('b-resnext').onclick = () => {
       if (quick) { quick = false; W = null; refreshTitle(); show('s-title'); if (tutDone) { tutDone = false; modal(`<h2>チュートリアル完了</h2><p>基本の操作はこれで全部。あとは実戦で仕掛けどころを覚えていこう。操作の説明はレース中の「停止」からいつでも見られる。</p><div class="choices"><button class="btn primary" id="m-ok">OK</button></div>`, () => { $('m-ok').onclick = closeModal; }, 'チュートリアル'); } return; }
       W.dayIdx++; World.save(W); showDay();
