@@ -1026,7 +1026,7 @@
       }
       this.camTarget = new T.Vector3(a.x, 0, a.z);
     }
-    setReplay(on) { this.replay = !!on; this.camSnap = false; if (this.playerModel) this.playerModel.setPlayerView(!on && this.camMode === 'jockey'); this.updateFov(); }
+    setReplay(on) { this.replay = !!on; this._rpOn = false; this.camSnap = false; if (this.playerModel) this.playerModel.setPlayerView(!on && this.camMode === 'jockey'); this.updateFov(); }
     endIntro() {
       if (!this.intro) return;
       this.intro = null; this.camSnap = false; this.camYaw = null;
@@ -1189,13 +1189,18 @@
       let dy = yawHorse - this.camYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       this.camYaw += dy * Math.min(1, dt * 6);
       if (this.cer) return this.ceremonyCamera(race, dt);
-      if (this.replay) { // ゴール前のリプレイ：決勝線の外から、先頭の馬を追ってゴール板で止める
+      if (this.replay) { // ゴール前のリプレイ：外ラチの外から真横に見る
         const lead = race.runners.reduce((b, r) => r.s > b.s ? r : b, race.runners[0]);
         const eH = this.E ? this.E(c.H) : 0;
-        const camP = CXY(c, c.H - 6, c.width + 5.5);
-        cam.position.set(camP.x, eH + 3.3, camP.z); cam.up.set(0, 1, 0);
-        const lp = Math.min(c.H + 0.5, race.pAt(lead.s) + 1.5), L = CXY(c, lp, Math.min(lead.X, c.width * 0.5));
-        cam.lookAt(L.x, eH + 1.3, L.z);
+        // 真横から：カメラは先頭の馬と並んで動き、決勝線の延長上で止まる。向きは常にコースと直角
+        const lp = Math.min(c.H, race.pAt(lead.s) + 0.6);
+        // 広いコースでも馬が小さくならないよう、いちばん外の馬から9mほど外に置く（コースの中に入ってよい）
+        const front = race.runners.filter(r => r.s > lead.s - 14);
+        const outX = Math.max(...front.map(r => r.X));
+        this._rpX = this._rpX == null || !this._rpOn ? outX + 9 : this._rpX + ((outX + 9) - this._rpX) * 0.05; this._rpOn = true;
+        const camP = CXY(c, lp, Math.min(c.width + 7.5, this._rpX)), L = CXY(c, lp, 0);
+        cam.position.set(camP.x, eH + 1.75, camP.z); cam.up.set(0, 1, 0);
+        cam.lookAt(L.x, eH + 1.15, L.z);
         this.camTarget = new T.Vector3(L.x, 0, L.z);
         return;
       }

@@ -382,16 +382,17 @@
     const pl = Workout.plan(kind, World.rating(h, W.year)), tn = t ? t.name.replace('厩舎', '') + '調教師' : '調教師';
     modal(`<div class="speaker">${esc(tn)}</div><p style="margin:2px 0 8px;line-height:1.7">${esc(h.name)}の追い切りだ。${esc(pl.say)}</p>
       <div class="kv"><span>指示</span><b>${pl.name}</b></div><div class="kv"><span>4ハロンの時計</span><b>${pl.t4.toFixed(1)}秒</b></div><div class="kv"><span>終い1ハロン</span><b>${pl.l1.toFixed(1)}秒</b></div>
-      <p class="small muted" style="margin:6px 0 0">右側を上下になぞって手綱を加減する。速すぎても遅すぎても評価が下がる。${h.tmp >= 60 ? 'この馬は気性が激しく、抑えすぎると行きたがる。' : ''}</p>
-      <div class="choices"><button class="btn primary" id="wo-go">乗る</button><button class="btn" id="wo-cancel">やめておく</button></div>`, () => {
+      <p class="small muted" style="margin:6px 0 0">ペース計の針を緑の帯に合わせ続ける。1ハロンごとに判定が出て、途中の「合図」を合わせると加点。${h.tmp >= 60 ? 'この馬は気性が激しく、抑えすぎると行きたがる。' : ''}</p>
+      <div class="choices"><button class="btn primary" id="wo-go">自分で乗る</button><button class="btn" id="wo-skip">スキップ（おまかせで乗る）</button><button class="btn" id="wo-cancel">やめておく</button></div>`, () => {
+      const done = (r) => { if (r) { const fx = Progress.workoutDone(W, hid, r); toast(`追い切り 評価${r.g}${r.auto ? '（おまかせ）' : ''}：調子${fx.tune >= 0 ? '+' : ''}${fx.tune}・絆+${fx.bond}${fx.trust ? `・信頼${fx.trust > 0 ? '+' : ''}${fx.trust}` : ''}`); World.save(W); } showWeek(); };
       $('wo-cancel').onclick = () => closeModal();
+      $('wo-skip').onclick = () => { closeModal(); done(Workout.auto(kind, World.rating(h, W.year), P().tech)); };
       $('wo-go').onclick = () => {
         closeModal(); if (window.Home3D) Home3D.stop();
-        const o = W.owners[h.owner];
-        Workout.open($('app'), { name: h.name, coat: (COAT[h.coatKey] || COAT.bay)[1], silk: o && o.silks ? o.silks.base : '#ff5c7a', rating: World.rating(h, W.year), tmp: h.tmp, kind, dy: uiDY, onDone: (r) => {
-          if (r) { const fx = Progress.workoutDone(W, hid, r); toast(`追い切り 評価${r.g}：調子${fx.tune >= 0 ? '+' : ''}${fx.tune}・絆+${fx.bond}${fx.trust ? `・信頼${fx.trust > 0 ? '+' : ''}${fx.trust}` : ''}`); World.save(W); }
-          showWeek();
-        } });
+        const o = W.owners[h.owner], sk = o && o.silks ? o.silks : { base: '#ff5c7a', accent: '#ffffff' };
+        const go = () => Workout.open($('app'), { name: h.name, coatMat: Horse3D.coatFor(h), coatKey: h.coatKey, socks: h.socks, hood: h.hood, silks: { base: sk.base, accent: sk.accent, pattern: sk.pattern || 'plain', cap: sk.cap || sk.base }, rating: World.rating(h, W.year), tmp: h.tmp, kind, dy: uiDY, onDone: done });
+        // レースと同じ馬のモデルを使う（まだ読み込んでいなければ待つ）
+        if (window.HorseGLB && !HorseGLB.ready) { toast('馬を準備中…'); HorseGLB.load().then(go, go); } else go();
       };
     }, '追い切り');
   }
