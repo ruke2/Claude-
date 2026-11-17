@@ -987,6 +987,7 @@
 
   // 自分が乗らないレース・オート騎乗
   function simulate(W, race, playerHid, mode) {
+    if (playerHid != null && !race.field.some(f => f.hid === playerHid)) playerHid = null; // 出走表から外れた馬には乗れない
     const r = setupRace(W, race, playerHid, mode || 'auto');
     const res = r.runToEnd();
     race.laps = r.laps();

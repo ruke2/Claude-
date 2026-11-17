@@ -70,3 +70,17 @@
 - 古い版のセーブは読み込み時に新しい項目を補う（`World.migrate`）
 - claude.ai の Artifact として開いたときは、自分だけが読み書きできる場所にも圧縮して自動保存する（`js/cloudsave.js`）。端末の保存領域が消えても、タイトル画面の「クラウドのセーブから再開」で戻せる
 - タイトル画面とメニューから、セーブをファイルに書き出す・読み込むことができる
+
+## 海外競馬場のデータの出典
+
+| 競馬場 | 回り | 周長・直線 | 出典 |
+|---|---|---|---|
+| キングアブドゥルアジーズ | 左 | ダート 2,000m・約400m／芝 約1,800m・438m | [JRA](https://jra.jp/keiba/overseas/country/sau/king_abdulaziz.html) |
+| メイダン | 左 | 芝 約2,400m・約450m／ダート 約1,750m・約400m | [JRA](https://www.jra.go.jp/keiba/overseas/country/uae/racecourse.html) |
+| アスコット | 右 | 2,800m・約500m、高低差 約20m（直線は残り200mまで上り） | [JRA](https://www.jra.go.jp/keiba/overseas/country/gbr/ascot.html) |
+| パリロンシャン | 右 | 大回り 2,750m・約533m、フォルスストレート約250m、高低差10m | [JRA](https://www.jra.go.jp/keiba/overseas/country/france/longchamp.html)・[France Galop](https://www.france-galop.com/en/hippodromelongchamp) |
+| フレミントン | 左 | 2,312m・450m（直線1,200mのストレートシックスあり） | [JRA](https://www.jra.go.jp/keiba/overseas/country/australia/flemington.html) |
+| 沙田 | 右 | 芝 1,899m・430m（幅30.5m）／オールウェザー 1,555m・365m | [JRA](https://www.jra.go.jp/keiba/overseas/country/hongkong/racecourse.html) |
+| ベルモントパーク（2027年BC） | 左 | ダート 1 1/2マイル・直線1,097フィート（改修前の値） | [NYRA](https://nyra.com/belmont/news/belmont-park-to-host-2027-breeders-cup-world-championships)・[America's Best Racing](https://www.americasbestracing.net/gambling/2021-tips-and-trends-betting-belmont-parks-spring-2021-meet) |
+
+コースは楕円で表しているため、アスコットのおむすび型やパリロンシャンのフォルスストレートの曲がり方は再現していない（高低差と周長・直線の長さは反映）。

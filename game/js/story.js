@@ -146,13 +146,17 @@
     W.requests.sort((a, b) => a.raceNo - b.raceNo);
   }
   function placeRival(W, age) {
+    const f0 = (hid) => hid !== W.story.partner && !(W.requests || []).some(q => q.hid === hid);
     const S = W.story, rh = W.horses[S.rivalHorse];
     if (!rh || rh.retired || W.isOverseas) return;
     const p = W.horses[S.partner];
     const race = W.card.find(r => r.graded && r.field.some(f => f.hid === S.partner));
     if (!race || race.field.some(f => f.hid === rh.id)) return;
     if (!World.eligible(W, { ...rh, last: -99 }, { age: race.age, sex: race.sex })) return;
-    race.field[race.field.length - 2] = { hid: rh.id };
+    // 騎乗依頼の来ている馬とは入れ替えない
+    const slot = race.field.map((f, i) => i).reverse().find(i => i > 0 && f0(race.field[i].hid));
+    if (slot == null) return;
+    race.field[slot] = { hid: rh.id };
     World.estimateOdds(W, race);
   }
 
