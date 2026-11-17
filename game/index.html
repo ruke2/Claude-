@@ -535,7 +535,7 @@ html.rot .thr-track{height:min(168px,44vw)}
 #tut{top:calc(var(--st) + 58px)}
 input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 /* ---- レース後の着順掲示板と払戻金 ---- */
-#board-ov{position:fixed;inset:0;z-index:60;display:none;align-items:flex-start;justify-content:center;background:rgba(6,10,20,.82);backdrop-filter:blur(4px);padding:10px 16px}
+#board-ov{position:absolute;inset:0;z-index:60;display:none;align-items:flex-start;justify-content:center;background:rgba(6,10,20,.82);backdrop-filter:blur(4px);padding:10px 16px}
 #board-ov.on{display:flex}
 #board-ov .pg{display:none;width:min(760px,100%);max-height:100%;overflow:auto;margin:auto 0}
 #board-ov .pg.on{display:block;animation:bdIn .35s ease-out}
@@ -562,7 +562,7 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 .bd-ft{display:flex;gap:18px;flex-wrap:wrap;border-top:2px solid #262a28;margin-top:8px;padding-top:6px;align-items:baseline}
 .bd-ft span{font-family:var(--sans,sans-serif);color:#9aa39e;font-size:12px;font-weight:700;margin-right:6px}
 .bd-ft b{font-size:24px;text-shadow:0 0 8px rgba(255,170,20,.6)}
-.bd-btns{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:8px;z-index:2}
+.bd-btns{position:absolute;right:calc(16px + var(--sr,0px));bottom:10px;display:flex;gap:8px;z-index:2}
 #board-ov .pg{padding-bottom:48px}
 .po{background:#fff;color:#111;border-radius:8px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5)}
 .po-hd{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#123d2a;color:#fff}

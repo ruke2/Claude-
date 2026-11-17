@@ -1422,7 +1422,7 @@
   const PO_COL = { win: '#c8102e', place: '#e06d00', waku: '#6a3fa0', quin: '#1f6fbf', wide: '#0f8a6a', exa: '#2c3e8f', trio: '#7a8a12', tri: '#9b1f6b' };
   function showBoard(race, hid, ev, done) {
     let ov = $('board-ov');
-    if (!ov) { ov = document.createElement('div'); ov.id = 'board-ov'; document.body.appendChild(ov); }
+    if (!ov) { ov = document.createElement('div'); ov.id = 'board-ov'; $('app').appendChild(ov); } // 画面を回転して横向きにしているときも一緒に回るよう、#app の中に置く
     const F = race.field, res = race.result.slice().sort((a, b) => a.pos - b.pos);
     const num = (h) => F.findIndex(f => f.hid === h) + 1;
     const laps = race.laps || [];
