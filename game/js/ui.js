@@ -55,7 +55,7 @@
   const BIAS_TIP = '馬場の傾向（トラックバイアス）。内有利なら内ラチ沿いが伸び、外有利なら外めが伸びる。前有利なら前の馬が止まりにくく、差し有利なら後ろから届きやすい。天気と馬場はその日のうちにも変わる。';
   const horseAge = (h) => W.year - h.born;
   const sexAge = (h) => `${h.sex}${horseAge(h)}`;
-  function realTag(h) { return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ' <span class="badge">外国馬</span>' : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
+  function realTag(h) { if (h.legend) return ` <span class="badge gold" title="往年の名馬と同じ名の新馬（${h.legend.b}年生まれの${esc(h.legend.w.slice(0, 3).join('・'))}${h.legend.w.length > 3 ? 'など' : ''}）">名馬</span>`; return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ' <span class="badge">外国馬</span>' : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
   // 能力の点数（0〜100）。出走メンバーの中での順位と、平均との差も出す
   function abilityHtml(race, h) {
     const field = race.field.map(f => W.horses[f.hid]).filter(Boolean);
@@ -452,7 +452,7 @@
     const plan = !h.retired && h.plan && h.plan.y === W.year && h.plan.races.length ? h.plan.races.map(n => { const ran = hist.find(x => x.y === W.year && x.n === n); return `<span class="hd-step ${ran ? 'done' : np && np.name === n ? 'next' : ''}">${esc(n)}${ran ? ` ${ran.pos}着` : ''}</span>`; }).join('<i>→</i>') : '';
     const gl = (x) => x.g === 9 ? '<span class="badge g1">海外</span>' : x.g ? `<span class="badge g${x.g}">G${'ⅠⅡⅢ'[x.g - 1]}</span>` : '';
     return `<div class="hd-head"><span class="hs-coat big" style="background:${c[1]}"></span><div class="grow"><h2>${esc(h.name)}${realTag(h)}</h2>
-        <div class="small muted">${h.nameMean ? '馬名の意味：' + esc(h.nameMean) : ''}</div></div>
+        <div class="small muted">${h.legend ? `往年の名馬と同じ名を持つ馬（元の${esc(h.name)}：${h.legend.b}年生まれ${h.legend.hof ? '・顕彰馬' : ''}　${esc(h.legend.w.join('、'))}）` : h.nameMean ? '馬名の意味：' + esc(h.nameMean) : ''}</div></div>
         <div class="hd-rate"><small>総合</small><b style="color:${col(r)}">${Math.round(r)}</b></div></div>
       <div class="row wrap" style="gap:4px;margin:4px 0 6px">${h.retired ? '<span class="badge">引退</span>' : `<span class="badge">${World.CLASS_NAMES[Math.min(5, h.cls)]}</span>`}${main}${h.hof ? `<span class="badge gold">顕彰馬（${h.hof}年）</span>` : ''}${h.promise ? `<span class="badge green">次走 ${esc(h.promise)} に騎乗の約束</span>` : ''}</div>
       <div class="hd-grid">

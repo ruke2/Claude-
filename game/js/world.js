@@ -195,6 +195,34 @@
     W.horses[h.id] = h;
     return h;
   }
+  // ---- 往年の名馬が、新しい世代の新馬として登場する ----
+  // 毎年 12 頭。まだ出ていない名馬から、顕彰馬とGⅠを多く勝った馬が少し出やすいように選ぶ
+  function addLegends(W, n = 12) {
+    if (!window.LEGENDS) return [];
+    const used = W.legendUsed || (W.legendUsed = []);
+    const pool = LEGENDS.filter(L => !used.includes(L.n) && !W.usedNames.has(L.n));
+    const out = [];
+    for (let k = 0; k < n && pool.length; k++) {
+      let tot = 0; const wt = pool.map(L => { const w = 1 + (L.hof ? 2 : 0) + Math.min(4, L.w.length) * 0.4; tot += w; return w; });
+      let x = Math.random() * tot, i = 0; while (x > wt[i]) { x -= wt[i]; i++; }
+      const L = pool.splice(Math.min(i, pool.length - 1), 1)[0];
+      used.push(L.n);
+      const style = L.d <= 1400 ? pick([0, 1, 1, 1, 2]) : L.d >= 2400 ? pick([1, 1, 2, 2, 2, 3]) : pick([0, 1, 1, 2, 2, 2, 3]);
+      const h = genHorse(W, { born: W.year - 2, base: L.r - 6, cls: 0, style, surf: L.sf, sex: L.s === 'セ' ? '牡' : L.s, keepName: true });
+      W.usedNames.delete(h.name); h.name = L.n; W.usedNames.add(L.n); h.nameMean = '';
+      // 名馬らしく、距離に合わせて力の配分を変える（スプリンターはスピード、ステイヤーはスタミナ）
+      const lean = (L.d - 2000) / 1000;
+      h.spd = clamp(L.r + rnd(-2, 2) - lean * 3, 60, 99); h.sta = clamp(L.r + rnd(-3, 2) + lean * 5, 55, 99); h.kick = clamp(L.r + rnd(-3, 3), 60, 99);
+      h.dist = Math.max(1200, Math.min(3200, Math.round(L.d / 200) * 200)); h.grow = pick(['普', '普', '晩', '早']); h.tmp = ri(25, 70);
+      if (L.c) h.coatKey = L.c;
+      if (L.s === 'セ') h.sex = 'セ';
+      h.ready = W.abs + ri(2, 22);
+      h.legend = { b: L.b, w: L.w.slice(0, 6), hof: !!L.hof };
+      out.push(h);
+    }
+    if (out.length) news(W, `今年の2歳世代に、往年の名馬と同じ名を持つ${out.length}頭（${out.slice(0, 3).map(h => h.name).join('・')}など）`, 'race');
+    return out;
+  }
   function realToHorse(W, r) {
     const h = {
       id: W.nextId++, name: r.n, sex: r.s, born: r.b, real: true, src: r.src, runs2026: r.runs,
@@ -307,6 +335,7 @@
         const h = genHorse(W, { born: W.year - 2, base: rnd(48, 76), cls: 0 });
         h.ready = W.abs + (h.grow === '早' ? ri(0, 8) : h.grow === '晩' ? ri(14, 40) : ri(0, 28));
       }
+      addLegends(W);
     }
     W.booked = {}; W.dayIdx = 0; W.weekLog = [];
     if (W.pendingOverseas && W.pendingOverseas.abs < W.abs) W.pendingOverseas = null;
@@ -1248,6 +1277,6 @@
     mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
-    buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
+    addLegends, buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
   };
 })();
