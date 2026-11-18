@@ -148,7 +148,7 @@
       if (a === 'tut') { if (W && !quick) World.save(W); startTutorial(); }
       if (a === 'rot') { rotDir = rotDir === 'cw' ? 'ccw' : 'cw'; try { localStorage.setItem('jl-rot', rotDir); } catch (e) {} applyRotation(); }
       if (a === 'snd') Sound.toggleMute();
-      if (a === 'gfx') { let v = 'high'; try { v = localStorage.getItem('jl_gfx') === 'low' ? 'high' : 'low'; localStorage.setItem('jl_gfx', v); } catch (e) {} if (window.__R3) window.__R3.setGfx(v); toast('画質：' + (v === 'low' ? '軽量（光のにじみ・芝の葉なし）' : '最高')); }
+      if (a === 'gfx') { let v = 'high'; try { v = localStorage.getItem('jl_gfx') === 'low' ? 'high' : 'low'; localStorage.setItem('jl_gfx', v); } catch (e) {} if (window.__R3) window.__R3.setGfx(v); toast('画質：' + (v === 'low' ? '軽量（光のにじみなし）' : '最高')); }
       if (a === 'bgm') { Sound.init(); const on = Sound.toggleBgm(); toast('BGM：' + (on ? 'ON' : 'OFF')); }
       if (a === 'title') { setTimeout(refreshTitle, 0); if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
     });
