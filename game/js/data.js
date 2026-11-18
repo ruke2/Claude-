@@ -5,27 +5,39 @@
 //   基準点 g=ゴール c2=2コーナー出口 bm=向正面の中間 c3=3コーナー入口 c34=3〜4コーナー中間 c4=4コーナー出口 r=ゴールまでの残り距離
 // dirtElev：ダートの全体の高低差（芝の起伏を縮尺して使う）
 // pole：ダートのハロン棒の数字部分の形（日本経済新聞「競馬場に欠かせないモノ『ハロン棒』の違いを発見」）
+// 国内：rect は内ラチを「角ごとに半径の違う角の丸い四角形」で表す（post：ゴールから1コーナーまでの直線、r：1〜4コーナーの半径の目安）。
+// 周長・直線・ダートの大きさ・内回り/外回りは JRA の各競馬場「コース紹介」の値（Aコース）。角の半径は説明（札幌は円形に近い、3・4コーナーのスパイラルカーブ など）に合わせた近似
 window.VENUES = {
   tokyo: { name: '東京', en: 'TOKYO', dir: 'L', straight: 525.9, lap: 2083.1, jp: true, turf: 'mix', pole: 'diamond', dirtElev: 2.5,
+    dirt: { lap: 1899, straight: 501.6 }, rect: { post: 110, r: [170, 150, 190, 180] }, 
     elev: [['g', 0, 2.7], ['g', 120, 2.7], ['bm', 0, 0.8], ['c3', -140, 0.8], ['c3', -20, 2.3], ['c34', 0, 1.0], ['c4', -40, 0.6], ['r', 460, 0.8], ['r', 300, 2.7]],
     scene: { fuji: true, stand: 1.5, screen: 1.6 } },
   nakayama: { name: '中山', en: 'NAKAYAMA', dir: 'R', straight: 310, lap: 1667.1, jp: true, turf: 'mix', pole: 'square', dirtElev: 4.5,
+    dirt: { lap: 1493, straight: 308 }, rect: { post: 100, r: [125, 100, 105, 130] }, alt: { name: '外回り', lap: 1839.7, straight: 310, dists: [1200, 1600, 2200, 2600, 4000], rect: { post: 100, r: [125, 150, 160, 130] } }, inner: '内回り', 
     elev: [['g', 0, 2.3], ['c2', -80, 5.3], ['r', 180, 0], ['r', 70, 2.2]], scene: { stand: 1.2 } },
   kyoto: { name: '京都', en: 'KYOTO', dir: 'R', straight: 403.7, lap: 1894.3, jp: true, turf: 'mix', pole: 'triangle', dirtElev: 3.0,
+    dirt: { lap: 1607.6, straight: 329.1 }, rect: { post: 110, r: [150, 150, 190, 170] }, alt: { name: '内回り', lap: 1782.8, straight: 328.4, dists: [1100, 1200, 2000], rect: { post: 110, r: [150, 150, 130, 120] }, elevScale: 0.72 }, inner: '外回り', 
     elev: [['g', 0, 0], ['bm', 0, 0], ['c3', 0, 4.3], ['c34', 0, 3.2], ['c4', 0, 0]], scene: { pond: 'large', stand: 1.2 } },
   hanshin: { name: '阪神', en: 'HANSHIN', dir: 'R', straight: 473.6, lap: 2089, jp: true, turf: 'mix', pole: 'square', dirtElev: 1.6,
+    dirt: { lap: 1517.6, straight: 352.7 }, rect: { post: 110, r: [140, 140, 200, 190] }, alt: { name: '内回り', lap: 1689, straight: 356.5, dists: [1200, 1400, 2000, 2200, 3000], rect: { post: 110, r: [140, 140, 150, 140] }, elevScale: 0.8 }, inner: '外回り', 
     elev: [['g', 0, 2.4], ['c2', 0, 2.4], ['r', 600, 2.2], ['r', 230, 0.5], ['r', 90, 2.3]], scene: { stand: 1.2 } },
   chukyo: { name: '中京', en: 'CHUKYO', dir: 'L', straight: 412.5, lap: 1705.9, jp: true, turf: 'mix', pole: 'invtriangle', dirtElev: 3.4,
+    dirt: { lap: 1530, straight: 410.7 }, rect: { post: 100, r: [150, 140, 185, 130] }, 
     elev: [['g', 0, 2.0], ['bm', 0, 3.5], ['c4', 0, 0], ['r', 390, 0], ['r', 230, 2.0]], scene: { stand: 1.0 } },
   niigata: { name: '新潟', en: 'NIIGATA', dir: 'L', straight: 658.7, lap: 2223, jp: true, turf: 'noshiba', pole: 'square', dirtElev: 0.6,
+    dirt: { lap: 1472.5, straight: 353.9 }, rect: { post: 110, r: [140, 140, 170, 150] }, alt: { name: '内回り', lap: 1623, straight: 358.7, dists: [1200, 1400, 2200, 2400], rect: { post: 110, r: [140, 140, 130, 120] }, elevScale: 0.36 }, inner: '外回り', 
     elev: [['g', 0, 0.4], ['bm', 0, 0.6], ['c3', 0, 2.2], ['c4', 0, 0.6], ['r', 400, 0.4]], scene: { outerPoles: true, stand: 0.9 } },
   sapporo: { name: '札幌', en: 'SAPPORO', dir: 'R', straight: 266.1, lap: 1640.9, jp: true, turf: 'yoshiba', pole: 'diamond', dirtElev: 0,
+    dirt: { lap: 1487, straight: 264.3 }, rect: { post: 30, r: [170, 170, 170, 170] }, 
     elev: [['g', 0, 0]], scene: { pole15: true, stand: 0.9 } },
   hakodate: { name: '函館', en: 'HAKODATE', dir: 'R', straight: 262.1, lap: 1626.6, jp: true, turf: 'yoshiba', pole: 'triangle', dirtElev: 3.5,
+    dirt: { lap: 1475.8, straight: 260.3 }, rect: { post: 150, r: [150, 150, 175, 135] }, 
     elev: [['g', 0, 1.6], ['c2', 0, 0], ['c4', -40, 3.5], ['r', 230, 1.6]], scene: { sea: true, stand: 0.8 } },
   fukushima: { name: '福島', en: 'FUKUSHIMA', dir: 'R', straight: 292.0, lap: 1600, jp: true, turf: 'mix', pole: 'invtriangle', dirtElev: 2.1,
+    dirt: { lap: 1444.6, straight: 295.7 }, rect: { post: 90, r: [140, 130, 165, 120] }, 
     elev: [['g', 0, 1.7], ['c2', 0, 0], ['bm', 40, 1.3], ['c3', 0, 1.3], ['c4', 0, 1.0], ['r', 170, 0.5], ['r', 50, 1.7]], scene: { stand: 0.8 } },
   kokura: { name: '小倉', en: 'KOKURA', dir: 'R', straight: 293, lap: 1615, jp: true, turf: 'mix', pole: 'andon', dirtElev: 2.9,
+    dirt: { lap: 1445.4, straight: 291.3 }, rect: { post: 100, r: [150, 140, 170, 125] }, 
     elev: [['g', 0, 0], ['c2', 0, 3.0], ['c3', -60, 1.6], ['c3', 0, 1.8], ['c4', 0, 0.2], ['r', 250, 0]], scene: { stand: 0.8 } },
   // ---- 海外 ----（数値は JRA の海外競馬場紹介と各国主催者の公表値。出典は README）
   //  dirt：ダート（オールウェザー）コースが芝と別の大きさのときの周長・直線

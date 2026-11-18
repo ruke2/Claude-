@@ -6,8 +6,8 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/utils/SkeletonUtils.js"></script>
 <script src="js/data.js"></script><script src="js/realhorses.js"></script><script src="js/realjockeys.js"></script>
-<script src="js/race.js"></script><script src="js/world.js"></script>
-<script src="js/zekken.js"></script><script src="js/horse3d.js"></script><script src="js/horseglb.js"></script><script src="js/render3d.js"></script>
+<script src="js/courses_jp.js"></script><script src="js/race.js"></script><script src="js/world.js"></script>
+<script src="js/zekken.js"></script><script src="js/horse3d.js"></script><script src="js/horseglb.js"></script><script src="js/post.js"></script><script src="js/render3d.js"></script>
 <script>
 const q = new URLSearchParams(location.search);
 const W = World.newGame({ name: 'test' });
@@ -26,6 +26,7 @@ function go() {
   if (q.get('intro')) { R3.startIntro({ perHorse: +(q.get('per') || 0), loadMin: +(q.get('lm') || 0), flyLen: q.get('per') ? 6 : 4.6 }); while (R3.intro.t < +q.get('intro')) R3.render(eng, 0.4); } else
   for (let i = 0; i < 4; i++) { eng.step(1 / 60); R3.render(eng, 1 / 60); }
   setTimeout(() => { const cm = q.get('cam'), co0 = eng.course, XY = RaceEngine.courseXY;
+  if (cm === 'sky') { const bb = co0.bbox || { minX: -co0.H / 2 - co0.R, maxX: co0.H / 2 + co0.R, minZ: -2 * co0.R, maxZ: 2 * co0.R }; const cx = (bb.minX + bb.maxX) / 2, cz = (bb.minZ + bb.maxZ) / 2; R3.camera.far = 9000; R3.camera.fov = 40; R3.camera.updateProjectionMatrix(); R3.camera.position.set(cx, 1300, cz + 650); R3.camera.lookAt(cx, 0, cz); }
   if (cm === 'air1') { const a = XY(co0, co0.H - 190, -130), b = XY(co0, co0.H - 60, co0.width + 60); R3.camera.position.set(a.x, 22, a.z); R3.camera.lookAt(b.x, 18, b.z); }
   else if (cm === 'air2') { const a = XY(co0, co0.H - 120, co0.width + 330), b = XY(co0, co0.H - 250, -100); R3.camera.position.set(a.x, 170, a.z); R3.camera.lookAt(b.x, 0, b.z); }
   else if (cm === 'air3') { const a = XY(co0, co0.H + co0.T + co0.H * 0.5 - 60, 6), b = XY(co0, co0.H + co0.T + co0.H * 0.5 + 60, co0.width + 30); R3.camera.position.set(a.x, RaceEngine.elevAt(co0, co0.H + co0.T + co0.H * 0.5) + 2.6, a.z); R3.camera.lookAt(b.x, 4, b.z); }
@@ -41,6 +42,6 @@ function go() {
     if (cm === 'gside') { const p0 = eng.pAt(0); const a = XY(co0, p0 + 4, -6), b = XY(co0, p0, 6); const e0 = RaceEngine.elevAt(co0, p0); R3.camera.position.set(a.x, e0 + 1.2, a.z); R3.camera.lookAt(b.x, e0 + 0.8, b.z); R3.camera.fov = 50; R3.camera.updateProjectionMatrix(); const g = R3.gate.grp, rc = new THREE.Raycaster(), hits = []; [0, 4, 8, 12].forEach(X => { const q = XY(co0, p0, X); rc.set(new THREE.Vector3(q.x, e0 + 20, q.z), new THREE.Vector3(0, -1, 0)); const hs = rc.intersectObjects(R3.raceGroup.children, true).filter(h => { let o = h.object; while (o) { if (o === g) return false; o = o.parent; } return h.object.isMesh && !h.object.isInstancedMesh; }); hits.push(hs.length ? +hs[0].point.y.toFixed(3) : null); });
   const q0 = XY(co0, p0, 6), near = []; R3.raceGroup.children.forEach((o, oi) => { if (!o.isMesh || o.isInstancedMesh || !o.geometry.attributes.position || o.geometry.attributes.position.count < 500) return; const P = o.geometry.attributes.position; let best = 1e9, by = null; for (let i = 0; i < P.count; i++) { const dx = P.getX(i) + o.position.x - q0.x, dz = P.getZ(i) + o.position.z - q0.z, d = dx * dx + dz * dz; if (d < best) { best = d; by = P.getY(i) + o.position.y; } } if (best < 9) near.push([oi, +by.toFixed(2), +Math.sqrt(best).toFixed(1), o.material.side]); });
   window.gateInfo = { near, gy: +g.position.y.toFixed(3), e0, meanE: R3.meanE, p0, H: co0.H, lap: co0.lap, hits, width: co0.width, gx: [g.position.x.toFixed(1), g.position.z.toFixed(1)] }; }
-    if (cm === 'goal') { const c = R3.camera; const co = eng.course; const a = RaceEngine.courseXY(co, co.H + 6, 7); const b = RaceEngine.courseXY(co, co.H, -1.6); const e = RaceEngine.elevAt(co, co.H); c.position.set(a.x, e + 3, a.z); c.lookAt(b.x, e + 2.8, b.z); } else if (q.get('cam') === 'gate') { const c = R3.camera; const pl = eng.player; const a = RaceEngine.courseXY(eng.course, eng.pAt(pl.s), pl.X); c.position.set(a.x + a.hx * 9 + a.nx * 4, 3.2, a.z + a.hz * 9 + a.nz * 4); c.lookAt(a.x, 1.4, a.z); } R3.renderer.render(R3.scene, R3.camera); window.done = true; }, 600);
+    if (cm === 'goal') { const c = R3.camera; const co = eng.course; const a = RaceEngine.courseXY(co, co.H + 6, 7); const b = RaceEngine.courseXY(co, co.H, -1.6); const e = RaceEngine.elevAt(co, co.H); c.position.set(a.x, e + 3, a.z); c.lookAt(b.x, e + 2.8, b.z); } else if (q.get('cam') === 'gate') { const c = R3.camera; const pl = eng.player; const a = RaceEngine.courseXY(eng.course, eng.pAt(pl.s), pl.X); c.position.set(a.x + a.hx * 9 + a.nx * 4, 3.2, a.z + a.hz * 9 + a.nz * 4); c.lookAt(a.x, 1.4, a.z); } if (R3.grass) R3.grass.t = 0; R3.updateGrass(0.016); R3.draw(); window.done = true; }, 600);
 }
 </script></body></html>

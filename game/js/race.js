@@ -5,23 +5,45 @@
   const STRIDE = 7.0; // ギャロップ1完歩の長さ(m)の目安
 
   // ---- コース形状 ----
-  function makeCourse(venueKey, surf) {
-    const V = VENUES[venueKey];
+  // 国内の競馬場：角の丸い四角形の内ラチ。周長・直線（ゴールまで）・ゴール後の長さ・角の半径から、閉じた形を計算する
+  function rectShape(lap, H, rc, dir) {
+    const Lh = H + (rc.post || 80); let r = rc.r.slice();
+    const sum = r.reduce((a, b) => a + b, 0);
+    // 1コーナーから2コーナーの間の短い直線 a。足りなければ角を小さくする
+    let a = (lap - 2 * Lh - 2 * r[0] + 2 * r[2] - Math.PI / 2 * sum) / 2;
+    if (a < 0) { const k = ((lap - 2 * Lh) / 2) / (r[0] - r[2] + Math.PI / 4 * sum); r = r.map(x => x * k); a = 0; }
+    const Hh = r[0] + a + r[1];
+    if (r[2] + r[3] > Hh) { const k = Hh / (r[2] + r[3]); r[2] *= k; r[3] *= k; }
+    // 角の点：4コーナー→1コーナー（最後の直線）→2→3。進む向きは後で回り方に合わせる
+    return { pts: [[-r[3], 0], [Lh + r[0], 0], [Lh + r[0], Hh], [-r[3], Hh]], r: [r[3], r[0], r[1], r[2]], home: 0 };
+  }
+  // 実際の形のデータ：芝はその周長のもの（内回り・外回り）、ダートは D
+  function traceFor(v, surf, lap) {
+    const T = window.COURSE_TRACE && COURSE_TRACE[v]; if (!T) return null;
+    if (surf === 'D') return T.D || null;
+    return [T.T, T.Talt].find(t => t && Math.abs(t.lap - lap) < 1) || null;
+  }
+  function makeCourse(venueKey, surf, dist) {
+    const V0 = VENUES[venueKey];
+    // 内回り・外回り：距離で使うコースが決まる（芝のみ）
+    const V = surf !== 'D' && V0.alt && dist && V0.alt.dists.includes(dist) ? Object.assign({}, V0, V0.alt, { elev: V0.alt.elev || V0.elev }) : V0;
     // ダートの大きさが分かっている競馬場はその値、なければ芝の内側として縮める
     let lap = surf === 'D' && V.dirt ? V.dirt.lap : V.lap * (surf === 'D' ? 0.88 : 1);
     const H = surf === 'D' && V.dirt ? V.dirt.straight : V.straight * (surf === 'D' ? 0.93 : 1);
     let T = (lap - 2 * H) / 2;
     if (T < 260) { T = 260; lap = 2 * H + 2 * T; }
-    const c = { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : Math.min(30, V.width || 27), surf };
+    const c = { key: venueKey, dir: V.dir, lap, H, T, R: T / Math.PI, name: V.name, width: surf === 'D' ? 22 : Math.min(30, V.width || 27), surf, layout: surf !== 'D' && V0.alt ? (V === V0 ? V0.inner : V0.alt.name) : null };
     if (V.shape && (surf !== 'D' || !V.dirt)) buildShaped(c, V, lap, H);
+    else if (traceFor(venueKey, surf, lap)) buildTraced(c, traceFor(venueKey, surf, lap), lap, H);
+    else if (V.rect) { const rc = surf === 'D' ? { post: V.rect.post * 0.9, r: V.rect.r.map(x => x * 0.82) } : V.rect; buildShaped(c, { shape: rectShape(lap, H, rc, V.dir) }, lap, H); }
     // 起伏：基準点を1周上の距離（ゴールからの距離）に直す
-    const at = { g: 0, c2: T, bm: T + H / 2, c3: T + H, c34: T + H + T / 2, c4: 2 * T + H };
+    const at = c.at4 || { g: 0, c2: T, bm: T + H / 2, c3: T + H, c34: T + H + T / 2, c4: 2 * T + H };
     if (c.path) Object.keys(c.cornerAt).forEach(i => { at['k' + i] = c.cornerAt[i]; });
     let pts = (V.elev || [['g', 0, 0]]).map(([k, off, h]) => [k === 'r' ? lap - off : at[k] + off, h]);
     if (surf === 'D' && V.elev) { // ダートは全体の高低差に合わせて縮める
       const hs = pts.map(x => x[1]), rng = Math.max(...hs) - Math.min(...hs) || 1;
       const k = (V.dirtElev ?? rng) / rng; pts = pts.map(([d, h]) => [d, h * k]);
-    }
+    } else if (V.elevScale) pts = pts.map(([d, h]) => [d, h * V.elevScale]); // 内回り・外回りで高低差が違う
     pts = pts.map(([d, h]) => [Math.max(0, Math.min(lap - 1, d)), h]).sort((a, b) => a[0] - b[0]);
     c.elevPts = pts;
     return c;
@@ -108,6 +130,49 @@
     c.cornerAt = {};
     let q = 0; order.forEach((g) => { if (g.type === 'C') c.cornerAt[g.corner] = ((q + g.L / 2 - H) % lap + lap) % lap; q += g.L; });
     c.segLens = order.map(g => [g.type, Math.round(g.L)]);
+    // 角が4つのコースは、楕円と同じ目安点（2コーナー出口・向正面の中ほど・3コーナー入口・4コーナー出口）を実際の位置で持つ
+    const arcs = []; let qq = 0; order.forEach(g => { if (g.type === 'C') arcs.push([qq - H, qq + g.L - H]); qq += g.L; });
+    if (arcs.length === 4) { const W = (x) => ((x % lap) + lap) % lap; const c2 = W(arcs[1][1]), c3 = W(arcs[2][0]), c4 = W(arcs[3][1]) || lap - H; c.at4 = { g: 0, c2, bm: (c2 + c3) / 2, c3, c34: (c3 + c4) / 2, c4 }; }
+  }
+  // 実際の形（OSM の内ラチの線）から作るコース。点列を 1m ごとになめらかにつなぐ
+  function buildTraced(c, tr, lap, H) {
+    const n = tr.n, P = tr.p, sp = lap / n, N = Math.round(lap);
+    const X = new Float64Array(N), Z = new Float64Array(N), HX = new Float64Array(N), HZ = new Float64Array(N), K = new Float32Array(N), SEC = new Int16Array(N);
+    const px = (j) => P[2 * (((j % n) + n) % n)], pz = (j) => P[2 * (((j % n) + n) % n) + 1];
+    const cr = (a, b, c2, d, t) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t * t + (-a + 3 * b - 3 * c2 + d) * t * t * t);
+    for (let i = 0; i < N; i++) {
+      const u = i / sp, j = Math.floor(u), t = u - j;
+      X[i] = cr(px(j - 1), px(j), px(j + 1), px(j + 2), t); Z[i] = cr(pz(j - 1), pz(j), pz(j + 1), pz(j + 2), t);
+    }
+    for (let i = 0; i < N; i++) {
+      const a = (i + N - 2) % N, b = (i + 2) % N; let hx = X[b] - X[a], hz = Z[b] - Z[a]; const l = Math.hypot(hx, hz) || 1; HX[i] = hx / l; HZ[i] = hz / l;
+    }
+    for (let i = 0; i < N; i++) {
+      const a = (i + N - 6) % N, b = (i + 6) % N; let d = Math.atan2(HZ[b], HX[b]) - Math.atan2(HZ[a], HX[a]);
+      d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; K[i] = Math.abs(d) / 12;
+    }
+    // 区間：S/C の並び（p=0 から）。名前は 最初の直線＝直線、角は 1〜4コーナー、ほかの直線は 向正面
+    const segs = tr.segs, names = {}; let cn = 0, ci = 0;
+    segs.forEach((g, gi) => {
+      if (g[0] === 'C') { names[gi] = tr.cn ? tr.cn[ci] : (++cn) + 'コーナー'; ci++; }
+      else names[gi] = gi === 0 ? '直線' : '向正面';
+    });
+    for (let i = 0; i < N; i++) { let k = segs.length - 1; for (let q = 0; q < segs.length; q++) if (i >= segs[q][1]) k = q; SEC[i] = k; }
+    const s = c.dir === 'L' ? -1 : 1;
+    let mz = 0; for (let i = 0; i < N; i++) mz += Z[i]; mz /= N;
+    if (Math.sign(mz) !== s) for (let i = 0; i < N; i++) { Z[i] = -Z[i]; HZ[i] = -HZ[i]; }
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < N; i++) { minX = Math.min(minX, X[i]); maxX = Math.max(maxX, X[i]); minZ = Math.min(minZ, Z[i]); maxZ = Math.max(maxZ, Z[i]); }
+    c.path = { N, X, Z, HX, HZ, K, SEC, names };
+    c.bbox = { minX, maxX, minZ, maxZ };
+    c.R = (maxZ - minZ) / 2; c.T = Math.max(150, (lap - 2 * H) / 2);
+    c.segLens = segs.map(g => [g[0], Math.round(g[2])]);
+    c.traced = true;
+    // 起伏の目安点（ゴールからの距離）：2コーナーの出口・3コーナーの入口・4コーナーの出口
+    const W = (x) => ((x % lap) + lap) % lap, at = (nm, end) => { const gi = segs.findIndex((g, q) => names[q] === nm); return gi < 0 ? null : W(segs[gi][1] + (end ? segs[gi][2] : 0) - H); };
+    const c2 = at('2コーナー', true), c3 = at('3コーナー', false), c4 = at('4コーナー', true) || lap - H;
+    if (c2 != null && c3 != null) c.at4 = { g: 0, c2, bm: (c2 + c3) / 2, c3, c34: (c3 + c4) / 2, c4 };
+    c.cornerAt = {}; let q = 0; segs.forEach((g) => { if (g[0] === 'C') { q++; c.cornerAt[q] = W(g[1] + g[2] / 2 - H); } });
   }
   // 高さ（m）：ゴールからの距離で線形補間し、角をなめらかにする
   function elevAt(c, p) {
@@ -218,7 +283,7 @@
     constructor(cfg) {
       this.cfg = cfg;
       this.D = cfg.dist; this.surf = cfg.surf;
-      this.course = makeCourse(cfg.venue, cfg.surf);
+      this.course = makeCourse(cfg.venue, cfg.surf, cfg.dist);
       this.startP = this.course.H - this.D;
       // 馬場状態：芝は湿るほど時計がかかる。ダートは湿ると脚抜きがよくなり少し速くなる（不良まで行くと伸びは小さい）
       const gi = this.groundIdx = Math.max(0, ['良', '稍重', '重', '不良'].indexOf(cfg.ground || '良'));

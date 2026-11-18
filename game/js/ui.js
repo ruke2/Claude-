@@ -134,6 +134,7 @@
       <button class="item" data-a="rot">🔄 画面の回転方向を反転（縦持ち時）</button>
       <button class="item" data-a="snd">🔈 効果音：${Sound.isMuted() ? 'OFF' : 'ON'}</button>
       <button class="item" data-a="bgm">🎵 BGM：${Sound.bgmEnabled() ? 'ON' : 'OFF'}</button>
+      <button class="item" data-a="gfx">✨ 画質：${(() => { try { return localStorage.getItem('jl_gfx') === 'low' ? '軽量' : '最高'; } catch (e) { return '最高'; } })()}</button>
       <button class="item" data-a="credit">ⓘ 素材のクレジット</button>
       <button class="item" data-a="title">↩ タイトルへ${inGame ? '（自動でセーブ）' : ''}</button>
       <p class="small muted" style="margin-top:auto">縦向きのまま（向きロック中）でも、画面は横向きに回して表示する。</p>`;
@@ -143,10 +144,11 @@
       if (a === 'save') { World.save(W); CloudSave.flush(); toast('セーブした'); }
       if (a === 'export') exportSave();
       if (a === 'home') showWeek();
-      if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>BGM："Green Hills" by Igor Gundarev（CC0、OpenGameArt）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
+      if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>BGM："Green Hills" by Igor Gundarev（CC0、OpenGameArt）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>国内9場のコースの形：OpenStreetMap（© OpenStreetMap contributors、ODbL）の芝・ダートコースの線をもとに作成<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
       if (a === 'tut') { if (W && !quick) World.save(W); startTutorial(); }
       if (a === 'rot') { rotDir = rotDir === 'cw' ? 'ccw' : 'cw'; try { localStorage.setItem('jl-rot', rotDir); } catch (e) {} applyRotation(); }
       if (a === 'snd') Sound.toggleMute();
+      if (a === 'gfx') { let v = 'high'; try { v = localStorage.getItem('jl_gfx') === 'low' ? 'high' : 'low'; localStorage.setItem('jl_gfx', v); } catch (e) {} if (window.__R3) window.__R3.setGfx(v); toast('画質：' + (v === 'low' ? '軽量（光のにじみ・芝の葉なし）' : '最高')); }
       if (a === 'bgm') { Sound.init(); const on = Sound.toggleBgm(); toast('BGM：' + (on ? 'ON' : 'OFF')); }
       if (a === 'title') { setTimeout(refreshTitle, 0); if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
     });

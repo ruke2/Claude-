@@ -47,6 +47,22 @@
       this.particles = this.buildParticles();
       this.raceGroup = null;
       this.quality = 1;
+      // 画面の仕上げ（光のにじみ・色の調整など）。設定で切れる
+      let gfx = 'high'; try { gfx = localStorage.getItem('jl_gfx') || 'high'; } catch (e) {}
+      this.post = window.PostFX ? new PostFX(r) : null; if (this.post) this.post.enabled = gfx === 'high';
+    }
+    setGfx(v) { try { localStorage.setItem('jl_gfx', v); } catch (e) {} if (this.post) this.post.enabled = v === 'high'; }
+    draw() {
+      if (!this.post) { this.renderer.render(this.scene, this.camera); return; }
+      // 太陽が画面に入っているときだけ光の輪を出す（曇り・雨・夜は出さない）
+      const u = this.post.mFinal.uniforms, sd = this.sunDir, cam = this.camera;
+      const v = this._sv || (this._sv = new T.Vector3()); v.copy(cam.position).addScaledVector(sd, 1000).project(cam);
+      const fwd = this._fw || (this._fw = new T.Vector3()); cam.getWorldDirection(fwd);
+      const clear = this.sun.intensity > 1.8 && !this.night;
+      let k = 0;
+      if (clear && fwd.dot(sd) > 0 && Math.abs(v.x) < 1.25 && Math.abs(v.y) < 1.25) k = (1 - Math.max(Math.abs(v.x), Math.abs(v.y)) / 1.25) * 0.8;
+      u.uSun.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5); u.uSunK.value += (k - u.uSunK.value) * 0.2;
+      this.post.render(this.scene, cam);
     }
     buildSky() {
       const sky = loadTex('sky.jpg');
@@ -195,6 +211,7 @@
       this.groundIdx = Math.max(0, ['良', '稍重', '重', '不良'].indexOf((race.cfg && race.cfg.ground) || '良'));
       const c = race.course;
       this.buildCourse(G, c, race);
+      this.grass = { c, G, turf: race.surf === 'T', chunks: new Map(), t: 0 };
       this.buildGate(G, race);
       // ナイター（メイダン）以外は昼の空に戻す
       this.scene.background = this.skyTex; this.renderer.toneMappingExposure = 0.95; this.hemi.color.set('#d6e8ff'); this.hemi.groundColor.set('#5d6b3a'); this.sun.color.set('#fff1dc');
@@ -1234,6 +1251,65 @@
     }
     setCamMode(m) { this.camMode = m; this.camSnap = false; this.updateFov(); if (this.playerModel) this.playerModel.setPlayerView(m === 'jockey' && !(this.intro && this.intro.stage !== 'set')); }
 
+    // ---------- 芝の葉 ----------
+    // カメラの近くだけ、芝を1本ずつの葉で描く。コースを 20m ごとの区画に分け、近い区画だけ作って使い回す
+    grassMat() {
+      if (this._grassMat) return this._grassMat;
+      const m = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: T.DoubleSide });
+      const u = this.grassU = { uTime: { value: 0 } };
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = u.uTime;
+        sh.vertexShader = 'attribute float aTip;\nuniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+          float w = sin(uTime * 2.1 + position.x * 0.35 + position.z * 0.27) + 0.5 * sin(uTime * 3.7 + position.x * 1.3);
+          transformed.x += aTip * w * 0.018; transformed.z += aTip * w * 0.012;`);
+        // 葉の裏も表と同じ明るさに（裏返すと上向きの法線が下を向いて黒くなる）
+        sh.fragmentShader = sh.fragmentShader.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;');
+      };
+      m.customProgramCacheKey = () => 'grass1';
+      return (this._grassMat = m);
+    }
+    grassChunk(k) {
+      const g = this.grass, c = g.c, W = c.width, L = 20, rnd = rng(k * 7919 + 13);
+      const dens = 20, bands = g.turf ? [[-7.5, -2.9], [-1.5, W + 8]] : [[-7.5, -2.9], [-1.5, -0.8], [W + 0.8, W + 6.5]];
+      const pos = [], col = [], tip = [], nrm = [];
+      const V = VENUES[c.key] || {};
+      const base = new T.Color(V.turf === 'yoshiba' ? '#3f6a2a' : V.turf === 'noshiba' ? '#5e8a30' : '#4f7d2c'), top = new T.Color(V.turf === 'yoshiba' ? '#7fae58' : V.turf === 'noshiba' ? '#a8cc62' : '#8fbf55');
+      const ca = new T.Color(), cb = new T.Color();
+      for (const [x0, x1] of bands) {
+        const n = Math.round(L * (x1 - x0) * dens);
+        for (let i = 0; i < n; i++) {
+          const p = k * L + rnd() * L, X = x0 + rnd() * (x1 - x0), a = CXY(c, p, X), y = this.E(p);
+          const yaw = rnd() * Math.PI * 2, w = 0.011 + rnd() * 0.012, h = 0.06 + rnd() * 0.08 + (X < 0 || X > W ? 0.05 : 0), lean = (rnd() - 0.5) * 0.06;
+          const dx = Math.cos(yaw) * w, dz = Math.sin(yaw) * w, lx = Math.cos(yaw + 1.57) * lean, lz = Math.sin(yaw + 1.57) * lean;
+          pos.push(a.x - dx, y, a.z - dz, a.x + dx, y, a.z + dz, a.x + lx, y + h, a.z + lz);
+          const v = 0.8 + rnd() * 0.35; ca.copy(base).multiplyScalar(v); cb.copy(top).multiplyScalar(v * (0.9 + rnd() * 0.25));
+          col.push(ca.r, ca.g, ca.b, ca.r, ca.g, ca.b, cb.r, cb.g, cb.b);
+          tip.push(0, 0, 1); nrm.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+        }
+      }
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+      geo.setAttribute('normal', new T.Float32BufferAttribute(nrm, 3)); geo.setAttribute('aTip', new T.Float32BufferAttribute(tip, 1));
+      const m = new T.Mesh(geo, this.grassMat()); m.receiveShadow = false; m.frustumCulled = true; geo.computeBoundingSphere();
+      return m;
+    }
+    updateGrass(dt) {
+      const g = this.grass; if (!g || !this.post || !this.post.enabled) { if (g) g.chunks.forEach(m => m.visible = false); return; }
+      this.grassMat(); this.grassU.uTime.value = this.clock;
+      g.t -= dt || 0.016; if (g.t > 0) return; g.t = 0.25;
+      const c = g.c, cp = this.camera.position;
+      // カメラに一番近いコース上の位置（地面から高すぎるときは描かない）
+      let best = Infinity, bp = 0;
+      for (let p = 0; p < c.lap; p += 6) { const a = CXY(c, p, c.width / 2), d = (a.x - cp.x) ** 2 + (a.z - cp.z) ** 2; if (d < best) { best = d; bp = p; } }
+      const nk = Math.ceil(c.lap / 20), k0 = Math.floor(bp / 20), want = new Set();
+      if (cp.y - this.E(bp) < 14 && best < 60 * 60) for (let d = -2; d <= 2; d++) want.add(((k0 + d) % nk + nk) % nk);
+      want.forEach(k => { if (!g.chunks.has(k)) { const m = this.grassChunk(k); g.G.add(m); g.chunks.set(k, m); } });
+      g.chunks.forEach((m, k) => {
+        m.visible = want.has(k);
+        if (!m.visible && g.chunks.size > 12) { g.G.remove(m); m.geometry.dispose(); g.chunks.delete(k); }
+      });
+    }
+
     // ---------- 毎フレーム ----------
     render(race, dt) {
       this.clock += dt;
@@ -1315,7 +1391,8 @@
         if (this.tote) { const fin = race.runners.filter(r => r.finished).sort((a, b) => a.finishTime - b.finishTime).slice(0, 5); if (fin.length !== this.tote.shown) { this.tote.shown = fin.length; this.drawTote(race, fin.map(r => r.num)); } }
       }
       this.stepWeather(dt);
-      this.renderer.render(this.scene, this.camera);
+      this.updateGrass(dt);
+      this.draw();
     }
 
     updateCamera(race, dt) {
