@@ -83,6 +83,22 @@
     }
     G.bodyHalfWidth = hw;
     body.geometry.setAttribute('aLow', new T.BufferAttribute(low, 1));
+    // 模様のための頂点ごとの情報：立ち姿での位置（ゲーム座標）と、どの脚か（0左前 1右前 2左後 3右後、脚でなければ -1）
+    const gp = new Float32Array(P.count * 3), leg = new Float32Array(P.count);
+    let maxX = -Infinity; const all = [];
+    for (let i = 0; i < P.count; i++) {
+      v.fromBufferAttribute(P, i); body.boneTransform(i, v); v.applyMatrix4(body.matrixWorld);
+      const g = toGame(v); gp[i * 3] = g.x; gp[i * 3 + 1] = g.y; gp[i * 3 + 2] = g.z; all.push(g);
+      if (g.y > 1.0) maxX = Math.max(maxX, g.x);
+      leg[i] = g.y < top - 0.55 ? (g.x > saddleX - 0.05 ? 0 : 2) + (g.z > 0 ? 1 : 0) : -1;
+    }
+    body.geometry.setAttribute('aGP', new T.BufferAttribute(gp, 3));
+    body.geometry.setAttribute('aLeg', new T.BufferAttribute(leg, 1));
+    // 顔の正面の線：鼻先 N と額 F（白斑・流星はこの線に沿って描く）
+    let N = null, F = null;
+    for (const g of all) if (g.y > 1.0 && Math.abs(g.z) < 0.03 && (!N || g.x > N.x)) N = g;
+    for (const g of all) if (Math.abs(g.z) < 0.03 && g.x < N.x - 0.38 && g.x > N.x - 0.62 && g.y > 1.0 && (!F || g.y > F.y)) F = g;
+    G.face = { N: [N.x, N.y], F: [F.x, F.y] };
     // 骨のローカル座標で、鞍の点を覚えておく（毎フレーム骨から位置を出す）
     G.saddleOffset1 = bones[G.anchorBone].worldToLocal(fromGame(G, G.saddle.clone()));
     G.saddleOffset2 = bones[G.anchorBone2].worldToLocal(fromGame(G, new T.Vector3(G.saddle.x - 0.5, G.saddle.y - 0.02, 0)));
@@ -93,18 +109,59 @@
   }
 
   // 毛色・脚先の黒（鹿毛など）をシェーダーで
-  function coatMaterial(coat) {
-    const c = new T.Color(coat.body).multiplyScalar(1.25);
+  // 毛色・脚先の黒（鹿毛など）・白斑・白い脚・芦毛の連銭模様・ブチ模様をシェーダーで描く
+  // mk：{ face:[t0,t1,w0,w1], star:半径, socks:[左前,右前,左後,右後の白の高さm], dapple:0〜1, spots:0〜1, pinto:0〜1, white:0/1, tint:-1〜1, seed }
+  function coatMaterial(coat, mk) {
+    mk = mk || {};
+    const c = new T.Color(coat.body).multiplyScalar(1.25 * (1 + (mk.tint || 0) * 0.12));
     const m = new T.MeshStandardMaterial({ map: G.tex.coat, normalMap: G.tex.coatN, color: c, roughness: 0.56, metalness: 0.0 });
     const pts = new T.Color(coat.points);
-    m.onBeforeCompile = (sh) => {
-      sh.uniforms.uPoints = { value: pts };
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vLow;\nattribute float aLow;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLow = aLow;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vLow;\nuniform vec3 uPoints;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uPoints * (diffuseColor.rgb / max(diffuse, vec3(0.001))) * 1.2, vLow);');
+    const U = {
+      uPoints: { value: pts },
+      uFace: { value: new T.Vector4(...(mk.face || [0, 0, 0, 0])) },
+      uStar: { value: mk.star || 0 },
+      uSocks: { value: new T.Vector4(...(mk.socks || [0, 0, 0, 0])) },
+      uPat: { value: new T.Vector4(mk.dapple || 0, mk.spots || 0, mk.pinto || 0, mk.white || 0) },
+      uSeed: { value: mk.seed || 0 },
+      uPintoC: { value: new T.Color(mk.pintoC || '#5a3a24') },
+      uFN: { value: new T.Vector4(G.face.F[0], G.face.F[1], G.face.N[0], G.face.N[1]) },
     };
-    m.customProgramCacheKey = () => 'coat' + coat.points;
+    m.userData.U = U;
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, U);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vLow;\nattribute float aLow;\nattribute vec3 aGP;\nattribute float aLeg;\nvarying vec3 vGP;\nvarying float vLeg;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLow = aLow; vGP = aGP; vLeg = aLeg;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying float vLow; varying vec3 vGP; varying float vLeg;
+uniform vec3 uPoints; uniform vec3 uPintoC; uniform vec4 uFace; uniform float uStar; uniform vec4 uSocks; uniform vec4 uPat; uniform float uSeed; uniform vec4 uFN;
+float hh3(vec3 p){ p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float vn3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(hh3(i), hh3(i + vec3(1,0,0)), f.x), mix(hh3(i + vec3(0,1,0)), hh3(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(hh3(i + vec3(0,0,1)), hh3(i + vec3(1,0,1)), f.x), mix(hh3(i + vec3(0,1,1)), hh3(i + vec3(1,1,1)), f.x), f.y), f.z); }`)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+vec3 tx = diffuseColor.rgb / max(diffuse, vec3(0.001)); // 毛並みの濃淡（テクスチャ）だけを取り出す
+vec3 P = vGP + vec3(uSeed * 3.1, uSeed * 1.7, 0.0);
+// 脚先・たてがみ側の濃い色（鹿毛など）
+diffuseColor.rgb = mix(diffuseColor.rgb, uPoints * tx * 1.2, vLow);
+// 芦毛：まだらの連銭模様（明るい輪と灰色）と、年を重ねた馬の小さな斑点
+if (uPat.x > 0.0) { float n = vn3(P * 9.0); float ring = smoothstep(0.42, 0.62, n) * (1.0 - vLow); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * mix(1.0, 1.35, ring) + vec3(0.04), uPat.x * ring); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.72, uPat.x * (1.0 - ring) * 0.35 * (1.0 - vLow)); }
+if (uPat.y > 0.0) { float sp = step(0.86, vn3(P * 46.0)) * (1.0 - vLow * 0.5); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.32, 0.24, 0.2) * tx, uPat.y * sp); }
+vec3 W = vec3(0.96, 0.95, 0.92) * tx * 1.28; // 白い毛
+float white = uPat.w;
+// ブチ（白毛に出る色の斑）：大きくはっきりした斑点
+if (uPat.z > 0.0) { float b = vn3(P * vec3(3.2, 3.6, 2.0) + 4.0) * 0.7 + vn3(P * 9.0) * 0.3; diffuseColor.rgb = mix(diffuseColor.rgb, uPintoC * tx * 1.15, smoothstep(0.66 - uPat.z * 0.2, 0.69 - uPat.z * 0.2, b)); }
+// 脚の白（靴下）：脚ごとに白い高さ
+if (vLeg > -0.5) { float hgt = vLeg < 0.5 ? uSocks.x : vLeg < 1.5 ? uSocks.y : vLeg < 2.5 ? uSocks.z : uSocks.w;
+  float edge = 0.018 * vn3(P * 30.0); white = max(white, step(0.001, hgt) * (1.0 - smoothstep(hgt - 0.02 + edge, hgt + 0.01 + edge, vGP.y))); }
+// 顔の白：額の星、鼻筋の流星・大流星、鼻先の白
+{ vec2 a = uFN.xy, b = uFN.zw, pa = vGP.xy - a, ba = b - a; float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  float d = length(pa - ba * t), front = 1.0 - smoothstep(0.05, 0.085, d);
+  if (uFace.w > 0.0) { float w = mix(uFace.z, uFace.w, t) * (1.0 + 0.25 * (vn3(vGP * 25.0) - 0.5));
+    white = max(white, front * step(uFace.x, t) * step(t, uFace.y) * (1.0 - smoothstep(w * 0.85, w, abs(vGP.z)))); }
+  if (uStar > 0.0) { vec2 c = a + ba * 0.12; float r = length(vec2(length(vGP.xy - c) * 0.8, vGP.z)); white = max(white, front * (1.0 - smoothstep(uStar * 0.8, uStar, r))); } }
+diffuseColor.rgb = mix(diffuseColor.rgb, W, clamp(white, 0.0, 1.0));`);
+    };
+    m.customProgramCacheKey = () => 'coat2';
     return m;
   }
 
@@ -153,7 +210,7 @@
     const coat = opt.coat;
     const o = T.SkeletonUtils.clone(G.scene);
     const mats = {
-      body: coatMaterial(coat),
+      body: coatMaterial(coat, opt.marks),
       hair: new T.MeshStandardMaterial({ map: G.tex.hair, normalMap: G.tex.hairN, color: new T.Color(coat.mane).multiplyScalar(1.6), alphaTest: 0.35, side: T.DoubleSide, roughness: 0.6 }),
       tack: new T.MeshStandardMaterial({ map: G.tex.tack, color: '#3a3a3a', roughness: 0.5 }),
       eye: new T.MeshStandardMaterial({ color: '#0a0a0a', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55 }),

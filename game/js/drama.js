@@ -34,6 +34,17 @@
       lead: ['ボクとユー、{d}勝差。ジャパンのリーディング、エキサイティングね。'] },
   };
   const ORDER = ['douki', 'senpai', 'kouhai', 'gaijin'];
+  // 選択肢の言い回し：同じ意味でも毎回同じセリフにならないよう、いくつかの中から選ぶ（順番は 0=称える 1=闘志 2=黙る）
+  const LOSE_OPTS = [
+    ['「強かった。おめでとう」', '「完敗だ。いい競馬だった」', '「おめでとう。あの仕掛けは見事だった」', '「今日はお前の日だったな」', '「さすがだな」'],
+    ['「次は負けない」', '「次で返す」', '「覚えておけよ」', '「次は俺の番だ」', '「この借りは大きいぞ」'],
+    ['何も言わずに引き上げる', '黙って会釈だけする', '目をそらして検量室を出る', '手を上げて応えるだけにする'],
+  ];
+  const CONTEST_OPTS = [
+    ['「いい馬だ。大事に乗ってくれ」', '「あの馬、頼んだぞ」', '「あいつのいいところを引き出してやってくれ」', '「仕方ない。勝ってこいよ」'],
+    ['「次は譲らない」', '「次の依頼は俺がもらう」', '「結果で取り返す」', '「今回だけだからな」'],
+  ];
+  const varied = (sets) => sets.map(a => pick(a));
 
   function push(W, lines, extra = {}) { if (W.story) W.story.pending.push({ lines, ...extra }); }
   const ment = (W) => (W.story && W.story.mentor) || '師匠';
@@ -139,7 +150,7 @@
     const c = CAST[x.cid], iWon = me.pos < x.pos;
     const head = ['', `${race.name}のあと、検量室で${x.j.name}騎手と目が合った。（あなた${me.pos}着・${x.j.name}騎手${x.pos}着）`];
     if (iWon) { rel(W, x.cid, 1); push(W, [head, [x.j.name, pick(c.lose)]]); }
-    else push(W, [head, [x.j.name, pick(c.win)]], { dr: 'lockerLose', cid: x.cid, choice: { key: 'dr', opts: ['「強かった。おめでとう」', '「次は負けない」', '何も言わずに引き上げる'] } });
+    else push(W, [head, [x.j.name, pick(c.win)]], { dr: 'lockerLose', cid: x.cid, choice: { key: 'dr', opts: varied(LOSE_OPTS) } });
   }
 
   // ---- 騎乗依頼の取り合い ----
@@ -148,7 +159,7 @@
     const cid = cidOf(W, jid); if (!cid) return;
     const j = W.jockeys[jid], c = CAST[cid];
     if (won) { rel(W, cid, -2); push(W, [['', `${h.name}の鞍上は、あなたに決まった。`], [j.name, pick(c.lost)]]); }
-    else { rel(W, cid, -1); push(W, [['', `${h.name}の鞍上は、${j.name}騎手に決まった。`], [j.name, pick(c.take)]], { dr: 'contestLose', cid, choice: { key: 'dr', opts: ['「いい馬だ。大事に乗ってくれ」', '「次は譲らない」'] } }); }
+    else { rel(W, cid, -1); push(W, [['', `${h.name}の鞍上は、${j.name}騎手に決まった。`], [j.name, pick(c.take)]], { dr: 'contestLose', cid, choice: { key: 'dr', opts: varied(CONTEST_OPTS) } }); }
   }
   // 取り合いの相手を選ぶ：物語の人物が出やすい
   function contestRival(W, fallback) {

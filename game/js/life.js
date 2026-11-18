@@ -115,7 +115,7 @@
     if (S.stage === 'none' && P.age >= 20 && r < 0.07) {
       const m = pick(MEET), n = pick(NAMES);
       S.cand = { name: n, job: m.job };
-      push(W, m.how(n), { life: 'meet', choice: { key: 'meet', opts: ['連絡先を交換する', '今は騎乗に集中する'] } });
+      push(W, m.how(n), { life: 'meet', choice: { key: 'meet', opts: [pick(['連絡先を交換する', '「よかったら、また話しませんか」', '名刺代わりに連絡先を渡す', '思い切って食事に誘う']), pick(['今は騎乗に集中する', '「応援ありがとう」とだけ伝える', '会釈して別れる'])] } });
       return gap();
     }
     // 小さな出来事（2割ほどの週で）
@@ -157,7 +157,7 @@
       // デート
       if (r < (S.stage === 'met' ? 0.3 : 0.22)) {
         const d = pick(DATES.filter(x => !x[2] || x[2].includes(W.month)));
-        push(W, [[S.partner, `今度の月曜、${d[0]}に行かない？`]], { life: 'date', date: d, choice: { key: 'date', opts: ['行く', 'レース明けで疲れているので断る'] } });
+        push(W, [[S.partner, `今度の月曜、${d[0]}に行かない？`]], { life: 'date', date: d, choice: { key: 'date', opts: [pick(['行く', '「行こう」', '「楽しみにしてる」', 'すぐに予定を空ける']), pick(['レース明けで疲れているので断る', '「ごめん、その日は調教がある」', '「次の休みにしよう」', '減量中なので今回は見送る'])] } });
         return gap();
       }
     }

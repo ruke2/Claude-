@@ -126,7 +126,40 @@
     brown: { body: '#2a1a12', points: '#110b07', mane: '#0a0705' },
     chestnut: { body: '#8a4a22', points: '#7a3f1c', mane: '#a0602e' },
     grey: { body: '#b9b6b1', points: '#5b5855', mane: '#d9d6d0' },
+    black: { body: '#1a1512', points: '#0e0b09', mane: '#080605' },          // 青毛
+    liver: { body: '#5a2c16', points: '#4a2412', mane: '#3e1e10' },          // 栃栗毛
+    flaxen: { body: '#9a5426', points: '#8a4a20', mane: '#e8d6a8' },         // 尾花栗毛（たてがみと尾が白っぽい）
+    darkgrey: { body: '#6f6b67', points: '#2f2c2a', mane: '#4a4744' },       // 若い芦毛（まだ黒っぽい）
+    white: { body: '#ece8e2', points: '#e2ddd6', mane: '#f1eee8' },          // 白毛
   };
+  const COAT_JP = { bay: '鹿毛', darkbay: '黒鹿毛', brown: '青鹿毛', chestnut: '栗毛', grey: '芦毛', black: '青毛', liver: '栃栗毛', flaxen: '尾花栗毛', darkgrey: '芦毛', white: '白毛' };
+  // 馬ごとの模様（毎回同じになるよう、馬の番号から決める）。顔の白、脚の白、芦毛のまだら、白毛のブチ
+  function marksFor(h, year) {
+    if (!h) return {};
+    let s = (h.id || 1) * 2654435761 >>> 0; const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const mk = { seed: r() * 10, tint: (r() - 0.5) * 1.4 };
+    // 顔
+    const f = r();
+    if (f < 0.34) {} else if (f < 0.54) mk.star = 0.03 + r() * 0.03;
+    else if (f < 0.72) { mk.face = [0.05, 0.75 + r() * 0.2, 0.014, 0.012 + r() * 0.01]; if (r() < 0.5) mk.star = 0.035; }   // 流星
+    else if (f < 0.86) mk.face = [0.0, 1.0, 0.035 + r() * 0.02, 0.05 + r() * 0.03];                                     // 大流星
+    else if (f < 0.94) { mk.star = 0.04; mk.face = [0.82, 1.0, 0.02, 0.035]; }                                         // 星と鼻白
+    else mk.face = [0.0, 1.0, 0.07, 0.11];                                                                           // 白面
+    // 脚の白：後ろ脚に出やすい。h.socks があればそれを使う
+    const legs = ['LF', 'RF', 'LH', 'RH'], socks = [0, 0, 0, 0];
+    const has = h.socks && h.socks.length ? h.socks : legs.filter((k, i) => r() < (i >= 2 ? 0.34 : 0.2));
+    has.forEach(k => { const i = legs.indexOf(k); if (i >= 0) socks[i] = [0.1, 0.16, 0.24, 0.34][Math.floor(r() * 4)]; });
+    mk.socks = socks;
+    const key = h.coatKey;
+    if (key === 'grey' || key === 'darkgrey') {
+      // 芦毛は年とともに白くなる：若いうちは連銭（まだら）、年を重ねると小さな斑点
+      const age = year && h.born ? year - h.born : 4;
+      mk.dapple = Math.max(0.2, 1 - Math.max(0, age - 3) * 0.2); mk.spots = Math.min(0.8, Math.max(0, (age - 4) * 0.2));
+    }
+    if (key === 'white' && r() < 0.5) { mk.pinto = 0.3 + r() * 0.5; mk.pintoC = ['#4a2e1c', '#2a1e16', '#7a4a26', '#5d5a56'][Math.floor(r() * 4)]; }  // 白毛：鹿毛色・黒・栗色・灰色の斑（ブチ）が出る馬も
+    if (h.marks) Object.assign(mk, h.marks);
+    return mk;
+  }
   function coatFor(h) {
     if (h.coatKey && COATS[h.coatKey]) return COATS[h.coatKey];
     const keys = ['bay', 'bay', 'darkbay', 'darkbay', 'brown', 'chestnut', 'chestnut', 'grey'];
@@ -545,5 +578,5 @@
     if (window.HorseGLB && HorseGLB.ready) { try { return HorseGLB.create(opt); } catch (e) { console.warn('glb horse failed', e); } }
     return create(opt);
   }
-  window.Horse3D = { create: createAny, createProcedural: create, coatFor, COATS, silksTexture, _geoms: geoms, _clothTexture: clothTexture, _buildJockey: buildJockey, _animateJockey: animateJockey };
+  window.Horse3D = { create: createAny, marksFor, COAT_JP, createProcedural: create, coatFor, COATS, silksTexture, _geoms: geoms, _clothTexture: clothTexture, _buildJockey: buildJockey, _animateJockey: animateJockey };
 })();

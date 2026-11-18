@@ -73,7 +73,7 @@
     const st = new T.Group(); const b1 = new T.Mesh(new T.BoxGeometry(22, 5, 6), new T.MeshStandardMaterial({ color: '#eef1f7' })); b1.position.y = 2.5; st.add(b1);
     const b2 = new T.Mesh(new T.BoxGeometry(23, 0.4, 8), new T.MeshStandardMaterial({ color: '#5468d4' })); b2.position.set(0, 5.4, 0.6); st.add(b2); st.position.set(800, 0, -16); sc.add(st);
     // 馬（レースと同じモデル）
-    const m = window.Horse3D.create({ coat: o.coatMat, coatKey: o.coatKey, number: 1, raceLabel: '', cloth: { kind: 'normal', num: '', horse: o.name }, silks: o.silks, socks: o.socks || [], hood: o.hood || null, isPlayer: false });
+    const m = window.Horse3D.create({ marks: o.marks, coat: o.coatMat, coatKey: o.coatKey, number: 1, raceLabel: '', cloth: { kind: 'normal', num: '', horse: o.name }, silks: o.silks, socks: o.socks || [], hood: o.hood || null, isPlayer: false });
     m.root.traverse(q => { if (q.isMesh) q.castShadow = true; });
     sc.add(m.root);
     return { sc, sun, m };

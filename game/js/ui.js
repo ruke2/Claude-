@@ -403,7 +403,7 @@
       $('wo-go').onclick = () => {
         closeModal(); if (window.Home3D) Home3D.stop();
         const o = W.owners[h.owner], sk = o && o.silks ? o.silks : { base: '#ff5c7a', accent: '#ffffff' };
-        const go = () => Workout.open($('app'), { name: h.name, coatMat: Horse3D.coatFor(h), coatKey: h.coatKey, socks: h.socks, hood: h.hood, silks: { base: sk.base, accent: sk.accent, pattern: sk.pattern || 'plain', cap: sk.cap || sk.base }, rating: World.rating(h, W.year), tmp: h.tmp, kind, dy: uiDY, onDone: done });
+        const go = () => Workout.open($('app'), { name: h.name, marks: Horse3D.marksFor(h, W.year), coatMat: Horse3D.coatFor(h), coatKey: h.coatKey, socks: h.socks, hood: h.hood, silks: { base: sk.base, accent: sk.accent, pattern: sk.pattern || 'plain', cap: sk.cap || sk.base }, rating: World.rating(h, W.year), tmp: h.tmp, kind, dy: uiDY, onDone: done });
         // レースと同じ馬のモデルを使う（まだ読み込んでいなければ待つ）
         if (window.HorseGLB && !HorseGLB.ready) { toast('馬を準備中…'); HorseGLB.load().then(go, go); } else go();
       };
@@ -412,7 +412,7 @@
 
   // ---------- お手馬 ----------
   let hsSel = null, hsFilter = null, hsSort = 'bond';
-  const COAT = { bay: ['鹿毛', '#8a5a36'], darkbay: ['黒鹿毛', '#4a3020'], brown: ['青鹿毛', '#2f241d'], chestnut: ['栗毛', '#b5773f'], grey: ['芦毛', '#cfd2d6'] };
+  const COAT = { bay: ['鹿毛', '#8a5a36'], darkbay: ['黒鹿毛', '#4a3020'], brown: ['青鹿毛', '#2f241d'], chestnut: ['栗毛', '#b5773f'], grey: ['芦毛', '#cfd2d6'], black: ['青毛', '#15110e'], liver: ['栃栗毛', '#6a3418'], flaxen: ['尾花栗毛', '#a8602c'], darkgrey: ['芦毛', '#7a7672'], white: ['白毛', '#f4f1ec'] };
   const posCls = (n) => n === 1 ? 'p1' : n === 2 ? 'p2' : n === 3 ? 'p3' : '';
   function renderHorses(pane) {
     const p = P();
@@ -624,7 +624,10 @@
     const hid = W.booked[race.no], h = W.horses[hid], f = race.field.find(x => x.hid === hid) || {};
     if (f.pop == null) World.estimateOdds(W, race);
     const pop = f.pop, isPartner = W.story && W.story.partner === hid;
-    const rivalJ = W.rivals && W.rivals[0] ? W.jockeys[W.rivals[0].jid] : null;
+    // 騎手の割り当てを先に決めて、同期が本当にこのレースに乗るときだけ聞く
+    if (!race.field[0].waku) World.setupRace(W, race, hid, 'manual');
+    const rj0 = W.rivals && W.rivals[0] ? W.rivals[0].jid : null;
+    const rivalJ = rj0 != null && race.field.some(f => f.jid === rj0) ? W.jockeys[rj0] : null;
     const Q = [];
     Q.push(pop === 1 ? { q: `${h.name}は1番人気が予想されています。プレッシャーは？`, kind: 'fav' } : pop <= 3 ? { q: `上位人気の一角です。${h.name}の状態はいかがですか？`, kind: 'cond' } : { q: `${pop}番人気前後の評価です。ここから巻き返す手応えは？`, kind: 'dark' });
     if (race.myDraw) Q.push({ q: `${race.myDraw.waku}枠${race.myDraw.num}番を引きました。この枠をどう見ますか？`, kind: 'draw', good: race.myDraw.num <= Math.ceil(race.myDraw.n / 2) });

@@ -115,7 +115,7 @@
         race = W.card.find(r => r.name === g.name);
         if (race && g.name === '日本ダービー' && !S.flags.derbyTalk) {
           S.flags.derbyTalk = true;
-          say(W, [[mn(W), 'ダービーは運のいい馬が勝つと言われる。'], [mn(W), 'だが、運は準備をした者のところにしか来ない。お前と' + h.name + 'がやってきたことを信じろ。'], [rn(W), '今日だけは負けない。']]);
+          say(W, [[mn(W), 'ダービーは運のいい馬が勝つと言われる。'], [mn(W), 'だが、運は準備をした者のところにしか来ない。お前と' + h.name + 'がやってきたことを信じろ。']].concat(S.rivalHorse && race.field.some(f => f.hid === S.rivalHorse) ? [[rn(W), '今日だけは負けない。']] : []));
         }
       }
       // 凱旋門賞：ダービーの後で陣営から打診
@@ -173,9 +173,11 @@
       if (race.name === 'ホープフルS') {
         say(W, me.pos === 1 ? [[mn(W), `GⅠ馬だ。来年はクラシックの主役だぞ、${h.name}。`]] : [[mn(W), `${me.pos}着。まだ子どもだ。来年、もうひと回り大きくなる。`]]);
       }
+      // ライバルの騎手がこのレースに乗っていたか（乗っていなければ、レースの話はしない）
+      const rodeRival = W.rivals && W.rivals[0] && race.field.some(f => f.jid === W.rivals[0].jid);
       if (race.name === '日本ダービー') {
         S.flags.derbyDone = true; S.flags.derbyWin = me.pos === 1;
-        say(W, me.pos === 1 ? [['', `${h.name}、日本ダービー制覇。`], [mn(W), '……よくやった。今日からお前はダービージョッキーだ。'], [rn(W), 'おめでとう。でも、まだ終わりじゃないからな。']]
+        say(W, me.pos === 1 ? [['', `${h.name}、日本ダービー制覇。`], [mn(W), '……よくやった。今日からお前はダービージョッキーだ。'], ].concat(rodeRival ? [[rn(W), 'おめでとう。でも、まだ終わりじゃないからな。']] : [])
           : [[mn(W), `${me.pos}着か。`], [mn(W), '悔しいなら、もっと強くなれ。' + h.name + 'の競馬はまだ終わっていない。']]);
       }
       if (race.name === '凱旋門賞') say(W, me.pos === 1 ? [['', `${h.name}、凱旋門賞制覇。日本の競馬の歴史が変わった日。`], [mn(W), '……言葉がない。']] : [[mn(W), `${me.pos}着。世界の壁は厚い。だが、お前たちはそこに立った。`]]);

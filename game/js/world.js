@@ -234,7 +234,8 @@
     W.horses[h.id] = h;
     return h;
   }
-  function pickCoat() { return pick(['bay', 'bay', 'bay', 'darkbay', 'darkbay', 'brown', 'chestnut', 'chestnut', 'grey']); }
+  // 毛色：鹿毛・黒鹿毛・栗毛が多く、芦毛・青鹿毛がそれに続き、青毛・栃栗毛・尾花栗毛は少なめ、白毛はまれ
+  function pickCoat() { const r = Math.random(); return r < 0.003 ? 'white' : pick(['bay', 'bay', 'bay', 'bay', 'darkbay', 'darkbay', 'darkbay', 'brown', 'brown', 'chestnut', 'chestnut', 'chestnut', 'grey', 'grey', 'darkgrey', 'black', 'liver', 'flaxen']); }
   function pickSocks() { const s = []; ['LF', 'RF', 'LH', 'RH'].forEach(k => { if (Math.random() < 0.13) s.push(k); }); return s; }
   function ownerFor(W) {
     // 大馬主ほど多くの馬を持つ
@@ -640,7 +641,7 @@
         pend.push({ lines: [
           [tn, `${h.name}は${np.inW}週後の${np.name}${g ? `（G${'ⅠⅡⅢ'[g.g - 1]}）` : ''}に向かう。${pick(['状態はいい。', '調教の動きは文句なしだ。', '前走の疲れも抜けた。'])}`],
           [tn, '引き続き、手綱を任せたい。乗ってくれるか。'],
-        ], ride: { hid: h.id, race: np.name }, choice: { key: 'ride', opts: ['乗る（騎乗を約束する）', '断る（主戦を降りる）'] } });
+        ], ride: { hid: h.id, race: np.name }, choice: { key: 'ride', opts: [pick(['乗る（騎乗を約束する）', '「任せてください」（騎乗を約束する）', '「この馬で勝ちます」（騎乗を約束する）', '「もちろんです」（騎乗を約束する）']), pick(['断る（主戦を降りる）', '「今回は辞退します」（主戦を降りる）', '「ほかに約束があります」（主戦を降りる）'])] } });
       }
     }
   }
