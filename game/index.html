@@ -692,6 +692,11 @@ input[type=text]:focus{outline:none;box-shadow:inset 0 0 0 2px var(--sky1)}
 .wo-grade{font-family:var(--serif);font-size:44px;font-weight:900;line-height:1}
 .wo-grade.gS{color:#e0201c}.wo-grade.gA{color:#e06d00}.wo-grade.gB{color:#2a6fd6}.wo-grade.gC{color:#7d8a99}
 .wo-msg .btn{margin-top:8px}
+.mchk{display:inline-flex;cursor:pointer}
+.mchk input{position:absolute;opacity:0;pointer-events:none}
+.mchk span{width:22px;height:22px;border-radius:7px;background:#fff;box-shadow:inset 0 0 0 2px #c9d1ef;display:inline-block;position:relative}
+.mchk input:checked+span{background:linear-gradient(180deg,#7a94ff,#5468d4);box-shadow:none}
+.mchk input:checked+span::after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
 </style>
 </head>
 <body>

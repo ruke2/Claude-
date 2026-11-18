@@ -899,7 +899,10 @@
     crumbs('day-crumbs', [['今週', () => showWeek()], [weekLabel(), null], [`${VENUES[W.venue].name} 開催日`, null]]);
     if (W.story && W.story.pending.length) setTimeout(() => playScenes(), 0);
     const nRide = Object.keys(W.booked).length;
-    let t = `<table><tr><th>R</th><th>レース</th><th>条件</th><th>頭数</th><th>騎乗馬</th><th>結果</th></tr>`;
+    // 騎乗するレースごとに「自分で乗る（手動）」か「オート」かを選ぶ。最初は全部手動
+    if (!W.manual || W.manual.abs !== W.abs) W.manual = { abs: W.abs, no: {} };
+    const isMan = (no) => W.manual.no[no] !== false;
+    let t = `<table><tr><th>R</th><th>手動</th><th>レース</th><th>条件</th><th>頭数</th><th>騎乗馬</th><th>結果</th></tr>`;
     W.card.forEach((race, i) => {
       const hid = W.booked[race.no];
       const h = hid ? W.horses[hid] : null;
@@ -909,9 +912,10 @@
         const me = race.result.find(r => r.isP);
         res = me ? `<b style="color:${me.pos === 1 ? 'var(--green)' : 'inherit'}">${me.pos}着</b>（${me.pop}人気）${me.demoted ? ' <span class="badge warn">降着</span>' : ''}` : `<span class="muted small">1着 ${esc(wh ? wh.name : '')}</span>`;
       }
-      t += `<tr class="${i === W.dayIdx ? 'cur' : ''}"><td><b>${race.overseas ? '-' : race.no}</b></td><td>${gradeTag(race)} ${esc(race.name)}</td><td>${raceCond(race)}</td><td>${race.field.length}</td><td>${h ? '<b>' + esc(h.name) + '</b>' : '<span class="muted">—</span>'}</td><td>${res}</td></tr>`;
+      t += `<tr class="${i === W.dayIdx ? 'cur' : ''}"><td><b>${race.overseas ? '-' : race.no}</b></td><td>${h && !race.result ? `<label class="mchk"><input type="checkbox" data-man="${race.no}" ${isMan(race.no) ? 'checked' : ''}><span></span></label>` : h && race.result ? '<span class="small muted">済</span>' : ''}</td><td>${gradeTag(race)} ${esc(race.name)}</td><td>${raceCond(race)}</td><td>${race.field.length}</td><td>${h ? '<b>' + esc(h.name) + '</b>' : '<span class="muted">—</span>'}</td><td>${res}</td></tr>`;
     });
     $('day-table').innerHTML = t + '</table>';
+    $('day-table').querySelectorAll('[data-man]').forEach(cb => cb.onchange = () => { W.manual.no[+cb.dataset.man] = cb.checked; World.save(W); showDay(); });
     const S = $('day-side');
     if (W.dayIdx >= W.card.length) {
       S.innerHTML = `<div class="card"><div class="sec"><h3>本日の全レース終了</h3></div><p class="muted small">お疲れさまでした。</p><button class="btn primary" style="width:100%" id="b-wend">今週の結果へ</button></div>`;
@@ -920,21 +924,27 @@
     const race = W.card[W.dayIdx];
     const hid = W.booked[race.no];
     let html = `<div class="card" style="margin-top:8px"><div class="small muted">次のレース</div><div style="font-family:var(--serif);font-size:18px;font-weight:900">${race.overseas ? '' : race.no + 'R '}${esc(race.name)} ${gradeTag(race)}</div><div class="small">${raceCond(race)}・${race.field.length}頭・騎乗 ${nRide}鞍</div><div class="small" style="margin-top:3px">${condLine(race)} ${tip(BIAS_TIP)}</div>`;
-    if (hid) {
+    const nextMan = W.card.slice(W.dayIdx).find(r => W.booked[r.no] && isMan(r.no));
+    const autoBefore = W.card.slice(W.dayIdx, nextMan ? W.card.indexOf(nextMan) : W.card.length).filter(r => W.booked[r.no]).length;
+    if (hid && isMan(race.no)) {
       const h = W.horses[hid];
       html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)}</div></div><button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-pad">パドックへ</button>`;
+    } else if (hid) {
+      const h = W.horses[hid];
+      html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)} <span class="badge">オート</span></div></div>
+        <button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-skipn">${nextMan ? `次の手動のレース（${nextMan.no}R）まで進める` : '残りをオートで進める'}${autoBefore ? `<br><span class="small">オートで${autoBefore}鞍に騎乗</span>` : ''}</button>`;
     } else {
       html += `<div class="muted small" style="margin-top:6px">このレースは騎乗なし</div></div>
         <button class="btn" style="width:100%;margin-top:8px" id="b-skip1">見送る（結果だけ見る）</button>
-        <button class="btn primary" style="width:100%;margin-top:6px" id="b-skipn">次の騎乗まで進める</button>`;
+        <button class="btn primary" style="width:100%;margin-top:6px" id="b-skipn">${nextMan ? `次の手動のレース（${nextMan.no}R）まで進める` : '残りを進める'}${autoBefore ? `<br><span class="small">途中、オートで${autoBefore}鞍に騎乗</span>` : ''}</button>`;
     }
     html += `<button class="btn ghost small" style="width:100%;margin-top:6px" id="b-allauto">残りをすべてオートで進める</button>`;
     S.innerHTML = html;
-    if (hid) $('b-pad').onclick = () => showPaddock(race);
-    else {
-      $('b-skip1').onclick = () => { World.simulate(W, race, null); W.dayIdx++; World.save(W); showDay(); };
-      $('b-skipn').onclick = () => { while (W.dayIdx < W.card.length && !W.booked[W.card[W.dayIdx].no]) { World.simulate(W, W.card[W.dayIdx], null); W.dayIdx++; } World.save(W); showDay(); };
-    }
+    // オートのレースは結果だけ出して進む。手動にしたレースの手前で止まる
+    const runAuto = (r) => { const hh = W.booked[r.no] || null; const ev = World.simulate(W, r, hh, 'auto'); if (ev && hh) { logRide(r, hh, ev, 'auto'); if (ev.interview) W.pendingInterviews = (W.pendingInterviews || []).concat([{ iv: ev.interview, hid: hh }]); } };
+    if ($('b-pad')) $('b-pad').onclick = () => showPaddock(race);
+    if ($('b-skip1')) $('b-skip1').onclick = () => { World.simulate(W, race, null); W.dayIdx++; World.save(W); showDay(); };
+    if ($('b-skipn')) $('b-skipn').onclick = () => { while (W.dayIdx < W.card.length && !(W.booked[W.card[W.dayIdx].no] && isMan(W.card[W.dayIdx].no))) { runAuto(W.card[W.dayIdx]); W.dayIdx++; } World.save(W); showDay(); nextInterview(); };
     $('b-allauto').onclick = () => {
       while (W.dayIdx < W.card.length) {
         const r = W.card[W.dayIdx]; const hh = W.booked[r.no] || null;
