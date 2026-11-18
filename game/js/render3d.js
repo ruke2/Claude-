@@ -30,7 +30,9 @@
   class Render3D {
     constructor(container) {
       this.container = container;
-      const r = this.renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      let gfx0 = 'high'; try { gfx0 = localStorage.getItem('jl_gfx') || 'high'; } catch (e) {}
+      // 画面の仕上げを使うときは、画面そのもののアンチエイリアスは使わない（仕上げの側でかけるので二重になり重い）
+      const r = this.renderer = new T.WebGLRenderer({ antialias: !(window.PostFX && gfx0 === 'high'), powerPreference: 'high-performance' });
       r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       r.outputEncoding = T.sRGBEncoding;
       r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
@@ -63,6 +65,25 @@
       if (clear && fwd.dot(sd) > 0 && Math.abs(v.x) < 1.25 && Math.abs(v.y) < 1.25) k = (1 - Math.max(Math.abs(v.x), Math.abs(v.y)) / 1.25) * 0.8;
       u.uSun.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5); u.uSunK.value += (k - u.uSunK.value) * 0.2;
       this.post.render(this.scene, cam);
+      this.autoQuality();
+    }
+    // 重いときは自動で画質を下げる（解像度 → アンチエイリアス → 光のにじみ の順）。軽ければ少しずつ戻す
+    autoQuality() {
+      const now = performance.now(), A = this._aq || (this._aq = { last: now, sum: 0, n: 0, lvl: 0, t0: now });
+      if (now - A.last > 250) { A.last = now; return; } // メニューなどで止まっていた間は数えない
+      const ft = now - A.last; A.last = now;
+      if (ft > 0) { A.sum += ft; A.n++; }
+      if (now - A.t0 < 1500 || A.n < 20) return;
+      const avg = A.sum / A.n; A.sum = 0; A.n = 0; A.t0 = now;
+      const maxPr = Math.min(window.devicePixelRatio || 1, 1.5), ms = this.post.mobile ? 2 : 4;
+      // 段階：[解像度の倍率, アンチエイリアス]
+      const L = [[maxPr, ms], [Math.max(1, maxPr - 0.25), ms], [1, ms], [1, 0], [0.85, 0]];
+      let lv = A.lvl;
+      if (avg > 21 && lv < L.length - 1) lv++;          // 48fps を下回る
+      else if (avg < 17.5 && lv > 0) lv--;              // 60fps 近く出ている
+      if (lv === A.lvl) return;
+      A.lvl = lv; this.renderer.setPixelRatio(L[lv][0]); this.post.setSamples(L[lv][1]);
+      this.resize();
     }
     buildSky() {
       const sky = loadTex('sky.jpg');

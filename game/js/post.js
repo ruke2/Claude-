@@ -67,6 +67,9 @@
     constructor(renderer) {
       this.r = renderer; this.enabled = true;
       this.gl2 = renderer.capabilities.isWebGL2;
+      // スマホは描画の負荷を抑える：アンチエイリアスは2倍まで
+      this.mobile = (navigator.maxTouchPoints || 0) > 0;
+      this.samples = !this.gl2 ? 0 : this.mobile ? 2 : 4;
       const mk = (fs, u) => new T.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms: u, depthTest: false, depthWrite: false });
       this.mBright = mk(BRIGHT, { tSrc: { value: null }, uTh: { value: 1.7 } });
       this.mBlur = mk(BLUR, { tSrc: { value: null }, uDir: { value: new T.Vector2() } });
@@ -79,13 +82,14 @@
       this.qScene = new T.Scene(); this.qScene.add(this.quad); this.qCam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
       this.w = 0; this.h = 0;
     }
+    setSamples(n) { if (n === this.samples) return; this.samples = n; this.w = 0; }
     setSize(w, h) {
       if (w === this.w && h === this.h) return; this.w = w; this.h = h;
       [this.rt, this.b1, this.b1t, this.b2, this.b2t, this.b3, this.b3t].forEach(t => t && t.dispose());
       const o = { type: T.HalfFloatType, depthBuffer: false };
-      this.rt = new T.WebGLRenderTarget(w, h, { type: T.HalfFloatType, samples: this.gl2 ? 4 : 0 });
+      this.rt = new T.WebGLRenderTarget(w, h, { type: T.HalfFloatType, samples: this.samples });
       const lv = (d) => [new T.WebGLRenderTarget(Math.max(1, w >> d), Math.max(1, h >> d), o), new T.WebGLRenderTarget(Math.max(1, w >> d), Math.max(1, h >> d), o)];
-      [this.b1, this.b1t] = lv(1); [this.b2, this.b2t] = lv(2); [this.b3, this.b3t] = lv(3);
+      [this.b1, this.b1t] = lv(2); [this.b2, this.b2t] = lv(3); [this.b3, this.b3t] = lv(4); // にじみは 1/4・1/8・1/16 の大きさで作る（軽い）
       this.mFinal.uniforms.uRes.value.set(w, h);
     }
     pass(mat, target) { this.quad.material = mat; this.r.setRenderTarget(target); this.r.render(this.qScene, this.qCam); }
