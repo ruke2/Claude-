@@ -1199,6 +1199,12 @@
       if (I.stage !== was) { if (I.stage === 'set') { this.camSnap = false; this.camYaw = null; if (this.playerModel) this.playerModel.setPlayerView(this.camMode === 'jockey'); } this.updateFov(); }
       if (I.t > I.loadEnd + I.setLen) I.done = true;
     }
+    // 返し馬：紹介する馬ごとに、ゴール前の外めを 9.5m/秒の軽いキャンターで走らせる（ゲートの馬とは重ならない位置）
+    canterAt(I, c) {
+      const u = Math.max(0, I.t - I.T0 - I.hIdx * I.per), lap = c.lap;
+      const p = (((c.H - 70 + u * 9.5) % lap) + lap) % lap;
+      return { p, X: c.width - 4.5, u };
+    }
     introCamera(race) {
       const I = this.intro, c = race.course, cam = this.camera, n = race.runners.length;
       const sm = (k) => { k = Math.max(0, Math.min(1, k)); return k * k * (3 - 2 * k); };
@@ -1214,15 +1220,12 @@
         cam.lookAt(L0.x + (g.x - L0.x) * sm(k * 1.4), e0 + 1.5, L0.z + (g.z - L0.z) * sm(k * 1.4));
         this.camTarget = new T.Vector3(g.x, 0, g.z);
       } else if (I.stage === 'horses') {
-        // 1頭ずつ：ゲートの後ろで待つ馬を、斜め前から寄りで撮る。次の馬へは横に流れる
-        const r = race.runners[I.hIdx], k = ((I.t - I.T0) / I.per) % 1;
-        const ph = race.pAt(0) - I.BACK, e1 = this.E(ph), X = r.X;
-        const want = CXY(c, ph + 6.2 + 0.5 * k, X + 3.4 - 0.7 * k), look = CXY(c, ph + 0.3, X);
-        const wp = new T.Vector3(want.x, e1 + 2.35, want.z);
-        if (!this._hcam || k < 0.02 && this._hcam.idx !== I.hIdx) this._hcam = { idx: I.hIdx, p: this._hcam ? this._hcam.p : wp.clone() };
-        this._hcam.p.lerp(wp, 0.18);
-        cam.position.copy(this._hcam.p);
-        cam.lookAt(look.x, e1 + 1.75, look.z);
+        // 1頭ずつ：返し馬で駆けていく馬を、外ラチの外から並んで撮る（テレビの返し馬の映像のように横から少し前）。馬が替わるたびにカットで切り替える
+        const k = ((I.t - I.T0) / I.per) % 1, ct = this.canterAt(I, c);
+        const e1 = this.E(ct.p);
+        const want = CXY(c, ct.p + 4.5 - 2.5 * k, c.width + 6.5), look = CXY(c, ct.p + 0.6, ct.X);
+        cam.position.set(want.x, e1 + 2.0, want.z);
+        cam.lookAt(look.x, e1 + 1.6, look.z);
         this.camTarget = new T.Vector3(look.x, 0, look.z);
       } else {
         const k = (I.t - I.TH) / (I.loadEnd - I.TH);
@@ -1266,12 +1269,15 @@
       race.runners.forEach((r, i) => {
         const m = this.horses[i];
         const back = I ? I.back[i] : 0, walking = I && back > 0.01 && back < I.BACK - 0.01;
-        const a = CXY(c, race.pAt(r.s) - back, r.X);
+        // 出走馬の紹介：紹介中の馬はスタンド前を返し馬で駆けていく
+        const cant = I && I.stage === 'horses' && i === I.hIdx ? this.canterAt(I, c) : null;
+        const pp = cant ? cant.p : race.pAt(r.s) - back;
+        const a = CXY(c, pp, cant ? cant.X : r.X);
         let yaw = Math.atan2(-a.hz, a.hx);
         // 横移動の向き
         const sgnOut = c.dir === 'L' ? -1 : 1; // X増加方向は進行方向に対して右(左回り)
         if (r.v > 1) yaw += Math.atan2(r.latV || 0, r.v) * sgnOut;
-        m.root.position.set(a.x, this.E ? this.E(race.pAt(r.s) - back) : 0, a.z);
+        m.root.position.set(a.x, this.E ? this.E(pp) : 0, a.z);
         m.root.rotation.y = yaw;
         const d2 = (a.x - camPos.x) ** 2 + (a.z - camPos.z) ** 2;
         const near = d2 < 140 * 140 || r.isPlayer;
@@ -1279,7 +1285,7 @@
         if (near || Math.floor(this.clock * 10) % 4 === i % 4) {
           // リプレイ中は、レースが終わった後の状態（全馬ゴール済み）ではなく、その瞬間の位置で姿勢を決める
           const fin = this.replay ? r.s >= race.D + 2 : r.finished;
-          m.update({ ease: fin, win: fin && (r === winner || (this.cer && r.isPlayer)), photo: this.cer && this.cer.kind === 'photo' && r.isPlayer, phase: walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: r.v, effort: r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
+          m.update({ ease: fin, win: fin && (r === winner || (this.cer && r.isPlayer)), photo: this.cer && this.cer.kind === 'photo' && r.isPlayer, phase: cant ? cant.u * 2.0 : walking ? (I.BACK - back) / 1.75 + i * 0.37 : r.phase, walk: walking ? 1 : 0, speed: cant ? 9.5 : r.v, effort: cant ? 0.15 : r.effort, whipT: r.whipT, whipSide: r.whipSide, kakari: r.kakari, lean: r.latV * 0.3 }, dt, this.clock);
         }
         const sh = d2 < 45 * 45 || r.isPlayer;
         if (sh !== m._sh) { m._sh = sh; m.root.traverse(o => { if (o.isMesh) o.castShadow = sh; }); }
