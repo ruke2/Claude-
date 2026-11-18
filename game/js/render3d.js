@@ -257,6 +257,13 @@
 
     // 平面座標の点がコースの内ラチから外へどれだけ離れているか（負=内側）
     Xof(c, x, z) {
+      // 楕円以外のコース：いちばん近い内ラチの点からの距離（外向きが正）
+      if (c.path) {
+        const P = c.path; let best = Infinity, bi = 0;
+        for (let i = 0; i < P.N; i += 6) { const d = (P.X[i] - x) ** 2 + (P.Z[i] - z) ** 2; if (d < best) { best = d; bi = i; } }
+        for (let i = bi - 6; i <= bi + 6; i++) { const j = (i + P.N) % P.N, d = (P.X[j] - x) ** 2 + (P.Z[j] - z) ** 2; if (d < best) { best = d; bi = j; } }
+        const a = CXY(c, bi, 0); return (x - a.x) * a.nx + (z - a.z) * a.nz;
+      }
       const s = c.dir === 'L' ? -1 : 1, H = c.H, R = c.R;
       if (x > H / 2) return Math.hypot(x - H / 2, z - s * R) - R;
       if (x < -H / 2) return Math.hypot(x + H / 2, z - s * R) - R;
@@ -356,12 +363,11 @@
       const isTurf = race.surf === 'T';
       G.add(this.ribbon(c, -0.6, W + 0.6, atE(0), isTurf ? turfMat : dirtMat, { uvScale: isTurf ? 5 : 7, color: isTurf ? stripe : null }));
       let other;
-      if (isTurf) { other = [-31, -8]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), dirtMat, { uvScale: 7 })); }
+      if (isTurf) { other = [-31, -8]; if (!V.noDirt) G.add(this.ribbon(c, other[0], other[1], atE(-0.01), dirtMat, { uvScale: 7 })); else G.add(this.ribbon(c, other[0], other[1], atE(-0.01), turfMat, { uvScale: 5, color: stripe })); }
       else { other = [W + 7, W + 34]; G.add(this.ribbon(c, other[0], other[1], atE(-0.01), turfMat, { uvScale: 5, color: stripe })); }
       this.rail(G, c, -0.35, railMat, railMat, -1);
       this.rail(G, c, W + 0.35, railMat, railMat);
-      this.rail(G, c, other[0] - 0.3, railMat, railMat, -1);
-      this.rail(G, c, other[1] + 0.3, railMat, railMat);
+      if (!(isTurf && V.noDirt)) { this.rail(G, c, other[0] - 0.3, railMat, railMat, -1); this.rail(G, c, other[1] + 0.3, railMat, railMat); } // ダートのない競馬場は内側も芝
       const hx = -2.2;
       const hedgeSide = new T.MeshStandardMaterial({ color: '#3f6a2c', roughness: 1, side: T.DoubleSide });
       G.add(this.wall(c, hx - 0.6, 0, 0.75, hedgeSide)); G.add(this.wall(c, hx + 0.6, 0, 0.75, hedgeSide));
@@ -637,12 +643,14 @@
       G.add(trunks); G.add(leaves);
       const SC = (VENUES[c.key] || {}).scene || {}, sgn = c.dir === 'L' ? -1 : 1, base = this.meanE || 0;
       trunks.position.y = leaves.position.y = base;
-      // 池（内馬場）。京都は内馬場の大きな池が名物
+      // 池（内馬場）。京都は内馬場の大きな池が名物。海外は池のある場だけ
+      if (!((VENUES[c.key] || {}).ov && !SC.pond)) {
       const pr = SC.pond === 'large' ? Math.min(150, c.R * 0.62) : Math.min(60, c.R * 0.35);
       const pond = new T.Mesh(new T.CircleGeometry(pr, 48), new T.MeshStandardMaterial({ color: '#4f7f9c', roughness: 0.06, metalness: 0.65, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
       pond.rotation.x = -Math.PI / 2; pond.position.set(-c.H * (SC.pond === 'large' ? 0.05 : 0.15), base + 0.1, c.R * sgn); pond.scale.set(SC.pond === 'large' ? 2.3 : 1.8, 1, 1); G.add(pond);
       if (SC.pond === 'large') { // 中島と木
         const isl = new T.Mesh(new T.CircleGeometry(pr * 0.18, 24), new T.MeshStandardMaterial({ color: '#6f8f4e', roughness: 1 })); isl.rotation.x = -Math.PI / 2; isl.position.set(pond.position.x + pr * 0.4, base + 0.3, c.R * sgn); G.add(isl);
+      }
       }
       // 遠くの山並み（函館は海側を低くする）
       const ring = new T.CylinderGeometry(2600, 2600, 1, 96, 1, true);

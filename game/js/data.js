@@ -29,21 +29,28 @@ window.VENUES = {
     elev: [['g', 0, 0], ['c2', 0, 3.0], ['c3', -60, 1.6], ['c3', 0, 1.8], ['c4', 0, 0.2], ['r', 250, 0]], scene: { stand: 0.8 } },
   // ---- 海外 ----（数値は JRA の海外競馬場紹介と各国主催者の公表値。出典は README）
   //  dirt：ダート（オールウェザー）コースが芝と別の大きさのときの周長・直線
-  riyadh: { name: 'キングアブドゥルアジーズ', en: 'KING ABDULAZIZ', country: 'サウジアラビア', dir: 'L', lap: 1800, straight: 438, dirt: { lap: 2000, straight: 400 },
+  riyadh: { name: 'キングアブドゥルアジーズ', en: 'KING ABDULAZIZ', pace: { D: 0.98 }, country: 'サウジアラビア', dir: 'L', lap: 1800, straight: 438, dirt: { lap: 2000, straight: 400 },
     elev: [['g', 0, 0.4]], ov: 'riyadh', turf: 'mix' },
-  meydan: { name: 'メイダン', en: 'MEYDAN', country: 'UAE', dir: 'L', lap: 2400, straight: 450, dirt: { lap: 1750, straight: 400 },
+  meydan: { name: 'メイダン', en: 'MEYDAN', pace: { T: 0.975, D: 0.975 }, country: 'UAE', dir: 'L', lap: 2400, straight: 450, dirt: { lap: 1750, straight: 400 },
     elev: [['g', 0, 0.4]], ov: 'meydan', night: true, turf: 'mix' },
-  ascot: { name: 'アスコット', en: 'ASCOT', country: 'イギリス', dir: 'R', lap: 2800, straight: 500,
-    // 高低差 約20m。いちばん低いスウィンリー・ボトム（向正面の先）から、最後の直線は残り200mまで上り
-    elev: [['g', 0, 20], ['c2', 0, 18], ['bm', 0, 9], ['c3', 0, 0], ['c4', 0, 7], ['r', 500, 12], ['r', 200, 19.6]], ov: 'ascot', turf: 'yoshiba' },
-  longchamp: { name: 'パリロンシャン', en: 'PARISLONGCHAMP', country: 'フランス', dir: 'R', lap: 2750, straight: 533,
-    // 高低差 10m。向正面の半ばから3コーナー（プティ・ボワ）へ上り、そこから下ってフォルスストレート（約250m）、最後の直線は平坦
-    elev: [['g', 0, 0], ['c2', 0, 0.5], ['bm', -120, 1.5], ['c3', 0, 10], ['c34', 0, 6], ['c4', 0, 2], ['r', 533, 0.6]], ov: 'longchamp', turf: 'yoshiba', falseStraight: 250 },
-  usa: { name: 'ベルモントパーク', en: 'BELMONT PARK', country: 'アメリカ', dir: 'L', lap: 2012, straight: 334, dirt: { lap: 2414, straight: 334 },
+  ascot: { name: 'アスコット', en: 'ASCOT', pace: { T: 0.955 }, noDirt: true, country: 'イギリス', dir: 'R', lap: 2800, straight: 500,
+    // おむすび型（角が3つ）。ゴールの先の角を回ると約800mで約20m下ってスウィンリー・ボトム（いちばん低い角）、
+    // そこからオールドマイルを上って最後の角、最後の直線は残り200mまで上り
+    shape: { pts: [[0, 0], [1250, 0], [620, -880]], r: [170, 150, 110], home: 0, cornerNames: { 1: 'ゴール後の角', 2: 'スウィンリー・ボトム', 0: '最後の角' }, edgeNames: { 1: '下り', 2: 'オールドマイル（上り）' } },
+    elev: [['g', 0, 20], ['g', 420, 20], ['k2', 0, 0], ['k0', 0, 9], ['r', 500, 13], ['r', 200, 19.6]], ov: 'ascot', turf: 'yoshiba' },
+  longchamp: { name: 'パリロンシャン', en: 'PARISLONGCHAMP', pace: { T: 0.972 }, noDirt: true, country: 'フランス', dir: 'R', lap: 2750, straight: 533,
+    // 大回り：ゴール後の角 → 長い向正面（後半から上り）→ プティ・ボワの大きなカーブ（頂上から下り）→ フォルスストレート（約250m）→ 最後の角 → 直線
+    shape: { pts: [[0, 0], [1080, 0], [1040, -660], [200, -640]], r: [130, 150, 280, 330], home: 0,
+      cornerNames: { 1: 'ゴール後の角', 2: 'プティ・ボワ', 3: '大きなカーブ', 0: '最後の角' }, edgeNames: { 1: '向正面', 2: '頂上', 3: 'フォルスストレート' } },
+    // 2400m は ゴールの350m先から発走。400m平坦 → 上って頂上（発走から約1000m）→ 600mで約10m下る → フォルスストレート → 最後の直線
+    elev: [['g', 0, 0], ['g', 750, 0.5], ['g', 1150, 10], ['g', 1750, 0.8], ['r', 533, 0.3]], ov: 'longchamp', turf: 'yoshiba', falseStraight: 250 },
+  usa: { name: 'ベルモントパーク', en: 'BELMONT PARK', pace: { D: 0.99 }, country: 'アメリカ', dir: 'L', lap: 2012, straight: 334, dirt: { lap: 2414, straight: 334 },
     elev: [['g', 0, 0.3]], ov: 'belmont', turf: 'mix' },
-  flemington: { name: 'フレミントン', en: 'FLEMINGTON', country: 'オーストラリア', dir: 'L', lap: 2312, straight: 450,
-    elev: [['g', 0, 0.8], ['c3', 0, 1.6], ['r', 300, 0.8]], ov: 'flemington', turf: 'mix' },
-  shatin: { name: '沙田', en: 'SHA TIN', country: '香港', dir: 'R', lap: 1899, straight: 430, dirt: { lap: 1555, straight: 365 }, width: 30.5,
+  flemington: { name: 'フレミントン', en: 'FLEMINGTON', pace: { T: 0.965 }, noDirt: true, country: 'オーストラリア', dir: 'L', lap: 2312, straight: 450,
+    // 洋ナシ形：ゴール側（スタンド側）は幅が広く、向こう側の角は小さくきつい
+    shape: { pts: [[0, 0], [1150, 0], [960, -470], [300, -470]], r: [170, 200, 110, 120], home: 0 },
+    elev: [['g', 0, 0.8], ['k2', 0, 1.4], ['r', 300, 0.8]], ov: 'flemington', turf: 'mix' },
+  shatin: { name: '沙田', en: 'SHA TIN', pace: { T: 0.985 }, country: '香港', dir: 'R', lap: 1899, straight: 430, dirt: { lap: 1555, straight: 365 }, width: 30.5,
     elev: [['g', 0, 0.3]], ov: 'shatin', turf: 'mix' },
 };
 

@@ -1475,10 +1475,12 @@
     const w = cv.width, h = cv.height;
     x.clearRect(0, 0, w, h);
     x.fillStyle = 'rgba(8,12,18,.55)'; x.fillRect(0, 0, w, h);
-    const pad = 16, totalW = c.H + 2 * c.R, totalH = 2 * c.R;
-    const sc = Math.min((w - pad * 2) / totalW, (h - pad * 2) / totalH);
     const s = c.dir === 'L' ? -1 : 1;
-    const pt = (p, X = 0) => { const a = RaceEngine.courseXY(c, p, X); return [w / 2 + a.x * sc, h / 2 + (a.z - s * c.R) * sc]; };
+    // 楕円以外のコースは、実際の形の外枠に合わせて収める
+    const bb = c.bbox || { minX: -c.H / 2 - c.R, maxX: c.H / 2 + c.R, minZ: Math.min(0, 2 * s * c.R), maxZ: Math.max(0, 2 * s * c.R) };
+    const pad = 16, totalW = bb.maxX - bb.minX, totalH = bb.maxZ - bb.minZ, cx = (bb.minX + bb.maxX) / 2, cz = (bb.minZ + bb.maxZ) / 2;
+    const sc = Math.min((w - pad * 2) / totalW, (h - pad * 2) / totalH);
+    const pt = (p, X = 0) => { const a = RaceEngine.courseXY(c, p, X); return [w / 2 + (a.x - cx) * sc, h / 2 + (a.z - cz) * sc]; };
     x.strokeStyle = engine.surf === 'D' ? '#c8a27a' : '#8bc34a'; x.lineWidth = 7;
     x.beginPath(); for (let p = 0; p <= c.lap; p += c.lap / 80) { const [a, b] = pt(p, c.width / 2); p === 0 ? x.moveTo(a, b) : x.lineTo(a, b); } x.closePath(); x.stroke();
     const [gx, gy] = pt(c.H, c.width / 2); x.fillStyle = '#fff'; x.fillRect(gx - 1.5, gy - 9, 3, 18);
