@@ -55,7 +55,7 @@
   const BIAS_TIP = '馬場の傾向（トラックバイアス）。内有利なら内ラチ沿いが伸び、外有利なら外めが伸びる。前有利なら前の馬が止まりにくく、差し有利なら後ろから届きやすい。天気と馬場はその日のうちにも変わる。';
   const horseAge = (h) => W.year - h.born;
   const sexAge = (h) => `${h.sex}${horseAge(h)}`;
-  function realTag(h) { if (h.legend) return ` <span class="badge gold" title="往年の名馬と同じ名の新馬（${h.legend.b}年生まれの${esc(h.legend.w.slice(0, 3).join('・'))}${h.legend.w.length > 3 ? 'など' : ''}）">名馬</span>`; return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ' <span class="badge">外国馬</span>' : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
+  function realTag(h) { if (h.legend) return ` <span class="badge gold" title="往年の名馬と同じ名の新馬（${h.legend.b}年生まれの${esc(h.legend.w.slice(0, 3).join('・'))}${h.legend.w.length > 3 ? 'など' : ''}）">名馬</span>`; return h.real ? ' <span class="badge gold" title="実在馬（2026年JRA GⅠ出走馬）">実在</span>' : h.foreign ? ` <span class="badge" title="外国調教馬">外${h.country ? '・' + esc(h.country) : ''}</span>` : h.story === 'partner' ? ' <span class="badge gold">相棒</span>' : ''; }
   // 能力の点数（0〜100）。出走メンバーの中での順位と、平均との差も出す
   function abilityHtml(race, h) {
     const field = race.field.map(f => W.horses[f.hid]).filter(Boolean);
@@ -920,17 +920,19 @@
     // 騎乗するレースごとに「自分で乗る（手動）」か「オート」かを選ぶ。最初は全部手動
     if (!W.manual || W.manual.abs !== W.abs) W.manual = { abs: W.abs, no: {} };
     const isMan = (no) => W.manual.no[no] !== false;
-    let t = `<table><tr><th>R</th><th>手動</th><th>レース</th><th>条件</th><th>頭数</th><th>騎乗馬</th><th>結果</th></tr>`;
+    let t = `<table><tr><th>R</th><th>手動</th><th>レース</th><th>条件</th><th>頭数</th><th>騎乗馬（人気）</th><th>結果</th></tr>`;
     W.card.forEach((race, i) => {
       const hid = W.booked[race.no];
       const h = hid ? W.horses[hid] : null;
+      const fe = h ? race.field.find(f => f.hid === hid) : null, meR = race.result && h ? race.result.find(r => r.isP) : null;
+      const pp = meR ? meR.pop : fe && fe.pop, popTd = h && pp ? ` <span class="small" style="color:${pp <= 3 ? 'var(--green)' : 'var(--muted)'};white-space:nowrap">${pp}人気</span>` : '';
       let res = '';
       if (race.result) {
         const w = race.result[0], wh = W.horses[w.hid];
         const me = race.result.find(r => r.isP);
-        res = me ? `<b style="color:${me.pos === 1 ? 'var(--green)' : 'inherit'}">${me.pos}着</b>（${me.pop}人気）${me.demoted ? ' <span class="badge warn">降着</span>' : ''}` : `<span class="muted small">1着 ${esc(wh ? wh.name : '')}</span>`;
+        res = me ? `<b style="color:${me.pos === 1 ? 'var(--green)' : 'inherit'}">${me.pos}着</b>${me.demoted ? ' <span class="badge warn">降着</span>' : ''}` : `<span class="muted small">1着 ${esc(wh ? wh.name : '')}</span>`;
       }
-      t += `<tr class="${i === W.dayIdx ? 'cur' : ''}"><td><b>${race.overseas ? '-' : race.no}</b></td><td>${h && !race.result ? `<label class="mchk"><input type="checkbox" data-man="${race.no}" ${isMan(race.no) ? 'checked' : ''}><span></span></label>` : h && race.result ? '<span class="small muted">済</span>' : ''}</td><td>${gradeTag(race)} ${esc(race.name)}</td><td>${raceCond(race)}</td><td>${race.field.length}</td><td>${h ? '<b>' + esc(h.name) + '</b>' : '<span class="muted">—</span>'}</td><td>${res}</td></tr>`;
+      t += `<tr class="${i === W.dayIdx ? 'cur' : ''}"><td><b>${race.overseas ? '-' : race.no}</b></td><td>${h && !race.result ? `<label class="mchk"><input type="checkbox" data-man="${race.no}" ${isMan(race.no) ? 'checked' : ''}><span></span></label>` : h && race.result ? '<span class="small muted">済</span>' : ''}</td><td>${gradeTag(race)} ${esc(race.name)}</td><td>${raceCond(race)}</td><td>${race.field.length}</td><td>${h ? '<b>' + esc(h.name) + '</b>' + popTd : '<span class="muted">—</span>'}</td><td>${res}</td></tr>`;
     });
     $('day-table').innerHTML = t + '</table>';
     $('day-table').querySelectorAll('[data-man]').forEach(cb => cb.onchange = () => { W.manual.no[+cb.dataset.man] = cb.checked; World.save(W); showDay(); });
@@ -946,7 +948,7 @@
     const autoBefore = W.card.slice(W.dayIdx, nextMan ? W.card.indexOf(nextMan) : W.card.length).filter(r => W.booked[r.no]).length;
     if (hid && isMan(race.no)) {
       const h = W.horses[hid];
-      html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)}</div></div><button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-pad">パドックへ</button>`;
+      { const fe = race.field.find(f => f.hid === hid); html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)}${fe && fe.pop ? ` <span class="small">${fe.pop}番人気（${(fe.odds || 0).toFixed(1)}倍）</span>` : ''}</div></div><button class="btn primary" style="width:100%;margin-top:8px;padding:11px" id="b-pad">パドックへ</button>`; }
     } else if (hid) {
       const h = W.horses[hid];
       html += `<div style="margin-top:6px">騎乗馬 <b style="font-family:var(--serif);font-size:15px">${esc(h.name)}</b>${realTag(h)} <span class="badge">オート</span></div></div>

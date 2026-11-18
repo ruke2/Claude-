@@ -376,6 +376,7 @@
 
   function eligible(W, h, cond) {
     if (h.retired) return false;
+    if (h.foreign) return false; // 外国馬は招待された国際競走（と海外のレース）にだけ出る
     const age = W.year - h.born;
     if (cond.age === 'A2' && age !== 2) return false;
     if (cond.age === 'A3' && age !== 3) return false;
@@ -483,6 +484,14 @@
       pool.sort((a, b) => b._k - a._k);
       pool = pool.slice(0, size);
     }
+    // 国際競走の外国馬：JRA の過去10年の出走頭数から、その年の頭数を1つ選ぶ
+    if (race.graded === 1 && !race.overseas && window.FOREIGN_JRA && FOREIGN_JRA[race.name]) {
+      const nf = pick(FOREIGN_JRA[race.name]);
+      if (nf > 0) {
+        const fh = foreignEntries(W, race, nf, used);
+        if (fh.length) { const keepN = Math.max(0, Math.min(pool.length, 18 - fh.length)); pool = pool.slice(0, keepN).concat(fh); }
+      }
+    }
     // 頭数が少なくても、7頭以上いればそのまま行う（実際のレースも少頭数になることがある）
     if (pool.length >= 7 && pool.length < size) return pool.map((h) => ({ hid: h.id }));
     // それでも足りないときだけ新しく補う（その世代の馬として登録される）
@@ -494,6 +503,28 @@
       pool.push(h);
     }
     return pool.map((h, i) => ({ hid: h.id }));
+  }
+
+  // 外国馬。前に来日・対戦した馬が再び来ることもある。8歳になったら引退
+  function makeForeign(W, o) {
+    const h = genHorse(W, { born: W.year - ri(3, 6), base: o.base ?? rnd(80, 92), cls: 5, surf: o.surf, sex: o.sex });
+    if (W.usedNames && W.usedNames.delete) W.usedNames.delete(h.name);
+    let nm, k = 0; do { nm = foreignName(); k++; } while (W.usedNames && W.usedNames.has && W.usedNames.has(nm) && k < 30);
+    if (W.usedNames && W.usedNames.add) W.usedNames.add(nm);
+    h.name = nm; h.nameMean = null; h.foreign = true; h.country = o.country || pick(o.surf === 'D' ? ['米', '米', '米', 'UAE', '英'] : ['英', '愛', '仏', '仏', '独', '香', '豪', '米']);
+    h.dist = o.dist + ri(-2, 2) * 200; h.mainJ = null;
+    return h;
+  }
+  function foreignEntries(W, race, n, used) {
+    Object.values(W.horses).forEach(h => { if (h.foreign && !h.retired && W.year - h.born >= 8) h.retired = true; });
+    const ok = (h) => h.foreign && !h.retired && !(used && used.has(h.id)) && W.abs - h.last >= 3 && (h.surf === 'B' || h.surf === race.surf) && Math.abs((h.dist || 2000) - race.dist) <= 600 && (race.sex !== 'F' || h.sex === '牝') && (race.age !== 'U4' || W.year - h.born >= 4);
+    const prev = Object.values(W.horses).filter(ok).sort(() => Math.random() - 0.5);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const again = prev.length && Math.random() < 0.4 ? prev.shift() : null;
+      out.push(again || makeForeign(W, { surf: race.surf, dist: race.dist, sex: race.sex === 'F' ? '牝' : undefined }));
+    }
+    return out;
   }
 
   // 人気（予想オッズ）
@@ -582,7 +613,7 @@
   function pitchTargets(W) {
     const P = W.player, have = new Set(W.requests.map(q => q.hid));
     const out = [];
-    W.card.forEach(race => race.field.forEach(f => { const h = W.horses[f.hid]; if (!have.has(h.id) && f.pop <= 4) out.push({ race, f, h }); }));
+    W.card.forEach(race => race.field.forEach(f => { const h = W.horses[f.hid]; if (!h.foreign && !have.has(h.id) && f.pop <= 4) out.push({ race, f, h }); }));
     return out.sort((a, b) => (b.race.graded ? 4 - b.race.graded : 0) * 3 - (a.race.graded ? 4 - a.race.graded : 0) * 3 + a.f.pop - b.f.pop).slice(0, 6)
       .map(o => ({ raceNo: o.race.no, hid: o.h.id, pop: o.f.pop, chance: clamp(0.03 + P.rep / 220 + (P.trust[o.h.trainer] || 0) / 300 + (P.otrust[o.h.owner] || 0) / 400 - (o.race.graded === 1 ? 0.1 : 0) - o.f.pop * 0.02 + 0.06 * (W.pitchFails || 0), 0.04, 0.75) }));
   }
@@ -697,7 +728,7 @@
     const races = W.card.slice().filter(r => !pinRaces.has(r.no)).sort(() => Math.random() - 0.5);
     for (const race of races) {
       if (reqs.length >= n + 3) break;
-      const cands = race.field.map(f => {
+      const cands = race.field.filter(f => !W.horses[f.hid].foreign).map(f => {
         const h = W.horses[f.hid];
         const trust = P.trust[h.trainer] || 0;
         const ot = P.otrust[h.owner] || 0;
@@ -765,8 +796,8 @@
       .sort((a, b) => rating(b, W.year) - rating(a, W.year)).slice(0, ri(1, 3));
     jp.forEach(h => field.push({ hid: h.id }));
     while (field.length < fieldN) {
-      const h = genHorse(W, { born: W.year - ri(3, 6), base: rnd(80, 92), cls: 5, surf: o.surf });
-      h.name = foreignName(); h.foreign = true; h.retired = true; // 外国馬はこのレースのみ h.dist = o.dist + ri(-2, 2) * 200;
+      // 外国馬は引退させず、のちに日本の国際競走へ来ることもある
+      const h = makeForeign(W, { surf: o.surf, dist: o.dist, country: ({ 'イギリス': '英', 'フランス': '仏', 'アイルランド': '愛', 'オーストラリア': '豪', '香港': '香', 'アメリカ': '米', 'UAE': 'UAE', 'サウジアラビア': 'サウジ' })[(VENUES[o.v] || {}).country] });
       field.push({ hid: h.id });
     }
     race.field = field.sort(() => Math.random() - 0.5);
@@ -798,7 +829,7 @@
       order.forEach(f => {
         if (f.hid === playerHid) { f.jid = -1; return; }
         if (f.jid != null && f.jid >= 0 && taken.has(f.jid) && forced[f.hid] == null) return; // 主戦が乗る
-        if (race.overseas && W.horses[f.hid].foreign) { const used = new Set(race.field.map(x => x.jname).filter(Boolean)); const fj = FOREIGN_JOCKEYS.filter(n => !used.has(n)); f.jname = fj.length ? pick(fj) : pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
+        if (W.horses[f.hid].foreign) { const used = new Set(race.field.map(x => x.jname).filter(Boolean)); const fj = FOREIGN_JOCKEYS.filter(n => !used.has(n)); f.jname = fj.length ? pick(fj) : pick(FOREIGN_JOCKEYS); f.jskill = ri(80, 95); return; }
         if (forced[f.hid] != null) { f.jid = +forced[f.hid]; return; }
         const j = pool[ji++ % Math.max(1, pool.length)] || js[0]; f.jid = j.id;
         // 主戦がいない馬は、この騎手が主戦になる（主戦が別のレースや別の馬に回った一時的な乗り替わりなら、主戦は変えない）
@@ -1174,7 +1205,7 @@
     const awards = jra.filter(a => a.me).map(a => a.name);
     // 年度代表馬（その年のGⅠ勝利が最も多い馬）
     let hoy = null;
-    Object.values(W.horses).forEach(h => { const n = (h.g1 || []).filter(t => t.startsWith(String(W.year))).length; if (n && (!hoy || n > hoy.n)) hoy = { h, n }; });
+    Object.values(W.horses).forEach(h => { if (h.foreign) return; const n = (h.g1 || []).filter(t => t.startsWith(String(W.year))).length; if (n && (!hoy || n > hoy.n)) hoy = { h, n }; });
     const hoyInfo = hoy ? { name: hoy.h.name, n: hoy.n, races: hoy.h.g1.filter(t => t.startsWith(String(W.year))).map(t => t.slice(5)), mine: (P.trophies || []).some(t => t.horse === hoy.h.name && t.year === W.year) } : null;
     // 顕彰馬（殿堂入り）：自分が乗ってGⅠを勝った引退馬から、記者投票で4分の3以上の票を集めると選ばれる（JRAの方式。投票の中身はゲーム上の計算）
     const hof = [];
