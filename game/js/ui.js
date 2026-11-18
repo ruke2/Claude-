@@ -254,6 +254,16 @@
     else if (W.pendingGoal) showGoalPick();
     else if (W.events && W.events.length) showEvent();
   }
+  function sceneHorse(h, raceName) {
+    if (!h) return '';
+    const a = World.ability(h, W.year), r = World.rating(h, W.year), g = raceName && GRADED.find(x => x.name === raceName);
+    const col = (v) => v >= 85 ? 'var(--red)' : v >= 75 ? 'var(--gold)' : v >= 62 ? 'var(--green)' : '#7d8a99';
+    const bar = (n, v) => `<div class="sh-ab"><span>${n}</span><i><b style="width:${clamp(v, 0, 100)}%;background:${col(v)}"></b></i><em>${Math.round(v)}</em></div>`;
+    const fit = g ? Math.abs((h.dist || 1800) - g.dist) <= 200 ? '◎' : Math.abs((h.dist || 1800) - g.dist) <= 500 ? '○' : '△' : '';
+    return `<div class="sh-card"><div class="sh-top"><b>${esc(h.name)}</b><span class="small muted">${sexAge(h)}・${h.starts}戦${h.wins}勝${(h.g1 || []).length ? `・GⅠ${h.g1.length}勝` : ''}</span><span class="sh-r" style="color:${col(r)}">${Math.round(r)}<small>総合</small></span></div>
+      ${bar('スピード', a.spd)}${bar('スタミナ', a.sta)}${bar('瞬発力', a.kick)}
+      <div class="small muted" style="margin-top:2px">${STYLE[h.style]}・得意 ${h.dist}m前後・${SURF[h.surf]}${g ? `・${esc(g.name)}（${g.dist}m）への距離適性 ${fit}` : ''}・絆 ${Math.round(P().bond[h.id] || 0)}</div></div>`;
+  }
   function playScenes(done) {
     const S = W && W.story;
     if (!S || !S.pending.length) { if (done) done(); return; }
@@ -262,7 +272,10 @@
       const [who, text] = sc.lines[i];
       const last = i >= sc.lines.length - 1;
       let extra = '';
-      if (last && sc.input) extra = `<div style="margin-top:10px"><label class="small muted" for="sc-in">${esc(sc.inputLabel || '名前（カタカナ9文字まで）')}</label><br><input type="text" id="sc-in" maxlength="9" placeholder="例：${esc(sc.inputPh || 'ツギノカゼ')}" style="margin-top:4px"></div>`;
+      // 馬を選ぶ場面（騎乗の打診・路線の相談）では、その馬の能力を並べて見せる
+      const hs = last ? (sc.ride ? [sc.ride.hid].concat(sc.ride.other != null ? [sc.ride.other] : []) : sc.route ? [sc.route.hid] : []) : [];
+      if (hs.length) extra += `<div class="sc-horses">${hs.map(id => sceneHorse(W.horses[id], sc.ride ? sc.ride.race : null)).join('')}</div>`;
+      if (last && sc.input) extra += `<div style="margin-top:10px"><label class="small muted" for="sc-in">${esc(sc.inputLabel || '名前（カタカナ9文字まで）')}</label><br><input type="text" id="sc-in" maxlength="9" placeholder="例：${esc(sc.inputPh || 'ツギノカゼ')}" style="margin-top:4px"></div>`;
       const btns = last && sc.choice ? sc.choice.opts.map((o, k) => `<button class="btn ${k ? '' : 'primary'}" data-k="${k}">${esc(o)}</button>`).join('') : `<button class="btn primary" id="sc-next">${last ? (sc.input ? (sc.inputBtn || '名付ける') : '閉じる') : '次へ ›'}</button>`;
       modal(`${who ? `<div class="speaker">${esc(who)}</div>` : ''}<p style="margin:2px 0 6px;font-size:15px;line-height:1.75;font-family:var(--serif)">${esc(text)}</p>${extra}<div class="choices">${btns}</div>`, (el) => {
         const finish = (val) => { S.pending.shift(); Story.answer(W, sc, val); closeModal(); World.save(W); playScenes(done); };
