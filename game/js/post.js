@@ -10,6 +10,9 @@
   const VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
   const BRIGHT = `uniform sampler2D tSrc; uniform float uTh; varying vec2 vUv;
     void main(){ vec3 c = texture2D(tSrc, vUv).rgb; float l = dot(c, vec3(0.2126,0.7152,0.0722));
+      // 計算できない値（NaN・無限大）の画素があると、ぼかしで四角く広がって黒い塊になる。ここで捨てる
+      if (!(l < 60000.0) || !(l >= 0.0)) { c = vec3(0.0); l = 0.0; }
+      c = min(c, vec3(40.0));
       float k = smoothstep(uTh, uTh * 1.8, l); gl_FragColor = vec4(c * k, 1.0); }`;
   // 9タップのガウスぼかし（線形補間を使って実質17タップ）
   const BLUR = `uniform sampler2D tSrc; uniform vec2 uDir; varying vec2 vUv;
@@ -27,8 +30,10 @@
     vec3 toSRGB(vec3 c){ return mix(pow(c, vec3(0.41666)) * 1.055 - vec3(0.055), c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308)))); }
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
-      vec3 c = texture2D(tScene, vUv).rgb;
+ vec3 c = texture2D(tScene, vUv).rgb;
+      float l0 = c.r + c.g + c.b; if (!(l0 < 60000.0) || !(l0 >= 0.0)) c = vec3(0.0);
       vec3 b = texture2D(tB1, vUv).rgb * 0.5 + texture2D(tB2, vUv).rgb * 0.8 + texture2D(tB3, vUv).rgb * 1.1;
+      float lb = b.r + b.g + b.b; if (!(lb < 60000.0) || !(lb >= 0.0)) b = vec3(0.0);
       c += b * uBloom;
       // 太陽の光：にじみと、画面の中心をはさんだ反対側に並ぶ光の輪
       if (uSunK > 0.0) {

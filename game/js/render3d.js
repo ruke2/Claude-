@@ -113,7 +113,7 @@
         fragmentShader: `varying vec3 vC; varying float vA; varying float vS; varying float vSeed;
           void main() {
             vec2 p = gl_PointCoord * 2.0 - 1.0;
-            float a = atan(p.y, p.x), r = length(p);
+            float a = atan(p.y, p.x + 1e-4), r = length(p);
             // 塊：ふちがぎざぎざの不定形。土ぼこり：ふわっとした円
             float edge = 0.78 + 0.16 * sin(a * 3.0 + vSeed * 20.0) + 0.08 * sin(a * 7.0 + vSeed * 41.0);
             float hard = 1.0 - smoothstep(edge - 0.08, edge, r);
@@ -129,6 +129,7 @@
       this.scene.add(pts);
       return { pts, pos, col, size, alpha, soft, vel: new Float32Array(N * 3), life: new Float32Array(N), max: new Float32Array(N), grow: new Float32Array(N), floor: new Float32Array(N), N, i: 0 };
     }
+    // 粒の形の計算で atan(0,0)（未定義。iPhone では NaN になり、画面の仕上げのぼかしで黒い四角に広がる）を避けるため、x に小さな値を足している
     // kind: 0 = 塊（重力で落ちて跳ねる） / 1 = 土ぼこり・しぶき（ふわっと広がって消える）
     emit(x, y, z, vx, vy, vz, c, sz = 0.06, kind = 0, life = 0.8) {
       const P = this.particles; const i = P.i = (P.i + 1) % P.N;
