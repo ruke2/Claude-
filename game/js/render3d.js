@@ -76,13 +76,14 @@
       if (now - A.t0 < 1500 || A.n < 20) return;
       const avg = A.sum / A.n; A.sum = 0; A.n = 0; A.t0 = now;
       const maxPr = Math.min(window.devicePixelRatio || 1, 1.5), ms = this.post.mobile ? 2 : 4;
-      // 段階：[解像度の倍率, アンチエイリアス]
-      const L = [[maxPr, ms], [Math.max(1, maxPr - 0.25), ms], [1, ms], [1, 0], [0.85, 0]];
+      // 段階：[解像度の倍率, 光のにじみ]。解像度は 1.25 倍（画面がそれより粗い端末はその倍率）より下げず、アンチエイリアスも切らない
+      // （下げすぎると文字や馬がぼやけて粗くなる）
+      const L = [[maxPr, true], [maxPr, false], [Math.max(Math.min(1.25, maxPr), maxPr - 0.25), false]];
       let lv = A.lvl;
-      if (avg > 21 && lv < L.length - 1) lv++;          // 48fps を下回る
-      else if (avg < 17.5 && lv > 0) lv--;              // 60fps 近く出ている
+      if (avg > 21) { A.slow = (A.slow || 0) + 1; if (A.slow >= 2 && lv < L.length - 1) { lv++; A.slow = 0; } } // 48fps を下回るのが2回続いたら
+      else { A.slow = 0; if (avg < 17.5 && lv > 0) lv--; }
       if (lv === A.lvl) return;
-      A.lvl = lv; this.renderer.setPixelRatio(L[lv][0]); this.post.setSamples(L[lv][1]);
+      A.lvl = lv; this.renderer.setPixelRatio(L[lv][0]); this.post.bloom = L[lv][1]; this.post.setSamples(ms);
       this.resize();
     }
     buildSky() {

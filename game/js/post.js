@@ -104,11 +104,14 @@
       const sz = r.getDrawingBufferSize(new T.Vector2()); this.setSize(sz.x | 0, sz.y | 0);
       const tm = r.toneMapping; r.toneMapping = T.NoToneMapping;
       r.setRenderTarget(this.rt); r.render(scene, camera);
-      // 明るい所 → 1/2 → 1/4 → 1/8 とぼかす
-      this.mBright.uniforms.tSrc.value = this.rt.texture; this.pass(this.mBright, this.b1t);
-      this.blur(this.b1t, this.b1, this.b1t);
-      this.blur(this.b1t, this.b2t, this.b2);
-      this.blur(this.b2, this.b3t, this.b3);
+      // 明るい所 → 1/4 → 1/8 → 1/16 とぼかす（重いときは止める）
+      if (this.bloom !== false) {
+        this.mBright.uniforms.tSrc.value = this.rt.texture; this.pass(this.mBright, this.b1t);
+        this.blur(this.b1t, this.b1, this.b1t);
+        this.blur(this.b1t, this.b2t, this.b2);
+        this.blur(this.b2, this.b3t, this.b3);
+      }
+      this.mFinal.uniforms.uBloom.value = this.bloom === false ? 0 : 0.2;
       const u = this.mFinal.uniforms; u.tScene.value = this.rt.texture; u.tB1.value = this.b1t.texture; u.tB2.value = this.b2.texture; u.tB3.value = this.b3.texture;
       u.uExp.value = exposure ?? r.toneMappingExposure; u.uTime.value = (u.uTime.value + 1.37) % 100;
       this.pass(this.mFinal, null);
