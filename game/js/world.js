@@ -113,8 +113,11 @@
       take(alive.filter(h => W.year - h.born === 3 && h.sex === '牝' && h.cls >= 2), 26),
       take(alive.filter(h => W.year - h.born >= 4 && h.cls >= 5), 80),
     ];
-    groups.flat().forEach(h => {
-      if (h.mainJ === -1 && (W.player.bond[h.id] || 0) >= 8 && !h.real) { h.consult = half; if (!h.plan || h.plan.y !== W.year) h.plan = { y: W.year, races: [], route: null }; return; }
+    const g = groups.flat();
+    // 自分が主戦の馬（相棒の馬も）は、能力の順位にかかわらず調教師と相談して決める
+    alive.filter(h => h.mainJ === -1 && !h.real && W.year - h.born >= 3 && h.cls >= 2 && !g.includes(h)).forEach(h => g.push(h));
+    g.forEach(h => {
+      if (h.mainJ === -1 && !h.real) { h.consult = half; if (!h.plan || h.plan.y !== W.year) h.plan = { y: W.year, races: [], route: null }; return; }
       const r = autoRoute(W, h); if (r) setPlan(W, h, r, half === 'autumn' ? 'autumn' : 'spring');
     });
   }
@@ -631,10 +634,42 @@
     return true;
   }
   // ---- お手馬の路線相談と、次走の騎乗の打診 ----
+  // 路線の相談の場面。秋は、春のクラシックの結果に合わせて調教師の勧めが変わる（皐月賞・ダービーを勝てば三冠を目指す など）
+  function consultScene(W, h, half) {
+    const P = W.player, t = W.trainers[h.trainer], tn = t ? t.name.replace('厩舎', '') + '調教師' : '調教師';
+    const opts = routeOptions(W, h); if (!opts.length) return null;
+    const age = W.year - h.born, by = (k) => opts.find(o => o.k === k);
+    const won = (n) => (h.g1 || []).some(x => x === `${W.year} ${n}`);
+    let sug = autoRoute(W, h) || opts[0], why = '';
+    if (half === 'autumn' && routeCat(W, h) === 'colt3') {
+      if (won('皐月賞') && won('日本ダービー')) { sug = by('triple'); why = 'あとは菊花賞。勝てば三冠だ。'; }
+      else if (won('日本ダービー') || won('皐月賞')) { sug = by('triple'); why = '菊花賞で二冠を狙える。'; }
+      else if (won('NHKマイルC')) { sug = by('mile3'); why = '距離はマイルが合っている。'; }
+    }
+    if (half === 'autumn' && routeCat(W, h) === 'filly3') {
+      if (won('桜花賞') && won('オークス')) { sug = by('ftriple'); why = 'あとは秋華賞。勝てば三冠牝馬だ。'; }
+      else if (won('桜花賞') || won('オークス')) { sug = by('ftriple'); why = '秋華賞で二冠を狙える。'; }
+    }
+    const races = (o) => half === 'autumn' ? routeRaces(W, h, o, 'autumn') : routeRaces(W, h, o, 'all');
+    h.consulted = W.year + half;
+    return { lines: [
+      ['', `${tn}から呼ばれた。${h.name}（${age}歳）の${half === 'autumn' ? '秋' : '今年'}の路線と、レースの登録の相談だ。`],
+      [tn, `${h.name}は${h.wins}勝${(h.g1 || []).length ? `、GⅠは${h.g1.map(x => x.slice(5)).join('・')}を勝っている` : ''}。${why || (half === 'autumn' ? '夏を越して、体がひと回り大きくなった。' : 'この冬でずいぶん力をつけた。')}`],
+      [tn, `距離は${h.dist}mくらいが合うと見ている。私は${sug.name}がいいと思う。どのレースに登録するか、乗っている${P.name}くんの意見を聞きたい。`],
+    ], route: { hid: h.id, half, keys: opts.map(o => o.k) }, choice: { key: 'route', opts: opts.map(o => `${o.name}${o === sug ? '［調教師のおすすめ］' : ''}（${races(o).filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk).join('→') || o.desc}）`) } };
+  }
+  // お手馬の画面から、いつでも路線を相談できる（春・秋に1回ずつ）
+  function consultNow(W, h) {
+    const half = W.month >= 6 ? 'autumn' : 'spring';
+    if (h.consulted === W.year + half) return null;
+    const sc = consultScene(W, h, half); if (!sc) return null;
+    h.consult = null; W.story.pending.push(sc); return sc;
+  }
+  function canConsult(W, h) { const half = W.month >= 6 ? 'autumn' : 'spring'; return !h.retired && h.mainJ === -1 && !h.real && !h.foreign && routeOptions(W, h).length > 0 && h.consulted !== W.year + half; }
   function rideTalks(W) {
     if (!W.story) return;
     const P = W.player, pend = W.story.pending;
-    const mine = Object.values(W.horses).filter(h => !h.retired && h.mainJ === -1 && !h.foreign && !h.story)
+    const mine = Object.values(W.horses).filter(h => !h.retired && h.mainJ === -1 && !h.foreign)
       .sort((a, b) => rating(b, W.year) - rating(a, W.year));
     let scenes = 0; // 1週に出す相談・打診は2つまで（残りは翌週以降）
     for (const h of mine) {
@@ -643,16 +678,11 @@
         if (scenes >= 2) continue;
         scenes++;
         const half = h.consult; h.consult = null;
-        const opts = routeOptions(W, h); if (!opts.length) continue;
-        const age = W.year - h.born, a = ability(h, W.year);
-        const sug = autoRoute(W, h) || opts[0];
-        pend.push({ lines: [
-          ['', `${tn}から呼ばれた。${h.name}（${age}歳）の${half === 'autumn' ? '秋' : '今年'}の路線の相談だ。`],
-          [tn, `${h.name}は${h.wins}勝。${half === 'autumn' ? '夏を越して、体がひと回り大きくなった。' : 'この冬でずいぶん力をつけた。'}`],
-          [tn, `距離は${h.dist}mくらいが合うと見ている。私は${sug.name}がいいと思うが、乗っている${P.name}くんの意見を聞きたい。`],
-        ], route: { hid: h.id, half, keys: opts.map(o => o.k) }, choice: { key: 'route', opts: opts.map(o => `${o.name}（${o.desc}）`) } });
+        if (h.consulted === W.year + half) continue; // お手馬の画面ですでに相談した
+        const sc = consultScene(W, h, half); if (sc) pend.push(sc);
         continue;
       }
+      if (h.story) continue; // 相棒の馬の騎乗はストーリーで決まる
       // 次の目標レースの2〜3週前に打診
       const np = nextPlan(W, h);
       if (np && np.inW >= 1 && np.inW <= 3 && h.promise !== np.name && h.asked !== W.year + np.name) {
@@ -683,7 +713,8 @@
       const r = routeOptions(W, h).find(o => o.k === sc.route.keys[v]) || routeOptions(W, h)[0];
       setPlan(W, h, r, sc.route.half === 'autumn' ? 'autumn' : 'spring');
       P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + 2, 0, 100);
-      news(W, `${h.name}は${r.name}へ（${r.desc}）`, 'me');
+      const reg = h.plan.races.filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk);
+      news(W, `${h.name}は${r.name}へ。${reg.join('・')}に登録`, 'me');
       W.story.pending.unshift({ lines: [[W.trainers[h.trainer] ? W.trainers[h.trainer].name.replace('厩舎', '') + '調教師' : '調教師', `よし、${r.name}で行こう。予定は「${h.plan.races.filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk).join('→')}」だ。`]] });
       return true;
     }
@@ -1309,6 +1340,6 @@
     mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
-    addLegends, buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, genHorse, sundayOfWeek, eligible, gearOf,
+    addLegends, buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, consultNow, canConsult, genHorse, sundayOfWeek, eligible, gearOf,
   };
 })();

@@ -94,7 +94,9 @@
   // 相棒をその週のレースに出走させ、騎乗依頼を出す
   function placePartner(W, h, age) {
     const S = W.story, P = W.player;
-    const plan = SCHED[age] || [];
+    // 調教師と相談して決めた路線があればそれに従う（登録したレース）。なければ決まった予定
+    let plan = SCHED[age] || [];
+    if (h.plan && h.plan.y === W.year && h.plan.races.length) plan = h.plan.races.concat(plan.filter(n => n === 'debut' || n === '凱旋門賞'));
     if (W.isOverseas) return;
     let race = null;
     if (plan.includes('debut') && h.starts === 0 && W.month >= 6 && W.wk % 1 === 0) {
