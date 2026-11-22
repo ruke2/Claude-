@@ -156,9 +156,9 @@
   // セーブボタン：端末とクラウドに保存し、結果をそのまま伝える（失敗しても「セーブした」と出していたのをやめる）
   function saveNow() {
     const ok = World.save(W), cs = CloudSave.state(), d = new Date(), tm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-    CloudSave.flush().then(() => { const c = CloudSave.state(); if (c.available && !ok) toast(c.pending ? 'クラウドへの保存を再試行中' : `クラウドに保存した（${tm}）`); });
+    CloudSave.flush().then(() => { const c = CloudSave.state(); if (c.error) toast('クラウドの保存に失敗：' + c.error); else if (c.available && !ok) toast(`クラウドに保存した（${tm}）`); });
     if (ok) toast(`セーブした（${tm}）${cs.available ? '・クラウドにも送信' : ''}`);
-    else toast(cs.available ? '端末に保存できなかった（容量不足など）。クラウドに保存する' : '端末に保存できなかった（容量不足など）。メニューの「セーブを書き出す」でファイルに残せる');
+    else toast('localStorage に書けなかったので、予備の保存先（IndexedDB）' + (cs.available ? 'とクラウド' : '') + 'に保存する');
   }
   function closeDrawer() { $('drawer').classList.remove('on'); $('drawer-bg').classList.remove('on'); }
   $('drawer-bg').onclick = closeDrawer;
@@ -167,9 +167,13 @@
   const fmtStamp = (t) => { if (!t) return ''; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
   function refreshTitle() {
     $('b-continue').disabled = !World.hasSave() && !CloudSave.state().last;
+    if (window.LocalDB) LocalDB.get().then(r => { if (r && r.str) $('b-continue').disabled = false; });
     const loc = World.rawSave(), li = loc ? World.saveInfo(loc) : null, cs = CloudSave.state(), cl = cs.last;
     let t = li ? `この端末：${esc(li.name)}・${esc(li.date || '')}・${li.wins}勝${li.savedAt ? `（${fmtStamp(li.savedAt)} 保存）` : ''}` : 'この端末：セーブなし';
     if (cs.available) t += `<br>クラウド：${cl ? `${esc(cl.name)}・${esc(cl.date || '')}・${cl.wins}勝（${fmtStamp(cl.savedAt)} 保存）` : 'まだ保存なし（遊ぶと自動で保存される）'}`;
+    if (cs.error) t += `<br><span style="color:var(--red)">クラウドの保存に失敗：${esc(cs.error)}</span>`;
+    if (window.LocalDB) LocalDB.get().then(r => { const el = $('save-idb'); if (el && r && r.str) { const i = World.saveInfo(r.str); el.textContent = i ? `端末（予備）：${i.name}・${i.date || ''}・${i.wins}勝（${fmtStamp(r.savedAt)} 保存）` : ''; } });
+    t += '<br><span id="save-idb"></span>';
     $('save-status').innerHTML = `<span class="muted">${t}</span>`;
     // 端末のセーブがない、またはクラウドの方が新しいときに復元ボタンを出す
     const newer = cl && (!li || (cl.savedAt || 0) > (li.savedAt || 0) + 1000);
@@ -179,10 +183,11 @@
   CloudSave.onChange(() => { if ($('s-title').classList.contains('on')) refreshTitle(); });
   CloudSave.init().then(() => refreshTitle());
   // 保存するたびにクラウドへも送る（claude.ai 上でだけ動く）
-  let warnedLocal = false;
+  let warnedLocal = false, idbOk = null;
   World.setOnSaved((str, ok) => {
     const i = World.saveInfo(str); CloudSave.queue(str, i);
-    if (!ok && !warnedLocal) { warnedLocal = true; toast('端末に保存できなかった（容量不足など）。' + (CloudSave.state().available ? 'クラウドには保存している' : 'メニューから書き出しておくと安全')); }
+    if (window.LocalDB) LocalDB.put(str, i).then(r => { idbOk = r; });
+    if (!ok && !warnedLocal) { warnedLocal = true; toast('端末の保存領域（localStorage）に書けなかった。もう1つの保存先（IndexedDB）' + (CloudSave.state().available ? 'とクラウド' : '') + 'に保存する'); }
   });
   function startLoaded(w) { W = w; Progress.ensure(W); quick = false; tab = 'home'; showWeek(); }
   $('b-cloud').onclick = async () => {
@@ -221,13 +226,23 @@
   };
   $('b-new').onclick = () => { renderSwatches(); show('s-new'); };
   // 続きから：クラウドの方が新しければそちらから（端末の保存に失敗していた場合に、古いセーブへ戻らないように）
+  // 続きから：端末（localStorage）・端末（IndexedDB）・クラウドのうち、一番新しいセーブから再開する
+  async function newestSave() {
+    const c = [];
+    const loc = World.rawSave(); if (loc) { const i = World.saveInfo(loc); c.push({ k: '端末', t: (i && i.savedAt) || 0, get: async () => loc }); }
+    try { const r = window.LocalDB && await LocalDB.get(); if (r && r.str) c.push({ k: '端末（IndexedDB）', t: r.savedAt || 0, get: async () => r.str }); } catch (e) {}
+    const cl = CloudSave.state().last; if (cl) c.push({ k: 'クラウド', t: cl.savedAt || 0, get: () => CloudSave.fetchSave() });
+    c.sort((a, b) => b.t - a.t);
+    for (const x of c) { try { const str = await x.get(); const w = str && World.parse(str); if (w) return { w, k: x.k }; } catch (e) {} }
+    return null;
+  }
   $('b-continue').onclick = async () => {
-    const loc = World.rawSave(), li = loc ? World.saveInfo(loc) : null, cl = CloudSave.state().last;
-    if (cl && (!li || (cl.savedAt || 0) > (li.savedAt || 0) + 1000)) {
-      const b = $('b-continue'); b.disabled = true;
-      try { const str = await CloudSave.fetchSave(); const w = str && World.parse(str); if (w) { World.save(w); toast('クラウドの新しいセーブから再開'); startLoaded(w); return; } } catch (e) {} finally { b.disabled = false; }
-    }
-    const w = World.load(); if (w) startLoaded(w); else toast('セーブを読めなかった。クラウドかファイルから戻せる');
+    const b = $('b-continue'); b.disabled = true;
+    try {
+      const r = await newestSave();
+      if (r) { if (r.k !== '端末') World.save(r.w); toast(r.k === '端末' ? '続きから' : `${r.k}の新しいセーブから再開`); startLoaded(r.w); return; }
+      const w = World.load(); if (w) startLoaded(w); else toast('セーブを読めなかった。クラウドかファイルから戻せる');
+    } finally { b.disabled = false; }
   };
   $('b-quick').onclick = quickRace;
   $('b-tut').onclick = () => startTutorial();

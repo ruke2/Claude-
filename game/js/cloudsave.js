@@ -3,10 +3,10 @@
 // 端末のブラウザの保存領域が消えても、ここから戻せる。GitHub Pages など claude.ai 以外では何もしない。
 (function () {
   const CHUNK = 180000; // 1文書 256KiB の上限に余裕を持たせる
-  let db = null, col = null, ready = null, timer = 0, pending = null, busy = false, last = null;
+  let db = null, col = null, ready = null, timer = 0, pending = null, busy = false, last = null, lastError = '', lastOkAt = 0;
   const listeners = [];
   const emit = () => listeners.forEach(f => { try { f(state()); } catch (e) {} });
-  const state = () => ({ available: !!col, last, pending: !!pending || busy });
+  const state = () => ({ available: !!col, last, pending: !!pending || busy, error: lastError, okAt: lastOkAt });
 
   async function gz(str) {
     if (typeof CompressionStream === 'undefined') return { enc: 'raw', data: str };
@@ -30,15 +30,15 @@
       try {
         if (!window.claude || !window.claude.use) return false;
         const [d, u] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
-        if (!d || !u) return false;
+        if (!d || !u) { lastError = !d ? 'db を使えない' : 'user を使えない'; ready = null; return false; }
         const id = await u.id();
-        if (!id) return false;
+        if (!id) { lastError = 'ユーザーIDを取れない'; ready = null; return false; }
         db = d; col = db.collection('data/users/' + id);
-        const m = await withTimeout(col.doc('save').get(), 10000);
-        last = m && m.exists ? m.data() : null;
+        // 目録の読み込みが遅くても、書き込みはできるようにしておく
+        try { const m = await withTimeout(col.doc('save').get(), 15000); last = m && m.exists ? m.data() : null; } catch (e) { lastError = '読み込み ' + (e && e.code || 'error'); }
         emit();
         return true;
-      } catch (e) { col = null; return false; }
+      } catch (e) { lastError = '接続 ' + (e && e.code || e && e.message || 'error'); col = null; ready = null; return false; } // 失敗したら次の保存のときにやり直す
     })();
     return ready;
   }
@@ -52,7 +52,7 @@
   async function flush() {
     clearTimeout(timer);
     if (!pending || busy) return;
-    if (!(await init())) return;
+    if (!(await init())) { clearTimeout(timer); timer = setTimeout(flush, 15000); emit(); return; }
     const { str, info } = pending; pending = null; busy = true;
     try {
       const { enc, data } = await gz(str);
@@ -63,13 +63,15 @@
       const prev = last;
       const man = { gen, n, enc, savedAt: info && info.savedAt || Date.now(), name: info && info.name || '', date: info && info.date || '', wins: info && info.wins || 0, bytes: str.length };
       await col.doc('save').set(man);
-      last = man; emit();
+      last = man; lastError = ''; lastOkAt = Date.now(); emit();
+      if (pending) { clearTimeout(timer); timer = setTimeout(flush, 2000); } // 送っている間に新しいセーブが来ていたら続けて送る
       if (prev && prev.gen && prev.gen !== gen) for (let i = 0; i < prev.n; i++) { try { await col.doc(`c-${prev.gen}-${i}`).delete(); } catch (e) {} }
     } catch (e) {
       console.warn('cloud save failed', e);
+      lastError = '書き込み ' + (e && e.code || e && e.message || 'error'); emit();
       if (!pending) pending = { str, info };
-      if (e && (e.code === 'unavailable' || e.code === 'timeout')) { clearTimeout(timer); timer = setTimeout(flush, 30000); }
-    } finally { busy = false; if (pending) { clearTimeout(timer); timer = setTimeout(flush, 8000); } }
+      clearTimeout(timer); timer = setTimeout(flush, e && (e.code === 'invalid_argument' || e.code === 'quota_exceeded') ? 120000 : 20000);
+    } finally { busy = false; }
   }
   async function fetchSave() {
     if (!(await init()) || !last) return null;
