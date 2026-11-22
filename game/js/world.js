@@ -1198,6 +1198,8 @@
         if (age >= 8 || (age >= 4 && h.cls <= 1) || (age >= 6 && Math.random() < 0.35) || (age >= 3 && h.cls === 1 && Math.random() < 0.4)) { h.retired = true; if (P.bond[h.id] >= 20) news(W, `お手馬の${h.name}が引退`, 'me'); }
       });
       Object.values(W.horses).forEach(h => { if (h.retired && !P.bond[h.id] && !h.g1.length && !h.real) { W.usedNames.delete(h.name); delete W.horses[h.id]; } });
+      // セーブが大きくなりすぎないよう、乗ったことのない馬の戦績は直近20戦だけ残す
+      Object.values(W.horses).forEach(h => { if (h.hist && h.hist.length > 20 && !P.bond[h.id] && !h.hist.some(x => x.me)) h.hist = h.hist.slice(-20); });
       W.jockeys.forEach(j => { j.age++; if (j.age > 30) j.skill = Math.max(35, j.skill - (j.age > 45 ? 1 : 0)); else j.skill = Math.min(95, j.skill + 1); j.pop = Math.max(0, j.pop * 0.9); // 引退：55歳を過ぎると年ごとに引退しやすくなる（ゲーム上の決まり）。後には架空の新人が入る
       if (j.age >= 56 && Math.random() < (j.age - 54) * 0.12 || j.age >= 63) { if (j.real) news(W, `${j.name}騎手が引退`, 'race'); j.debut = W.year + 1; j.name = uniqueName(new Set(W.jockeys.map(x => x.name).concat([W.player.name]))); j.real = false; j.fictional = true; j.age = 18; j.skill = ri(35, 55); j.years = {}; j.ys = {}; j.wins = 0; j.pop = 3; } });
     }
@@ -1266,15 +1268,25 @@
   const OLD_KEYS = ['jockey-life-save', 'jockey-life-save-v1'];
   let onSaved = null;
   function serialize(W) { return JSON.stringify({ ...W, usedNames: [...(W.usedNames || [])], saveVer: SAVE_VER, savedAt: Date.now() }); }
+  // 戻り値：端末に保存できたか。保存できなくてもクラウドには送る（以前は端末の保存に失敗すると、クラウドにも送らず、何も言わずに古いセーブが残っていた）
+  let lastLocalOk = true;
   function save(W) {
+    let str;
+    try { str = serialize(W); } catch (e) { return false; }
+    let ok = false;
     try {
-      const str = serialize(W);
       // 直前のセーブを控えに残してから上書きする（書き込みに失敗しても片方は残る）
       try { const cur = localStorage.getItem(SAVE_KEY); if (cur) localStorage.setItem(BAK_KEY, cur); } catch (e) {}
-      localStorage.setItem(SAVE_KEY, str);
-      if (onSaved) try { onSaved(str); } catch (e) {}
-      return true;
-    } catch (e) { return false; }
+      localStorage.setItem(SAVE_KEY, str); ok = true;
+    } catch (e) {
+      // 容量が足りないとき：控えを消して、もう一度
+      try { localStorage.removeItem(BAK_KEY); localStorage.setItem(SAVE_KEY, str); ok = true; } catch (e2) { ok = false; }
+    }
+    // 書けたか読み直して確かめる
+    try { if (ok && localStorage.getItem(SAVE_KEY) !== str) ok = false; } catch (e) { ok = false; }
+    lastLocalOk = ok;
+    if (onSaved) try { onSaved(str, ok); } catch (e) {}
+    return ok;
   }
   // 文字列から読み込む（端末のセーブ・控え・書き出したファイル・クラウドの共通の入口）
   function parse(str) {
@@ -1337,7 +1349,7 @@
   }
 
   window.World = {
-    mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
+    mudOf, biasText, contestChance, giveRide, declineRide, pitchTargets, pitch, serialize, parse, rawSave, saveInfo, setOnSaved(f) { onSaved = f; }, localOk: () => lastLocalOk, newGame, prepareWeek, setupRace, applyResult, simulate, endWeek, save, load, hasSave, deleteSave,
     rating, ability, CLASS_NAMES, apprenticeAllowance, fmtDate, estimateOdds,
     answerInterview, INTERVIEW, ACTIVITIES, applyEvent, genEvents, canMakeWeight, kinryo, GEAR, news,
     addLegends, buildCard, buildRequests, gradedForWeek, orderFor, judgeOrder, talkAnswer, nextPlan, routeOptions, consultNow, canConsult, genHorse, sundayOfWeek, eligible, gearOf,

@@ -6,7 +6,7 @@
   let db = null, col = null, ready = null, timer = 0, pending = null, busy = false, last = null;
   const listeners = [];
   const emit = () => listeners.forEach(f => { try { f(state()); } catch (e) {} });
-  const state = () => ({ available: !!col, last });
+  const state = () => ({ available: !!col, last, pending: !!pending || busy });
 
   async function gz(str) {
     if (typeof CompressionStream === 'undefined') return { enc: 'raw', data: str };
@@ -47,7 +47,7 @@
   function queue(str, info) {
     pending = { str, info };
     clearTimeout(timer);
-    timer = setTimeout(flush, 8000);
+    timer = setTimeout(flush, 2000);
   }
   async function flush() {
     clearTimeout(timer);
@@ -81,6 +81,7 @@
   }
   // 画面を閉じる前に送り残しを送る
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && pending) flush(); });
+  window.addEventListener('pagehide', () => { if (pending) flush(); });
 
   window.CloudSave = { init, queue, flush, fetchSave, state, onChange(f) { listeners.push(f); } };
 })();

@@ -117,7 +117,7 @@
         <span class="gchip">${money(p.money)}</span>${allow ? `<span class="gchip">▲${allow}kg減</span>` : ''}
       </div>${extra}${W && !quick ? '<button class="gsave" data-save>セーブ</button>' : ''}<button class="burger" aria-label="メニュー" data-menu>☰</button>`;
     $(id).querySelector('[data-menu]').onclick = openDrawer;
-    const sv = $(id).querySelector('[data-save]'); if (sv) sv.onclick = () => { World.save(W); CloudSave.flush(); const d = new Date(); toast(`セーブした（${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}）`); };
+    const sv = $(id).querySelector('[data-save]'); if (sv) sv.onclick = saveNow;
   }
   function crumbs(id, items) {
     $(id).innerHTML = items.map((it, i) => (i ? '<span class="sep">›</span>' : '') + (it[1] ? `<a data-i="${i}">${esc(it[0])}</a>` : `<span>${esc(it[0])}</span>`)).join('');
@@ -141,7 +141,7 @@
     $('drawer').classList.add('on'); $('drawer-bg').classList.add('on');
     $('drawer').querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
       const a = b.dataset.a; closeDrawer();
-      if (a === 'save') { World.save(W); CloudSave.flush(); toast('セーブした'); }
+      if (a === 'save') saveNow();
       if (a === 'export') exportSave();
       if (a === 'home') showWeek();
       if (a === 'credit') modal(`<div class="small" style="line-height:1.8">歓声："Arrowhead Stadium crowd noise" by Kj1595（CC BY-SA 4.0、Wikimedia Commons）を切り出して使用<br>ファンファーレ："Call to the Post (First Call)" U.S. Army Bands Online（パブリックドメイン）<br>BGM："Green Hills" by Igor Gundarev（CC0、OpenGameArt）<br>馬のモデル："Horse" by Henry S（Sketchfab、CC BY 4.0）を変換・加工して使用<br>国内9場のコースの形：OpenStreetMap（© OpenStreetMap contributors、ODbL）の芝・ダートコースの線をもとに作成<br>芝・砂・空の画像：Poly Haven（CC0）</div><div class="choices"><button class="btn primary" id="m-ok">閉じる</button></div>`, () => { $('m-ok').onclick = closeModal; }, '素材のクレジット');
@@ -153,13 +153,20 @@
       if (a === 'title') { setTimeout(refreshTitle, 0); if (W && !quick) World.save(W); W = null; quick = false; refreshTitle(); show('s-title'); }
     });
   }
+  // セーブボタン：端末とクラウドに保存し、結果をそのまま伝える（失敗しても「セーブした」と出していたのをやめる）
+  function saveNow() {
+    const ok = World.save(W), cs = CloudSave.state(), d = new Date(), tm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    CloudSave.flush().then(() => { const c = CloudSave.state(); if (c.available && !ok) toast(c.pending ? 'クラウドへの保存を再試行中' : `クラウドに保存した（${tm}）`); });
+    if (ok) toast(`セーブした（${tm}）${cs.available ? '・クラウドにも送信' : ''}`);
+    else toast(cs.available ? '端末に保存できなかった（容量不足など）。クラウドに保存する' : '端末に保存できなかった（容量不足など）。メニューの「セーブを書き出す」でファイルに残せる');
+  }
   function closeDrawer() { $('drawer').classList.remove('on'); $('drawer-bg').classList.remove('on'); }
   $('drawer-bg').onclick = closeDrawer;
 
   // ---------- タイトル ----------
   const fmtStamp = (t) => { if (!t) return ''; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
   function refreshTitle() {
-    $('b-continue').disabled = !World.hasSave();
+    $('b-continue').disabled = !World.hasSave() && !CloudSave.state().last;
     const loc = World.rawSave(), li = loc ? World.saveInfo(loc) : null, cs = CloudSave.state(), cl = cs.last;
     let t = li ? `この端末：${esc(li.name)}・${esc(li.date || '')}・${li.wins}勝${li.savedAt ? `（${fmtStamp(li.savedAt)} 保存）` : ''}` : 'この端末：セーブなし';
     if (cs.available) t += `<br>クラウド：${cl ? `${esc(cl.name)}・${esc(cl.date || '')}・${cl.wins}勝（${fmtStamp(cl.savedAt)} 保存）` : 'まだ保存なし（遊ぶと自動で保存される）'}`;
@@ -172,7 +179,11 @@
   CloudSave.onChange(() => { if ($('s-title').classList.contains('on')) refreshTitle(); });
   CloudSave.init().then(() => refreshTitle());
   // 保存するたびにクラウドへも送る（claude.ai 上でだけ動く）
-  World.setOnSaved((str) => { const i = World.saveInfo(str); CloudSave.queue(str, i); });
+  let warnedLocal = false;
+  World.setOnSaved((str, ok) => {
+    const i = World.saveInfo(str); CloudSave.queue(str, i);
+    if (!ok && !warnedLocal) { warnedLocal = true; toast('端末に保存できなかった（容量不足など）。' + (CloudSave.state().available ? 'クラウドには保存している' : 'メニューから書き出しておくと安全')); }
+  });
   function startLoaded(w) { W = w; Progress.ensure(W); quick = false; tab = 'home'; showWeek(); }
   $('b-cloud').onclick = async () => {
     const b = $('b-cloud'); b.disabled = true; b.textContent = '読み込み中…';
@@ -209,7 +220,15 @@
     }, 'セーブの読み込み');
   };
   $('b-new').onclick = () => { renderSwatches(); show('s-new'); };
-  $('b-continue').onclick = () => { const w = World.load(); if (w) startLoaded(w); else toast('セーブを読めなかった。クラウドかファイルから戻せる'); };
+  // 続きから：クラウドの方が新しければそちらから（端末の保存に失敗していた場合に、古いセーブへ戻らないように）
+  $('b-continue').onclick = async () => {
+    const loc = World.rawSave(), li = loc ? World.saveInfo(loc) : null, cl = CloudSave.state().last;
+    if (cl && (!li || (cl.savedAt || 0) > (li.savedAt || 0) + 1000)) {
+      const b = $('b-continue'); b.disabled = true;
+      try { const str = await CloudSave.fetchSave(); const w = str && World.parse(str); if (w) { World.save(w); toast('クラウドの新しいセーブから再開'); startLoaded(w); return; } } catch (e) {} finally { b.disabled = false; }
+    }
+    const w = World.load(); if (w) startLoaded(w); else toast('セーブを読めなかった。クラウドかファイルから戻せる');
+  };
   $('b-quick').onclick = quickRace;
   $('b-tut').onclick = () => startTutorial();
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
