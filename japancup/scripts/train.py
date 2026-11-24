@@ -10,8 +10,8 @@ from jc.model import load, design, fit, day_table, day_score, save_model, mean_p
 
 ap = argparse.ArgumentParser()
 ap.add_argument('data'); ap.add_argument('--year', type=int, default=2026)
-ap.add_argument('--from', dest='y0', type=int, default=1990); ap.add_argument('--to', dest='y1', type=int, default=2025)
-ap.add_argument('--lam', type=float, default=300.0); ap.add_argument('--dist', default='芝2200-2600成績'); ap.add_argument('--outdir', default='out')
+ap.add_argument('--from', dest='y0', type=int, default=2006); ap.add_argument('--to', dest='y1', type=int, default=2025)
+ap.add_argument('--lam', type=float, default=30.0); ap.add_argument('--dist', default='芝2200-2600成績'); ap.add_argument('--outdir', default='out')
 A = ap.parse_args()
 os.makedirs(A.outdir, exist_ok=True)
 d = load(A.data, A.dist)

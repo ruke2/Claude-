@@ -7,8 +7,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from jc.model import load, loyo, summarize, FEATS
 
 ap = argparse.ArgumentParser()
-ap.add_argument('data'); ap.add_argument('--from', dest='y0', type=int, default=1990); ap.add_argument('--to', dest='y1', type=int, default=2025)
-ap.add_argument('--lam', type=float, default=300.0); ap.add_argument('--drop', default=''); ap.add_argument('--dist', default='芝2200-2600成績')
+ap.add_argument('data'); ap.add_argument('--from', dest='y0', type=int, default=2006); ap.add_argument('--to', dest='y1', type=int, default=2025)
+ap.add_argument('--lam', type=float, default=30.0); ap.add_argument('--drop', default=''); ap.add_argument('--dist', default='芝2200-2600成績')
 ap.add_argument('--out')
 ap.add_argument('--foreign-zero', action='store_true', help='戦績の無い外国馬を欠損にせず 0 のまま使う(比較用)')
 A = ap.parse_args()
