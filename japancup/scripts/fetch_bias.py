@@ -60,11 +60,13 @@ def main():
     ap.add_argument('--cache', default=F.CACHE)
     ap.add_argument('--base-from', type=int, default=1990)
     ap.add_argument('--base-to', type=int, default=2025)
+    ap.add_argument('--base-csv', help='標準化の平均・標準偏差をこの既存 CSV の 当日4角率・当日馬番率 から取る(JC 以外のレース用)')
+    ap.add_argument('--key', default='年', help='出力の先頭列に使う --races の列(JC 以外は レースキー など)')
     A = ap.parse_args()
     F.CACHE = A.cache
     rows = []
     for rc in csv.DictReader(open(A.races, encoding='utf-8-sig')):
-        y, jc = int(rc['年']), rc['race_id']
+        y, jc = rc[A.key], rc['race_id']
         pts, nr = [], 0
         for i in day_races(rc['開催日'], jc):
             turf, n, top = race_top3(i)
@@ -76,10 +78,15 @@ def main():
                      '当日馬番率': float(np.mean([p[1] for p in pts])) if pts else '', '対象馬': len(pts), '芝レース数': nr,
                      '本番3着内の4角率': float(np.mean([p[0] for p in jtop])), '本番3着内の馬番率': float(np.mean([p[1] for p in jtop]))})
         print(y, nr, len(pts), file=sys.stderr, flush=True)
-    m4, s4, mu, su = standardize(rows, A.base_from, A.base_to)
+    if A.base_csv:
+        import pandas as pd
+        b = pd.read_csv(A.base_csv, encoding='utf-8-sig')
+        m4, s4, mu, su = b['当日4角率'].mean(), b['当日4角率'].std(ddof=1), b['当日馬番率'].mean(), b['当日馬番率'].std(ddof=1)
+    else:
+        m4, s4, mu, su = standardize(rows, A.base_from, A.base_to)
     with open(A.out, 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['年', '前残り度', '内外度', '対象馬', '芝レース数', '本番3着内の4角率', '本番3着内の馬番率', '当日4角率', '当日馬番率'])
+        w.writerow([A.key, '前残り度', '内外度', '対象馬', '芝レース数', '本番3着内の4角率', '本番3着内の馬番率', '当日4角率', '当日馬番率'])
         for r in rows:
             fb = '' if r['当日4角率'] == '' else float(np.clip(-(r['当日4角率'] - m4) / s4, -2, 2))
             io = '' if r['当日馬番率'] == '' else float(np.clip(-(r['当日馬番率'] - mu) / su, -2, 2))

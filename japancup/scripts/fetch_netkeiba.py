@@ -178,7 +178,7 @@ def header(dist_col):
     H += ['展開_初角率', '展開_4角率', '展開_上がり差', '展開_逃げ率', '展開_経験ペース差', '展開_使用走数', '展開_本番初角率',
           '展開_本番4角率', '展開_本番ペース', '展開_逃げ候補数', '展開_先行馬数', 'horse_id']
     # JC 用の追加列(係数の最適化の候補。README 5.2)
-    H += ['前走_騎手', '前走_4角率', '前走_後半3F', 'G1中長距離成績', '東京G1成績', '海外G1成績', '前走から同騎手']
+    H += ['前走_騎手', '前走_4角率', '前走_後半3F', 'G1中長距離成績', '東京G1成績', '海外G1成績', '前走から同騎手', '騎手ID']
     return H
 
 
@@ -252,7 +252,8 @@ def build_row(y, day, baba, pace, e, n_field, lo, hi, dist_col):
              fx(rate(p0[-1], int(r0['頭数']))) if r0 and p0 and not abroad(r0['開催']) and r0['頭数'].isdigit() else '',
              (pp(r0)[1] if r0 and pp(r0) and not abroad(r0['開催']) else ''),
              '/'.join(map(str, rec(g1mid))), '/'.join(map(str, rec(g1tokyo))), '/'.join(map(str, rec(g1abroad))),
-             (int(r0['騎手ID'] == e['騎手ID']) if r0 and r0['騎手ID'] and e['騎手ID'] else '')]  # 騎手IDで比較(未定は空欄)
+             (int(r0['騎手ID'] == e['騎手ID']) if r0 and r0['騎手ID'] and e['騎手ID'] else ''),  # 騎手IDで比較(未定は空欄)
+             e.get('騎手ID', '')]
     return line
 
 

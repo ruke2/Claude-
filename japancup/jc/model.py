@@ -27,7 +27,53 @@ BIAS = ['バイアス前後', 'バイアス内外']
 ROTE = ['前走G2好走', '前走天皇賞秋敗退']
 REL = ['初角順位率']
 ALL_CAND = FEATS + JC_CAND + ERA + BIAS + ROTE + REL
-BLOCKS = {'JC追加': JC_CAND, '時代×市場': ERA, '当日バイアス': BIAS, 'ローテ': ROTE, '相対位置': REL}
+JOCKEY = ['騎手前年複勝率', '騎手重賞勝率']
+WEIGHT = ['馬体重増減大']
+BLOCKS = {'JC追加': JC_CAND, '時代×市場': ERA, '当日バイアス': BIAS, 'ローテ': ROTE, '相対位置': REL, '騎手': JOCKEY, '馬体重': WEIGHT}
+ALL_CAND = ALL_CAND + JOCKEY + WEIGHT
+G1_CODE = {1: '天皇賞秋', 2: '有馬記念', 3: '宝塚記念'}
+
+
+def add_jockey(d, path):
+    """騎手の前年(暦年−1)の複勝率(騎乗100回以上)と、前2年の重賞勝率(重賞騎乗20回以上)。data/jockey_year.csv から"""
+    j = pd.read_csv(path, encoding='utf-8-sig', dtype={'騎手ID': str})
+    j = j.groupby(['騎手ID', '年度'], as_index=False).sum()
+    jid = d['騎手ID'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(5)
+    j['騎手ID'] = j['騎手ID'].str.zfill(5)
+    cy = d['暦年'] if '暦年' in d else d['年']
+    key1 = pd.DataFrame({'騎手ID': jid, '年度': cy - 1})
+    a = key1.merge(j, on=['騎手ID', '年度'], how='left')
+    d['騎手前年複勝率'] = np.where(a['騎乗'] >= 100, a['3着内'] / a['騎乗'], np.nan)
+    b = key1.merge(j.assign(年度=j['年度'] + 1), on=['騎手ID', '年度'], how='left')  # 前々年
+    gs = a['重賞出走'].fillna(0) + b['重賞出走'].fillna(0)
+    gw = a['重賞勝'].fillna(0) + b['重賞勝'].fillna(0)
+    d['騎手重賞勝率'] = np.where(gs >= 20, gw / gs.where(gs > 0, 1), np.nan)
+    return d
+
+
+def load_pool(jc_path, jc_bias, g1_path=None, g1_bias=None, jockey=None, dist_col='芝2200-2600成績'):
+    """JC と G1(天皇賞秋・有馬記念・宝塚記念)をまとめて読む(README 6.5)。
+    年 列はレースの識別子: JC は暦年、G1 は 暦年×10+種別(1 天皇賞秋、2 有馬記念、3 宝塚記念)。
+    本番ペース差 は種別ごとの平均(2006〜2025年)との差に JC の平均を足して、距離の違いをならす"""
+    a = load(jc_path, dist_col, bias=jc_bias)
+    a['レース種別'], a['暦年'] = 'JC', a['年']
+    parts = [a]
+    if g1_path:
+        b = load(g1_path, dist_col)
+        if g1_bias:
+            bb = pd.read_csv(g1_bias, encoding='utf-8-sig').rename(columns={'レースキー': '年'})[['年', '前残り度', '内外度']]
+            b = b.merge(bb, on='年', how='left')
+        b['レース種別'] = (b['年'] % 10).map(G1_CODE)
+        b['暦年'] = b['年'] // 10
+        parts.append(b)
+    d = pd.concat(parts, ignore_index=True)
+    base = d[(d['暦年'] >= 2006) & (d['暦年'] <= 2025)].groupby(['レース種別', '年'])['本番ペース差'].first()
+    tm = base.groupby(level=0).mean()
+    d['本番ペース差'] = d['本番ペース差'] - d['レース種別'].map(tm) + tm.get('JC', 0.0)
+    d['馬体重増減大'] = (pd.to_numeric(d['増減'], errors='coerce').abs() >= 10).astype(float).where(d['増減'].notna())
+    if jockey and '騎手ID' in d:
+        d = add_jockey(d, jockey)
+    return d
 
 # +: 大きいほど加点に固定、−: 減点に固定、記載なし: 自由
 POS = {'前走G1', 'G1勝利数', 'G1連対圏率', '東京芝3着内率', '通算勝率', '前走東京', 'log市場確率'}
@@ -106,7 +152,10 @@ def design(d, pm, pace=None):
     posn = (pd.to_numeric(d['馬番'], errors='coerce') - 1) / (n - 1)
     X['枠'] = ((n >= 16).astype(float) * (posn - 0.5)).fillna(0.0)
     X['外国馬'] = pd.to_numeric(d['外国馬'], errors='coerce').fillna(0.0)
-    X['時代×市場'] = X['log市場確率'] * (pd.to_numeric(d['年']) - 2015) / 10
+    X['時代×市場'] = X['log市場確率'] * (pd.to_numeric(d['暦年'] if '暦年' in d else d['年']) - 2015) / 10
+    for c in JOCKEY + WEIGHT:
+        if c in d:
+            X[c] = pd.to_numeric(d[c], errors='coerce')
     fb = pd.to_numeric(d['前残り度'], errors='coerce').fillna(0.0) if '前残り度' in d else 0.0
     io = pd.to_numeric(d['内外度'], errors='coerce').fillna(0.0) if '内外度' in d else 0.0
     # 当日式(README 5.3)と同じ形。初角率は過去5走の値(欠損は 0.5 = 補正なし)
@@ -149,19 +198,20 @@ def _top3(g):
     return order[:3]
 
 
-def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True):
+def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True, weights=None):
     tr = d.index[d['年'].isin(years) & d['着順数値'].notna().groupby(d['年']).transform('any')]
     Xt = X.loc[tr, feats]
     fill = Xt.mean() if fill is None else fill
     mu = Xt.fillna(fill).mean()
     sd = Xt.fillna(fill).std().replace(0, 1).fillna(1)
     Z = ((X[feats].fillna(fill) - mu) / sd).values
-    races = [(d.index[d['年'] == y].values, _top3(d[d['年'] == y])) for y in sorted(set(d.loc[tr, '年']))]
+    races = [(d.index[d['年'] == y].values, _top3(d[d['年'] == y]), 1.0 if weights is None else weights.get(y, 1.0))
+             for y in sorted(set(d.loc[tr, '年']))]
     pen = np.array([0.0 if f in MARKET else lam for f in feats])
 
     def nll(w):
         tot, grad = 0.0, np.zeros_like(w)
-        for rows, top in races:
+        for rows, top, rw in races:
             Zr = Z[rows]
             s = Zr @ w
             alive = np.ones(len(rows), bool)
@@ -170,8 +220,8 @@ def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True):
                 m = ss.max()
                 e = np.exp(ss - m)
                 p = e / e.sum()
-                tot -= s[t] - (m + np.log(e.sum()))
-                grad -= Zr[t] - p @ Zr[alive]
+                tot -= rw * (s[t] - (m + np.log(e.sum())))
+                grad -= rw * (Zr[t] - p @ Zr[alive])
                 alive[t] = False
         return tot + (pen * w * w).sum(), grad + 2 * pen * w
 
@@ -209,18 +259,20 @@ def marks(p3):
     return out
 
 
-def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral'):
+def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral', pool=None, weights=None):
     """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
     train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
     rows = []
-    pool = years if train_from is None else [t for t in sorted(d.loc[d['着順数値'].notna(), '年'].unique())
-                                              if train_from <= t <= max(years)]
+    if pool is None:
+        pool = years if train_from is None else [t for t in sorted(d.loc[d['着順数値'].notna(), '年'].unique())
+                                                  if train_from <= t <= max(years)]
     Xtr = None
     for y in years:
-        tr = [t for t in pool if t != y]
+        # 予測年の JC と、その年の JC より後の有馬記念は学習から外す
+        tr = [t for t in pool if t != y and t != y * 10 + 2]
         pm = mean_pace(d, tr)
         Xtr = design(d, pm)
-        m = fit(d, Xtr, tr, feats, lam, signs=signs)
+        m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=weights)
         g = d[d['年'] == y]
         pp_ = predict_pace(d, y, fit_pace(d, tr)) if pace_mode == 'predicted' else pm
         Xte = design(d, pm, pace=pp_).loc[g.index]
