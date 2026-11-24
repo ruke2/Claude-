@@ -52,6 +52,27 @@ def test_day_formula_matches_model():
     assert np.allclose(t['3着内スコア'], t['馬名'].map(ref), atol=1e-6)
 
 
+def test_day_formula_with_bias_matches_model():
+    """JC データ・当日バイアス込みで、当日式(day_score)とモデル本体のスコアが一致する"""
+    data = os.path.join(HERE, '..', 'data', 'japancup_1990_2026_data.csv')
+    bias = os.path.join(HERE, '..', 'data', 'japancup_bias_1990_2025.csv')
+    if not os.path.exists(bias) or pd.read_csv(data, encoding='utf-8-sig').empty:
+        return
+    d = M.load(data, bias=bias)
+    years = list(range(2006, 2025))
+    pm = M.mean_pace(d, years)
+    m = M.fit(d, M.design(d, pm), years, M.FEATS + M.BIAS)
+    y = 2025
+    g = d[d['年'] == y]
+    tab, coef = M.day_table(m, d, y, pm)
+    fb, io = float(g['前残り度'].iloc[0]), float(g['内外度'].iloc[0])
+    t = M.day_score(tab, coef, dict(zip(g['馬名'], g['単勝オッズ'])), fb=fb, io=io,
+                    umaban=dict(zip(g['馬名'], g['馬番'])), kfb=coef['kfb'], kio=coef['kio'])
+    s = M.linear(m, M.design(d, pm, pace=pm).loc[g.index])
+    _, p3 = M.harville(s)
+    assert np.allclose(t['3着内スコア'], t['馬名'].map(dict(zip(g['馬名'], p3 * 100))), atol=1e-6)
+
+
 if __name__ == '__main__':
     for k, f in list(globals().items()):
         if k.startswith('test_'):

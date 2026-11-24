@@ -6,18 +6,22 @@ python3 scripts/train.py data/japancup_1990_2026_data.csv --year 2026 --from 199
 import argparse, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import numpy as np, pandas as pd
-from jc.model import load, design, fit, day_table, day_score, save_model, mean_pace, FEATS
+from jc.model import JC_CAND, ERA, BIAS, load, design, fit, day_table, day_score, save_model, mean_pace, FEATS
 
 ap = argparse.ArgumentParser()
 ap.add_argument('data'); ap.add_argument('--year', type=int, default=2026)
 ap.add_argument('--from', dest='y0', type=int, default=2006); ap.add_argument('--to', dest='y1', type=int, default=2025)
+ap.add_argument('--bias', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'japancup_bias_1990_2025.csv'));
+ap.add_argument('--blocks', default='当日バイアス', help='FEATS に足すブロック(カンマ区切り): JC追加,時代×市場,当日バイアス。空文字で基本のみ');
 ap.add_argument('--lam', type=float, default=30.0); ap.add_argument('--dist', default='芝2200-2600成績'); ap.add_argument('--outdir', default='out')
 A = ap.parse_args()
 os.makedirs(A.outdir, exist_ok=True)
-d = load(A.data, A.dist)
+d = load(A.data, A.dist, bias=A.bias or None)
 years = [y for y in sorted(d['年'].unique()) if A.y0 <= y <= A.y1 and d.loc[d['年'] == y, '着順数値'].notna().any()]
 pm = mean_pace(d, years)
-m = fit(d, design(d, pm), years, FEATS, A.lam)
+BL = {'JC追加': JC_CAND, '時代×市場': ERA, '当日バイアス': BIAS}
+FE = FEATS + [f for b in filter(None, A.blocks.split(',')) for f in BL[b]]
+m = fit(d, design(d, pm), years, FE, A.lam)
 tab, coef = day_table(m, d, A.year, pm)
 paces = [('ハイ(前後半差-1.0秒)', -1.0), ('やや速い(0.0秒)', 0.0), (f'平均({pm:.2f}秒)', pm), ('ややスロー(2.0秒)', 2.0), ('スロー(3.0秒)', 3.0), ('超スロー(4.0秒)', 4.0)]
 g = d[d['年'] == A.year]

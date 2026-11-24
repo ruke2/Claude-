@@ -4,7 +4,8 @@ python3 scripts/optimize.py data/japancup_1990_2026_data.csv --bias data/japancu
     --eval-from 2006 --eval-to 2025 --out out/opt.json [--holdout-from 2021]
 
 基準: 評価年の1年除外検証の PL負対数尤度(上位3着の順位の当てはまり。小さいほど良い)。
-手順: (1) 全候補で 学習開始年 × λ × 符号制約 を比較 → (2) 後退選択 → (3) 前進選択 → (4) λ を再選択。
+--mode block(既定): ブロック単位の総当たり。--mode greedy: 特徴量を1つずつ(過学習したため不採用、README 6.3)。
+greedy の手順: (1) 全候補で 学習開始年 × λ × 符号制約 を比較 → (2) 後退選択 → (3) 前進選択 → (4) λ を再選択。
 --holdout-from を付けると、その年以降を選択に使わず、選んだ設定でその年以降を予測した成績も出す(選択の楽観度の確認)。
 """
 import argparse, json, os, sys
@@ -71,12 +72,33 @@ def select(pool, years, cands, log):
     return {'feats': feats, 'lam': lam, 'train_from': tf, 'signs': sg, 'summary': rs[j][1]}
 
 
+def select_blocks(pool, years, log, use_bias):
+    """ブロック単位の選択(特徴量を1つずつ選ぶと過学習したため。README 6.3)。
+    基本(FEATS、秋天由来)は常に入れ、JC追加候補・当日バイアス・時代×市場 の有無と 学習開始年・λ・符号制約 を総当たり"""
+    from jc.model import FEATS, JC_CAND, ERA, BIAS
+    blocks = {'JC追加': JC_CAND, '時代×市場': ERA}
+    if use_bias:
+        blocks['当日バイアス'] = BIAS
+    names = list(blocks)
+    combos = [[n for i, n in enumerate(names) if m >> i & 1] for m in range(2 ** len(names))]
+    grid = [(tuple(c), tf, lam, sg) for c in combos for tf in (1990, 2000, 2006) for lam in (10, 30, 100) for sg in (True, False)]
+    cfgs = [(tuple(FEATS + [f for n in c for f in blocks[n]]), lam, tf, sg, years) for c, tf, lam, sg in grid]
+    res = run(pool, cfgs)
+    tab = [{'ブロック': list(g[0]), '学習開始': g[1], 'λ': g[2], '符号固定': g[3], 'PL': r[0], '3着内LL': r[1]['3着内対数損失']}
+           for g, r in zip(grid, res)]
+    log.append({'step': 'blocks', 'table': tab})
+    i = min(range(len(grid)), key=lambda k: res[k][0])
+    c, tf, lam, sg = grid[i]
+    return {'feats': list(cfgs[i][0]), 'blocks': list(c), 'lam': lam, 'train_from': tf, 'signs': sg, 'summary': res[i][1]}
+
+
 def main():
     global D
     ap = argparse.ArgumentParser()
     ap.add_argument('data'); ap.add_argument('--bias'); ap.add_argument('--out', required=True)
     ap.add_argument('--eval-from', type=int, default=2006); ap.add_argument('--eval-to', type=int, default=2025)
     ap.add_argument('--holdout-from', type=int)
+    ap.add_argument('--mode', choices=['greedy', 'block'], default='block')
     A = ap.parse_args()
     D = load(A.data, bias=A.bias)
     cands = [f for f in ALL_CAND if A.bias or f not in ('バイアス前後', 'バイアス内外')]
@@ -84,7 +106,7 @@ def main():
     years = list(range(A.eval_from, sel_to + 1))
     log = []
     with Pool(4) as pool:
-        best = select(pool, years, cands, log)
+        best = select(pool, years, cands, log) if A.mode == 'greedy' else select_blocks(pool, years, log, bool(A.bias))
         out = {'選択に使った評価年': [years[0], years[-1]], 'best': best, 'log': log}
         if A.holdout_from:
             # 選んだ設定で、選択に使っていない年を1年除外の形で予測(学習は train_from〜eval_to のうち予測年以外)

@@ -14,13 +14,13 @@
 - 想定ペース(前半3F−後半3F、秒、正ほどスロー。平均は out/model_2026.json の 平均ペース)、前後バイアス(-2〜+2、+が前有利)、内外バイアス(-2〜+2、+が内有利)、馬番を受け取ったら:
   `python3 scripts/score_day.py out/model_2026.json out/japancup_2026_tenkai.csv data/odds_MMDD_HHMM.csv --pace P --fb F --io I --umaban data/umaban_MMDD.csv`
 - 勝率 = exp(線形スコア) / Σexp。3着内確率は Harville 式。勝率合計100・3着内合計300の検算はスクリプト内で行う(assert)。
-- 前後・内外の補正係数(--kfb/--kio)は README 5.4 で検証するまで 0。
+- 前後・内外バイアスは JC より前の芝レースから `python3 scripts/day_bias.py --date 2026-11-29 --jc 202605050812` で計算する。補正係数 kfb・kio は model の値(README 5.4)を使う。
 
 ## 作業ルール
 - 計算は必ずコードで行う。手計算の数字を出さない。
 - コードを変えたら `python3 tests/test_core.py` を通す。
 - データ取得は scripts/fetch_netkeiba.py(作業環境から直接、取得の仕様は README 4章)。netkeiba のレースIDは推測で埋めない(data/race_ids.csv に出典URL付きで記録)。
-- 学習期間 2006〜2025年・λ=30(天皇賞・秋と同じ。README 6.2)。train.py・loyo.py の既定値がこれになっている。
+- 採用モデル: 学習 2006〜2025年・λ=30・基本項目+当日バイアス(README 6.3 で JC データから最適化)。train.py・loyo.py の既定値がこれになっている。
 
 ## 出力ルール
 - 日本語、である調、箇条書き中心。「」や""は原則使わない。
