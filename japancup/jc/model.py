@@ -198,12 +198,17 @@ def _top3(g):
     return order[:3]
 
 
-def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True, weights=None):
+def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True, weights=None, prior=None, stats=None):
+    """prior: 縮める先の係数(標準化の単位、None なら 0)。stats: (fill, mu, sd) を外から与える(階層学習で prior と単位をそろえる)"""
     tr = d.index[d['年'].isin(years) & d['着順数値'].notna().groupby(d['年']).transform('any')]
     Xt = X.loc[tr, feats]
-    fill = Xt.mean() if fill is None else fill
-    mu = Xt.fillna(fill).mean()
-    sd = Xt.fillna(fill).std().replace(0, 1).fillna(1)
+    if stats is not None:
+        fill, mu, sd = (pd.Series(v, index=feats) for v in stats)
+    else:
+        fill = Xt.mean() if fill is None else fill
+        mu = Xt.fillna(fill).mean()
+        sd = Xt.fillna(fill).std().replace(0, 1).fillna(1)
+    w0 = np.zeros(len(feats)) if prior is None else np.asarray(prior, float)
     Z = ((X[feats].fillna(fill) - mu) / sd).values
     races = [(d.index[d['年'] == y].values, _top3(d[d['年'] == y]), 1.0 if weights is None else weights.get(y, 1.0))
              for y in sorted(set(d.loc[tr, '年']))]
@@ -223,10 +228,11 @@ def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True, weights=None)
                 tot -= rw * (s[t] - (m + np.log(e.sum())))
                 grad -= rw * (Zr[t] - p @ Zr[alive])
                 alive[t] = False
-        return tot + (pen * w * w).sum(), grad + 2 * pen * w
+        return tot + (pen * (w - w0) ** 2).sum(), grad + 2 * pen * (w - w0)
 
     bnd = [(0, None) if signs and f in POS else (None, 0) if signs and f in NEG else (None, None) for f in feats]
-    w = minimize(nll, np.zeros(len(feats)), jac=True, method='L-BFGS-B', bounds=bnd).x
+    w = minimize(nll, np.clip(w0, [b[0] if b[0] is not None else -np.inf for b in bnd],
+                              [b[1] if b[1] is not None else np.inf for b in bnd]), jac=True, method='L-BFGS-B', bounds=bnd).x
     return {'feats': list(feats), 'w': w.tolist(), 'mu': mu.tolist(), 'sd': sd.tolist(), 'fill': fill.tolist(), 'lam': lam,
             'signs': signs, 'years': [int(y) for y in years]}
 
@@ -259,7 +265,19 @@ def marks(p3):
     return out
 
 
-def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral', pool=None, weights=None):
+def fit_hier(d, X, jc_years, pool, feats, lam_pool, lam_jc, signs=True):
+    """階層学習(README 6.5): G1 を含む全レースで学習した係数 m0 を出発点に、JC だけで m0 からのずれを λ_jc で縮めて学習"""
+    m0 = fit(d, X, pool, feats, lam_pool, signs=signs)
+    st = (m0['fill'], m0['mu'], m0['sd'])
+    m = fit(d, X, jc_years, feats, lam_jc, signs=signs, prior=m0['w'], stats=st)
+    m['prior'] = m0['w']
+    m['lam_pool'] = lam_pool
+    return m
+
+
+def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral', pool=None, weights=None,
+         hier=None):
+    """hier=(λ_pool, λ_jc) で階層学習。pool は全レース、JC は pool のうち years に含まれる種類(暦年<10000)"""
     """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
     train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
     rows = []
@@ -272,7 +290,10 @@ def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode
         tr = [t for t in pool if t != y and t != y * 10 + 2]
         pm = mean_pace(d, tr)
         Xtr = design(d, pm)
-        m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=weights)
+        if hier:
+            m = fit_hier(d, Xtr, [t for t in tr if t < 10000], tr, feats, hier[0], hier[1], signs=signs)
+        else:
+            m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=weights)
         g = d[d['年'] == y]
         pp_ = predict_pace(d, y, fit_pace(d, tr)) if pace_mode == 'predicted' else pm
         Xte = design(d, pm, pace=pp_).loc[g.index]
