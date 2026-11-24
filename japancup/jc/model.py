@@ -23,7 +23,11 @@ FEATS = BASE + PACE + MARKET + NINKI + GATE + EXTRA
 JC_CAND = ['乗替', 'G1中長距離3着内率', '東京G1_3着内率', '海外G1_3着内率', '前走脚余し', '間隔日数log', '前走天皇賞秋']
 ERA = ['時代×市場']
 BIAS = ['バイアス前後', 'バイアス内外']
-ALL_CAND = FEATS + JC_CAND + ERA + BIAS
+# 外れ方の分析(README 6.4)から作った候補
+ROTE = ['前走G2好走', '前走天皇賞秋敗退']
+REL = ['初角順位率']
+ALL_CAND = FEATS + JC_CAND + ERA + BIAS + ROTE + REL
+BLOCKS = {'JC追加': JC_CAND, '時代×市場': ERA, '当日バイアス': BIAS, 'ローテ': ROTE, '相対位置': REL}
 
 # +: 大きいほど加点に固定、−: 減点に固定、記載なし: 自由
 POS = {'前走G1', 'G1勝利数', 'G1連対圏率', '東京芝3着内率', '通算勝率', '前走東京', 'log市場確率'}
@@ -47,12 +51,46 @@ def mean_pace(d, years):
     return float(d[d['年'].isin(years)].groupby('年')['本番ペース差'].first().mean())
 
 
+PACE_X = ['逃げ候補数', '最前初角率']
+
+
+def pace_table(d):
+    """年ごとのペース予想の説明変数(出走馬の構成だけから作る。README 5.5)
+    逃げ候補数 = 過去5走の逃げ率が0.4以上の頭数、最前初角率 = 出走馬の過去5走初角率の最小値"""
+    fr = pd.to_numeric(d['展開_初角率'], errors='coerce')
+    ng = pd.to_numeric(d['展開_逃げ率'], errors='coerce')
+    t = pd.DataFrame({'年': d['年'], '逃げ': (ng >= 0.4).astype(float), '初角': fr})
+    out = t.groupby('年').agg(逃げ候補数=('逃げ', 'sum'), 最前初角率=('初角', 'min'))
+    out['本番ペース差'] = d.groupby('年')['本番ペース差'].first()
+    return out
+
+
+def fit_pace(d, years, ridge=1.0):
+    t = pace_table(d).loc[lambda x: x.index.isin(years)].dropna()
+    X = t[PACE_X].values
+    mu, sd = X.mean(0), X.std(0)
+    Z = (X - mu) / sd
+    yv = t['本番ペース差'].values
+    b = np.linalg.solve(Z.T @ Z + ridge * np.eye(Z.shape[1]), Z.T @ (yv - yv.mean()))
+    return {'mu': mu.tolist(), 'sd': sd.tolist(), 'b': b.tolist(), 'a': float(yv.mean())}
+
+
+def predict_pace(d, year, pc):
+    t = pace_table(d).loc[year, PACE_X].values.astype(float)
+    return float(pc['a'] + ((t - np.array(pc['mu'])) / np.array(pc['sd'])) @ np.array(pc['b']))
+
+
 def design(d, pm, pace=None):
     """特徴量行列。pace=None なら実際の本番ペース(欠損は pm)、数値ならその想定ペースを全馬に使う"""
     X = pd.DataFrame(index=d.index)
     for f in BASE + JC_CAND:
         if '特徴_' + f in d:
             X[f] = pd.to_numeric(d['特徴_' + f], errors='coerce')
+    pc_ = pd.to_numeric(d['前走_着順'], errors='coerce')
+    X['前走G2好走'] = ((d['前走_格'] == 'G2') & (pc_ <= 3)).astype(float)
+    X['前走天皇賞秋敗退'] = (d['前走_レース'].astype(str).str.contains('天皇賞(秋)', regex=False) & (pc_ > 3)).astype(float)
+    nn = d.groupby('年')['馬名'].transform('size')
+    X['初角順位率'] = X['初角率'].groupby(d['年']).rank(method='average') / nn
     pc = (d['本番ペース差'].fillna(pm) if pace is None else pd.Series(float(pace), index=d.index)) - pm
     X['先行×ペース'] = (0.5 - X['初角率']) * pc
     X['上がり×ペース'] = X['上がり差'] * pc
@@ -171,7 +209,7 @@ def marks(p3):
     return out
 
 
-def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True):
+def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral'):
     """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
     train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
     rows = []
@@ -184,7 +222,8 @@ def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True):
         Xtr = design(d, pm)
         m = fit(d, Xtr, tr, feats, lam, signs=signs)
         g = d[d['年'] == y]
-        Xte = design(d, pm, pace=pm).loc[g.index]
+        pp_ = predict_pace(d, y, fit_pace(d, tr)) if pace_mode == 'predicted' else pm
+        Xte = design(d, pm, pace=pp_).loc[g.index]
         s = linear(m, Xte)
         so = Xte['log市場確率'].values
         pw, p3 = harville(s)

@@ -17,8 +17,9 @@ D = None
 
 
 def score(args):
-    feats, lam, train_from, signs, years = args
-    r = loyo(D, years, list(feats), lam, train_from=train_from, signs=signs)
+    feats, lam, train_from, signs, years = args[:5]
+    pace_mode = args[5] if len(args) > 5 else 'neutral'
+    r = loyo(D, years, list(feats), lam, train_from=train_from, signs=signs, pace_mode=pace_mode)
     s = summarize(r)
     return s['PL負対数尤度'], s
 
@@ -92,13 +93,29 @@ def select_blocks(pool, years, log, use_bias):
     return {'feats': list(cfgs[i][0]), 'blocks': list(c), 'lam': lam, 'train_from': tf, 'signs': sg, 'summary': res[i][1]}
 
 
+def select_blocks2(pool, years, log):
+    """外れ方の分析(README 6.4)後の比較: 5ブロックの有無 × λ × ペース(中立/予想)。学習開始 2006・符号固定"""
+    from jc.model import FEATS, BLOCKS
+    names = list(BLOCKS)
+    combos = [[n for i, n in enumerate(names) if m >> i & 1] for m in range(2 ** len(names))]
+    grid = [(tuple(c), lam, pm) for c in combos for lam in (10, 30, 100) for pm in ('neutral', 'predicted')]
+    cfgs = [(tuple(FEATS + [f for n in c for f in BLOCKS[n]]), lam, 2006, True, years, pm) for c, lam, pm in grid]
+    res = run(pool, cfgs)
+    tab = [{'ブロック': list(g[0]), 'λ': g[1], 'ペース': g[2], 'PL': r[0], '3着内LL': r[1]['3着内対数損失']} for g, r in zip(grid, res)]
+    log.append({'step': 'blocks2', 'table': tab})
+    i = min(range(len(grid)), key=lambda k: res[k][0])
+    c, lam, pm = grid[i]
+    return {'feats': list(cfgs[i][0]), 'blocks': list(c), 'lam': lam, 'train_from': 2006, 'signs': True, 'pace_mode': pm,
+            'summary': res[i][1]}
+
+
 def main():
     global D
     ap = argparse.ArgumentParser()
     ap.add_argument('data'); ap.add_argument('--bias'); ap.add_argument('--out', required=True)
     ap.add_argument('--eval-from', type=int, default=2006); ap.add_argument('--eval-to', type=int, default=2025)
     ap.add_argument('--holdout-from', type=int)
-    ap.add_argument('--mode', choices=['greedy', 'block'], default='block')
+    ap.add_argument('--mode', choices=['greedy', 'block', 'block2'], default='block')
     A = ap.parse_args()
     D = load(A.data, bias=A.bias)
     cands = [f for f in ALL_CAND if A.bias or f not in ('バイアス前後', 'バイアス内外')]
@@ -106,15 +123,19 @@ def main():
     years = list(range(A.eval_from, sel_to + 1))
     log = []
     with Pool(4) as pool:
-        best = select(pool, years, cands, log) if A.mode == 'greedy' else select_blocks(pool, years, log, bool(A.bias))
+        best = (select(pool, years, cands, log) if A.mode == 'greedy' else select_blocks(pool, years, log, bool(A.bias))
+                if A.mode == 'block' else select_blocks2(pool, years, log))
         out = {'選択に使った評価年': [years[0], years[-1]], 'best': best, 'log': log}
         if A.holdout_from:
             # 選んだ設定で、選択に使っていない年を1年除外の形で予測(学習は train_from〜eval_to のうち予測年以外)
             ho = list(range(A.holdout_from, A.eval_to + 1))
-            r = loyo(D, ho, best['feats'], best['lam'], train_from=best['train_from'], signs=best['signs'])
-            from jc.model import FEATS
+            r = loyo(D, ho, best['feats'], best['lam'], train_from=best['train_from'], signs=best['signs'],
+                     pace_mode=best.get('pace_mode', 'neutral'))
+            from jc.model import FEATS, BIAS
             r0 = loyo(D, ho, FEATS, 30.0, train_from=2006, signs=True)
-            out['holdout'] = {'年': [ho[0], ho[-1]], '最適化後': summarize(r), '初期設定(秋天と同じ)': summarize(r0)}
+            r1 = loyo(D, ho, FEATS + BIAS, 30.0, train_from=2006, signs=True)
+            out['holdout'] = {'年': [ho[0], ho[-1]], '最適化後': summarize(r), '初期設定(秋天と同じ)': summarize(r0),
+                              '前回採用(基本+当日バイアス)': summarize(r1)}
     json.dump(out, open(A.out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(json.dumps({k: v for k, v in out.items() if k != 'log'}, ensure_ascii=False, indent=1))
 
