@@ -276,7 +276,7 @@ def fit_hier(d, X, jc_years, pool, feats, lam_pool, lam_jc, signs=True):
 
 
 def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral', pool=None, weights=None,
-         hier=None):
+         hier=None, recency=None):
     """hier=(λ_pool, λ_jc) で階層学習。pool は全レース、JC は pool のうち years に含まれる種類(暦年<10000)"""
     """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
     train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
@@ -293,7 +293,11 @@ def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode
         if hier:
             m = fit_hier(d, Xtr, [t for t in tr if t < 10000], tr, feats, hier[0], hier[1], signs=signs)
         else:
-            m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=weights)
+            wy = weights
+            if recency:  # 予測年から離れたレースほど軽く: exp(−|暦年差|/τ)
+                cy = lambda k: k // 10 if k >= 10000 else k
+                wy = {k: (1.0 if weights is None else weights.get(k, 1.0)) * float(np.exp(-abs(cy(k) - y) / recency)) for k in tr}
+            m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=wy)
         g = d[d['年'] == y]
         pp_ = predict_pace(d, y, fit_pace(d, tr)) if pace_mode == 'predicted' else pm
         Xte = design(d, pm, pace=pp_).loc[g.index]
