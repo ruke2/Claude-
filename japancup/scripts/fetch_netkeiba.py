@@ -11,7 +11,8 @@ python3 scripts/fetch_netkeiba.py --races data/race_ids.csv --out data/japancup_
 - 通算・G1成績・東京芝成績・距離帯成績: 出走/勝/3着内。対象レースより前の出走(取消・除外・中止を除く)。海外・地方を含む
 - 前走・前々走・3走前: 直近3件の記録(取消・除外・中止を含む)のうち有効な走。間隔日数も取消・除外を含む直近の記録から数える
 - 海外の走の 前走_着差・上り・4角 は空欄(netkeiba は年により値の有無がばらつくため)
-- 展開_* は通過順のある国内の走を新しい順に5走(海外の走は除く)
+- 展開_* は通過順のある国内の平地の走を新しい順に5走(海外・障害は除く)。ペースは20秒未満を含む値、上りは20〜42秒の範囲外を欠損扱い
+- 本番ペースはラップの最初と最後の3本の合計(古いレースはページのカッコ内の値が誤っているため)
 - 展開_*: 通過順のある過去5走の 初角率=(最初のコーナー順位−1)/(頭数−1)の平均、4角率=最後のコーナーで同様、
   逃げ率=最初のコーナー1番手の割合、上がり差=上り−そのレースの後半3F、経験ペース差=前半3F−後半3F の平均
 - 父・父父・母父・展開_逃げ候補数・展開_先行馬数 は取得しない(空欄。特徴量には使っていない)
@@ -91,11 +92,13 @@ def race_result(race_id):
     day = date(int(m[1]), int(m[2]), int(m[3]))
     baba = (re.search(r'芝\s*:\s*(良|稍重|稍|重|不良)', intro) or [None, ''])[1]
     baba = {'稍重': '稍'}.get(baba, baba)
+    # 本番ペース: ラップの最初の3本と最後の3本の合計(古いレースはページのカッコ内の値が誤っているため、ラップから計算する)
     pace = ''
-    for td in s.select('td.race_lap_cell'):
-        pm = re.search(r'\(([\d.]+)-([\d.]+)\)', txt(td))
-        if pm:
-            pace = f'{pm[1]}-{pm[2]}'
+    cells = s.select('td.race_lap_cell')
+    if cells:
+        laps = [float(x) for x in re.findall(r'\d+\.\d', txt(cells[0]))]
+        if len(laps) >= 6:
+            pace = f'{sum(laps[:3]):.1f}-{sum(laps[-3:]):.1f}'
     fuku = {}
     for tr in s.select('table.pay_table_01 tr'):
         th = tr.find('th')
@@ -149,7 +152,7 @@ def history(hid):
             if not d:
                 continue
             out.append({'日付': date(int(d[1]), int(d[2]), int(d[3])), '開催': txt(r['開催']), 'レース': txt(r['レース名']),
-                        '頭数': txt(r['頭数']), '人気': txt(r['人気']), '着順': txt(r['着順']), '距離': txt(r['距離']),
+                        '頭数': txt(r['頭数']), '人気': txt(r['人気']), '着順': re.sub(r'^(\d+)\((降|再)\)$', r'\1', txt(r['着順'])), '距離': txt(r['距離']),
                         '馬場': txt(r['馬場']), '着差': txt(r['着差']), '通過': txt(r['通過']), 'ペース': txt(r['ペース']),
                         '上り': txt(r['上り'])})
         HCACHE[hid] = out
@@ -196,15 +199,21 @@ def build_row(y, day, baba, pace, e, n_field, lo, hi, dist_col):
     tokyo = [r for r in turf if place(r['開催']) == '東京']
     band = [r for r in turf if lo <= dist(r) <= hi]
     rec = lambda a: (len(a), sum(r['着順'] == '1' for r in a), sum(r['着順'] in ('1', '2', '3') for r in a))
-    p5 = [r for r in h if r['通過'] and not abroad(r['開催'])][:5]  # 通過順のある国内の走を新しい順に5走
+    p5 = [r for r in h if r['通過'] and not abroad(r['開催']) and not r['距離'].startswith('障')][:5]  # 通過順のある国内の走を新しい順に5走
     pos = lambda r: [int(x) for x in r['通過'].split('-') if x.isdigit()]
     rate = lambda v, n: (v - 1) / (n - 1) if n > 1 else 0.0
     avg = lambda a: sum(a) / len(a) if a else ''
-    pp = lambda r: [float(x) for x in re.findall(r'[\d.]+', r['ペース'])][:2] if re.match(r'[\d.]+-[\d.]+', r['ペース']) else []
+    def pp(r):  # 前半3F・後半3F。古いレースの誤った値(13.0-13.0)や地方の 0.0-36.2 など、20秒未満を含むものは欠損扱い
+        v = [float(x) for x in re.findall(r'[\d.]+', r['ペース'])][:2] if re.match(r'[\d.]+-[\d.]+', r['ペース']) else []
+        return v if len(v) == 2 and min(v) >= 20 else []
+
+    def up(r):  # 上り3F。20〜42秒の範囲外(1990年前後の4F表記とみられる値、障害の値)は欠損扱い
+        v = num(r['上り'])
+        return v if v is not None and 20 <= v <= 42 else None
     ten = {'初角率': avg([rate(pos(r)[0], int(r['頭数'])) for r in p5 if pos(r)]),
            '4角率': avg([rate(pos(r)[-1], int(r['頭数'])) for r in p5 if pos(r)]),
            '逃げ率': avg([1.0 if pos(r) and pos(r)[0] == 1 else 0.0 for r in p5]),
-           '上がり差': avg([float(r['上り']) - pp(r)[1] for r in p5 if pp(r) and num(r['上り']) is not None]),
+           '上がり差': avg([up(r) - pp(r)[1] for r in p5 if pp(r) and up(r) is not None]),
            '経験ペース差': avg([pp(r)[0] - pp(r)[1] for r in p5 if pp(r)])}
     fx = lambda v: '' if v == '' else f'{v:.3f}'
     mp = [int(x) for x in e['通過'].split('-') if x.isdigit()] if e['通過'] else []

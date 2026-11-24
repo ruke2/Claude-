@@ -19,7 +19,8 @@
 ## 作業ルール
 - 計算は必ずコードで行う。手計算の数字を出さない。
 - コードを変えたら `python3 tests/test_core.py` を通す。
-- データ取得は scripts/fetch_netkeiba.js(ブラウザの Console で実行)。netkeiba のレースIDは推測で埋めない。
+- データ取得は scripts/fetch_netkeiba.py(作業環境から直接、取得の仕様は README 4章)。netkeiba のレースIDは推測で埋めない(data/race_ids.csv に出典URL付きで記録)。
+- λ は 300(README 6.1 の1年除外で選んだ)。train.py・loyo.py には --lam 300 を付ける。
 
 ## 出力ルール
 - 日本語、である調、箇条書き中心。「」や""は原則使わない。

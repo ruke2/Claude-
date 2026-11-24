@@ -40,7 +40,7 @@ def margin(d, p):
     return g.clip(upper=3.0)
 
 
-def build(d, dist_col='芝2200-2600成績', overwrite=False):
+def build(d, dist_col='芝2200-2600成績', overwrite=False, foreign_unknown=True):
     d = add_record_columns(d.copy(), dist_col)
     f = {}
     rate = lambda a, b: np.where(d[b] > 0, d[a] / d[b].where(d[b] > 0, 1), 0.0)
@@ -68,10 +68,20 @@ def build(d, dist_col='芝2200-2600成績', overwrite=False):
     f['前走東京'] = (place == '東京').astype(float)
     f['上がり差'] = d['展開_上がり差']
     f['初角率'] = d['展開_初角率']
+    if '外国馬' not in d:
+        d['外国馬'] = 0.0
+    if foreign_unknown:
+        # netkeiba に戦績が1走も無い外国馬は、成績の項目を 0 ではなく欠損にする(model.fit が学習年の平均で補う)。
+        # 前走が海外であることは確定しているので 前走海外=1・前走東京=0 とする
+        unk = (pd.to_numeric(d['外国馬'], errors='coerce') == 1) & ~(d['通算_出走'] > 0)
+        if unk.any():
+            for k in f:
+                if k not in ('3歳', '6歳以上', '牝馬', '美浦所属', '前走海外', '前走東京'):
+                    f[k] = pd.Series(f[k], index=d.index).astype(float).mask(unk)
+            f['前走海外'] = pd.Series(f['前走海外'], index=d.index).mask(unk, 1.0)
+            f['前走東京'] = pd.Series(f['前走東京'], index=d.index).mask(unk, 0.0)
     for k, v in f.items():
         col = '特徴_' + k
         if overwrite or col not in d or d[col].isna().all():
             d[col] = v
-    if '外国馬' not in d:
-        d['外国馬'] = 0.0
     return d

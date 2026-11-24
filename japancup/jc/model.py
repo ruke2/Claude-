@@ -26,9 +26,9 @@ NEG = {'前走着差', '近3走G1G2最小着差', 'G1出走なし', '6歳以上'
 # 前走海外は天皇賞・秋では減点固定だったが、JC は外国馬が海外帰りで出るため自由にする(要検証)
 
 
-def load(path, dist_col='芝2200-2600成績'):
+def load(path, dist_col='芝2200-2600成績', foreign_unknown=True):
     d = pd.read_csv(path, encoding='utf-8-sig')
-    d = build(d, dist_col=dist_col)
+    d = build(d, dist_col=dist_col, foreign_unknown=foreign_unknown)
     d['着順数値'] = pd.to_numeric(d['着順'].astype(str).str.extract(r'^(\d+)')[0], errors='coerce')
     d['本番ペース差'] = d['展開_本番ペース'].map(pace_diff) if '展開_本番ペース' in d else np.nan
     d['単勝オッズ'] = pd.to_numeric(d['単勝オッズ'], errors='coerce')
