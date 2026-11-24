@@ -25,7 +25,7 @@ def pace_diff(s):
 
 
 def add_record_columns(d, dist_col):
-    for c in ['通算', 'G1成績', '東京芝成績', dist_col]:
+    for c in ['通算', 'G1成績', '東京芝成績', dist_col, 'G1中長距離成績', '東京G1成績', '海外G1成績']:
         if c in d and f'{c}_出走' not in d:
             r = d[c].map(split_record)
             d[f'{c}_出走'], d[f'{c}_勝'], d[f'{c}_3着内'] = zip(*r) if len(r) else ([], [], [])
@@ -68,6 +68,17 @@ def build(d, dist_col='芝2200-2600成績', overwrite=False, foreign_unknown=Tru
     f['前走東京'] = (place == '東京').astype(float)
     f['上がり差'] = d['展開_上がり差']
     f['初角率'] = d['展開_初角率']
+    # JC 用の追加候補(scripts/fetch_netkeiba.py の追加列がある場合だけ。README 5.2)
+    if '前走から同騎手' in d:
+        f['乗替'] = 1 - pd.to_numeric(d['前走から同騎手'], errors='coerce')
+        f['G1中長距離3着内率'] = rate('G1中長距離成績_3着内', 'G1中長距離成績_出走')
+        f['東京G1_3着内率'] = rate('東京G1成績_3着内', '東京G1成績_出走')
+        f['海外G1_3着内率'] = rate('海外G1成績_3着内', '海外G1成績_出走')
+        # 前走脚余し: 前走でレースの後半3Fより速く上がった分(秒、0未満は0)× 前走の4角率(後ろにいたほど大きい)
+        f['前走脚余し'] = ((pd.to_numeric(d['前走_後半3F'], errors='coerce') - pd.to_numeric(d['前走_上り'], errors='coerce'))
+                       .clip(lower=0, upper=2.0) * pd.to_numeric(d['前走_4角率'], errors='coerce'))  # 上限2秒
+        f['間隔日数log'] = np.log(pd.to_numeric(d['間隔日数'], errors='coerce').clip(lower=7))
+        f['前走天皇賞秋'] = d['前走_レース'].astype(str).str.contains('天皇賞(秋)', regex=False).astype(float)
     if '外国馬' not in d:
         d['外国馬'] = 0.0
     if foreign_unknown:

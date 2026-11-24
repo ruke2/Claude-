@@ -80,6 +80,12 @@ def grade(name):
     return m.group(1) + '勝' if m else '他'
 
 
+def jid(cell):
+    a = cell.find('a', href=re.compile(r'/jockey/')) if cell is not None else None
+    m = re.search(r'/jockey/(?:result/recent/)?(\w+)', a['href']) if a else None
+    return m[1] if m else ''
+
+
 def num(s):
     m = re.search(r'-?\d+(\.\d+)?', str(s))
     return float(m.group()) if m else None
@@ -117,7 +123,7 @@ def race_result(race_id):
         tsuka = txt(r.get('通過'))
         rows.append({'horse_id': re.search(r'horse/(\w+)', a['href'])[1], '着順': txt(r['着順']), '枠': txt(r['枠番']),
                      '馬番': txt(r['馬番']), '馬名': txt(r['馬名']), '性齢': txt(r['性齢']), '斤量': txt(r['斤量']),
-                     '騎手': txt(r['騎手']), '所属': area[1] if area else '', '単勝オッズ': txt(r.get('単勝')),
+                     '騎手': txt(r['騎手']), '騎手ID': jid(r['騎手']), '所属': area[1] if area else '', '単勝オッズ': txt(r.get('単勝')),
                      '人気': txt(r.get('人気')), '馬体重': w[1] if w else '', '増減': w[2] if w else '',
                      '4角位置': tsuka.split('-')[-1] if tsuka else '', '上り3F': txt(r.get('上り')), '着差': txt(r.get('着差')),
                      '通過': tsuka, '複勝払戻': fuku.get(txt(r['馬番']), '0')})
@@ -134,7 +140,7 @@ def shutuba(race_id):
         aff = '東' if '美浦' in area else '西' if '栗東' in area else '外' if '海外' in area else '地' if '地方' in area else ''
         rows.append({'horse_id': re.search(r'horse/(\w+)', a['href'])[1], '着順': '', '枠': g('td[class^="Waku"]'),
                      '馬番': g('td[class^="Umaban"]'), '馬名': txt(a), '性齢': g('td.Barei'),
-                     '斤量': txt(tr.find_all('td')[5]), '騎手': g('td.Jockey'), '所属': aff, '単勝オッズ': '', '人気': '',
+                     '斤量': txt(tr.find_all('td')[5]), '騎手': g('td.Jockey'), '騎手ID': jid(tr.select_one('td.Jockey')), '所属': aff, '単勝オッズ': '', '人気': '',
                      '馬体重': '', '増減': '', '4角位置': '', '上り3F': '', '着差': '', '通過': '', '複勝払戻': ''})
     return rows
 
@@ -154,7 +160,7 @@ def history(hid):
             out.append({'日付': date(int(d[1]), int(d[2]), int(d[3])), '開催': txt(r['開催']), 'レース': txt(r['レース名']),
                         '頭数': txt(r['頭数']), '人気': txt(r['人気']), '着順': re.sub(r'^(\d+)\((降|再)\)$', r'\1', txt(r['着順'])), '距離': txt(r['距離']),
                         '馬場': txt(r['馬場']), '着差': txt(r['着差']), '通過': txt(r['通過']), 'ペース': txt(r['ペース']),
-                        '上り': txt(r['上り'])})
+                        '上り': txt(r['上り']), '騎手': txt(r['騎手']), '騎手ID': jid(r['騎手'])})
         HCACHE[hid] = out
     return HCACHE[hid]
 
@@ -171,6 +177,8 @@ def header(dist_col):
     H += [f'{c}_{k}' for c in ['通算', 'G1成績', '東京芝成績', dist_col] for k in ['出走', '勝', '3着内']]
     H += ['展開_初角率', '展開_4角率', '展開_上がり差', '展開_逃げ率', '展開_経験ペース差', '展開_使用走数', '展開_本番初角率',
           '展開_本番4角率', '展開_本番ペース', '展開_逃げ候補数', '展開_先行馬数', 'horse_id']
+    # JC 用の追加列(係数の最適化の候補。README 5.2)
+    H += ['前走_騎手', '前走_4角率', '前走_後半3F', 'G1中長距離成績', '東京G1成績', '海外G1成績', '前走から同騎手']
     return H
 
 
@@ -235,6 +243,16 @@ def build_row(y, day, baba, pace, e, n_field, lo, hi, dist_col):
     line += [skipped] + [v for x in R for v in x]
     line += [fx(ten['初角率']), fx(ten['4角率']), fx(ten['上がり差']), fx(ten['逃げ率']), fx(ten['経験ペース差']), len(p5),
              fx(rate(mp[0], n_field)) if mp else '', fx(rate(mp[-1], n_field)) if mp else '', pace, '', '', e['horse_id']]
+    r0 = prev[0] if prev else None
+    g1mid = [r for r in g1 if r['距離'].startswith('芝') and lo <= dist(r) <= hi]
+    g1tokyo = [r for r in g1 if place(r['開催']) == '東京']
+    g1abroad = [r for r in g1 if abroad(r['開催'])]
+    p0 = pos(r0) if r0 else []
+    line += [r0['騎手'] if r0 else '',
+             fx(rate(p0[-1], int(r0['頭数']))) if r0 and p0 and not abroad(r0['開催']) and r0['頭数'].isdigit() else '',
+             (pp(r0)[1] if r0 and pp(r0) and not abroad(r0['開催']) else ''),
+             '/'.join(map(str, rec(g1mid))), '/'.join(map(str, rec(g1tokyo))), '/'.join(map(str, rec(g1abroad))),
+             (int(r0['騎手ID'] == e['騎手ID']) if r0 and r0['騎手ID'] and e['騎手ID'] else '')]  # 騎手IDで比較(未定は空欄)
     return line
 
 

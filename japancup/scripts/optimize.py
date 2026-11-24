@@ -1,0 +1,101 @@
+"""JC の過去レースで 学習開始年・λ・符号制約・特徴量の組み合わせ を最適化する(README 6.3)。
+
+python3 scripts/optimize.py data/japancup_1990_2026_data.csv --bias data/japancup_bias_1990_2025.csv \
+    --eval-from 2006 --eval-to 2025 --out out/opt.json [--holdout-from 2021]
+
+基準: 評価年の1年除外検証の PL負対数尤度(上位3着の順位の当てはまり。小さいほど良い)。
+手順: (1) 全候補で 学習開始年 × λ × 符号制約 を比較 → (2) 後退選択 → (3) 前進選択 → (4) λ を再選択。
+--holdout-from を付けると、その年以降を選択に使わず、選んだ設定でその年以降を予測した成績も出す(選択の楽観度の確認)。
+"""
+import argparse, json, os, sys
+from multiprocessing import Pool
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from jc.model import load, loyo, summarize, ALL_CAND, MARKET
+
+D = None
+
+
+def score(args):
+    feats, lam, train_from, signs, years = args
+    r = loyo(D, years, list(feats), lam, train_from=train_from, signs=signs)
+    s = summarize(r)
+    return s['PL負対数尤度'], s
+
+
+def run(pool, cfgs):
+    return pool.map(score, cfgs)
+
+
+def select(pool, years, cands, log):
+    # (1) 設定の比較
+    grid = [(tf, lam, sg) for tf in (1990, 2000, 2006) for lam in (10, 30, 100) for sg in (True, False)]
+    res = run(pool, [(tuple(cands), lam, tf, sg, years) for tf, lam, sg in grid])
+    best = min(range(len(grid)), key=lambda i: res[i][0])
+    tf, lam, sg = grid[best]
+    log.append({'step': 'grid', 'table': [{'学習開始': g[0], 'λ': g[1], '符号固定': g[2], 'PL': r[0], '3着内LL': r[1]['3着内対数損失']}
+                                          for g, r in zip(grid, res)], 'best': grid[best]})
+    print('grid best', grid[best], res[best][0], file=sys.stderr, flush=True)
+    feats, cur = list(cands), res[best][0]
+    # (2) 後退選択
+    while True:
+        drop = [f for f in feats if f not in MARKET]
+        rs = run(pool, [(tuple(x for x in feats if x != f), lam, tf, sg, years) for f in drop])
+        i = min(range(len(drop)), key=lambda k: rs[k][0])
+        if rs[i][0] < cur - 1e-6:
+            cur = rs[i][0]
+            feats.remove(drop[i])
+            log.append({'step': 'drop', 'feat': drop[i], 'PL': cur})
+            print('drop', drop[i], round(cur, 3), file=sys.stderr, flush=True)
+        else:
+            break
+    # (3) 前進選択
+    while True:
+        add = [f for f in cands if f not in feats]
+        if not add:
+            break
+        rs = run(pool, [(tuple(feats + [f]), lam, tf, sg, years) for f in add])
+        i = min(range(len(add)), key=lambda k: rs[k][0])
+        if rs[i][0] < cur - 1e-6:
+            cur = rs[i][0]
+            feats.append(add[i])
+            log.append({'step': 'add', 'feat': add[i], 'PL': cur})
+            print('add', add[i], round(cur, 3), file=sys.stderr, flush=True)
+        else:
+            break
+    # (4) λ の再選択
+    lams = (3, 10, 20, 30, 50, 100, 300)
+    rs = run(pool, [(tuple(feats), l, tf, sg, years) for l in lams])
+    j = min(range(len(lams)), key=lambda k: rs[k][0])
+    lam = lams[j]
+    log.append({'step': 'lambda', 'table': {str(l): r[0] for l, r in zip(lams, rs)}, 'best': lam})
+    return {'feats': feats, 'lam': lam, 'train_from': tf, 'signs': sg, 'summary': rs[j][1]}
+
+
+def main():
+    global D
+    ap = argparse.ArgumentParser()
+    ap.add_argument('data'); ap.add_argument('--bias'); ap.add_argument('--out', required=True)
+    ap.add_argument('--eval-from', type=int, default=2006); ap.add_argument('--eval-to', type=int, default=2025)
+    ap.add_argument('--holdout-from', type=int)
+    A = ap.parse_args()
+    D = load(A.data, bias=A.bias)
+    cands = [f for f in ALL_CAND if A.bias or f not in ('バイアス前後', 'バイアス内外')]
+    sel_to = A.holdout_from - 1 if A.holdout_from else A.eval_to
+    years = list(range(A.eval_from, sel_to + 1))
+    log = []
+    with Pool(4) as pool:
+        best = select(pool, years, cands, log)
+        out = {'選択に使った評価年': [years[0], years[-1]], 'best': best, 'log': log}
+        if A.holdout_from:
+            # 選んだ設定で、選択に使っていない年を1年除外の形で予測(学習は train_from〜eval_to のうち予測年以外)
+            ho = list(range(A.holdout_from, A.eval_to + 1))
+            r = loyo(D, ho, best['feats'], best['lam'], train_from=best['train_from'], signs=best['signs'])
+            from jc.model import FEATS
+            r0 = loyo(D, ho, FEATS, 30.0, train_from=2006, signs=True)
+            out['holdout'] = {'年': [ho[0], ho[-1]], '最適化後': summarize(r), '初期設定(秋天と同じ)': summarize(r0)}
+    json.dump(out, open(A.out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print(json.dumps({k: v for k, v in out.items() if k != 'log'}, ensure_ascii=False, indent=1))
+
+
+if __name__ == '__main__':
+    main()

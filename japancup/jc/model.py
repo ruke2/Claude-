@@ -19,6 +19,11 @@ NINKI = ['1番人気', '2番人気', '6-9番人気', '10番人気以下']
 GATE = ['枠']
 EXTRA = ['外国馬']
 FEATS = BASE + PACE + MARKET + NINKI + GATE + EXTRA
+# JC 用の追加候補(README 5.2)。時代×市場 は log市場確率 ×(年−2015)/10、バイアス2項は当日の前残り度・内外度(README 5.4)
+JC_CAND = ['乗替', 'G1中長距離3着内率', '東京G1_3着内率', '海外G1_3着内率', '前走脚余し', '間隔日数log', '前走天皇賞秋']
+ERA = ['時代×市場']
+BIAS = ['バイアス前後', 'バイアス内外']
+ALL_CAND = FEATS + JC_CAND + ERA + BIAS
 
 # +: 大きいほど加点に固定、−: 減点に固定、記載なし: 自由
 POS = {'前走G1', 'G1勝利数', 'G1連対圏率', '東京芝3着内率', '通算勝率', '前走東京', 'log市場確率'}
@@ -26,9 +31,12 @@ NEG = {'前走着差', '近3走G1G2最小着差', 'G1出走なし', '6歳以上'
 # 前走海外は天皇賞・秋では減点固定だったが、JC は外国馬が海外帰りで出るため自由にする(要検証)
 
 
-def load(path, dist_col='芝2200-2600成績', foreign_unknown=True):
+def load(path, dist_col='芝2200-2600成績', foreign_unknown=True, bias=None):
     d = pd.read_csv(path, encoding='utf-8-sig')
     d = build(d, dist_col=dist_col, foreign_unknown=foreign_unknown)
+    if bias is not None:  # 年ごとの 前残り度・内外度(data/japancup_bias_1990_2025.csv)
+        b = pd.read_csv(bias, encoding='utf-8-sig')[['年', '前残り度', '内外度']]
+        d = d.drop(columns=[c for c in ['前残り度', '内外度'] if c in d]).merge(b, on='年', how='left')
     d['着順数値'] = pd.to_numeric(d['着順'].astype(str).str.extract(r'^(\d+)')[0], errors='coerce')
     d['本番ペース差'] = d['展開_本番ペース'].map(pace_diff) if '展開_本番ペース' in d else np.nan
     d['単勝オッズ'] = pd.to_numeric(d['単勝オッズ'], errors='coerce')
@@ -42,8 +50,9 @@ def mean_pace(d, years):
 def design(d, pm, pace=None):
     """特徴量行列。pace=None なら実際の本番ペース(欠損は pm)、数値ならその想定ペースを全馬に使う"""
     X = pd.DataFrame(index=d.index)
-    for f in BASE:
-        X[f] = pd.to_numeric(d['特徴_' + f], errors='coerce')
+    for f in BASE + JC_CAND:
+        if '特徴_' + f in d:
+            X[f] = pd.to_numeric(d['特徴_' + f], errors='coerce')
     pc = (d['本番ペース差'].fillna(pm) if pace is None else pd.Series(float(pace), index=d.index)) - pm
     X['先行×ペース'] = (0.5 - X['初角率']) * pc
     X['上がり×ペース'] = X['上がり差'] * pc
@@ -59,6 +68,12 @@ def design(d, pm, pace=None):
     posn = (pd.to_numeric(d['馬番'], errors='coerce') - 1) / (n - 1)
     X['枠'] = ((n >= 16).astype(float) * (posn - 0.5)).fillna(0.0)
     X['外国馬'] = pd.to_numeric(d['外国馬'], errors='coerce').fillna(0.0)
+    X['時代×市場'] = X['log市場確率'] * (pd.to_numeric(d['年']) - 2015) / 10
+    fb = pd.to_numeric(d['前残り度'], errors='coerce').fillna(0.0) if '前残り度' in d else 0.0
+    io = pd.to_numeric(d['内外度'], errors='coerce').fillna(0.0) if '内外度' in d else 0.0
+    # 当日式(README 5.3)と同じ形。初角率は過去5走の値(欠損は 0.5 = 補正なし)
+    X['バイアス前後'] = fb / 2 * (0.5 - X['初角率'].fillna(0.5)) / 0.5
+    X['バイアス内外'] = io / 2 * (0.5 - posn.fillna(0.5)) / 0.5
     return X
 
 
@@ -96,7 +111,7 @@ def _top3(g):
     return order[:3]
 
 
-def fit(d, X, years, feats=FEATS, lam=30.0, fill=None):
+def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True):
     tr = d.index[d['年'].isin(years) & d['着順数値'].notna().groupby(d['年']).transform('any')]
     Xt = X.loc[tr, feats]
     fill = Xt.mean() if fill is None else fill
@@ -122,9 +137,10 @@ def fit(d, X, years, feats=FEATS, lam=30.0, fill=None):
                 alive[t] = False
         return tot + (pen * w * w).sum(), grad + 2 * pen * w
 
-    bnd = [(0, None) if f in POS else (None, 0) if f in NEG else (None, None) for f in feats]
+    bnd = [(0, None) if signs and f in POS else (None, 0) if signs and f in NEG else (None, None) for f in feats]
     w = minimize(nll, np.zeros(len(feats)), jac=True, method='L-BFGS-B', bounds=bnd).x
-    return {'feats': list(feats), 'w': w.tolist(), 'mu': mu.tolist(), 'sd': sd.tolist(), 'fill': fill.tolist(), 'lam': lam}
+    return {'feats': list(feats), 'w': w.tolist(), 'mu': mu.tolist(), 'sd': sd.tolist(), 'fill': fill.tolist(), 'lam': lam,
+            'signs': signs, 'years': [int(y) for y in years]}
 
 
 def linear(model, X):
@@ -155,14 +171,18 @@ def marks(p3):
     return out
 
 
-def loyo(d, years, feats=FEATS, lam=30.0):
-    """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる"""
+def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True):
+    """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
+    train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
     rows = []
+    pool = years if train_from is None else [t for t in sorted(d.loc[d['着順数値'].notna(), '年'].unique())
+                                              if train_from <= t <= max(years)]
+    Xtr = None
     for y in years:
-        tr = [t for t in years if t != y]
+        tr = [t for t in pool if t != y]
         pm = mean_pace(d, tr)
         Xtr = design(d, pm)
-        m = fit(d, Xtr, tr, feats, lam)
+        m = fit(d, Xtr, tr, feats, lam, signs=signs)
         g = d[d['年'] == y]
         Xte = design(d, pm, pace=pm).loc[g.index]
         s = linear(m, Xte)
@@ -205,17 +225,22 @@ def day_table(model, d, year, pm):
     g = d[d['年'] == year]
     X = design(d, pm, pace=pm).loc[g.index]
     X = X[f].fillna(pd.Series(model['fill'], index=f))
-    other = [c for c in f if c not in MARKET + NINKI + GATE]
+    other = [c for c in f if c not in MARKET + NINKI + GATE + ERA + BIAS]
     a = (X[other] * w[other]).sum(axis=1)
     b = pd.Series(0.0, index=g.index)
     if '先行×ペース' in w:
         b += w['先行×ペース'] * (0.5 - X['初角率'])
     if '上がり×ペース' in w:
         b += w['上がり×ペース'] * X['上がり差']
+    raw = design(d, pm, pace=pm).loc[g.index]
     tab = pd.DataFrame({'馬名': g['馬名'].values, '脚質(過去5走初角率)': X['初角率'].values,
-                        '上がり差(秒)': X['上がり差'].values, '基礎値a': a.values, 'ペース感応度b': b.values})
-    coef = {'平均ペース': pm, 'c_log市場確率': float(w.get('log市場確率', 0.0)),
-            **{k: float(w.get(k, 0.0)) for k in NINKI}, '枠': float(w.get('枠', 0.0))}
+                        '上がり差(秒)': X['上がり差'].values, '基礎値a': a.values, 'ペース感応度b': b.values,
+                        '初角率(バイアス用)': raw['初角率'].fillna(0.5).values})
+    # 時代×市場 は対象年の値で市場係数 c に含める。バイアス2項の係数は kfb・kio として当日式に渡す
+    c = float(w.get('log市場確率', 0.0)) + float(w.get('時代×市場', 0.0)) * (year - 2015) / 10
+    coef = {'平均ペース': pm, 'c_log市場確率': c,
+            **{k: float(w.get(k, 0.0)) for k in NINKI}, '枠': float(w.get('枠', 0.0)),
+            'kfb': float(w.get('バイアス前後', 0.0)), 'kio': float(w.get('バイアス内外', 0.0))}
     return tab, coef
 
 
@@ -231,7 +256,8 @@ def day_score(tab, coef, odds, pace=None, fb=0.0, io=0.0, umaban=None, kfb=0.0, 
     n = len(t)
     s = t['基礎値a'] + t['ペース感応度b'] * (pace - coef['平均ペース']) + coef['c_log市場確率'] * np.log(q)
     s += coef['1番人気'] * (rk == 1) + coef['2番人気'] * (rk == 2) + coef['6-9番人気'] * rk.between(6, 9) + coef['10番人気以下'] * (rk >= 10)
-    s += kfb * fb / 2 * (0.5 - t['脚質(過去5走初角率)']) / 0.5
+    kcol = '初角率(バイアス用)' if '初角率(バイアス用)' in t else '脚質(過去5走初角率)'
+    s += kfb * fb / 2 * (0.5 - t[kcol]) / 0.5
     if umaban is not None:
         t['馬番'] = t['馬名'].map(umaban).astype(float)
         posn = (t['馬番'] - 1) / (n - 1)
