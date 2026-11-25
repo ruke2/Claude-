@@ -239,7 +239,8 @@ def fit(d, X, years, feats=FEATS, lam=30.0, fill=None, signs=True, weights=None,
         sd = Xt.fillna(fill).std().replace(0, 1).fillna(1)
     w0 = np.zeros(len(feats)) if prior is None else np.asarray(prior, float)
     Z = ((X[feats].fillna(fill) - mu) / sd).values
-    races = [(d.index[d['年'] == y].values, _top3(d[d['年'] == y]), 1.0 if weights is None else weights.get(y, 1.0))
+    # 行の位置は X の並びで取る(d の index が 0 始まりの連番でなくても正しく動くように)
+    races = [(X.index.get_indexer(d.index[d['年'] == y]), _top3(d[d['年'] == y]), 1.0 if weights is None else weights.get(y, 1.0))
              for y in sorted(set(d.loc[tr, '年']))]
     pen = np.array([0.0 if f in MARKET else lam for f in feats])
 
