@@ -51,13 +51,26 @@ def add_jockey(d, path):
     return d
 
 
-def load_pool(jc_path, jc_bias, g1_path=None, g1_bias=None, jockey=None, dist_col='芝2200-2600成績'):
-    """JC と G1(天皇賞秋・有馬記念・宝塚記念)をまとめて読む(README 6.5)。
-    年 列はレースの識別子: JC は暦年、G1 は 暦年×10+種別(1 天皇賞秋、2 有馬記念、3 宝塚記念)。
-    本番ペース差 は種別ごとの平均(2006〜2025年)との差に JC の平均を足して、距離の違いをならす"""
+def cal_year(k):
+    """レース識別子 → 暦年(JC は暦年、G1 は 暦年×10+種別、重賞は race_id 12桁)"""
+    k = int(k)
+    return k // 10 ** 8 if k >= 10 ** 11 else k // 10 if k >= 10000 else k
+
+
+def load_pool(jc_path, jc_bias, g1_path=None, g1_bias=None, jockey=None, dist_col='芝2200-2600成績',
+              graded_path=None, graded_ids=None, jc_ids=None, g1_ids=None):
+    """JC と G1(天皇賞秋・有馬記念・宝塚記念)、芝2000〜2500m 重賞をまとめて読む(README 6.5・6.6)。
+    年 列はレースの識別子: JC は暦年、G1 は 暦年×10+種別(1 天皇賞秋、2 有馬記念、3 宝塚記念)、重賞は race_id。
+    本番ペース差 は種別(重賞は距離)ごとの平均(2006〜2025年)との差に JC の平均を足して、距離の違いをならす。
+    開催日 列(jc_ids・g1_ids・graded_ids から)は、JC より後のレースを学習から外すのに使う"""
     a = load(jc_path, dist_col, bias=jc_bias)
     a['レース種別'], a['暦年'] = 'JC', a['年']
+    if jc_ids:
+        ji = pd.read_csv(jc_ids, encoding='utf-8-sig')
+        a['開催日'] = a['年'].map(dict(zip(ji['年'], ji['開催日'])))
+        a.loc[a['年'] == 2026, '開催日'] = '2026-11-29'
     parts = [a]
+    known = set()
     if g1_path:
         b = load(g1_path, dist_col)
         if g1_bias:
@@ -65,7 +78,23 @@ def load_pool(jc_path, jc_bias, g1_path=None, g1_bias=None, jockey=None, dist_co
             b = b.merge(bb, on='年', how='left')
         b['レース種別'] = (b['年'] % 10).map(G1_CODE)
         b['暦年'] = b['年'] // 10
+        if g1_ids:
+            gi = pd.read_csv(g1_ids, encoding='utf-8-sig')
+            b['開催日'] = b['年'].map(dict(zip(gi['レースキー'], gi['開催日'])))
+            known |= set(gi['race_id'].astype(str))
         parts.append(b)
+    if jc_ids:
+        known |= set(pd.read_csv(jc_ids, encoding='utf-8-sig')['race_id'].astype(str))
+    if graded_path:
+        c = load(graded_path, dist_col)
+        gi = pd.read_csv(graded_ids, encoding='utf-8-sig', dtype={'race_id': str})
+        c = c[~c['年'].astype(str).isin(known)]  # JC・G1 と重なるレースは除く
+        mx = c.groupby('年')['齢'].transform('max')
+        c = c[mx > 2]  # 2歳限定戦は除く
+        c['開催日'] = c['年'].astype(str).map(dict(zip(gi['race_id'], gi['開催日'])))
+        c['レース種別'] = '重賞' + c['年'].astype(str).map(dict(zip(gi['race_id'], gi['コース'])))
+        c['暦年'] = c['年'] // 10 ** 8
+        parts.append(c)
     d = pd.concat(parts, ignore_index=True)
     base = d[(d['暦年'] >= 2006) & (d['暦年'] <= 2025)].groupby(['レース種別', '年'])['本番ペース差'].first()
     tm = base.groupby(level=0).mean()
@@ -277,7 +306,8 @@ def fit_hier(d, X, jc_years, pool, feats, lam_pool, lam_jc, signs=True):
 
 def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode='neutral', pool=None, weights=None,
          hier=None, recency=None):
-    """hier=(λ_pool, λ_jc) で階層学習。pool は全レース、JC は pool のうち years に含まれる種類(暦年<10000)"""
+    """hier=(λ_pool, λ_jc) で階層学習。pool は全レース、JC は pool のうち years に含まれる種類(暦年<10000)。
+    予測年の JC と、同じ年で JC より後に行われたレースは学習から外す"""
     """1年除外検証。各年をその年以外で学習し、中立ペースで予測。人気だけの予想と比べる。
     train_from を指定すると、学習には train_from〜max(years) の年(評価年を除く)を使い、評価は years だけで行う"""
     rows = []
@@ -287,7 +317,12 @@ def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode
     Xtr = None
     for y in years:
         # 予測年の JC と、その年の JC より後の有馬記念は学習から外す
-        tr = [t for t in pool if t != y and t != y * 10 + 2]
+        if '開催日' in d and d['開催日'].notna().any():
+            jd = d.loc[d['年'] == y, '開催日'].iloc[0]
+            late = set(d.loc[(d['開催日'] > jd) & (d['開催日'].str[:4] == jd[:4]), '年'])
+        else:
+            late = {y * 10 + 2}
+        tr = [t for t in pool if t != y and t not in late]
         pm = mean_pace(d, tr)
         Xtr = design(d, pm)
         if hier:
@@ -295,7 +330,7 @@ def loyo(d, years, feats=FEATS, lam=30.0, train_from=None, signs=True, pace_mode
         else:
             wy = weights
             if recency:  # 予測年から離れたレースほど軽く: exp(−|暦年差|/τ)
-                cy = lambda k: k // 10 if k >= 10000 else k
+                cy = cal_year
                 wy = {k: (1.0 if weights is None else weights.get(k, 1.0)) * float(np.exp(-abs(cy(k) - y) / recency)) for k in tr}
             m = fit(d, Xtr, tr, feats, lam, signs=signs, weights=wy)
         g = d[d['年'] == y]
