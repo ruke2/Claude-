@@ -238,6 +238,8 @@ python3 scripts/score_day.py out/model_2026.json out/japancup_2026_tenkai.csv da
 ## 7. 2026年のスコア
 - 実際の単勝オッズは未発売。netkeiba 予想オッズ(2026-11-24 18:15、data/odds_1124_1815_yoso.csv)での暫定スコアは out/day_1124_1815_yoso.csv(6.3 の採用モデル、枠の補正なし、平均ペース、当日バイアス0)。展開表(基礎値a・ペース感応度b)は out/japancup_2026_tenkai.csv。外国馬6頭は展開の走が無い(または1走)ため、脚質・上がり差は学習年の平均で補った値になっている。
 
+- 2026-11-26 枠順確定後: 出馬表 https://race.netkeiba.com/race/shutuba.html?race_id=202605050812 から data/umaban_1126.csv、netkeiba 予想オッズ(2026-11-26 15:15、data/odds_1126_1515_yoso.csv)で out/day_1126_1515_yoso.csv を計算(平均ペース、当日バイアス0)。予想オッズの番号は枠順確定後は馬番(2桁)になる。
+
 ## 8. 運用手順
 1. 枠順確定後(11/26予定、JRA発表で確認): 出走馬・馬番・騎手を確認し umaban_MMDD.csv を作る。騎手が決まった馬がいれば fetch_netkeiba.py を再実行する。
 2. 展開予想を出す。
