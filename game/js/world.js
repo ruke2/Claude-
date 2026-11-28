@@ -61,28 +61,58 @@
       { k: 'fderby', name: 'ダービー挑戦', desc: '桜花賞から牡馬相手の日本ダービーへ', spring: ['チューリップ賞', '桜花賞', '日本ダービー'], autumn: ['秋華賞', 'ジャパンC'] },
       { k: 'fmile', name: 'マイル路線', desc: '桜花賞→NHKマイルC→マイルチャンピオンシップ', spring: ['チューリップ賞', '桜花賞', 'NHKマイルC'], autumn: ['秋華賞', 'マイルチャンピオンシップ'] },
     ],
+    // 古馬は春と秋で別々に決める（春の相談では春の路線、7月の相談では秋の路線）。only: '牝' は牝馬だけの選択肢
     older: [
-      { k: 'classic', name: '王道路線（古馬三冠）', desc: '大阪杯→宝塚記念、秋は天皇賞（秋）→ジャパンC→有馬記念', spring: ['京都記念', '大阪杯', '宝塚記念'], autumn: ['天皇賞（秋）', 'ジャパンC', '有馬記念'] },
-      { k: 'stayer', name: 'ステイヤー路線', desc: '阪神大賞典→天皇賞（春）、暮れは有馬記念', spring: ['阪神大賞典', '天皇賞（春）', '宝塚記念'], autumn: ['アルゼンチン共和国杯', '有馬記念'] },
-      { k: 'mile', name: 'マイル路線', desc: '安田記念→毎日王冠→マイルチャンピオンシップ', spring: ['安田記念'], autumn: ['関屋記念', '毎日王冠', 'マイルチャンピオンシップ'] },
-      { k: 'sprint', name: 'スプリント路線', desc: '高松宮記念→スプリンターズS', spring: ['高松宮記念', '安田記念'], autumn: ['スプリンターズS', 'マイルチャンピオンシップ'] },
-      { k: 'dirt', name: 'ダート路線', desc: 'フェブラリーS→チャンピオンズC', spring: ['フェブラリーS'], autumn: ['チャンピオンズC'] },
+      { k: 'spring3', name: '春古馬三冠', desc: '大阪杯→天皇賞（春）→宝塚記念', spring: ['京都記念', '大阪杯', '天皇賞（春）', '宝塚記念'], autumn: [] },
+      { k: 'classic', name: '中距離路線', desc: '大阪杯→宝塚記念（天皇賞（春）は使わない）', spring: ['京都記念', '大阪杯', '宝塚記念'], autumn: [] },
+      { k: 'stayer', name: 'ステイヤー路線', desc: '阪神大賞典→天皇賞（春）→宝塚記念', spring: ['阪神大賞典', '天皇賞（春）', '宝塚記念'], autumn: [] },
+      { k: 'fmile', name: '牝馬マイル路線', desc: 'ヴィクトリアマイル→安田記念', spring: ['ヴィクトリアマイル', '安田記念'], autumn: [], only: '牝' },
+      { k: 'mile', name: 'マイル路線', desc: '安田記念', spring: ['安田記念'], autumn: [] },
+      { k: 'sprint', name: 'スプリント路線', desc: '高松宮記念→安田記念', spring: ['高松宮記念', '安田記念'], autumn: [] },
+      { k: 'dirt', name: 'ダート路線', desc: 'フェブラリーS', spring: ['フェブラリーS'], autumn: [] },
+    ],
+    olderA: [
+      { k: 'autumn3', name: '秋古馬三冠', desc: '天皇賞（秋）→ジャパンC→有馬記念', spring: [], autumn: ['札幌記念', '天皇賞（秋）', 'ジャパンC', '有馬記念'] },
+      { k: 'tenno', name: '天皇賞（秋）→有馬記念', desc: '毎日王冠から天皇賞（秋）、暮れは有馬記念（ジャパンCは使わない）', spring: [], autumn: ['毎日王冠', '天皇賞（秋）', '有馬記念'] },
+      { k: 'jc', name: 'ジャパンC→有馬記念', desc: 'アルゼンチン共和国杯からジャパンC、有馬記念', spring: [], autumn: ['アルゼンチン共和国杯', 'ジャパンC', '有馬記念'] },
+      { k: 'fqueen', name: 'エリザベス女王杯路線', desc: '札幌記念→エリザベス女王杯→有馬記念', spring: [], autumn: ['札幌記念', 'エリザベス女王杯', '有馬記念'], only: '牝' },
+      { k: 'stayerA', name: 'ステイヤー路線', desc: 'アルゼンチン共和国杯→有馬記念', spring: [], autumn: ['アルゼンチン共和国杯', '有馬記念'] },
+      { k: 'mileA', name: 'マイル路線', desc: '毎日王冠→マイルチャンピオンシップ', spring: [], autumn: ['関屋記念', '毎日王冠', 'マイルチャンピオンシップ'] },
+      { k: 'sprintA', name: 'スプリント路線', desc: 'スプリンターズS→マイルチャンピオンシップ', spring: [], autumn: ['スプリンターズS', 'マイルチャンピオンシップ'] },
+      { k: 'dirtA', name: 'ダート路線', desc: 'チャンピオンズC', spring: [], autumn: ['チャンピオンズC'] },
     ],
   };
-  const FILLY_SWAP = { 'ジャパンC': 'エリザベス女王杯', '安田記念': 'ヴィクトリアマイル' };
   const routeCat = (W, h) => { const a = W.year - h.born; return a === 3 ? (h.sex === '牝' ? 'filly3' : 'colt3') : a >= 4 ? 'older' : null; };
-  function routeOptions(W, h) { const c = routeCat(W, h); return c ? ROUTES[c] : []; }
-  function autoRoute(W, h) {
+  const halfNow = (W) => W.month >= 6 ? 'autumn' : 'spring';
+  function routeOptions(W, h, half) {
+    const c = routeCat(W, h); if (!c) return [];
+    const list = c === 'older' && (half || halfNow(W)) === 'autumn' ? ROUTES.olderA : ROUTES[c];
+    return list.filter(o => !o.only || o.only === h.sex);
+  }
+  function autoRoute(W, h, half) {
     const c = routeCat(W, h); if (!c) return null;
-    const d = h.dist || 1800, rr = ROUTES[c], by = (k) => rr.find(x => x.k === k);
+    half = half || halfNow(W);
+    const d = h.dist || 1800, rr = routeOptions(W, h, half), by = (k) => rr.find(x => x.k === k);
+    // 秋は春と同じ路線を続ける（三冠路線で春を走った馬は菊花賞・秋華賞へ）
+    if (half === 'autumn' && c !== 'older' && h.plan && h.plan.y === W.year && h.plan.route) { const same = rr.find(x => x.name === h.plan.route); if (same) return same; }
+    if (c === 'older' && half === 'autumn') {
+      if (h.surf === 'D') return by('dirtA');
+      if (d <= 1200) return by('sprintA'); if (d <= 1600) return by('mileA');
+      if (d >= 3000) return by('stayerA');
+      if (h.sex === '牝' && Math.random() < 0.5) return by('fqueen');
+      const k = rating(h, W.year); return k >= 88 ? (Math.random() < 0.6 ? by('autumn3') : by('tenno')) : d >= 2400 ? by('jc') : by('tenno');
+    }
     if (c === 'colt3') return h.surf === 'D' ? null : d <= 1600 ? by('mile3') : d >= 2200 ? (Math.random() < 0.7 ? by('triple') : by('derby')) : (Math.random() < 0.65 ? by('triple') : by('nhk'));
     if (c === 'filly3') return h.surf === 'D' ? null : d <= 1600 && Math.random() < 0.4 ? by('fmile') : by('ftriple');
     if (h.surf === 'D') return by('dirt');
-    return d <= 1200 ? by('sprint') : d <= 1600 ? by('mile') : d >= 3000 ? by('stayer') : by('classic');
+    if (d <= 1200) return by('sprint');
+    if (d <= 1600) return h.sex === '牝' && Math.random() < 0.6 ? by('fmile') : by('mile');
+    if (d >= 3000) return by('stayer');
+    // スタミナがあれば春古馬三冠、そうでなければ大阪杯→宝塚記念
+    return d >= 2400 || (d >= 2200 && Math.random() < 0.4) ? by('spring3') : by('classic');
   }
   function routeRaces(W, h, r, half) {
     let list = half === 'autumn' ? r.autumn : half === 'spring' ? r.spring : r.spring.concat(r.autumn);
-    if (h.sex === '牝' && routeCat(W, h) === 'older') list = list.map(n => FILLY_SWAP[n] || n);
     return list.slice();
   }
   // 重賞の、その年の週番号
@@ -118,7 +148,7 @@
     alive.filter(h => h.mainJ === -1 && !h.real && W.year - h.born >= 3 && h.cls >= 2 && !g.includes(h)).forEach(h => g.push(h));
     g.forEach(h => {
       if (h.mainJ === -1 && !h.real) { h.consult = half; if (!h.plan || h.plan.y !== W.year) h.plan = { y: W.year, races: [], route: null }; return; }
-      const r = autoRoute(W, h); if (r) setPlan(W, h, r, half === 'autumn' ? 'autumn' : 'spring');
+      const r = autoRoute(W, h, half === 'autumn' ? 'autumn' : 'spring'); if (r) setPlan(W, h, r, half === 'autumn' ? 'autumn' : 'spring');
     });
   }
   // 2歳の暮れのGⅠ
@@ -637,10 +667,12 @@
   // 路線の相談の場面。秋は、春のクラシックの結果に合わせて調教師の勧めが変わる（皐月賞・ダービーを勝てば三冠を目指す など）
   function consultScene(W, h, half) {
     const P = W.player, t = W.trainers[h.trainer], tn = t ? t.name.replace('厩舎', '') + '調教師' : '調教師';
-    const opts = routeOptions(W, h); if (!opts.length) return null;
+    const opts = routeOptions(W, h, half); if (!opts.length) return null;
     const age = W.year - h.born, by = (k) => opts.find(o => o.k === k);
     const won = (n) => (h.g1 || []).some(x => x === `${W.year} ${n}`);
-    let sug = autoRoute(W, h) || opts[0], why = '';
+    let sug = autoRoute(W, h, half) || opts[0], why = '';
+    if (routeCat(W, h) === 'older' && half === 'spring' && (h.dist || 0) >= 2200 && rating(h, W.year) >= 88) { sug = opts.find(o => o.k === 'spring3') || sug; why = '力は一枚上だ。春の古馬三冠（大阪杯・天皇賞（春）・宝塚記念）を全部取りに行ける。'; }
+    if (routeCat(W, h) === 'older' && half === 'autumn' && (h.dist || 0) >= 2000 && (h.dist || 0) <= 2600 && rating(h, W.year) >= 88) { sug = opts.find(o => o.k === 'autumn3') || sug; why = '秋の古馬三冠（天皇賞（秋）・ジャパンC・有馬記念）を狙える。'; }
     if (half === 'autumn' && routeCat(W, h) === 'colt3') {
       if (won('皐月賞') && won('日本ダービー')) { sug = by('triple'); why = 'あとは菊花賞。勝てば三冠だ。'; }
       else if (won('日本ダービー') || won('皐月賞')) { sug = by('triple'); why = '菊花賞で二冠を狙える。'; }
@@ -653,7 +685,7 @@
     const races = (o) => half === 'autumn' ? routeRaces(W, h, o, 'autumn') : routeRaces(W, h, o, 'all');
     h.consulted = W.year + half;
     return { lines: [
-      ['', `${tn}から呼ばれた。${h.name}（${age}歳）の${half === 'autumn' ? '秋' : '今年'}の路線と、レースの登録の相談だ。`],
+      ['', `${tn}から呼ばれた。${h.name}（${age}歳）の${half === 'autumn' ? '秋' : routeCat(W, h) === 'older' ? '春' : '今年'}の路線と、レースの登録の相談だ。`],
       [tn, `${h.name}は${h.wins}勝${(h.g1 || []).length ? `、GⅠは${h.g1.map(x => x.slice(5)).join('・')}を勝っている` : ''}。${why || (half === 'autumn' ? '夏を越して、体がひと回り大きくなった。' : 'この冬でずいぶん力をつけた。')}`],
       [tn, `距離は${h.dist}mくらいが合うと見ている。私は${sug.name}がいいと思う。どのレースに登録するか、乗っている${P.name}くんの意見を聞きたい。`],
     ], route: { hid: h.id, half, keys: opts.map(o => o.k) }, choice: { key: 'route', opts: opts.map(o => `${o.name}${o === sug ? '［調教師のおすすめ］' : ''}（${races(o).filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk).join('→') || o.desc}）`) } };
@@ -665,7 +697,7 @@
     const sc = consultScene(W, h, half); if (!sc) return null;
     h.consult = null; W.story.pending.push(sc); return sc;
   }
-  function canConsult(W, h) { const half = W.month >= 6 ? 'autumn' : 'spring'; return !h.retired && h.mainJ === -1 && !h.real && !h.foreign && routeOptions(W, h).length > 0 && h.consulted !== W.year + half; }
+  function canConsult(W, h) { const half = W.month >= 6 ? 'autumn' : 'spring'; return !h.retired && h.mainJ === -1 && !h.real && !h.foreign && routeOptions(W, h, half).length > 0 && h.consulted !== W.year + half; }
   function rideTalks(W) {
     if (!W.story) return;
     const P = W.player, pend = W.story.pending;
@@ -710,7 +742,8 @@
     const P = W.player;
     if (sc.route) {
       const h = W.horses[sc.route.hid]; if (!h) return;
-      const r = routeOptions(W, h).find(o => o.k === sc.route.keys[v]) || routeOptions(W, h)[0];
+      const hf = sc.route.half === 'autumn' ? 'autumn' : 'spring';
+      const r = routeOptions(W, h, hf).find(o => o.k === sc.route.keys[v]) || routeOptions(W, h, hf)[0];
       setPlan(W, h, r, sc.route.half === 'autumn' ? 'autumn' : 'spring');
       P.trust[h.trainer] = clamp((P.trust[h.trainer] || 0) + 2, 0, 100);
       const reg = h.plan.races.filter(n => (gradedWeek(W.year, n) ?? 99) >= W.wk);
@@ -1168,8 +1201,28 @@
   }
 
   // ---- 週の終了 ----
+  // ほかの競馬場の重賞：プレイヤーが行かなかった場の重賞も、週の終わりに行う（行わないと、そこを目標にしていた馬が走れなかった）
+  function runElsewhere(W) {
+    let graded = []; try { graded = gradedForWeek(W.year, sundayOfWeek(W)); } catch (e) { return; }
+    const here = new Set((W.card || []).filter(r => r.graded).map(r => r.name));
+    const todo = graded.filter(g => !here.has(g.name));
+    if (!todo.length) return;
+    const used = new Set(); (W.card || []).forEach(r => r.field.forEach(f => used.add(f.hid)));
+    const day = makeDay();
+    W.elsewhere = [];
+    todo.sort((a, b) => a.g - b.g).forEach((g, i) => {
+      const race = { no: 11, name: g.name, label: `G${'ⅠⅡⅢ'[g.g - 1]}`, clsMin: 5, graded: g.g, age: g.age, sex: g.sex, surf: g.surf, dist: g.dist, venue: g.v, field: [], result: null, elsewhere: true };
+      Object.assign(race, dayCond(day, 10, g.surf));
+      race.field = buildField(W, race, used); race.field.forEach(f => used.add(f.hid));
+      if (race.field.length < 5) return;
+      try { estimateOdds(W, race); simulate(W, race, null, 'auto'); } catch (e) { return; }
+      const w = race.result && race.result[0] && W.horses[race.result[0].hid];
+      if (w) { W.elsewhere.push({ name: g.name, v: g.v, winner: w.name, j: race.result[0].jname, ids: race.field.map(f => f.hid) }); if (g.g === 1) news(W, `${VENUES[g.v].name}・${g.name}は${w.name}（${race.result[0].jname || ''}）が勝利`, 'race'); }
+    });
+  }
   function endWeek(W) {
     const P = W.player;
+    runElsewhere(W);
     doActivities(W);
     // 体重・体調・疲労の自然な変化
     // 何もしなければ少しずつ増える（年齢とともに増えやすい）。適正体重より重いほど戻りにくい
